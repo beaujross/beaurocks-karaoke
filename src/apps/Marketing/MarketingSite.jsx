@@ -45,15 +45,6 @@ const PRODUCT_BRAND = {
   host: "Host Deck",
 };
 
-const MARKETING_STANDARD_ROOM_CODE_LENGTH = 4;
-const MARKETING_MAX_ROOM_CODE_LENGTH = 10;
-const normalizeMarketingJoinCode = (value = "") =>
-  String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, MARKETING_MAX_ROOM_CODE_LENGTH);
-
 const PageShellLoader = () => (
   <div className="mk3-status">
     <strong>Loading page...</strong>
@@ -97,7 +88,7 @@ const normalizePage = (value = "") => {
   if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
   if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
-  if (safe === "demo_auto" || safe === "demo-auto") return MARKETING_ROUTE_PAGES.demoAuto;
+  if (safe === "demo_auto" || safe === "demo-auto" || safe === "auto-demo") return MARKETING_ROUTE_PAGES.demoAuto;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
   if (safe === "host_access" || safe === "host-access") return MARKETING_ROUTE_PAGES.hostAccess;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
@@ -157,6 +148,46 @@ const APP_BUILD = typeof import.meta !== "undefined" && import.meta?.env
 const MARKETING_RELEASE_VERSION = APP_VERSION ? `v${APP_VERSION}` : "v0.0.0";
 const MARKETING_RELEASE_LABEL = APP_BUILD ? `${MARKETING_RELEASE_VERSION}+${APP_BUILD}` : MARKETING_RELEASE_VERSION;
 const MARKETING_PUBLIC_CHANGELOG = [
+  {
+    title: "Host Review + Event Ops Hardening",
+    date: "March 27, 2026",
+    tag: "Host Ops",
+    bullets: [
+      "Unresolved audience requests now have a clearer host-review path with direct YouTube host search and request editing.",
+      "Auto end on finish now prefers the backing duration captured at performance start instead of relying on stale request timing.",
+      "Credits & Funds, promo campaigns, and Givebutter-linked attendee matching continue replacing fragile shared-code event flows.",
+    ],
+  },
+  {
+    title: "Show Workspace Studio Pass",
+    date: "March 27, 2026",
+    tag: "Run Of Show",
+    bullets: [
+      "The Show workspace now keeps moving toward a studio-style sequence builder with clearer Build, Run, and Review modes.",
+      "Hosts can see more of the room plan directly in the main operating surfaces instead of digging through admin-only settings.",
+      "The timeline direction remains focused on feeling more like a visual sequence tool than a traditional web form.",
+    ],
+  },
+  {
+    title: "Audience Email-Link Recovery",
+    date: "March 25, 2026",
+    tag: "Audience",
+    bullets: [
+      "Expired or already-spent sign-in links now fail cleanly instead of getting stuck in a retry loop.",
+      "Audience email-link verification now runs once per link URL and clears dead auth params after terminal errors.",
+      "Sign-in emails were refreshed with higher-contrast copy and a clearer fallback link block.",
+    ],
+  },
+  {
+    title: "Homepage + Auto Demo Cleanup",
+    date: "March 25, 2026",
+    tag: "Marketing",
+    bullets: [
+      "The fan homepage hero now falls back to a stable static layout on many mobile and touch devices.",
+      "Competing call-to-action clusters were reduced so the homepage reads like a clearer single journey.",
+      "The auto demo now uses lighter controls, cleaner scene navigation, and smaller surface framing for easier scanning.",
+    ],
+  },
   {
     title: "Launch Access + Routing",
     date: "February 27, 2026",
@@ -249,8 +280,6 @@ const MarketingSite = () => {
   const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [pendingHostApplicationsCount, setPendingHostApplicationsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [navJoinCode, setNavJoinCode] = useState("");
-  const [navJoinStatus, setNavJoinStatus] = useState("");
   const authPanelRef = useRef(null);
   const moreMenuRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -386,26 +415,6 @@ const MarketingSite = () => {
     return `${targetUrl.pathname}${targetUrl.search}`;
   }, [buildRelativeHref]);
 
-  const openAudienceJoin = useCallback((rawCode = "", source = "marketing_nav_join") => {
-    if (typeof window === "undefined") return false;
-    const code = normalizeMarketingJoinCode(rawCode);
-    if (!code) {
-      setNavJoinStatus(`Enter a room code. Standard codes are ${MARKETING_STANDARD_ROOM_CODE_LENGTH} characters.`);
-      return false;
-    }
-    if (code.length < MARKETING_STANDARD_ROOM_CODE_LENGTH) {
-      setNavJoinStatus(`Room codes are typically ${MARKETING_STANDARD_ROOM_CODE_LENGTH} characters.`);
-      return false;
-    }
-    setNavJoinStatus("");
-    trackEvent("mk_quick_join_submit", {
-      source: String(source || "marketing_nav_join"),
-      room_code_length: code.length,
-    });
-    window.location.href = buildSurfaceUrl({ surface: "app", params: { room: code } }, window.location);
-    return true;
-  }, []);
-
   const navigate = useCallback((pageOrRoute = MARKETING_ROUTE_PAGES.discover, id = "", params = {}, options = {}) => {
     if (typeof window === "undefined") return;
     const nextRoute = normalizeRouteInput(pageOrRoute, id, params);
@@ -441,11 +450,6 @@ const MarketingSite = () => {
     event.preventDefault();
     navigate(pageOrRoute, id, params, options);
   }, [navigate]);
-
-  const onNavJoinSubmit = useCallback((event, source = "marketing_nav_join") => {
-    event.preventDefault();
-    openAudienceJoin(navJoinCode, source);
-  }, [navJoinCode, openAudienceJoin]);
 
   const scrollAuthPanelIntoView = useCallback(() => {
     authPanelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
@@ -840,6 +844,27 @@ const MarketingSite = () => {
       </span>
     );
   }, [pendingHostApplicationsCount]);
+  const handleNavHostAccess = useCallback(() => {
+    collapseNavMenus();
+    if (hasFullAccount) {
+      openHostDashboard("marketing_nav_host_dashboard_primary");
+      return;
+    }
+    trackEvent("mk_nav_host_access_click", { source: "nav_primary_host_access" });
+    requireFullAuth({
+      intent: "host_dashboard_resume",
+      targetType: "session",
+      returnRoute: {
+        page: MARKETING_ROUTE_PAGES.hostAccess,
+        params: {
+          ...withCampaignParams({ utm_content: "nav_primary_host_access" }),
+          intent: "host_dashboard_resume",
+          targetType: "session",
+        },
+      },
+      preferHostSurface: true,
+    });
+  }, [collapseNavMenus, hasFullAccount, openHostDashboard, requireFullAuth, withCampaignParams]);
 
   const postAuthHint = useMemo(() => {
     if (authMode === "signup") {
@@ -958,54 +983,10 @@ const MarketingSite = () => {
               </nav>
             </div>
             <div className="mk3-account">
-              <form className="mk3-nav-join" onSubmit={(event) => onNavJoinSubmit(event, "marketing_nav_join_desktop")}>
-                <div className="mk3-nav-join-shell">
-                  <label className="mk3-nav-join-field">
-                    <span className="mk3-nav-join-label">Join Room</span>
-                    <input
-                      value={navJoinCode}
-                      onChange={(event) => {
-                        setNavJoinCode(normalizeMarketingJoinCode(event.target.value || ""));
-                        if (navJoinStatus) setNavJoinStatus("");
-                      }}
-                      placeholder="A1B2"
-                      inputMode="text"
-                      autoCapitalize="characters"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      maxLength={MARKETING_MAX_ROOM_CODE_LENGTH}
-                      aria-label="Enter room code"
-                    />
-                  </label>
-                  <button type="submit" className="mk3-nav-join-button">
-                    Join
-                  </button>
-                </div>
-              </form>
               <button
                 type="button"
                 className="mk3-account-action"
-                  onClick={() => {
-                    collapseNavMenus();
-                    if (hasFullAccount) {
-                      openHostDashboard("marketing_nav_host_dashboard_primary");
-                      return;
-                    }
-                  trackEvent("mk_nav_host_access_click", { source: "nav_primary_host_access" });
-                  requireFullAuth({
-                    intent: "host_dashboard_resume",
-                    targetType: "session",
-                    returnRoute: {
-                      page: MARKETING_ROUTE_PAGES.hostAccess,
-                      params: {
-                        ...withCampaignParams({ utm_content: "nav_primary_host_access" }),
-                        intent: "host_dashboard_resume",
-                        targetType: "session",
-                      },
-                    },
-                    preferHostSurface: true,
-                  });
-                }}
+                onClick={handleNavHostAccess}
               >
                 {hasFullAccount ? "Host Dashboard" : "Host Access"}
               </button>
@@ -1020,31 +1001,7 @@ const MarketingSite = () => {
               </button>
             </div>
           </div>
-          {navJoinStatus && <div className="mk3-nav-join-status">{navJoinStatus}</div>}
           <div id="mk3-mobile-menu" className={mobileMenuOpen ? "mk3-mobile-menu is-open" : "mk3-mobile-menu"}>
-            <form className="mk3-mobile-join" onSubmit={(event) => onNavJoinSubmit(event, "marketing_nav_join_mobile")}>
-              <div className="mk3-mobile-join-copy">
-                <strong>Join Room Fast</strong>
-                <span>Most BeauRocks rooms use a 4-character code.</span>
-              </div>
-              <div className="mk3-mobile-join-row">
-                <input
-                  value={navJoinCode}
-                  onChange={(event) => {
-                    setNavJoinCode(normalizeMarketingJoinCode(event.target.value || ""));
-                    if (navJoinStatus) setNavJoinStatus("");
-                  }}
-                  placeholder="A1B2"
-                  inputMode="text"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  maxLength={MARKETING_MAX_ROOM_CODE_LENGTH}
-                  aria-label="Enter room code"
-                />
-                <button type="submit">Join</button>
-              </div>
-            </form>
             <div className="mk3-mobile-link-grid">
               {navPrimaryOptions.map((item) => (
                 <a
@@ -1072,6 +1029,13 @@ const MarketingSite = () => {
                   {renderNavItemLabel(item)}
                 </a>
               ))}
+              <button
+                type="button"
+                className="mk3-account-action mk3-mobile-host-access"
+                onClick={handleNavHostAccess}
+              >
+                {hasFullAccount ? "Open Host Dashboard" : "Host Access"}
+              </button>
             </div>
           </div>
         </div>
@@ -1213,7 +1177,7 @@ const MarketingSite = () => {
               ) : (
                 <form onSubmit={onAuthSubmit}>
                   <div className="mk3-auth-mode-label">Account mode</div>
-                  <div className="mk3-toggle-row" role="tablist" aria-label="Account mode">
+                  <div className="mk3-toggle-row mk3-auth-mode-tabs" role="tablist" aria-label="Account mode">
                     <button
                       type="button"
                       role="tab"

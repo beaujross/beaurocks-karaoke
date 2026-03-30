@@ -6,25 +6,25 @@ import { PersonaPageFrame } from "./PersonaMarketingBlocks";
 const ROOM_SIGNAL_CARDS = [
   {
     label: "Public TV",
-    title: "The shared board",
-    copy: "Lyrics, queue, reactions, and game moments stay visible.",
+    title: "One focal point",
+    copy: "The room sees the same lyrics, queue, prompts, and next move on one shared screen.",
   },
   {
     label: "Audience phones",
-    title: "Fast join",
-    copy: "Guests scan in, react, vote, and play from their phones.",
+    title: "Join in seconds",
+    copy: "Guests scan in, react, request songs, and stay involved without learning a system.",
   },
   {
     label: "Host deck",
-    title: "One deck runs it",
-    copy: "The host can guide the room without juggling tools.",
+    title: "Run it or autopilot it",
+    copy: "The host can guide the room manually or kick on autopilot and let the night keep moving.",
   },
 ];
 
 const HERO_SIGNAL_PILLS = [
-  "TV-led room flow",
-  "Phone join in seconds",
-  "Shared games + reactions",
+  "TV-led karaoke",
+  "Phones join fast",
+  "Host or autopilot",
 ];
 
 const EVENT_TYPE_CARDS = [
@@ -49,24 +49,74 @@ const EVENT_TYPE_CARDS = [
 const FINAL_PATHS = [
   { title: "Open Discover", route: "discover" },
   { title: "Watch Auto Demo", route: "demo_auto" },
-  { title: "See Host Tools", route: "for_hosts" },
 ];
 
-const HOST_SEARCH_PILLS = ["Journey", "ABBA", "Whitney"];
-
-const HOST_QUEUE_ITEMS = [
-  { phase: "Now", title: "Dont Stop Believin'" },
-  { phase: "Next", title: "Valerie" },
-  { phase: "Later", title: "Man! I Feel Like A Woman" },
+const FAN_SYSTEM_STEPS = [
+  {
+    id: "tv",
+    kicker: "TV first",
+    title: "Start with one screen the whole room can follow.",
+    body: "The homepage should lead with the TV, because that is the shared focal point that makes the room feel organized instead of fragmented.",
+    tvMode: "Karaoke live",
+    tvHeadline: "KARAOKE FOR THE WHOLE ROOM",
+    tvDetail: "Lyrics, queue, and room prompts stay giant on the wall.",
+    tvPill: "Shared room view",
+    tvFeatures: ["Karaoke", "Lyric wall", "Crowd cues"],
+    audienceTitle: "Phones join next",
+    audienceCopy: "Guests scan in fast when the room is ready.",
+    hostTitle: "Host deck waits below",
+    hostCopy: "Controls stay out of the way until the room needs them.",
+    hostPills: ["Queue", "Audio", "Prompts"],
+  },
+  {
+    id: "audience",
+    kicker: "Audience joins",
+    title: "Phones pop in without stealing the room from the TV.",
+    body: "Once the TV has the room, audience screens can join the sequence. They should feel like supporting surfaces that zoom into the moment, not a second homepage fighting for attention.",
+    tvMode: "Audience connected",
+    tvHeadline: "GUESTS JOIN ON THEIR PHONES",
+    tvDetail: "Room code, reactions, and requests land back on the big screen fast.",
+    tvPill: "Room code live",
+    tvFeatures: ["Join by code", "React", "Request songs"],
+    audienceTitle: "Join + react",
+    audienceCopy: "Scan in, send reactions, request a song, and stay in the loop.",
+    hostTitle: "Host sees the room filling",
+    hostCopy: "The room stays coordinated because the TV remains the anchor.",
+    hostPills: ["Queue live", "Room code", "Crowd energy"],
+  },
+  {
+    id: "host",
+    kicker: "Host control",
+    title: "The host panel rises only when it has something useful to say.",
+    body: "After the audience joins, the host deck can surface from below and prove that one operator can steer karaoke, pacing, prompts, and lyric flow without a messy control stack.",
+    tvMode: "Host in command",
+    tvHeadline: "ONE HOST CAN RUN THE WHOLE NIGHT",
+    tvDetail: "Queue handoff, lyrics, and crowd pacing stay coordinated from one deck.",
+    tvPill: "Host steering live",
+    tvFeatures: ["Queue control", "Lyric timing", "Room prompts"],
+    audienceTitle: "Guests stay active",
+    audienceCopy: "Phones keep feeding requests and reactions back into the room.",
+    hostTitle: "Host deck up",
+    hostCopy: "Search, queue, prompts, and room controls stay in one place.",
+    hostPills: ["Search", "Queue", "Prompts", "Autopilot"],
+  },
+  {
+    id: "autopilot",
+    kicker: "Autopilot",
+    title: "Run it hands-on, or tap autopilot and step away for a minute.",
+    body: "End the sequence by showing the host can stay in control or hand the night to autopilot. That is where we punctuate lyric generation and playback flexibility without cluttering the hero.",
+    tvMode: "Autopilot ready",
+    tvHeadline: "AUTOPILOT KEEPS THE NIGHT MOVING",
+    tvDetail: "Lyrics, handoffs, and playback stay smooth while the host works the room.",
+    tvPill: "Autopilot active",
+    tvFeatures: ["Lyric generation", "YouTube", "Apple Music", "Spotify"],
+    audienceTitle: "The room keeps singing",
+    audienceCopy: "Guests keep joining and reacting while the flow stays automatic.",
+    hostTitle: "Tap autopilot",
+    hostCopy: "Choose hands-on control, or let the deck manage the pacing for a stretch.",
+    hostPills: ["Autopilot on", "YouTube", "Apple Music", "Spotify"],
+  },
 ];
-
-const AUDIENCE_ACTIONS = ["Name", "Emoji", "Request"];
-const HERO_LYRIC_LINE = "\"DON'T STOP BELIEVIN'\"";
-const HERO_TAGLINE_LINE = "THE WHOLE ROOM STAYS IN THE SONG.";
-const HERO_TV_PHASE_BREAKS = Object.freeze({
-  lyricEnd: 0.34,
-  taglineEnd: 0.58,
-});
 
 const clamp01 = (value = 0) => Math.max(0, Math.min(1, Number(value || 0)));
 const getSegmentProgress = (value = 0, start = 0, end = 1) => {
@@ -74,243 +124,178 @@ const getSegmentProgress = (value = 0, start = 0, end = 1) => {
   return clamp01((value - start) / span);
 };
 
-const HOMEPAGE_STORY_BEATS = [
-  {
-    id: "lyrics",
-    kicker: "Scroll-led lyrics",
-    title: "The lyric wall keeps moving with the room.",
-    body: "Start the scroll by dragging the song across the TV, like the room is still mid-chorus instead of resetting between sections.",
-    tvHeadline: "LYRICS STAY HUGE",
-    tvMode: "Lyrics drifting live",
-    tvDetail: "Scroll pushes the chorus across the wall",
-    tvPill: "Verse flow active",
-    captionTitle: "The TV keeps the room in the song.",
-    captionBody: "Lyrics stay huge, visible, and alive while the room keeps moving.",
-    bridgeLabel: "Stage-led momentum",
-    bridgeValue: "Lyrics + queue + join live together",
-    hostLabel: "Queue pacing",
-    hostValue: "Song handoff stays visible",
-    phoneLabel: "Fast join",
-    phoneValue: "Guests scan in without breaking the moment",
-  },
-  {
-    id: "queue",
-    kicker: "Queue clarity",
-    title: "Everyone can see what is now, next, and coming later.",
-    body: "Once the lyric motion lands, the board turns into a shared room map so nobody loses the thread between performers.",
-    tvHeadline: "NOW NEXT LATER",
-    tvMode: "Queue visible",
-    tvDetail: "Now, next, and up next stay public",
-    tvPill: "Up next: Sarah J.",
-    captionTitle: "The TV becomes the shared board for the whole room.",
-    captionBody: "Lyrics, queue state, and room moments stay visible instead of getting lost between songs.",
-    bridgeLabel: "One connected room",
-    bridgeValue: "TV + host deck + audience app",
-    hostLabel: "Queue live",
-    hostValue: "Host sees now / next / later in one pass",
-    phoneLabel: "Join this room",
-    phoneValue: "Room code stays simple and obvious",
-  },
-  {
-    id: "reactions",
-    kicker: "Crowd response",
-    title: "Guest phones feed energy back into the room.",
-    body: "The homepage story should prove that phones are not a side tool. They change what the wall feels like in real time.",
-    tvHeadline: "THE ROOM HITS BACK",
-    tvMode: "Crowd reactions live",
-    tvDetail: "Phone taps bounce back onto the wall",
-    tvPill: "Room pulse rising",
-    captionTitle: "Phone taps create room-sized feedback.",
-    captionBody: "Reactions, votes, and prompts land back on the big screen fast enough to feel live.",
-    bridgeLabel: "Audience in the loop",
-    bridgeValue: "Reactions + prompts + crowd play",
-    hostLabel: "Room controls",
-    hostValue: "Host can steer energy without stopping the song",
-    phoneLabel: "Tap to react",
-    phoneValue: "Guests stay active without learning a system",
-  },
-  {
-    id: "handoff",
-    kicker: "Clean handoff",
-    title: "The room resets into the next singer without losing momentum.",
-    body: "End the homepage story by showing that the system carries people through the handoff instead of making the room start over.",
-    tvHeadline: "NEXT SINGER READY",
-    tvMode: "Next singer ready",
-    tvDetail: "The next moment is already staged",
-    tvPill: "Autodj bridge live",
-    captionTitle: "The next moment is already staged.",
-    captionBody: "Up next, room code, and host controls stay ready before the current song fully clears.",
-    bridgeLabel: "Continuous room flow",
-    bridgeValue: "Now singing -> next singer -> next room beat",
-    hostLabel: "Next up",
-    hostValue: "Queue keeps the room warm",
-    phoneLabel: "Stay connected",
-    phoneValue: "Guests can rejoin the next moment instantly",
-  },
-];
-
 const resolveScrollRoot = (node) => {
   if (!node || typeof document === "undefined") return null;
   return node.closest(".mk3-site") || document.scrollingElement || document.documentElement || null;
 };
 
-const FansRoomFlowBoard = ({
-  activeBeat = HOMEPAGE_STORY_BEATS[0],
-  displayLine = HERO_LYRIC_LINE,
-  lyricProgress = 0,
-  boardProgress = 0,
-}) => {
-  const lyricOpacity = 0.52 + lyricProgress * 0.48;
-  const lyricScale = 0.985 + lyricProgress * 0.045;
-  const lyricRise = `${12 - lyricProgress * 12}px`;
-  const lyricFill = `${Math.max(0, Math.min(100, lyricProgress * 100))}%`;
-  const topLineShift = `${-8 + lyricProgress * 14}px`;
-  const detailShift = `${10 + lyricProgress * -18}px`;
-  const pillShift = `${16 + lyricProgress * -28}px`;
-  const boardScale = 0.88 + boardProgress * 0.14;
-  const boardLift = 36 - boardProgress * 42;
-  const boardDepth = -108 + boardProgress * 144;
-  const boardTilt = 8 - boardProgress * 8.5;
-  const boardGlow = 0.34 + boardProgress * 0.58;
-
-  return (
-  <div
-    className="mk3-fans-roomflow-board"
-    style={{
-      "--mk3-roomflow-board-scale": boardScale,
-      "--mk3-roomflow-board-lift": `${boardLift}px`,
-      "--mk3-roomflow-board-depth": `${boardDepth}px`,
-      "--mk3-roomflow-board-tilt": `${boardTilt}deg`,
-      "--mk3-roomflow-board-glow": boardGlow,
-    }}
-  >
-    <div className="mk3-fans-roomflow-board-head">
-      <span>Simulated UI</span>
-      <b>Room flow</b>
+const FansHeroTvStage = () => (
+  <div className="mk3-fans-hero-tv-card">
+    <div className="mk3-fans-hero-tv-head">
+      <span>Public TV</span>
+      <b>Core room view</b>
     </div>
-
-    <div className="mk3-fans-roomflow-shell">
-      <section className="mk3-fans-roomflow-tv-panel">
-        <div className="mk3-fans-roomflow-surface-head">
-          <span>Public TV</span>
-          <b>Stage live</b>
-        </div>
-        <div className="mk3-fans-roomflow-tv-screen">
-          <div className="mk3-fans-roomflow-tv-topline" style={{ "--mk3-tv-topline-shift": topLineShift }}>
-            <span>beaurocks.app</span>
-            <i>{activeBeat.tvMode}</i>
-          </div>
-          <strong
-            className="mk3-fans-roomflow-tv-lyric"
-            style={{
-              "--mk3-lyric-opacity": lyricOpacity,
-              "--mk3-lyric-scale": lyricScale,
-              "--mk3-lyric-rise": lyricRise,
-              "--mk3-lyric-fill": lyricFill,
-            }}
-          >
-            <span className="mk3-fans-roomflow-tv-lyric-viewport">
-              <span key={displayLine} className="mk3-fans-roomflow-tv-lyric-track">
-                <span className="mk3-fans-roomflow-tv-lyric-base">{displayLine}</span>
-                <span className="mk3-fans-roomflow-tv-lyric-fill" aria-hidden="true">{displayLine}</span>
-              </span>
-            </span>
-            <span className="mk3-fans-roomflow-tv-lyric-meter" aria-hidden="true">
-              <b />
-            </span>
-          </strong>
-          <p className="mk3-fans-roomflow-tv-detail" style={{ "--mk3-tv-detail-shift": detailShift }}>
-            <span>{activeBeat.tvDetail}</span>
-          </p>
-          <div className="mk3-fans-roomflow-tv-pill" style={{ "--mk3-tv-pill-shift": pillShift }}>{activeBeat.tvPill}</div>
-        </div>
-        <div className="mk3-fans-roomflow-caption">
-          <strong>{activeBeat.captionTitle}</strong>
-          <p>{activeBeat.captionBody}</p>
-        </div>
-      </section>
-
-      <div className="mk3-fans-roomflow-mobile-bridge">
-        <span>{activeBeat.bridgeLabel}</span>
-        <b>{activeBeat.bridgeValue}</b>
+    <div className="mk3-fans-hero-tv-screen">
+      <div className="mk3-fans-hero-tv-topline">
+        <span>BeauRocks Karaoke</span>
+        <i>TV-led room flow</i>
       </div>
-
-      <div className="mk3-fans-roomflow-lower">
-        <section className="mk3-fans-roomflow-host-panel">
-          <div className="mk3-fans-roomflow-surface-head">
-            <span>Host deck</span>
-            <b>{activeBeat.hostLabel}</b>
-          </div>
-          <div className="mk3-fans-roomflow-host-grid">
-            <article>
-              <strong>Search</strong>
-              <div className="mk3-fans-roomflow-pill-row">
-                {HOST_SEARCH_PILLS.map((item) => (
-                  <span key={item}>{item}</span>
-                ))}
-              </div>
-            </article>
-            <article>
-              <strong>{activeBeat.hostValue}</strong>
-              <ul>
-                {HOST_QUEUE_ITEMS.map((item) => (
-                  <li key={item.phase}>
-                    <span>{item.phase}</span>
-                    <b>{item.title}</b>
-                  </li>
-                ))}
-              </ul>
-            </article>
-            <article>
-              <strong>Room controls</strong>
-              <div className="mk3-fans-roomflow-meter">
-                <span>TV</span>
-                <i />
-              </div>
-              <div className="mk3-fans-roomflow-meter">
-                <span>Audio</span>
-                <i />
-              </div>
-              <div className="mk3-fans-roomflow-meter">
-                <span>Join</span>
-                <i />
-              </div>
-            </article>
-          </div>
-        </section>
-
-        <section className="mk3-fans-roomflow-audience-panel">
-          <div className="mk3-fans-roomflow-phone">
-            <div className="mk3-fans-roomflow-phone-notch" />
-            <div className="mk3-fans-roomflow-phone-screen">
-              <span>Audience app</span>
-              <strong>{activeBeat.phoneLabel}</strong>
-              <div className="mk3-fans-roomflow-code">DJBEAU</div>
-              <div className="mk3-fans-roomflow-pill-row is-audience">
-                {AUDIENCE_ACTIONS.map((item) => (
-                  <span key={item}>{item}</span>
-                ))}
-              </div>
-              <button type="button">{activeBeat.phoneValue}</button>
-            </div>
-          </div>
-        </section>
+      <strong>THE WHOLE ROOM STAYS IN THE SONG.</strong>
+      <p>
+        One big screen keeps karaoke, lyrics, queue, and crowd moments visible
+        while phones and host controls stay connected around it.
+      </p>
+      <div className="mk3-fans-hero-tv-pill-row">
+        <span>Karaoke</span>
+        <span>Lyrics</span>
+        <span>Shared queue</span>
       </div>
     </div>
   </div>
+);
+
+const FansCinematicSystemStage = ({
+  activeStep = FAN_SYSTEM_STEPS[0],
+  audienceReveal = 0,
+  hostReveal = 0,
+  autopilotReveal = 0,
+  useStatic = false,
+}) => {
+  const audienceOpacity = useStatic ? 1 : audienceReveal;
+  const audienceScale = useStatic ? 1 : 0.76 + audienceReveal * 0.24;
+  const audienceOffset = useStatic ? "0px" : `${56 - audienceReveal * 56}px`;
+  const hostOpacity = useStatic ? 1 : hostReveal;
+  const hostLift = useStatic ? "0px" : `${60 - hostReveal * 60}px`;
+  const autopilotGlow = 0.18 + autopilotReveal * 0.82;
+  const hostModeLabel = autopilotReveal > 0.52 ? "Autopilot on" : "Host ready";
+
+  return (
+    <div
+      className={`mk3-fans-system-stage${useStatic ? " is-static" : ""}`}
+      style={{
+        "--mk3-fans-audience-opacity": audienceOpacity,
+        "--mk3-fans-audience-scale": audienceScale,
+        "--mk3-fans-audience-offset": audienceOffset,
+        "--mk3-fans-audience-path-opacity": useStatic ? 1 : audienceReveal,
+        "--mk3-fans-host-opacity": hostOpacity,
+        "--mk3-fans-host-lift": hostLift,
+        "--mk3-fans-host-path-opacity": useStatic ? 1 : hostReveal,
+        "--mk3-fans-autopilot-glow": autopilotGlow,
+      }}
+    >
+      <div className="mk3-fans-cinematic-paths" aria-hidden="true">
+        <em className="is-left-top" />
+        <em className="is-left-bottom" />
+        <em className="is-right-top" />
+        <em className="is-right-bottom" />
+        <em className="is-host-tv" />
+      </div>
+
+      <article className="mk3-fans-system-tv">
+        <div className="mk3-fans-system-tv-head">
+          <span>Public TV</span>
+          <b>{activeStep.tvMode}</b>
+        </div>
+        <div className="mk3-fans-system-tv-screen">
+          <strong>{activeStep.tvHeadline}</strong>
+          <p>{activeStep.tvDetail}</p>
+          <div className="mk3-fans-system-tv-pill">{activeStep.tvPill}</div>
+          <div className="mk3-fans-system-tv-feature-row">
+            {activeStep.tvFeatures.map((feature) => (
+              <span key={feature}>{feature}</span>
+            ))}
+          </div>
+        </div>
+      </article>
+
+      <aside className="mk3-fans-system-audience is-left">
+        <div className="mk3-fans-system-phone">
+          <div className="mk3-fans-system-phone-notch" />
+          <div className="mk3-fans-system-phone-screen">
+            <span>Audience app</span>
+            <strong>{activeStep.audienceTitle}</strong>
+            <div className="mk3-fans-system-code">DJBEAU</div>
+            <p>{activeStep.audienceCopy}</p>
+            <button type="button">Join + react</button>
+          </div>
+        </div>
+      </aside>
+
+      <aside className="mk3-fans-system-audience is-right">
+        <div className="mk3-fans-system-phone is-secondary">
+          <div className="mk3-fans-system-phone-notch" />
+          <div className="mk3-fans-system-phone-screen">
+            <span>Audience app</span>
+            <strong>Requests stay live</strong>
+            <div className="mk3-fans-system-mini-pill-row">
+              <span>Name</span>
+              <span>Emoji</span>
+              <span>Request</span>
+            </div>
+            <p>Guests join the room without pulling focus away from the TV.</p>
+          </div>
+        </div>
+      </aside>
+
+      <article className="mk3-fans-system-host">
+        <div className="mk3-fans-system-host-head">
+          <span>Host deck</span>
+          <b>{hostModeLabel}</b>
+        </div>
+        <strong>{activeStep.hostTitle}</strong>
+        <p>{activeStep.hostCopy}</p>
+        <div className="mk3-fans-system-host-pill-row">
+          {activeStep.hostPills.map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+        </div>
+        <div className="mk3-fans-system-host-actions">
+          <button type="button" className={autopilotReveal > 0.52 ? "is-active" : ""}>Autopilot</button>
+          <button type="button">Manual</button>
+        </div>
+      </article>
+    </div>
   );
 };
 
 const ForFansPage = ({ navigate, heroStats }) => {
-  const heroTrackRef = useRef(null);
-  const [heroScrollProgress, setHeroScrollProgress] = useState(0);
+  const systemTrackRef = useRef(null);
+  const [systemScrollProgress, setSystemScrollProgress] = useState(0);
+  const [useStaticMotion, setUseStaticMotion] = useState(false);
 
   useEffect(() => {
-    const node = heroTrackRef.current;
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const queries = [
+      window.matchMedia("(max-width: 900px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const updateStaticMotion = () => {
+      setUseStaticMotion(queries.some((query) => query.matches));
+    };
+    updateStaticMotion();
+    queries.forEach((query) => {
+      if (typeof query.addEventListener === "function") query.addEventListener("change", updateStaticMotion);
+      else if (typeof query.addListener === "function") query.addListener(updateStaticMotion);
+    });
+    return () => {
+      queries.forEach((query) => {
+        if (typeof query.removeEventListener === "function") query.removeEventListener("change", updateStaticMotion);
+        else if (typeof query.removeListener === "function") query.removeListener(updateStaticMotion);
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    if (useStaticMotion) {
+      setSystemScrollProgress(0);
+      return undefined;
+    }
+    const node = systemTrackRef.current;
     const scrollRoot = resolveScrollRoot(node);
 
     const measureProgress = () => {
-      const trackNode = heroTrackRef.current;
+      const trackNode = systemTrackRef.current;
       if (!trackNode || typeof window === "undefined") return;
       const viewportHeight = window.innerHeight || 0;
       const containerTop = scrollRoot && scrollRoot !== document.documentElement && scrollRoot !== document.body
@@ -320,8 +305,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
       const relativeTop = rect.top - containerTop;
       const travel = Math.max(trackNode.offsetHeight - viewportHeight, 1);
       const distance = Math.max(0, -relativeTop);
-      const next = Math.max(0, Math.min(1, distance / travel));
-      setHeroScrollProgress(next);
+      setSystemScrollProgress(clamp01(distance / travel));
     };
 
     measureProgress();
@@ -339,7 +323,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
       }
       window.removeEventListener("resize", measureProgress);
     };
-  }, []);
+  }, [useStaticMotion]);
 
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
@@ -348,113 +332,122 @@ const ForFansPage = ({ navigate, heroStats }) => {
       cta: String(cta || ""),
     });
   };
+
   const discoverSnapshot = heroStats?.total
     ? `${heroStats.total.toLocaleString()} live listings`
     : "Live karaoke directory";
   const discoverUpdatedLabel = heroStats?.generatedAtMs
     ? `Updated ${formatDateTime(heroStats.generatedAtMs)}`
     : "Map and list views keep the latest room mix in one place.";
-  const lyricOnlyProgress = getSegmentProgress(heroScrollProgress, 0, HERO_TV_PHASE_BREAKS.lyricEnd);
-  const taglineProgress = getSegmentProgress(heroScrollProgress, HERO_TV_PHASE_BREAKS.lyricEnd, HERO_TV_PHASE_BREAKS.taglineEnd);
-  const rotatingPhaseProgress = getSegmentProgress(heroScrollProgress, HERO_TV_PHASE_BREAKS.taglineEnd, 1);
-  const beatPhaseCount = Math.max(1, HOMEPAGE_STORY_BEATS.length);
-  const rawBeatIndex = Math.min(
-    beatPhaseCount - 1,
-    Math.floor(clamp01(rotatingPhaseProgress) * beatPhaseCount)
-  );
-  const rotatingBeat = HOMEPAGE_STORY_BEATS[rawBeatIndex] || HOMEPAGE_STORY_BEATS[0];
-  const activeBeat = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
-    ? {
-        ...HOMEPAGE_STORY_BEATS[0],
-        tvMode: "Chorus live",
-        tvDetail: "Scroll drives the lyric timing across the wall",
-        tvPill: "Karaoke intro",
-        captionTitle: "The TV opens like a live lyric wall.",
-        captionBody: "The first scroll beat should feel like the chorus is already moving, not like the page is leaving the hero.",
-      }
-    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
-      ? {
-          ...HOMEPAGE_STORY_BEATS[0],
-          tvMode: "Brand hit",
-          tvDetail: "One board keeps the singer, queue, and room in one shared moment",
-          tvPill: "Whole room sync",
-          captionTitle: "The room stays locked to one shared screen.",
-          captionBody: "After the lyric sweep lands, the board hits the brand line before the rest of the room flow starts rotating in.",
-        }
-      : rotatingBeat;
-  const activeBeatStart = HERO_TV_PHASE_BREAKS.taglineEnd + ((1 - HERO_TV_PHASE_BREAKS.taglineEnd) / beatPhaseCount) * rawBeatIndex;
-  const activeBeatEnd = HERO_TV_PHASE_BREAKS.taglineEnd + ((1 - HERO_TV_PHASE_BREAKS.taglineEnd) / beatPhaseCount) * (rawBeatIndex + 1);
-  const activeBeatProgress = getSegmentProgress(heroScrollProgress, activeBeatStart, activeBeatEnd);
-  const boardProgress = getSegmentProgress(heroScrollProgress, 0.02, 0.88);
-  const tvLine = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
-    ? HERO_LYRIC_LINE
-    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
-      ? HERO_TAGLINE_LINE
-      : activeBeat.tvHeadline;
-  const lyricProgress = heroScrollProgress < HERO_TV_PHASE_BREAKS.lyricEnd
-    ? lyricOnlyProgress
-    : heroScrollProgress < HERO_TV_PHASE_BREAKS.taglineEnd
-      ? taglineProgress
-      : activeBeatProgress;
+
+  const flowStepCount = Math.max(1, FAN_SYSTEM_STEPS.length);
+  const activeFlowIndex = useStaticMotion
+    ? FAN_SYSTEM_STEPS.length - 1
+    : Math.min(flowStepCount - 1, Math.floor(clamp01(systemScrollProgress) * flowStepCount));
+  const activeFlowStep = FAN_SYSTEM_STEPS[activeFlowIndex] || FAN_SYSTEM_STEPS[0];
+  const flowStepStart = activeFlowIndex / flowStepCount;
+  const flowStepEnd = (activeFlowIndex + 1) / flowStepCount;
+  const activeFlowProgress = useStaticMotion
+    ? 1
+    : getSegmentProgress(systemScrollProgress, flowStepStart, flowStepEnd);
+  const audienceReveal = useStaticMotion
+    ? 1
+    : activeFlowIndex === 0
+      ? 0
+      : activeFlowIndex === 1
+        ? activeFlowProgress
+        : 1;
+  const hostReveal = useStaticMotion
+    ? 1
+    : activeFlowIndex <= 1
+      ? 0
+      : activeFlowIndex === 2
+        ? activeFlowProgress
+        : 1;
+  const autopilotReveal = useStaticMotion
+    ? 1
+    : activeFlowIndex < 3
+      ? 0
+      : activeFlowProgress;
 
   return (
     <PersonaPageFrame theme="fan">
-      <article ref={heroTrackRef} className="mk3-fans-cinematic-hero">
-        <div className="mk3-fans-cinematic-stage-sticky">
-          <div className="mk3-fans-cinematic-copy">
-            <div className="mk3-fans-cinematic-copy-top">
-              <div className="mk3-rebuild-kicker">Live Karaoke, Better Connected</div>
-              <h1>Karaoke that works for the whole room.</h1>
-              <p>Find live nights, run better events, and keep the TV, queue, and every guest phone moving together.</p>
-              <div className="mk3-rebuild-action-row">
-                <button
-                  type="button"
-                  className="mk3-rebuild-button is-primary"
-                  onClick={() => {
-                    trackPersonaCta("hero_discover");
-                    navigate("discover");
-                  }}
-                >
-                  Explore Live Nights
-                </button>
-                <button
-                  type="button"
-                  className="mk3-rebuild-button is-secondary"
-                  onClick={() => {
-                    trackPersonaCta("hero_demo_auto");
-                    navigate("demo_auto");
-                  }}
-                >
-                  Watch Auto Demo
-                </button>
-                <button
-                  type="button"
-                  className="mk3-rebuild-button is-ghost"
-                  onClick={() => {
-                    trackPersonaCta("hero_hosts");
-                    navigate("for_hosts");
-                  }}
-                >
-                  See Host Tools
-                </button>
-              </div>
-              <div className="mk3-fans-cinematic-pill-row" aria-label="Core features">
-                {HERO_SIGNAL_PILLS.map((item) => (
-                  <span key={item}>{item}</span>
-                ))}
-              </div>
-            </div>
+      <section className="mk3-fans-hero-simplified">
+        <div className="mk3-fans-hero-simplified-copy">
+          <div className="mk3-rebuild-kicker">Live Karaoke, Better Connected</div>
+          <h1>The TV leads. The whole room follows.</h1>
+          <p>
+            BeauRocks keeps karaoke, lyrics, queue, and guest phones moving
+            together so the room feels like one experience instead of three disconnected tools.
+          </p>
+          <div className="mk3-rebuild-action-row">
+            <button
+              type="button"
+              className="mk3-rebuild-button is-primary"
+              onClick={() => {
+                trackPersonaCta("hero_discover");
+                navigate("discover");
+              }}
+            >
+              Explore Live Nights
+            </button>
+            <button
+              type="button"
+              className="mk3-rebuild-button is-secondary"
+              onClick={() => {
+                trackPersonaCta("hero_demo_auto");
+                navigate("demo_auto");
+              }}
+            >
+              Watch Auto Demo
+            </button>
+          </div>
+          <div className="mk3-fans-cinematic-pill-row" aria-label="Core features">
+            {HERO_SIGNAL_PILLS.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+        </div>
+        <div className="mk3-fans-hero-simplified-visual">
+          <FansHeroTvStage />
+        </div>
+      </section>
+
+      <article
+        ref={systemTrackRef}
+        className={`mk3-fans-system-story${useStaticMotion ? " is-static" : ""}`}
+      >
+        <div className="mk3-fans-system-story-head">
+          <div className="mk3-rebuild-kicker">Room flow sequence</div>
+          <h2>Scroll through how the room builds around the TV.</h2>
+          <p>
+            Start with the shared screen. Then let audience phones zoom into the moment.
+            Then bring up the host deck and prove the host can either run the room or tap autopilot.
+          </p>
+        </div>
+
+        <div className="mk3-fans-system-story-grid">
+          <div className={`mk3-fans-system-stage-sticky${useStaticMotion ? " is-static" : ""}`}>
+            <FansCinematicSystemStage
+              activeStep={activeFlowStep}
+              audienceReveal={audienceReveal}
+              hostReveal={hostReveal}
+              autopilotReveal={autopilotReveal}
+              useStatic={useStaticMotion}
+            />
           </div>
 
-          <div className="mk3-fans-cinematic-object">
-            <div className="mk3-fans-cinematic-object-sticky">
-              <FansRoomFlowBoard
-                activeBeat={activeBeat}
-                displayLine={tvLine}
-                lyricProgress={lyricProgress}
-                boardProgress={boardProgress}
-              />
-            </div>
+          <div className="mk3-fans-cinematic-story-rail">
+            {FAN_SYSTEM_STEPS.map((step, index) => (
+              <section
+                key={step.id}
+                className={`mk3-fans-cinematic-story-step${index === activeFlowIndex ? " is-active" : ""}`}
+              >
+                <span>{step.kicker}</span>
+                <strong>{step.title}</strong>
+                <p>{step.body}</p>
+              </section>
+            ))}
           </div>
         </div>
       </article>
@@ -496,17 +489,17 @@ const ForFansPage = ({ navigate, heroStats }) => {
           >
             Open Discover
           </button>
-          <button
-            type="button"
-            className="mk3-rebuild-button is-secondary"
-            onClick={() => {
-              trackPersonaCta("discover_section_join");
-              navigate("join");
-            }}
-          >
-            Join With Code
-          </button>
         </div>
+        <button
+          type="button"
+          className="mk3-fans-inline-link"
+          onClick={() => {
+            trackPersonaCta("discover_section_join");
+            navigate("join");
+          }}
+        >
+          Already have a room code? Join here.
+        </button>
       </section>
 
       <section className="mk3-persona-simple-band">

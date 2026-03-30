@@ -3,7 +3,6 @@ import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import StageNowPlayingPanel from './components/StageNowPlayingPanel';
 import AddToQueueFormBody from './components/AddToQueueFormBody';
-import TvDashboardControls from './components/TvDashboardControls';
 import SoundboardControls from './components/SoundboardControls';
 import HostChatPanel from './components/HostChatPanel';
 import QueueListPanel from './components/QueueListPanel';
@@ -15,6 +14,9 @@ import ChatSettingsPanel from './components/ChatSettingsPanel';
 import HostTopChrome from './components/HostTopChrome';
 import ModerationInboxDrawer from './components/ModerationInboxDrawer';
 import HostQaDebugPanel from './components/HostQaDebugPanel';
+import RunOfShowDirectorPanel from './components/RunOfShowDirectorPanel';
+import HostRoomLaunchPad from './components/HostRoomLaunchPad';
+import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
 import MissionSetupPrimaryPicks from './components/setup/MissionSetupPrimaryPicks';
@@ -47,12 +49,17 @@ import {
     ensureOrganization,
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
+    listHostWorkspaceOperators,
+    searchHostVenueAutocomplete,
     getMyUsageSummary,
     getMyUsageInvoiceDraft,
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     updateRoomAsHost,
-    provisionHostRoom
+    provisionHostRoom,
+    reviewRunOfShowSlotSubmission,
+    executeRunOfShowAction,
+    manageRunOfShowTemplate
 } from '../../lib/firebase';
 import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
@@ -64,6 +71,20 @@ import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
+import {
+    buildCollaborationSuggestionMap,
+    buildTrustedCatalogEntry,
+    rankSongRequestCandidates
+} from '../../lib/songRequestResolution';
+import {
+    REQUEST_MODE_OPTIONS,
+    REQUEST_MODES,
+    normalizeRoomRequestMode
+} from '../../lib/requestModes';
+import {
+    decorateBrowseSongs,
+    isApprovedPlayableBrowseSong
+} from '../../lib/browseCatalog';
 import { createLogger } from '../../lib/logger';
 import {
     getAppCheckRetryDelayMs,
@@ -122,6 +143,28 @@ import {
     shouldAllowGroupMoment,
     recommendAutoCrowdMoment
 } from './partyOrchestrator';
+import {
+    RUN_OF_SHOW_PROGRAM_MODES,
+    RUN_OF_SHOW_PERFORMER_MODES,
+    buildRunOfShowQueueDocId,
+    createDefaultRunOfShowDirector,
+    createRunOfShowItem,
+    getNextRunOfShowItem,
+    getRunOfShowItemLabel,
+    getRunOfShowLiveItem,
+    getRunOfShowStagedItem,
+    getRunOfShowOperatorRole,
+    getRunOfShowRoleCapabilities,
+    getRunOfShowOperatingHint,
+    isRunOfShowItemReady,
+    normalizeRunOfShowPolicy,
+    normalizeRunOfShowRoles,
+    normalizeRunOfShowTemplateMeta,
+    normalizeRunOfShowDirector,
+    normalizeRunOfShowProgramMode,
+    resequenceRunOfShowItems,
+    updateRunOfShowItem
+} from '../../lib/runOfShowDirector';
 import {
     AUTO_DJ_EVENTS,
     createAutoDjSequenceState,
@@ -509,6 +552,7 @@ const HOST_NIGHT_PRESETS = {
             showLyricsTv: false,
             showScoring: false,
             showFameLevel: false,
+            requestMode: REQUEST_MODES.guestBackingOptional,
             allowSingerTrackSelect: true,
             marqueeEnabled: true,
             marqueeShowMode: 'idle',
@@ -552,6 +596,7 @@ const HOST_NIGHT_PRESETS = {
             showLyricsTv: true,
             showScoring: true,
             showFameLevel: true,
+            requestMode: REQUEST_MODES.canonicalOpen,
             allowSingerTrackSelect: false,
             marqueeEnabled: false,
             marqueeShowMode: 'idle',
@@ -595,6 +640,7 @@ const HOST_NIGHT_PRESETS = {
             showLyricsTv: false,
             showScoring: false,
             showFameLevel: false,
+            requestMode: REQUEST_MODES.guestBackingOptional,
             allowSingerTrackSelect: true,
             marqueeEnabled: true,
             marqueeShowMode: 'always',
@@ -639,6 +685,7 @@ const HOST_NIGHT_PRESETS = {
             showLyricsTv: false,
             showScoring: true,
             showFameLevel: false,
+            requestMode: REQUEST_MODES.playableOnly,
             allowSingerTrackSelect: false,
             marqueeEnabled: false,
             marqueeShowMode: 'idle',
@@ -3080,12 +3127,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const [autoDjSequenceState, setAutoDjSequenceState] = useState(() => createAutoDjSequenceState());
     const [queueSearchSourceNote, setQueueSearchSourceNote] = useState('');
     const [queueSearchNoResultHint, setQueueSearchNoResultHint] = useState('');
+    const [trustedCatalog, setTrustedCatalog] = useState({});
+    const [reviewActionBusyKey, setReviewActionBusyKey] = useState('');
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
     const {
         current,
         hasLyrics,
+        reviewRequired,
         queue,
         pending,
         lobbyCount,
@@ -3098,6 +3148,23 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         currentSourceLabel,
         currentSourceToneClass
     } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
+    useEffect(() => {
+        if (!roomCode) {
+            setTrustedCatalog({});
+            return () => {};
+        }
+        const unsub = onSnapshot(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+            (snap) => {
+                const data = snap.data() || {};
+                const nextCatalog = (data?.trustedCatalog && typeof data.trustedCatalog === 'object' && !Array.isArray(data.trustedCatalog))
+                    ? data.trustedCatalog
+                    : {};
+                setTrustedCatalog(nextCatalog);
+            }
+        );
+        return () => unsub();
+    }, [roomCode]);
     const autoDjStepItems = useMemo(
         () => deriveAutoDjStepItems(autoDjSequenceState),
         [autoDjSequenceState]
@@ -3358,6 +3425,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         setYtSearchError,
         setEmbedCache
     });
+    const persistTrustedCatalogChoiceRef = useRef(null);
+    const upsertYtIndexEntriesRef = useRef(null);
     const {
         addSong,
         addSongFromResult,
@@ -3384,6 +3453,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         resolveDurationForUrl,
         generateAIContent,
         getAppleMusicUserToken,
+        onPersistTrustedCatalogChoice: (...args) => persistTrustedCatalogChoiceRef.current?.(...args),
+        onUpsertYtIndexEntries: (...args) => upsertYtIndexEntriesRef.current?.(...args),
         toast
     });
 
@@ -3552,6 +3623,168 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     };
 
     const statusPill = "px-2 py-0.5 rounded-full text-[10px] uppercase tracking-widest border bg-black/40 text-zinc-200 border-white/10";
+
+    const reviewCollaborationMap = useMemo(
+        () => buildCollaborationSuggestionMap({ songs, users }),
+        [songs, users]
+    );
+    const reviewQueueItems = useMemo(
+        () => reviewRequired.map((song) => ({
+            ...song,
+            reviewCandidates: rankSongRequestCandidates({
+                request: song,
+                trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
+                catalogCandidates: [],
+                ytIndex
+            }),
+            collaborationCandidates: reviewCollaborationMap[song.id] || []
+        })),
+        [reviewRequired, reviewCollaborationMap, trustedCatalog, ytIndex]
+    );
+
+    const persistTrustedCatalogChoice = useCallback(async (song, candidate, layer = 'host_favorite') => {
+        if (!roomCode || !song?.songTitle || !candidate) return;
+        const resolvedSongId = String(song.songId || buildSongKey(song.songTitle, song.artist || 'Unknown')).trim();
+        if (!resolvedSongId) return;
+        const currentEntry = (trustedCatalog?.[resolvedSongId] && typeof trustedCatalog[resolvedSongId] === 'object')
+            ? trustedCatalog[resolvedSongId]
+            : {};
+        const nextEntry = buildTrustedCatalogEntry({
+            existing: currentEntry,
+            songId: resolvedSongId,
+            title: song.songTitle || '',
+            artist: song.artist || 'Unknown',
+            trackId: candidate.trackId || '',
+            mediaUrl: candidate.mediaUrl || '',
+            appleMusicId: candidate.appleMusicId || '',
+            source: candidate.source || '',
+            label: candidate.label || '',
+            layer,
+            qualityScore: candidate.score || candidate.qualityScore || 0,
+            approvalState: layer === 'host_favorite' ? 'approved' : (candidate.approvalState || 'candidate')
+        });
+        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), {
+            trustedCatalog: {
+                [resolvedSongId]: nextEntry
+            },
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+    }, [roomCode, trustedCatalog]);
+    persistTrustedCatalogChoiceRef.current = persistTrustedCatalogChoice;
+
+    const resolveReviewRequest = useCallback(async (song, candidate, options = {}) => {
+        if (!song?.id || !candidate) return;
+        const actionKey = `${song.id}:${options?.mode || 'resolve'}`;
+        if (reviewActionBusyKey === actionKey) return;
+        setReviewActionBusyKey(actionKey);
+        try {
+            const canonicalTitle = String(song.songTitle || '').trim();
+            const canonicalArtist = String(song.artist || 'Unknown').trim() || 'Unknown';
+            const songRecord = await ensureSong({
+                title: canonicalTitle,
+                artist: canonicalArtist,
+                artworkUrl: song.albumArtUrl || '',
+                verifyMeta: false,
+                verifiedBy: hostName || 'host'
+            });
+            const resolvedSongId = songRecord?.songId || song.songId || buildSongKey(canonicalTitle, canonicalArtist);
+            const candidateSource = String(candidate.source || (candidate.appleMusicId ? 'apple' : candidate.mediaUrl ? 'youtube' : 'custom')).trim().toLowerCase();
+            const trackRecord = await ensureTrack({
+                songId: resolvedSongId,
+                source: candidateSource || 'custom',
+                mediaUrl: candidate.mediaUrl || '',
+                appleMusicId: candidate.appleMusicId || '',
+                label: candidate.label || null,
+                duration: candidate.duration ?? song.duration ?? null,
+                audioOnly: candidateSource === 'apple',
+                backingOnly: true,
+                addedBy: hostName || 'Host',
+                approvalState: options?.submitTrustedReview ? 'submitted' : (candidate.approvalState || 'candidate'),
+                qualityScore: candidate.score || candidate.qualityScore || 0
+            });
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
+                songId: resolvedSongId,
+                trackId: trackRecord?.trackId || song.trackId || null,
+                trackSource: candidateSource || null,
+                mediaUrl: candidate.mediaUrl || '',
+                appleMusicId: candidate.appleMusicId || '',
+                playbackReady: true,
+                mediaResolutionStatus: options?.submitTrustedReview ? 'trusted_review_submitted' : 'host_reviewed',
+                resolutionStatus: 'resolved',
+                resolutionLayer: options?.saveFavorite ? 'host_favorite' : (candidate.layer || 'room_recent'),
+                reviewResolvedAt: serverTimestamp(),
+                reviewResolvedBy: auth.currentUser?.uid || null,
+                status: String(song.status || '').trim().toLowerCase() === 'pending' ? 'requested' : song.status
+            });
+            if (options?.saveFavorite) {
+                await persistTrustedCatalogChoice(song, {
+                    ...candidate,
+                    trackId: trackRecord?.trackId || candidate.trackId || ''
+                }, 'host_favorite');
+            }
+            toast(options?.submitTrustedReview ? 'Queued and sent for trusted review.' : options?.saveFavorite ? 'Queued and saved to room favorites.' : 'Queued with selected backing.');
+        } catch (error) {
+            hostLogger.warn('Failed to resolve review request', error);
+            toast('Could not resolve that request right now.');
+        } finally {
+            setReviewActionBusyKey('');
+        }
+    }, [hostName, persistTrustedCatalogChoice, reviewActionBusyKey, toast]);
+
+    const rejectReviewRequest = useCallback(async (song) => {
+        if (!song?.id) return;
+        const actionKey = `${song.id}:reject`;
+        if (reviewActionBusyKey === actionKey) return;
+        setReviewActionBusyKey(actionKey);
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
+                status: 'rejected',
+                resolutionStatus: 'rejected',
+                reviewResolvedAt: serverTimestamp(),
+                reviewResolvedBy: auth.currentUser?.uid || null
+            });
+            toast('Request rejected.');
+        } catch (error) {
+            hostLogger.warn('Failed to reject review request', error);
+            toast('Could not reject that request right now.');
+        } finally {
+            setReviewActionBusyKey('');
+        }
+    }, [reviewActionBusyKey, toast]);
+
+    const setReviewCollabMode = useCallback(async (song, mode = 'solo') => {
+        if (!song?.id) return;
+        const normalizedMode = ['duet', 'group', 'solo'].includes(String(mode || '').trim().toLowerCase())
+            ? String(mode || '').trim().toLowerCase()
+            : 'solo';
+        const partnerIds = Array.isArray(reviewCollaborationMap[song.id])
+            ? reviewCollaborationMap[song.id].map((entry) => entry.requestId).filter(Boolean).slice(0, normalizedMode === 'duet' ? 1 : 3)
+            : [];
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
+                collabPlan: normalizedMode === 'solo'
+                    ? null
+                    : {
+                        mode: normalizedMode,
+                        partnerRequestIds: partnerIds,
+                        updatedAtMs: nowMs()
+                    }
+            });
+            toast(normalizedMode === 'solo' ? 'Keeping this request solo.' : normalizedMode === 'duet' ? 'Marked for duet pairing.' : 'Marked for group pairing.');
+        } catch (error) {
+            hostLogger.warn('Failed to update collaboration mode', error);
+            toast('Could not update collaboration pairing.');
+        }
+    }, [reviewCollaborationMap, toast]);
+
+    const openReviewRequestEditor = useCallback((song, options = {}) => {
+        if (!song) return;
+        startEdit(song);
+        if (options?.openSearch) {
+            const searchQuery = `${song.songTitle || ''} ${song.artist || ''}`.trim();
+            setTimeout(() => openYtSearch('edit', searchQuery), 0);
+        }
+    }, [openYtSearch, startEdit]);
 
 
       const applyDurationToEdit = async (url) => {
@@ -3753,15 +3986,39 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 return;
             }
             holdAutoBgDuringStageActivation();
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
-                status,
-                performingStartedAt: serverTimestamp()
-            });
-            const s = songs.find(x=>x.id===id);
+            let s = songs.find(x => x.id === id);
+            if (!s) {
+                try {
+                    const songSnap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id));
+                    if (songSnap.exists()) {
+                        s = { id, ...songSnap.data() };
+                    }
+                } catch (error) {
+                    hostLogger.warn('Failed to load queue item for stage start', error);
+                }
+            }
+            if (!s) {
+                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: 'queue_item_missing' });
+                toast('Queued item not found');
+                return;
+            }
             const stageMediaUrl = resolveStageMediaUrl(s, room);
             const effectiveBacking = normalizeBackingChoice({
                 mediaUrl: stageMediaUrl,
                 appleMusicId: s?.appleMusicId
+            });
+            const songMediaUrl = effectiveBacking.mediaUrl;
+            const useAppleBacking = effectiveBacking.usesAppleBacking;
+            const performanceStartedAtMs = nowMs();
+            const measuredDuration = useAppleBacking
+                ? Math.max(0, Number(s?.duration || room?.appleMusicPlayback?.durationSec || 0))
+                : await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
+            const performanceDurationSec = Math.max(30, Math.round(Number(measuredDuration || s?.duration || 180) || 180));
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
+                status,
+                performingStartedAt: serverTimestamp(),
+                performanceStartedDurationSec: performanceDurationSec,
+                duration: performanceDurationSec
             });
             const roomSnapshot = room || {};
             const stageDisplayFlags = {
@@ -3769,11 +4026,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
                 showLyricsSinger: !!roomSnapshot?.showLyricsSinger
             };
-            const songMediaUrl = effectiveBacking.mediaUrl;
-            const useAppleBacking = effectiveBacking.usesAppleBacking;
             const autoStartMedia = !!(room?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
             if (useAppleBacking && autoStartMedia) {
-                await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist, duration: s.duration });
+                await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist, duration: performanceDurationSec });
                 await updateRoom({
                     activeMode: 'karaoke',
                     'announcement.active': false,
@@ -3781,6 +4036,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     singAlongMode: false,
                     videoPlaying: false,
                     videoStartTimestamp: null,
+                    currentPerformanceMeta: {
+                        songId: id,
+                        startedAtMs: performanceStartedAtMs,
+                        durationSec: performanceDurationSec,
+                        source: 'apple_music',
+                        appleMusicId: s.appleMusicId || ''
+                    },
                     videoVolume: 100,
                     ...stageDisplayFlags
                 });
@@ -3792,7 +4054,14 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     mediaUrl: songMediaUrl,
                     singAlongMode: false,
                     videoPlaying: autoStartMedia && !!songMediaUrl,
-                    videoStartTimestamp: autoStartMedia ? nowMs() : null,
+                    videoStartTimestamp: autoStartMedia ? performanceStartedAtMs : null,
+                    currentPerformanceMeta: {
+                        songId: id,
+                        startedAtMs: performanceStartedAtMs,
+                        durationSec: performanceDurationSec,
+                        source: songMediaUrl ? 'backing_media' : 'none',
+                        mediaUrl: songMediaUrl || ''
+                    },
                     videoVolume: 100,
                     ...stageDisplayFlags,
                     appleMusicPlayback: null
@@ -3804,7 +4073,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         }
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
         if(status==='performed') { 
-            const s = songs.find(x=>x.id===id); 
+            let s = songs.find(x => x.id === id);
+            if (!s) {
+                try {
+                    const songSnap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id));
+                    if (songSnap.exists()) {
+                        s = { id, ...songSnap.data() };
+                    }
+                } catch (error) {
+                    hostLogger.warn('Failed to load queue item for performance recap', error);
+                }
+            }
             if(s) { 
                 pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_RESULT, { songId: id });
                 const rankedFans = (() => {
@@ -3975,6 +4254,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     lastPerformance: recapPayload,
                     activeMode: 'karaoke',
                     mediaUrl: '',
+                    currentPerformanceMeta: null,
                     singAlongMode: false,
                     videoPlaying: false,
                     showLyricsTv: false,
@@ -4123,10 +4403,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             appleMusicId: current?.appleMusicId,
             appleStatus: room?.appleMusicPlayback?.status,
             appleStartedAt: room?.appleMusicPlayback?.startedAt,
-            appleDurationSec: room?.appleMusicPlayback?.durationSec,
+            appleDurationSec: room?.currentPerformanceMeta?.durationSec || room?.appleMusicPlayback?.durationSec,
             videoPlaying: room?.videoPlaying,
-            videoStartTimestamp: room?.videoStartTimestamp,
-            currentDurationSec: current?.duration,
+            videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
+            capturedDurationSec: room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec,
+            currentDurationSec: current?.performanceStartedDurationSec || room?.currentPerformanceMeta?.durationSec || current?.duration,
             now: nowMs()
         });
         if (!schedule) return;
@@ -4150,8 +4431,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         current?.id,
         current?.appleMusicId,
         current?.duration,
+        current?.performanceStartedDurationSec,
         room?.activeMode,
         room?.autoEndOnTrackFinish,
+        room?.currentPerformanceMeta?.durationSec,
+        room?.currentPerformanceMeta?.startedAtMs,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,
         room?.appleMusicPlayback?.durationSec,
@@ -4403,6 +4687,141 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
                 featureId="panel-queue-list"
             />
+            {showQueueList && reviewQueueItems.length > 0 && (
+                <div className="rounded-2xl border border-amber-300/20 bg-gradient-to-br from-amber-500/10 via-black/30 to-pink-500/10 p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.3em] text-amber-200/80">Backing Review</div>
+                            <div className="text-lg font-black text-white">Unresolved Requests</div>
+                        </div>
+                        <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
+                            {reviewQueueItems.length} needs host pick
+                        </div>
+                    </div>
+                    {reviewQueueItems.map((song) => {
+                        const topCandidate = song.reviewCandidates?.[0] || null;
+                        const busy = reviewActionBusyKey.startsWith(`${song.id}:`);
+                        return (
+                            <div key={song.id} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-xl">{song.emoji || EMOJI.mic}</span>
+                                            <div className="text-base font-black text-white truncate">{song.songTitle}</div>
+                                            {song.collabOpen && (
+                                                <span className="rounded-full border border-pink-300/25 bg-pink-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-pink-100">Duet / group open</span>
+                                            )}
+                                        </div>
+                                        <div className="text-sm text-zinc-400 truncate">{song.artist || 'Unknown'} • {song.singerName || 'Guest'}</div>
+                                        <div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
+                                            {topCandidate
+                                                ? `Best match: ${topCandidate.label || topCandidate.layer.replace(/_/g, ' ')}`
+                                                : 'No trusted backing found yet. Use the room library or host search.'}
+                                        </div>
+                                    </div>
+                                    <div className="text-right text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                        {song.reviewCandidates?.length || 0} ranked option{(song.reviewCandidates?.length || 0) === 1 ? '' : 's'}
+                                    </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => openReviewRequestEditor(song, { openSearch: true })}
+                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                    >
+                                        Host Search
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => openReviewRequestEditor(song)}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}
+                                    >
+                                        Edit Request
+                                    </button>
+                                </div>
+                                {song.reviewCandidates?.length > 0 && (
+                                    <div className="mt-3 grid gap-2">
+                                        {song.reviewCandidates.slice(0, 3).map((candidate) => (
+                                            <div key={candidate.id} className="rounded-xl border border-white/10 bg-zinc-950/55 px-3 py-2">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="text-sm font-bold text-white truncate">
+                                                            {candidate.title || song.songTitle}
+                                                            {candidate.artist ? ` • ${candidate.artist}` : ''}
+                                                        </div>
+                                                        <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                                                            {candidate.layer.replace(/_/g, ' ')} • {candidate.source || 'track'} • score {Math.round(candidate.score || 0)}
+                                                        </div>
+                                                        {candidate.reason && (
+                                                            <div className="mt-1 text-xs text-zinc-400">{candidate.reason}</div>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                        <button
+                                                            type="button"
+                                                            disabled={busy}
+                                                            onClick={() => resolveReviewRequest(song, candidate)}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}
+                                                        >
+                                                            Approve + Queue
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={busy}
+                                                            onClick={() => resolveReviewRequest(song, candidate, { saveFavorite: true, mode: 'favorite' })}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}
+                                                        >
+                                                            Save Favorite
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            disabled={busy}
+                                                            onClick={() => resolveReviewRequest(song, candidate, { submitTrustedReview: true, mode: 'trusted' })}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                        >
+                                                            Submit Review
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {song.collaborationCandidates?.length > 0 && (
+                                    <div className="mt-3 rounded-xl border border-pink-300/18 bg-pink-500/8 px-3 py-3">
+                                        <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100/80">Collaboration match</div>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {song.collaborationCandidates.slice(0, 3).map((entry) => (
+                                                <span key={entry.requestId} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-zinc-100">
+                                                    {(entry.emoji || EMOJI.mic)} {entry.singerName}
+                                                    {entry.tight15Overlap ? ' • Tight 15 overlap' : ' • Same song'}
+                                                </span>
+                                            ))}
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <button type="button" onClick={() => setReviewCollabMode(song, 'duet')} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>Pair as duet</button>
+                                            <button type="button" onClick={() => setReviewCollabMode(song, 'group')} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>Create group slot</button>
+                                            <button type="button" onClick={() => setReviewCollabMode(song, 'solo')} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>Keep solo</button>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="mt-3 flex justify-end">
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => rejectReviewRequest(song)}
+                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}
+                                    >
+                                        Reject
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
             <QueueListPanel
                 showQueueList={showQueueList}
                 pending={pending}
@@ -4592,24 +5011,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         </section>
                     )}
 
-                    <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
-                        Broadcast Controls
-                    </div>
-                    <section className="px-4 py-4 border-b border-white/10 space-y-3">
-                        <SectionHeader
-                            label="TV Dashboard Controls"
-                            open={tvControlsOpen}
-                            onToggle={() => setTvControlsOpen(v => !v)}
-                            featureId="panel-tv-dashboard"
-                        />
-                        <TvDashboardControls
-                            tvControlsOpen={tvControlsOpen}
-                            room={room}
-                            updateRoom={updateRoom}
-                            toggleSwitch={ToggleSwitch}
-                            styles={STYLES}
-                        />
-                    </section>
                     {!essentialsMode && (
                         <>
                             <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
@@ -4732,8 +5133,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         && new URLSearchParams(window.location.search).get('chat') === '1';
     const isMarketingDemoEmbed = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('mkDemoEmbed') === '1';
-    const [demoFixture, setDemoFixture] = useState(null);
+    const qaHostFixtureId = useMemo(() => {
+        if (typeof window === 'undefined') return '';
+        return String(new URLSearchParams(window.location.search || '').get('qaHostFixture') || '').trim();
+    }, []);
+    const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
+    const upsertYtIndexEntriesRef = useRef(null);
+    const parseYouTubeId = useCallback((url = '') => {
+        const match = String(url || '').match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
+        return match ? match[1] : '';
+    }, []);
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -4757,6 +5167,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         return () => window.removeEventListener('message', handleMessage);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || !qaHostFixtureId) return;
+        const fixture = buildQaHostFixture(qaHostFixtureId, {
+            roomCode: normalizedInitialCode || 'DEMOAAHF',
+            nowMs: Date.now(),
+        });
+        if (!fixture) return;
+        setDemoFixture(fixture);
+    }, [isMarketingDemoEmbed, normalizedInitialCode, qaHostFixtureId]);
 
     useEffect(() => {
         const tick = () => {
@@ -5060,6 +5479,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [ytAddUrl, setYtAddUrl] = useState('');
     const [ytAddLoading, setYtAddLoading] = useState(false);
     const [ytAddStatus, setYtAddStatus] = useState('');
+    const [ytCurateQuery, setYtCurateQuery] = useState('');
+    const [ytCurateResults, setYtCurateResults] = useState([]);
+    const [ytCurateLoading, setYtCurateLoading] = useState(false);
+    const [ytCurateStatus, setYtCurateStatus] = useState('');
+    const [ytIndexSort, setYtIndexSort] = useState('recent');
+    const [ytIndexActionVideoId, setYtIndexActionVideoId] = useState('');
     const [itunesBackoffRemaining, setItunesBackoffRemaining] = useState(0);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
@@ -5092,6 +5517,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     });
     const [showAiSetupGuide, setShowAiSetupGuide] = useState(false);
+    const ytIndexFilteredSorted = useMemo(() => {
+        const needle = ytIndexFilter.trim().toLowerCase();
+        const filtered = (ytIndex || [])
+            .map((entry) => normalizeYtIndexEntry(entry))
+            .filter(Boolean)
+            .filter((entry) => !needle || `${entry.trackName} ${entry.artistName}`.toLowerCase().includes(needle));
+        const sorters = {
+            recent: (left, right) => Number(right.curatedAtMs || 0) - Number(left.curatedAtMs || 0),
+            alpha: (left, right) => `${left.trackName} ${left.artistName}`.localeCompare(`${right.trackName} ${right.artistName}`),
+            usage: (left, right) => (Number(right.successCount || 0) + Number(right.usageCount || 0)) - (Number(left.successCount || 0) + Number(left.usageCount || 0)),
+        };
+        return filtered.sort(sorters[ytIndexSort] || sorters.recent);
+    }, [ytIndex, ytIndexFilter, ytIndexSort]);
+    const ytIndexStats = useMemo(() => {
+        const safeList = (ytIndex || []).map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean);
+        const playableCount = safeList.filter((entry) => entry.playable !== false).length;
+        const provenCount = safeList.filter((entry) => Number(entry.successCount || 0) > 0).length;
+        return {
+            total: safeList.length,
+            playable: playableCount,
+            proven: provenCount,
+        };
+    }, [ytIndex]);
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const onViewportChange = () => {
@@ -5116,6 +5564,53 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (hostStageLayoutMode === 'desktop') return;
         setAudioPanelOpen(false);
     }, [hostStageLayoutMode]);
+    useEffect(() => {
+        if (!showYtIndex) {
+            setYtCurateQuery('');
+            setYtCurateResults([]);
+            setYtCurateStatus('');
+            return;
+        }
+        const query = ytCurateQuery.trim();
+        if (query.length < 3) {
+            setYtCurateResults([]);
+            setYtCurateStatus(query ? 'Type at least 3 characters.' : '');
+            return;
+        }
+        let canceled = false;
+        const timer = setTimeout(async () => {
+            setYtCurateLoading(true);
+            setYtCurateStatus('');
+            try {
+                const data = await callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 8, playableOnly: true });
+                if (canceled) return;
+                const items = (data?.items || [])
+                    .map((item) => normalizeYtIndexEntry(item, {
+                        videoId: item.id,
+                        title: item.title,
+                        channelTitle: item.channelTitle,
+                        thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
+                        url: item.id ? `https://www.youtube.com/watch?v=${item.id}` : '',
+                        playable: true,
+                        sourceDetail: 'Verified YouTube playable track.',
+                    }))
+                    .filter(Boolean);
+                setYtCurateResults(items);
+                setYtCurateStatus(items.length ? '' : 'No playable YouTube karaoke results found.');
+            } catch (error) {
+                if (canceled) return;
+                hostLogger.error(error);
+                setYtCurateResults([]);
+                setYtCurateStatus('YouTube search failed. Try a different song + artist query.');
+            } finally {
+                if (!canceled) setYtCurateLoading(false);
+            }
+        }, 350);
+        return () => {
+            canceled = true;
+            clearTimeout(timer);
+        };
+    }, [showYtIndex, ytCurateQuery]);
     useEffect(() => {
         if (!showSettings) {
             setSettingsNavOpen(false);
@@ -5193,7 +5688,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [queueFirstTimeBoost, setQueueFirstTimeBoost] = useState(true);
     const [showScoring, setShowScoring] = useState(true);
     const [showFameLevel, setShowFameLevel] = useState(true);
+    const [requestMode, setRequestMode] = useState(REQUEST_MODES.canonicalOpen);
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
+    const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
+    const [programMode, setProgramMode] = useState(RUN_OF_SHOW_PROGRAM_MODES.standard);
+    const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
+    const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
+    const [runOfShowPolicy, setRunOfShowPolicy] = useState(() => normalizeRunOfShowPolicy({}));
+    const [runOfShowRoles, setRunOfShowRoles] = useState(() => normalizeRunOfShowRoles({}));
+    const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
+    const [runOfShowTemplates, setRunOfShowTemplates] = useState([]);
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
@@ -5207,6 +5711,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return true;
         }
     });
+    useEffect(() => {
+        setAllowSingerTrackSelect(requestMode === REQUEST_MODES.guestBackingOptional);
+    }, [requestMode]);
     const [audiencePreviewCollapsed, setAudiencePreviewCollapsed] = useState(() => {
         try {
             if (typeof window === 'undefined') return false;
@@ -5239,6 +5746,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoCrowdMomentOrderPreset, setAutoCrowdMomentOrderPreset] = useState('volley_first');
     const [autoCrowdMomentReadyCheckSec, setAutoCrowdMomentReadyCheckSec] = useState(6);
     const [autoCrowdMomentVolleySec, setAutoCrowdMomentVolleySec] = useState(12);
+    const [runOfShowSubmissions, setRunOfShowSubmissions] = useState([]);
     // Announce state
     const [_announceText, _setAnnounceText] = useState(''); 
     const [_showAnnounceModal, _setShowAnnounceModal] = useState(false);
@@ -5262,6 +5770,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [entryError, setEntryError] = useState('');
     const [landingLaunchMode, setLandingLaunchMode] = useState('start');
     const [showLandingListingOptions, setShowLandingListingOptions] = useState(false);
+    const [launchRoomName, setLaunchRoomName] = useState('');
+    const [launchCoHostUids, setLaunchCoHostUids] = useState([]);
+    const [showLaunchCoHosts, setShowLaunchCoHosts] = useState(false);
+    const [launchCoHostSearch, setLaunchCoHostSearch] = useState('');
+    const [workspaceOperatorCandidates, setWorkspaceOperatorCandidates] = useState([]);
+    const [workspaceOperatorLoading, setWorkspaceOperatorLoading] = useState(false);
+    const [workspaceOperatorError, setWorkspaceOperatorError] = useState('');
+    const [venueSearchResults, setVenueSearchResults] = useState([]);
+    const [venueSearchLoading, setVenueSearchLoading] = useState(false);
+    const [venueSearchError, setVenueSearchError] = useState('');
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -5343,12 +5861,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (fixture.room !== undefined) setRoom(fixture.room || null);
         if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
         if (Array.isArray(fixture.users)) setUsers(fixture.users);
+        if (Array.isArray(fixture.localLibrary)) setLocalLibrary(fixture.localLibrary);
+        if (Array.isArray(fixture.ytIndex)) setYtIndex(fixture.ytIndex);
+        setRunOfShowPolicy(normalizeRunOfShowPolicy(fixture.room?.runOfShowPolicy || {}));
+        setRunOfShowRoles(normalizeRunOfShowRoles(fixture.room?.runOfShowRoles || {}));
+        setRunOfShowTemplateMeta(normalizeRunOfShowTemplateMeta(fixture.room?.runOfShowTemplateMeta || {}));
+        if (Array.isArray(fixture.runOfShowTemplates)) setRunOfShowTemplates(fixture.runOfShowTemplates);
         if (Array.isArray(fixture.activities)) setActivities(fixture.activities);
         if (Array.isArray(fixture.contacts)) setContacts(fixture.contacts);
         if (fixture.view) setView(fixture.view);
         else setView('workspace');
         if (fixture.tab) setTab(fixture.tab);
+        if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
         if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
+        if (Array.isArray(fixture.runOfShowSubmissions)) setRunOfShowSubmissions(fixture.runOfShowSubmissions);
         setEntryError('');
     }, [demoFixture, isMarketingDemoFixture, normalizedInitialCode]);
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
@@ -5700,6 +6226,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const bingoTurnAdvanceRef = useRef(null);
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
+    const runOfShowAutomationBusyRef = useRef(false);
+    const runOfShowAutoCompleteKeyRef = useRef('');
+    const runOfShowPerformanceHandledRef = useRef('');
+    const runOfShowDirector = useMemo(
+        () => normalizeRunOfShowDirector(runOfShowDirectorState || {}),
+        [runOfShowDirectorState]
+    );
+    const isRunOfShowRoom = runOfShowEnabled && programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
+    const runOfShowLiveItem = useMemo(() => getRunOfShowLiveItem(runOfShowDirector), [runOfShowDirector]);
+    const runOfShowStagedItem = useMemo(() => getRunOfShowStagedItem(runOfShowDirector), [runOfShowDirector]);
+    const runOfShowNextItem = useMemo(() => getNextRunOfShowItem(runOfShowDirector), [runOfShowDirector]);
+    const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
+        uid: isMarketingDemoFixture && !uid ? (room?.hostUid || room?.hostUids?.[0] || 'fixture_host') : uid,
+        hostUid: room?.hostUid || '',
+        hostUids: room?.hostUids || [],
+        roles: runOfShowRoles || {},
+    }), [isMarketingDemoFixture, room?.hostUid, room?.hostUids, runOfShowRoles, uid]);
+    const runOfShowOperatorCapabilities = useMemo(
+        () => getRunOfShowRoleCapabilities(runOfShowOperatorRole),
+        [runOfShowOperatorRole]
+    );
+    const runOfShowOperatingHint = useMemo(() => getRunOfShowOperatingHint({
+        item: runOfShowLiveItem || runOfShowStagedItem || runOfShowNextItem || {},
+        readiness: null,
+        policy: runOfShowPolicy,
+    }), [runOfShowLiveItem, runOfShowNextItem, runOfShowPolicy, runOfShowStagedItem]);
     const stormTimersRef = useRef([]);
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
@@ -5707,6 +6259,494 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const moderationNudgeAtRef = useRef(0);
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
+    const getCurrentRunOfShowDirector = useCallback(
+        () => normalizeRunOfShowDirector(roomRef.current?.runOfShowDirector || runOfShowDirectorState || {}),
+        [runOfShowDirectorState]
+    );
+    const deriveRunOfShowEditableStatus = useCallback((item = {}) => {
+        const currentStatus = String(item?.status || '').toLowerCase();
+        if (['live', 'complete', 'skipped'].includes(currentStatus)) return currentStatus;
+        if (isRunOfShowItemReady(item)) return 'ready';
+        if (item?.type === 'performance' || item?.type === 'trivia_break' || item?.type === 'would_you_rather_break' || item?.type === 'game_break') {
+            return 'blocked';
+        }
+        return currentStatus === 'staged' ? 'staged' : 'draft';
+    }, []);
+    const persistRunOfShowDirector = useCallback(async (nextDirector, options = {}) => {
+        const normalizedMode = normalizeRunOfShowProgramMode(options.programMode ?? programMode);
+        const nextEnabled = options.runOfShowEnabled !== undefined
+            ? options.runOfShowEnabled === true
+            : !!runOfShowEnabled;
+        const normalizedDirector = normalizeRunOfShowDirector({
+            ...(nextDirector || {}),
+            enabled: nextEnabled
+        });
+        setProgramMode(normalizedMode);
+        setRunOfShowEnabled(nextEnabled);
+        setRunOfShowDirectorState(normalizedDirector);
+        await updateRoom({
+            programMode: normalizedMode,
+            runOfShowEnabled: nextEnabled,
+            runOfShowDirector: normalizedDirector,
+            ...(options.roomUpdates || {})
+        });
+        return normalizedDirector;
+    }, [programMode, runOfShowEnabled, updateRoom]);
+    const parseRunOfShowOptions = useCallback((launchConfig = {}) => {
+        if (Array.isArray(launchConfig?.options)) {
+            return launchConfig.options.map((entry) => String(entry || '').trim()).filter(Boolean);
+        }
+        return String(launchConfig?.optionsCsv || '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }, []);
+    const buildRunOfShowPreviewPayload = useCallback((item = {}) => ({
+        active: true,
+        preview: true,
+        itemId: item?.id || '',
+        type: item?.type || 'buffer',
+        title: item?.title || getRunOfShowItemLabel(item?.type || ''),
+        headline: item?.presentationPlan?.headline || item?.title || getRunOfShowItemLabel(item?.type || ''),
+        subhead: item?.presentationPlan?.subhead || item?.modeLaunchPlan?.launchConfig?.question || item?.notes || '',
+        summary: item?.type === 'performance'
+            ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
+            : '',
+        modeKey: item?.modeLaunchPlan?.modeKey || '',
+        options: parseRunOfShowOptions(item?.modeLaunchPlan?.launchConfig || {}),
+        backgroundMedia: item?.presentationPlan?.backgroundMedia || '',
+        accentTheme: item?.presentationPlan?.accentTheme || 'cyan',
+        takeoverScene: item?.presentationPlan?.takeoverScene || item?.type || 'preview',
+        durationSec: Math.max(6, Math.min(20, Number(item?.plannedDurationSec || 10) || 10)),
+        startedAtMs: nowMs()
+    }), [parseRunOfShowOptions]);
+    const previewRunOfShowItem = useCallback(async (itemId) => {
+        const director = getCurrentRunOfShowDirector();
+        const item = director.items.find((entry) => entry.id === itemId);
+        if (!item) return;
+        await updateRoom({ tvPreviewOverlay: buildRunOfShowPreviewPayload(item) });
+    }, [buildRunOfShowPreviewPayload, getCurrentRunOfShowDirector, updateRoom]);
+    const clearRunOfShowPreview = useCallback(async () => {
+        await updateRoom({ tvPreviewOverlay: null });
+    }, [updateRoom]);
+    const prepareRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = director.items.find((item) => item.id === itemId);
+        if (!targetItem) return director;
+        const ready = isRunOfShowItemReady(targetItem);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            lastPreparedItemId: itemId,
+            lastAutomationAtMs: nowMs(),
+            automationStatus: ready ? 'staged' : 'blocked',
+            items: director.items.map((item) => (
+                item.id === itemId
+                    ? {
+                        ...item,
+                        status: ready ? 'staged' : 'blocked',
+                        blockedReason: ready ? '' : (item.type === 'performance' ? 'performance_not_ready' : 'item_not_ready'),
+                        stagedAtMs: ready ? nowMs() : item.stagedAtMs || 0
+                    }
+                    : item.status === 'staged'
+                        ? { ...item, status: deriveRunOfShowEditableStatus(item) }
+                        : item
+            ))
+        });
+        if (!options?.silent) {
+            trackEvent('run_of_show_item_prepared', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
+        }
+        return persistRunOfShowDirector(nextDirector);
+    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState]);
+    const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        if (!isMarketingDemoFixture) {
+            const result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
+            if (result?.runOfShowDirector) {
+                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
+            }
+            if (result?.runOfShowPolicy) {
+                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
+            }
+            trackEvent('run_of_show_item_started', { roomCode, itemId, automated: options?.automation === true });
+            return normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+        }
+        let director = getCurrentRunOfShowDirector();
+        let targetItem = director.items.find((item) => item.id === itemId);
+        if (!targetItem) return director;
+        if (targetItem.status !== 'staged') {
+            director = await prepareRunOfShowItem(itemId, { ...options, silent: true });
+            targetItem = director.items.find((item) => item.id === itemId);
+        }
+        if (!targetItem || targetItem.status !== 'staged') return director;
+        const startedAtMs = nowMs();
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            currentItemId: itemId,
+            lastAutomationAtMs: startedAtMs,
+            automationStatus: 'live',
+            items: director.items.map((item) => (
+                item.id === itemId
+                    ? { ...item, status: 'live', blockedReason: '', liveStartedAtMs: startedAtMs }
+                    : item.status === 'staged'
+                        ? { ...item, status: deriveRunOfShowEditableStatus(item) }
+                        : item
+            ))
+        });
+        const roomUpdates = { tvPreviewOverlay: null };
+        if (targetItem?.presentationPlan?.publicTvTakeoverEnabled) {
+            roomUpdates.announcement = {
+                active: true,
+                runOfShowItemId: targetItem.id,
+                type: targetItem.type,
+                headline: targetItem.presentationPlan?.headline || targetItem.title || getRunOfShowItemLabel(targetItem.type),
+                subhead: targetItem.presentationPlan?.subhead || targetItem.notes || '',
+                takeoverScene: targetItem.presentationPlan?.takeoverScene || targetItem.type,
+                backgroundMedia: targetItem.presentationPlan?.backgroundMedia || '',
+                accentTheme: targetItem.presentationPlan?.accentTheme || 'cyan',
+                startedAtMs
+            };
+        }
+        if (targetItem.type === 'trivia_break') {
+            roomUpdates.activeMode = 'trivia_pop';
+            roomUpdates.triviaQuestion = {
+                id: `${targetItem.id}_${startedAtMs}`,
+                q: targetItem.modeLaunchPlan?.launchConfig?.question || targetItem.title || 'Trivia Time',
+                options: parseRunOfShowOptions(targetItem.modeLaunchPlan?.launchConfig || {}),
+                correctIndex: Math.max(0, Number(targetItem.modeLaunchPlan?.launchConfig?.correctIndex || 0)),
+                status: 'active',
+                launchedAt: startedAtMs
+            };
+        } else if (targetItem.type === 'would_you_rather_break') {
+            roomUpdates.activeMode = 'wyr';
+            roomUpdates.wyrData = {
+                id: `${targetItem.id}_${startedAtMs}`,
+                question: targetItem.modeLaunchPlan?.launchConfig?.question || targetItem.title || 'Would You Rather',
+                options: parseRunOfShowOptions(targetItem.modeLaunchPlan?.launchConfig || {}),
+                status: 'live',
+                launchedAt: startedAtMs
+            };
+        } else if (targetItem.type === 'game_break') {
+            roomUpdates.activeMode = targetItem.modeLaunchPlan?.modeKey || 'karaoke';
+            roomUpdates.gameData = {
+                ...(targetItem.modeLaunchPlan?.launchConfig || {}),
+                id: `${targetItem.id}_${startedAtMs}`,
+                runOfShowItemId: targetItem.id
+            };
+        } else {
+            roomUpdates.activeMode = 'karaoke';
+        }
+        if (targetItem?.roomMomentPlan?.activeMode && !['trivia_break', 'would_you_rather_break', 'game_break'].includes(targetItem.type)) {
+            roomUpdates.activeMode = targetItem.roomMomentPlan.activeMode;
+        }
+        if (targetItem?.roomMomentPlan?.activeScreen) {
+            roomUpdates.activeScreen = targetItem.roomMomentPlan.activeScreen;
+        } else {
+            roomUpdates.activeScreen = 'stage';
+        }
+        if (targetItem?.roomMomentPlan?.showHowToPlay === true) {
+            roomUpdates.howToPlay = { active: true, id: startedAtMs };
+        } else {
+            roomUpdates.howToPlay = { active: false, id: startedAtMs };
+        }
+        if (targetItem?.roomMomentPlan?.lightMode && targetItem.roomMomentPlan.lightMode !== 'off') {
+            roomUpdates.lightMode = targetItem.roomMomentPlan.lightMode;
+        } else {
+            roomUpdates.lightMode = 'off';
+        }
+        trackEvent('run_of_show_item_started', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
+        return persistRunOfShowDirector(nextDirector, { roomUpdates });
+    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, parseRunOfShowOptions, persistRunOfShowDirector, prepareRunOfShowItem, roomCode, runOfShowDirectorState]);
+    const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        if (!isMarketingDemoFixture) {
+            const result = await executeRunOfShowAction({ roomCode, action: options?.skip === true ? 'skip' : 'complete', itemId });
+            if (result?.runOfShowDirector) {
+                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
+            }
+            if (result?.runOfShowPolicy) {
+                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
+            }
+            trackEvent(options?.skip === true ? 'run_of_show_item_skipped' : 'run_of_show_item_completed', { roomCode, itemId, automated: options?.automation === true });
+            return normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+        }
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = director.items.find((item) => item.id === itemId);
+        if (!targetItem) return director;
+        const completedAtMs = nowMs();
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
+            lastCompletedItemId: itemId,
+            lastAutomationAtMs: completedAtMs,
+            automationStatus: 'idle',
+            items: director.items.map((item) => (
+                item.id === itemId
+                    ? { ...item, status: 'complete', blockedReason: '', completedAtMs }
+                    : item
+            ))
+        });
+        const roomUpdates = {
+            activeMode: 'karaoke',
+            activeScreen: 'stage',
+            announcement: null,
+            gameData: null,
+            triviaQuestion: null,
+            wyrData: null,
+            howToPlay: { active: false, id: completedAtMs },
+            lightMode: 'off'
+        };
+        trackEvent('run_of_show_item_completed', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
+        return persistRunOfShowDirector(nextDirector, { roomUpdates });
+    }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState]);
+    const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        if (!isMarketingDemoFixture) {
+            return completeRunOfShowItem(itemId, { ...options, skip: true });
+        }
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = director.items.find((item) => item.id === itemId);
+        if (!targetItem) return director;
+        if (targetItem.status === 'live') return completeRunOfShowItem(itemId, options);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
+            lastAutomationAtMs: nowMs(),
+            items: director.items.map((item) => (
+                item.id === itemId
+                    ? { ...item, status: 'skipped', blockedReason: '', completedAtMs: nowMs() }
+                    : item
+            ))
+        });
+        trackEvent('run_of_show_item_skipped', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
+        return persistRunOfShowDirector(nextDirector);
+    }, [completeRunOfShowItem, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
+    const setRunOfShowEnabledState = useCallback(async (nextEnabled) => {
+        const director = normalizeRunOfShowDirector({
+            ...getCurrentRunOfShowDirector(),
+            enabled: nextEnabled === true
+        });
+        return persistRunOfShowDirector(director, {
+            programMode: nextEnabled === true ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : programMode,
+            runOfShowEnabled: nextEnabled === true
+        });
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, programMode]);
+    const setRunOfShowProgramModeState = useCallback(async (nextMode) => {
+        const normalizedMode = normalizeRunOfShowProgramMode(nextMode);
+        return persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
+            programMode: normalizedMode,
+            runOfShowEnabled: normalizedMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
+        });
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const addRunOfShowItem = useCallback(async (type = 'buffer', overrides = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            items: resequenceRunOfShowItems([
+                ...(director.items || []),
+                createRunOfShowItem(type, { ...(overrides || {}), status: type === 'performance' ? 'blocked' : 'ready' })
+            ])
+        });
+        return persistRunOfShowDirector(nextDirector);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const duplicateRunOfShowItem = useCallback(async (itemId) => {
+        const director = getCurrentRunOfShowDirector();
+        const index = director.items.findIndex((item) => item.id === itemId);
+        if (index < 0) return director;
+        const original = director.items[index];
+        const duplicate = createRunOfShowItem(original.type, {
+            ...original,
+            id: '',
+            title: `${original.title || getRunOfShowItemLabel(original.type)} Copy`,
+            status: deriveRunOfShowEditableStatus({ ...original, status: 'draft' }),
+            preparedQueueSongId: '',
+            queueLinkState: 'unlinked',
+            stagedAtMs: 0,
+            liveStartedAtMs: 0,
+            completedAtMs: 0
+        });
+        const nextItems = [...director.items];
+        nextItems.splice(index + 1, 0, duplicate);
+        return persistRunOfShowDirector({ ...director, items: resequenceRunOfShowItems(nextItems) });
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const deleteRunOfShowItem = useCallback(async (itemId) => {
+        const director = getCurrentRunOfShowDirector();
+        return persistRunOfShowDirector({
+            ...director,
+            currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
+            items: resequenceRunOfShowItems((director.items || []).filter((item) => item.id !== itemId))
+        });
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const moveRunOfShowItem = useCallback(async (itemId, delta = 0) => {
+        const director = getCurrentRunOfShowDirector();
+        const items = [...(director.items || [])];
+        const currentIndex = items.findIndex((item) => item.id === itemId);
+        if (currentIndex < 0) return director;
+        const nextIndex = Math.max(0, Math.min(items.length - 1, currentIndex + Number(delta || 0)));
+        if (currentIndex === nextIndex) return director;
+        const [moved] = items.splice(currentIndex, 1);
+        items.splice(nextIndex, 0, moved);
+        return persistRunOfShowDirector({ ...director, items: resequenceRunOfShowItems(items) });
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const patchRunOfShowItem = useCallback(async (itemId, patch = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const nextDirector = updateRunOfShowItem(director, itemId, (item) => {
+            const nextItem = { ...item, ...(patch || {}) };
+            nextItem.status = deriveRunOfShowEditableStatus(nextItem);
+            nextItem.blockedReason = nextItem.status === 'blocked' ? (nextItem.type === 'performance' ? 'performance_not_ready' : 'item_not_ready') : '';
+            return nextItem;
+        });
+        return persistRunOfShowDirector(nextDirector);
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const toggleRunOfShowAutomationPause = useCallback(async (paused) => {
+        if (!isMarketingDemoFixture) {
+            const result = await executeRunOfShowAction({ roomCode, action: paused === true ? 'pause_automation' : 'resume_automation' });
+            if (result?.runOfShowDirector) {
+                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
+            }
+            if (result?.runOfShowPolicy) {
+                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
+            }
+            return result?.runOfShowDirector || null;
+        }
+        const director = getCurrentRunOfShowDirector();
+        return persistRunOfShowDirector({
+            ...director,
+            automationPaused: paused === true,
+            automationStatus: paused === true ? 'paused' : 'idle'
+        });
+    }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
+    const reviewRunOfShowSubmission = useCallback(async (submissionId, decision) => {
+        await reviewRunOfShowSlotSubmission({
+            roomCode,
+            submissionId,
+            decision
+        });
+    }, [roomCode]);
+    const updateRunOfShowPolicyState = useCallback(async (patch = {}) => {
+        const nextPolicy = normalizeRunOfShowPolicy({
+            ...(roomRef.current?.runOfShowPolicy || runOfShowPolicy || {}),
+            ...(patch || {}),
+        });
+        setRunOfShowPolicy(nextPolicy);
+        if (isMarketingDemoFixture) return nextPolicy;
+        await updateRoom({ runOfShowPolicy: nextPolicy });
+        return nextPolicy;
+    }, [isMarketingDemoFixture, runOfShowPolicy, updateRoom]);
+    const updateRunOfShowRolesState = useCallback(async (patch = {}) => {
+        const nextRoles = normalizeRunOfShowRoles({
+            ...(roomRef.current?.runOfShowRoles || runOfShowRoles || {}),
+            ...(patch || {}),
+        });
+        setRunOfShowRoles(nextRoles);
+        if (isMarketingDemoFixture) return nextRoles;
+        await updateRoom({ runOfShowRoles: nextRoles });
+        return nextRoles;
+    }, [isMarketingDemoFixture, runOfShowRoles, updateRoom]);
+    const applyGeneratedRunOfShowDraft = useCallback(async ({ items = [], mode = 'replace' } = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const generatedItems = resequenceRunOfShowItems(Array.isArray(items) ? items : []).map((item) => {
+            const nextItem = createRunOfShowItem(item?.type || 'buffer', item || {});
+            const status = deriveRunOfShowEditableStatus(nextItem);
+            return {
+                ...nextItem,
+                status,
+                blockedReason: status === 'blocked'
+                    ? (nextItem.type === 'performance' ? 'performance_not_ready' : 'item_not_ready')
+                    : '',
+            };
+        });
+        const nextItems = mode === 'append'
+            ? resequenceRunOfShowItems([...(director.items || []), ...generatedItems])
+            : resequenceRunOfShowItems(generatedItems);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            currentItemId: nextItems[0]?.id || '',
+            lastPreparedItemId: mode === 'replace' ? '' : director.lastPreparedItemId,
+            lastCompletedItemId: mode === 'replace' ? '' : director.lastCompletedItemId,
+            items: nextItems,
+        });
+        return persistRunOfShowDirector(nextDirector);
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const saveRunOfShowTemplate = useCallback(async (templateName = '') => {
+        const safeName = String(templateName || '').trim() || 'Run Of Show Template';
+        if (isMarketingDemoFixture) {
+            const templateId = `fixture_${safeName.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'template'}`;
+            const template = {
+                id: templateId,
+                templateId,
+                templateName: safeName,
+                templateType: 'template',
+                roomCode,
+                runOfShowDirector: normalizeRunOfShowDirector(getCurrentRunOfShowDirector()),
+                runOfShowPolicy: normalizeRunOfShowPolicy(runOfShowPolicy || {}),
+            };
+            setRunOfShowTemplates((prev) => [template, ...(prev || []).filter((entry) => (entry.templateId || entry.id) !== templateId)]);
+            const nextMeta = normalizeRunOfShowTemplateMeta({
+                ...(runOfShowTemplateMeta || {}),
+                currentTemplateId: templateId,
+                currentTemplateName: safeName,
+            });
+            setRunOfShowTemplateMeta(nextMeta);
+            return template;
+        }
+        const result = await manageRunOfShowTemplate({ roomCode, action: 'save', templateName: safeName });
+        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+            ...(prev || {}),
+            currentTemplateId: result?.templateId || '',
+            currentTemplateName: result?.templateName || safeName,
+        }));
+        return result;
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy, runOfShowTemplateMeta]);
+    const applyRunOfShowTemplate = useCallback(async (templateId = '') => {
+        const safeTemplateId = String(templateId || '').trim();
+        if (!safeTemplateId) return null;
+        if (isMarketingDemoFixture) {
+            const template = (runOfShowTemplates || []).find((entry) => (entry.templateId || entry.id) === safeTemplateId);
+            if (!template) return null;
+            setRunOfShowDirectorState(normalizeRunOfShowDirector(template.runOfShowDirector || {}));
+            setRunOfShowPolicy(normalizeRunOfShowPolicy(template.runOfShowPolicy || {}));
+            setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+                ...(prev || {}),
+                currentTemplateId: safeTemplateId,
+                currentTemplateName: template.templateName || safeTemplateId,
+            }));
+            return template;
+        }
+        const result = await manageRunOfShowTemplate({ roomCode, action: 'apply', templateId: safeTemplateId });
+        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+            ...(prev || {}),
+            currentTemplateId: safeTemplateId,
+            currentTemplateName: result?.templateName || safeTemplateId,
+        }));
+        return result;
+    }, [isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowTemplates]);
+    const archiveCurrentRunOfShow = useCallback(async (templateName = '') => {
+        const safeName = String(templateName || '').trim() || 'Archived Run Of Show';
+        if (isMarketingDemoFixture) {
+            const archiveId = `archive_${Date.now().toString(36)}`;
+            const template = {
+                id: archiveId,
+                templateId: archiveId,
+                templateName: safeName,
+                templateType: 'archive',
+                roomCode,
+                runOfShowDirector: normalizeRunOfShowDirector(getCurrentRunOfShowDirector()),
+                runOfShowPolicy: normalizeRunOfShowPolicy(runOfShowPolicy || {}),
+                archived: true,
+            };
+            setRunOfShowTemplates((prev) => [template, ...(prev || [])]);
+            setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+                ...(prev || {}),
+                lastArchiveId: archiveId,
+                archivedAtMs: nowMs(),
+            }));
+            return template;
+        }
+        const result = await manageRunOfShowTemplate({ roomCode, action: 'archive_current', templateName: safeName, templateId: `archive_${Date.now().toString(36)}` });
+        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+            ...(prev || {}),
+            lastArchiveId: result?.templateId || prev?.lastArchiveId || '',
+            archivedAtMs: nowMs(),
+        }));
+        return result;
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy]);
     const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
         stageActivationPendingRef.current = true;
         if (stageActivationTimerRef.current) {
@@ -6232,9 +7272,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.showFameLevel !== undefined && room?.showFameLevel !== null) {
             setShowFameLevel(!!room.showFameLevel);
         }
+        setRequestMode(normalizeRoomRequestMode(room?.requestMode, room?.allowSingerTrackSelect));
         if (room?.allowSingerTrackSelect !== undefined && room?.allowSingerTrackSelect !== null) {
             setAllowSingerTrackSelect(!!room.allowSingerTrackSelect);
         }
+        setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
+        setProgramMode(normalizeRunOfShowProgramMode(room?.programMode));
+        setRunOfShowEnabled(room?.runOfShowEnabled === true || normalizeRunOfShowProgramMode(room?.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow);
+        setRunOfShowDirectorState(normalizeRunOfShowDirector(room?.runOfShowDirector || {}));
+        setRunOfShowPolicy(normalizeRunOfShowPolicy(room?.runOfShowPolicy || {}));
+        setRunOfShowRoles(normalizeRunOfShowRoles(room?.runOfShowRoles || {}));
+        setRunOfShowTemplateMeta(normalizeRunOfShowTemplateMeta(room?.runOfShowTemplateMeta || {}));
         setHostNightPreset(room?.hostNightPreset || 'custom');
         if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
@@ -6242,7 +7290,165 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled !== false);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.allowSingerTrackSelect, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    useEffect(() => {
+        if (isMarketingDemoFixture) return () => {};
+        if (!roomCode || !isRunOfShowRoom) {
+            setRunOfShowSubmissions([]);
+            return () => {};
+        }
+        const submissionsQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'run_of_show_slot_submissions'),
+            where('roomCode', '==', roomCode)
+        );
+        return onSnapshot(
+            submissionsQuery,
+            (snapshot) => {
+                const nextSubmissions = snapshot.docs
+                    .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                    .sort((a, b) => (getTimestampMs(b?.submittedAt) || 0) - (getTimestampMs(a?.submittedAt) || 0));
+                setRunOfShowSubmissions(nextSubmissions);
+            },
+            (error) => {
+                hostLogger.warn('Failed to load run-of-show submissions', error);
+                setRunOfShowSubmissions([]);
+            }
+        );
+    }, [isMarketingDemoFixture, isRunOfShowRoom, roomCode]);
+    useEffect(() => {
+        if (isMarketingDemoFixture) return () => {};
+        if (!roomCode || !isRunOfShowRoom) {
+            setRunOfShowTemplates([]);
+            return () => {};
+        }
+        const templatesQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'run_of_show_templates'),
+            where('roomCode', '==', roomCode)
+        );
+        return onSnapshot(
+            templatesQuery,
+            (snapshot) => {
+                const nextTemplates = snapshot.docs
+                    .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                    .sort((a, b) => (getTimestampMs(b?.updatedAt) || 0) - (getTimestampMs(a?.updatedAt) || 0));
+                setRunOfShowTemplates(nextTemplates);
+            },
+            (error) => {
+                hostLogger.warn('Failed to load run-of-show templates', error);
+                setRunOfShowTemplates([]);
+            }
+        );
+    }, [isMarketingDemoFixture, isRunOfShowRoom, roomCode]);
+    useEffect(() => {
+        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (runOfShowAutomationBusyRef.current) return;
+        if (runOfShowLiveItem || runOfShowStagedItem || !runOfShowNextItem) return;
+        if (runOfShowNextItem.automationMode !== 'auto') return;
+        const nextStatus = String(runOfShowNextItem.status || '').toLowerCase();
+        if (['complete', 'skipped', 'live', 'staged'].includes(nextStatus)) return;
+        runOfShowAutomationBusyRef.current = true;
+        const timer = setTimeout(() => {
+            prepareRunOfShowItem(runOfShowNextItem.id, { automation: true, silent: true })
+                .catch((error) => {
+                    hostLogger.warn('Run-of-show auto-prepare failed', error);
+                })
+                .finally(() => {
+                    runOfShowAutomationBusyRef.current = false;
+                });
+        }, 250);
+        return () => {
+            clearTimeout(timer);
+            runOfShowAutomationBusyRef.current = false;
+        };
+    }, [
+        isRunOfShowRoom,
+        prepareRunOfShowItem,
+        roomCode,
+        runOfShowDirector?.automationPaused,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem
+    ]);
+    useEffect(() => {
+        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (runOfShowAutomationBusyRef.current) return;
+        if (runOfShowLiveItem || !runOfShowStagedItem) return;
+        if (runOfShowStagedItem.automationMode !== 'auto') return;
+        runOfShowAutomationBusyRef.current = true;
+        const timer = setTimeout(() => {
+            startRunOfShowItem(runOfShowStagedItem.id, { automation: true })
+                .catch((error) => {
+                    hostLogger.warn('Run-of-show auto-start failed', error);
+                })
+                .finally(() => {
+                    runOfShowAutomationBusyRef.current = false;
+                });
+        }, 300);
+        return () => {
+            clearTimeout(timer);
+            runOfShowAutomationBusyRef.current = false;
+        };
+    }, [
+        isRunOfShowRoom,
+        roomCode,
+        runOfShowDirector?.automationPaused,
+        runOfShowLiveItem,
+        runOfShowStagedItem,
+        startRunOfShowItem
+    ]);
+    useEffect(() => {
+        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (!runOfShowLiveItem || runOfShowLiveItem.type === 'performance') return;
+        if (runOfShowLiveItem.automationMode !== 'auto') return;
+        const startedAtMs = Number(runOfShowLiveItem.liveStartedAtMs || 0);
+        const durationMs = Math.max(0, Number(runOfShowLiveItem.plannedDurationSec || 0) * 1000);
+        if (!startedAtMs || !durationMs) return;
+        const completionKey = `${runOfShowLiveItem.id}:${startedAtMs}`;
+        const remainingMs = Math.max(0, (startedAtMs + durationMs) - nowMs());
+        const finalize = () => {
+            if (runOfShowAutoCompleteKeyRef.current === completionKey) return;
+            runOfShowAutoCompleteKeyRef.current = completionKey;
+            completeRunOfShowItem(runOfShowLiveItem.id, { automation: true })
+                .catch((error) => {
+                    hostLogger.warn('Run-of-show timed completion failed', error);
+                });
+        };
+        if (remainingMs <= 0) {
+            finalize();
+            return () => {};
+        }
+        const timer = setTimeout(finalize, remainingMs);
+        return () => clearTimeout(timer);
+    }, [
+        completeRunOfShowItem,
+        isRunOfShowRoom,
+        roomCode,
+        runOfShowDirector?.automationPaused,
+        runOfShowLiveItem
+    ]);
+    useEffect(() => {
+        if (!roomCode || !isRunOfShowRoom || !runOfShowLiveItem || runOfShowLiveItem.type !== 'performance') return;
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        if (!lastPerformanceTs) return;
+        const lastPerformanceId = String(room?.lastPerformance?.id || room?.lastPerformance?.songDocId || '').trim();
+        const queueDocId = runOfShowLiveItem.preparedQueueSongId || buildRunOfShowQueueDocId(roomCode, runOfShowLiveItem.id);
+        if (queueDocId && lastPerformanceId && lastPerformanceId !== queueDocId) return;
+        const completionKey = `${runOfShowLiveItem.id}:${lastPerformanceTs}:${lastPerformanceId}`;
+        if (runOfShowPerformanceHandledRef.current === completionKey) return;
+        runOfShowPerformanceHandledRef.current = completionKey;
+        completeRunOfShowItem(runOfShowLiveItem.id, { automation: true, skipQueueFinalize: true })
+            .catch((error) => {
+                hostLogger.warn('Run-of-show performance completion failed', error);
+            });
+    }, [
+        completeRunOfShowItem,
+        isRunOfShowRoom,
+        room?.lastPerformance?.id,
+        room?.lastPerformance?.songDocId,
+        room?.lastPerformance?.timestamp,
+        roomCode,
+        runOfShowLiveItem
+    ]);
     useEffect(() => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
@@ -6361,6 +7567,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startNextFromQueue = useCallback(async () => {
         const activeRoom = roomRef.current;
         if (!activeRoom?.autoDj) return;
+        if (
+            activeRoom?.runOfShowEnabled === true
+            && normalizeRunOfShowProgramMode(activeRoom?.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
+        ) {
+            return;
+        }
         const activeMode = String(activeRoom?.activeMode || '').trim().toLowerCase();
         const applauseFlowActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
         if (applauseFlowActive) return;
@@ -6784,6 +7996,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             const archivedAtMs = getTimestampMs(data.archivedAt);
                             return {
                                 code: docSnap.id,
+                                roomName: String(data.roomName || '').trim() || '',
                                 hostName: String(data.hostName || '').trim() || 'Host',
                                 orgName: String(data.orgName || '').trim() || '',
                                 activeMode: String(data.activeMode || 'karaoke').trim() || 'karaoke',
@@ -6839,6 +8052,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         createRoom: provisionRoom,
         quickLaunchDiscovery,
         setQuickLaunchDiscovery,
+        eventCreditsConfig,
+        setEventCreditsConfig,
         showOnboardingWizard,
         onboardingStep,
         onboardingBusy,
@@ -6907,6 +8122,75 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setEntryError,
         toast,
     });
+    useEffect(() => {
+        if (String(launchRoomName || '').trim()) return;
+        const seededHost = String(hostName || '').trim();
+        if (!seededHost) return;
+        setLaunchRoomName(`${seededHost} Room`);
+    }, [hostName, launchRoomName]);
+
+    useEffect(() => {
+        if (!showLaunchCoHosts || !orgContext?.orgId || !uid) return undefined;
+        let cancelled = false;
+        setWorkspaceOperatorLoading(true);
+        setWorkspaceOperatorError('');
+        listHostWorkspaceOperators({ limit: 24 })
+            .then((result) => {
+                if (cancelled) return;
+                const items = Array.isArray(result?.items) ? result.items : [];
+                setWorkspaceOperatorCandidates(items);
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                hostLogger.warn('Failed to load workspace operators', error);
+                setWorkspaceOperatorCandidates([]);
+                setWorkspaceOperatorError('Could not load co-host suggestions right now.');
+            })
+            .finally(() => {
+                if (cancelled) return;
+                setWorkspaceOperatorLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [hostLogger, orgContext?.orgId, showLaunchCoHosts, uid]);
+
+    useEffect(() => {
+        if (!quickLaunchDiscovery.publicRoom) {
+            setVenueSearchResults([]);
+            setVenueSearchLoading(false);
+            setVenueSearchError('');
+            return undefined;
+        }
+        const queryText = String(quickLaunchDiscovery.venueName || '').trim();
+        if (queryText.length < 2) {
+            setVenueSearchResults([]);
+            setVenueSearchLoading(false);
+            setVenueSearchError('');
+            return undefined;
+        }
+        let cancelled = false;
+        const timeoutId = window.setTimeout(async () => {
+            setVenueSearchLoading(true);
+            setVenueSearchError('');
+            try {
+                const result = await searchHostVenueAutocomplete({ query: queryText, limit: 6 });
+                if (cancelled) return;
+                setVenueSearchResults(Array.isArray(result?.items) ? result.items : []);
+            } catch (error) {
+                if (cancelled) return;
+                hostLogger.warn('Venue autocomplete search failed', error);
+                setVenueSearchResults([]);
+                setVenueSearchError('Could not load venue matches right now.');
+            } finally {
+                if (!cancelled) setVenueSearchLoading(false);
+            }
+        }, 220);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeoutId);
+        };
+    }, [hostLogger, quickLaunchDiscovery.publicRoom, quickLaunchDiscovery.venueName]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -6934,6 +8218,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (view === 'queue') {
                 setTab('stage');
                 if (chosenSection === 'queue.catalog') setTab('browse');
+            } else if (view === 'show') {
+                setTab('run_of_show');
             } else if (view === 'games') {
                 setTab('games');
             } else if (view === 'audience') {
@@ -6955,7 +8241,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } else if (g) {
             setTab('games');
             setAutoOpenGameId(g);
-        } else if (t && ['stage', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
+        } else if (t && ['stage', 'run_of_show', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
             setTab(t);
             const redirect = LEGACY_TAB_REDIRECTS[t];
             if (redirect) {
@@ -7504,7 +8790,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsTv: !!legacyPresetSettings.showLyricsTv,
             showScoring: !!nightSetupShowScoring,
             showFameLevel: !!legacyPresetSettings.showFameLevel,
-            allowSingerTrackSelect: !!legacyPresetSettings.allowSingerTrackSelect,
+            requestMode: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect),
+            allowSingerTrackSelect: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
             marqueeEnabled: !!nightSetupMarqueeEnabled,
             marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!nightSetupChatOnTv,
@@ -7571,6 +8858,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
             setShowScoring(!!payload.showScoring);
             setShowFameLevel(!!payload.showFameLevel);
+            setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
             setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
@@ -8503,7 +9791,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsTv: !!presetSettings.showLyricsTv,
             showScoring: !!presetSettings.showScoring,
             showFameLevel: !!presetSettings.showFameLevel,
-            allowSingerTrackSelect: !!presetSettings.allowSingerTrackSelect,
+            requestMode: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
+            allowSingerTrackSelect: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
             marqueeEnabled: !!presetSettings.marqueeEnabled,
             marqueeShowMode: presetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!presetSettings.chatShowOnTv,
@@ -8545,6 +9834,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
             setShowScoring(!!payload.showScoring);
             setShowFameLevel(!!payload.showFameLevel);
+            setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
             setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
@@ -8638,7 +9928,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
                 showScoring: !!showScoring,
                 showFameLevel: !!showFameLevel,
-                allowSingerTrackSelect: !!allowSingerTrackSelect,
+                requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
+                allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+                audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+                programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
+                runOfShowEnabled: !!runOfShowEnabled,
+                runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue,
@@ -8659,6 +9954,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode) return;
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { ytIndex: next }, { merge: true });
     };
+
+    const upsertYtIndexEntries = async (entries = [], statusMessage = '') => {
+        const safeEntries = Array.isArray(entries) ? entries : [];
+        const normalizedEntries = safeEntries
+            .map((entry) => normalizeYtIndexEntry(entry))
+            .filter(Boolean);
+        if (!normalizedEntries.length) return [];
+        const existing = new Map((ytIndex || []).map((entry) => [entry.videoId, normalizeYtIndexEntry(entry)]));
+        normalizedEntries.forEach((entry, index) => {
+            const previous = existing.get(entry.videoId) || {};
+            const rawEntry = safeEntries[index] || {};
+            const usageCountDelta = Math.max(0, Number(rawEntry?.usageCountDelta || 0) || 0);
+            const successCountDelta = Math.max(0, Number(rawEntry?.successCountDelta || 0) || 0);
+            const failureCountDelta = Math.max(0, Number(rawEntry?.failureCountDelta || 0) || 0);
+            existing.set(entry.videoId, {
+                ...previous,
+                ...entry,
+                curatedAtMs: entry.curatedAtMs || nowMs(),
+                addedBy: entry.addedBy || hostName || 'Host',
+                usageCount: Math.max(0, Number(entry.usageCount ?? previous.usageCount ?? 0) + usageCountDelta),
+                successCount: Math.max(0, Number(entry.successCount ?? previous.successCount ?? 0) + successCountDelta),
+                failureCount: Math.max(0, Number(entry.failureCount ?? previous.failureCount ?? 0) + failureCountDelta)
+            });
+        });
+        const next = Array.from(existing.values()).filter(Boolean);
+        await persistYtIndex(next);
+        if (statusMessage) setYtAddStatus(statusMessage);
+        return next;
+    };
+    upsertYtIndexEntriesRef.current = upsertYtIndexEntries;
+
+    const successfulYoutubePerformanceKeyRef = useRef('');
+    useEffect(() => {
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const lastPerformanceUrl = String(room?.lastPerformance?.mediaUrl || '').trim();
+        const videoId = parseYouTubeId(lastPerformanceUrl);
+        if (!lastPerformanceTs || !videoId) return;
+        const performanceKey = `${videoId}:${lastPerformanceTs}`;
+        if (successfulYoutubePerformanceKeyRef.current === performanceKey) return;
+        successfulYoutubePerformanceKeyRef.current = performanceKey;
+        void upsertYtIndexEntries([{
+            videoId,
+            trackName: room?.lastPerformance?.songTitle || 'YouTube Track',
+            artistName: room?.lastPerformance?.artist || 'YouTube',
+            artworkUrl100: room?.lastPerformance?.albumArtUrl || '',
+            url: lastPerformanceUrl,
+            playable: true,
+            sourceDetail: 'Successful live performance backing.',
+            usageCountDelta: 1,
+            successCountDelta: 1
+        }]).catch((error) => {
+            hostLogger.debug('Could not mark successful YouTube backing in room library', error);
+        });
+    }, [
+        parseYouTubeId,
+        room?.lastPerformance?.albumArtUrl,
+        room?.lastPerformance?.artist,
+        room?.lastPerformance?.mediaUrl,
+        room?.lastPerformance?.songTitle,
+        room?.lastPerformance?.timestamp,
+        upsertYtIndexEntries
+    ]);
 
     const persistLogoLibrary = async (next) => {
         const cleaned = Array.from(new Set((next || [])
@@ -8816,7 +10173,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     useEffect(() => {
-        if (!roomCode) return;
+        if (!roomCode || isMarketingDemoFixture) return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
             if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
@@ -8838,7 +10195,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         });
         return () => unsub();
-    }, [roomCode]);
+    }, [isMarketingDemoFixture, roomCode]);
 
     const deleteRoomCollection = async (collectionName, targetRoomCode = roomCode) => {
         const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -8935,6 +10292,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .filter(item => item.id)
     );
 
+    function normalizeYtIndexEntry(entry = {}, overrides = {}) {
+        const videoId = String(overrides.videoId || entry.videoId || entry.id || '').trim();
+        if (!videoId) return null;
+        const baseTitle = String(overrides.trackName || overrides.title || entry.trackName || entry.title || 'YouTube Track').trim() || 'YouTube Track';
+        const baseArtist = String(overrides.artistName || overrides.channel || overrides.channelTitle || entry.artistName || entry.channel || entry.channelTitle || 'YouTube').trim() || 'YouTube';
+        const artworkUrl100 = String(overrides.artworkUrl100 || overrides.thumbnail || entry.artworkUrl100 || entry.thumbnail || '').trim();
+        const url = String(overrides.url || entry.url || `https://www.youtube.com/watch?v=${videoId}`).trim();
+        const qualityScore = Math.max(0, Number(overrides.qualityScore ?? entry.qualityScore ?? 0) || 0);
+        const usageCount = Math.max(0, Number(overrides.usageCount ?? entry.usageCount ?? 0) || 0);
+        const successCount = Math.max(0, Number(overrides.successCount ?? entry.successCount ?? 0) || 0);
+        const failureCount = Math.max(0, Number(overrides.failureCount ?? entry.failureCount ?? 0) || 0);
+        return {
+            videoId,
+            source: 'youtube',
+            trackName: baseTitle,
+            artistName: baseArtist,
+            artworkUrl100,
+            url,
+            playable: overrides.playable ?? entry.playable ?? true,
+            sourceDetail: String(overrides.sourceDetail || entry.sourceDetail || 'Verified YouTube playable track.').trim(),
+            qualityScore,
+            usageCount,
+            successCount,
+            failureCount,
+            curatedAtMs: Math.max(0, Number(overrides.curatedAtMs ?? entry.curatedAtMs ?? nowMs()) || nowMs()),
+            addedBy: String(overrides.addedBy || entry.addedBy || 'Host').trim() || 'Host'
+        };
+    }
+
     const indexYouTubePlaylist = async (playlistId) => {
         const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL });
         const items = normalizeYouTubePlaylistItems(data?.items || []);
@@ -8943,23 +10329,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             concurrency: 4
         });
         const playableItems = items.filter((item) => playableMap.get(item.id) === true);
-        const updated = (() => {
-            const existing = new Map((ytIndex || []).map(item => [item.videoId, item]));
-            playableItems.forEach(item => {
-                existing.set(item.id, {
-                    videoId: item.id,
-                    source: 'youtube',
-                    trackName: item.title,
-                    artistName: item.channel,
-                    artworkUrl100: item.thumbnail,
-                    url: item.url,
-                    playable: true,
-                    sourceDetail: 'Indexed and embeddable YouTube track.'
-                });
-            });
-            return Array.from(existing.values());
-        })();
-        await persistYtIndex(updated);
+        await upsertYtIndexEntries(playableItems.map((item) => ({
+            videoId: item.id,
+            trackName: item.title,
+            artistName: item.channel,
+            artworkUrl100: item.thumbnail,
+            url: item.url,
+            playable: true,
+            sourceDetail: 'Indexed and embeddable YouTube track.'
+        })));
         return playableItems;
     };
 
@@ -9154,21 +10532,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     url: `https://www.youtube.com/watch?v=${first.id}`
                 };
             }
-            const updated = (() => {
-                const existing = new Map(ytIndex.map(entry => [entry.videoId, entry]));
-                existing.set(item.id, {
-                    videoId: item.id,
-                    source: 'youtube',
-                    trackName: item.title,
-                    artistName: item.channel,
-                    artworkUrl100: item.thumbnail,
-                    url: item.url,
-                    playable: true,
-                    sourceDetail: 'Verified YouTube playable track.'
-                });
-                return Array.from(existing.values());
-            })();
-            await persistYtIndex(updated);
+            await upsertYtIndexEntries([{
+                videoId: item.id,
+                trackName: item.title,
+                artistName: item.channel,
+                artworkUrl100: item.thumbnail,
+                url: item.url,
+                playable: true,
+                sourceDetail: 'Verified YouTube playable track.'
+            }]);
             setYtAddStatus(`Added "${item.title}"`);
             setYtAddTitle('');
             setYtAddArtist('');
@@ -9178,6 +10550,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setYtAddStatus(e.message || 'Failed to add track');
         } finally {
             setYtAddLoading(false);
+        }
+    };
+    const addCuratedYouTubeResult = async (item) => {
+        const normalized = normalizeYtIndexEntry(item);
+        if (!normalized) return;
+        setYtIndexActionVideoId(normalized.videoId);
+        try {
+            await upsertYtIndexEntries([normalized]);
+            setYtAddStatus(`Added "${normalized.trackName}" to the room index.`);
+            toast('Added to YouTube index');
+        } catch (error) {
+            hostLogger.error(error);
+            toast('Could not add that YouTube track right now.');
+        } finally {
+            setYtIndexActionVideoId('');
+        }
+    };
+    const removeCuratedYouTubeResult = async (videoId) => {
+        const safeVideoId = String(videoId || '').trim();
+        if (!safeVideoId) return;
+        setYtIndexActionVideoId(safeVideoId);
+        try {
+            const next = (ytIndex || []).filter((entry) => String(entry?.videoId || '').trim() !== safeVideoId);
+            await persistYtIndex(next);
+            toast('Removed from YouTube index');
+        } catch (error) {
+            hostLogger.error(error);
+            toast('Could not remove that track right now.');
+        } finally {
+            setYtIndexActionVideoId('');
         }
     };
     const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
@@ -10068,7 +11470,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
-        return top100Seed.map((s, idx) => {
+        const decorated = decorateBrowseSongs(top100Seed);
+        return decorated.map((s, idx) => {
             const artKey = `${s.title}__${s.artist}`;
             return { ...s, artKey, art: top100Art[artKey] || arts[idx % arts.length] };
         });
@@ -10116,6 +11519,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!song?.title) return;
         const art = await fetchTop100Art(song);
         const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        const approvedBrowseBacking = isApprovedPlayableBrowseSong(song) ? song.backing : null;
         const canonicalMatch = await (async () => {
             try {
                 return await resolveCanonicalTrackIdentity({
@@ -10141,24 +11545,65 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             verifiedBy: hostName || 'host'
         });
         const songId = canonicalMatch?.songId || songRecord?.songId || buildSongKey(canonicalTitle, canonicalArtist);
+        let trackId = canonicalMatch?.trackId || null;
+        let trackSource = canonicalMatch?.trackId ? 'apple' : null;
+        let mediaUrl = '';
+        let appleMusicId = '';
+        let durationSec = 0;
+        let playbackReady = false;
+        let mediaResolutionStatus = 'pending';
+        let resolutionStatus = 'review_required';
+        let resolutionLayer = 'manual_review';
+
+        if (approvedBrowseBacking?.mediaUrl) {
+            const browseTrackSource = String(approvedBrowseBacking.trackSource || 'youtube').trim().toLowerCase() || 'youtube';
+            const browseTrackRecord = await ensureTrack({
+                songId,
+                source: browseTrackSource,
+                mediaUrl: approvedBrowseBacking.mediaUrl,
+                appleMusicId: approvedBrowseBacking.appleMusicId || '',
+                label: approvedBrowseBacking.label || null,
+                duration: approvedBrowseBacking.durationSec ?? null,
+                audioOnly: browseTrackSource === 'apple',
+                backingOnly: true,
+                addedBy: hostName || 'Host',
+                approvalState: approvedBrowseBacking.approved ? 'approved' : 'candidate',
+                qualityScore: approvedBrowseBacking.score ?? 0
+            });
+            trackId = browseTrackRecord?.trackId || trackId;
+            trackSource = browseTrackSource;
+            mediaUrl = approvedBrowseBacking.mediaUrl;
+            appleMusicId = approvedBrowseBacking.appleMusicId || '';
+            durationSec = Math.max(0, Math.round(Number(approvedBrowseBacking.durationSec || browseTrackRecord?.durationSec || 0)));
+            playbackReady = true;
+            mediaResolutionStatus = 'browse_ready';
+            resolutionStatus = 'resolved';
+            resolutionLayer = 'browse_catalog';
+        }
+
         await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
             roomCode,
             songId,
-            trackId: canonicalMatch?.trackId || null,
-            trackSource: canonicalMatch?.trackId ? 'apple' : null,
+            trackId,
+            trackSource,
             songTitle: canonicalTitle,
             artist: canonicalArtist,
             singerName,
-            mediaUrl: '',
+            mediaUrl,
             albumArtUrl: art || song.art || '',
             lyrics: '',
             lyricsTimed: null,
-            appleMusicId: '',
+            appleMusicId,
+            duration: durationSec > 0 ? durationSec : null,
             musicSource: '',
             lyricsSource: '',
             lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
             lyricsGenerationResolution: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
             lyricsGenerationUpdatedAt: serverTimestamp(),
+            playbackReady,
+            mediaResolutionStatus,
+            resolutionStatus,
+            resolutionLayer,
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -10166,6 +11611,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             backingAudioOnly: false,
             audioOnly: false
         });
+        if (playbackReady) {
+            toast(room?.autoLyricsOnQueue ? 'Queued and ready (finalizing lyrics...)' : 'Added to queue and ready');
+            return;
+        }
         toast(room?.autoLyricsOnQueue ? 'Queued (finalizing lyrics...)' : 'Added to queue');
     };
 
@@ -10919,7 +12368,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const buildBrowseList = (list, listIdx) => {
-        const songs = list.songs.map((song, idx) => ({
+        const songs = decorateBrowseSongs(list.songs).map((song, idx) => ({
             ...song,
             artKey: `${song.title}__${song.artist}`,
             art: resolveBrowseArt(song, (listIdx * 20) + idx)
@@ -11121,6 +12570,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-white truncate">{song.title}</div>
                                                         <div className="text-sm text-zinc-400 truncate">{song.artist}</div>
+                                                        <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${song.hasApprovedBacking ? 'border border-emerald-400/25 bg-emerald-500/12 text-emerald-200' : 'border border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+                                                            <i className={`fa-solid ${song.hasApprovedBacking ? 'fa-circle-check' : 'fa-triangle-exclamation'}`}></i>
+                                                            {song.hasApprovedBacking ? 'Ready' : 'Needs review'}
+                                                        </div>
                                                     </div>
                                                     <button
                                                         onClick={() => queueBrowseSongFromCatalog(song)}
@@ -11176,6 +12629,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="min-w-0 flex-1">
                                                         <div className="font-bold text-white truncate">{song.title}</div>
                                                         <div className="text-sm text-zinc-400 truncate">{song.artist}</div>
+                                                        <div className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${song.hasApprovedBacking ? 'border border-emerald-400/25 bg-emerald-500/12 text-emerald-200' : 'border border-amber-400/20 bg-amber-500/10 text-amber-100'}`}>
+                                                            <i className={`fa-solid ${song.hasApprovedBacking ? 'fa-circle-check' : 'fa-triangle-exclamation'}`}></i>
+                                                            {song.hasApprovedBacking ? 'Ready' : 'Needs review'}
+                                                        </div>
                                                     </div>
                                                     <button
                                                         onClick={() => queueBrowseSongFromCatalog(song)}
@@ -11201,7 +12658,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const presetFeaturePills = [
             { label: 'Auto DJ', enabled: !!selectedPreset?.settings?.autoDj },
             { label: 'Background Music', enabled: !!selectedPreset?.settings?.autoBgMusic },
-            { label: 'Singer Track Select', enabled: !!selectedPreset?.settings?.allowSingerTrackSelect },
+            { label: 'Guest backing', enabled: normalizeRoomRequestMode(selectedPreset?.settings?.requestMode, selectedPreset?.settings?.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional },
             { label: 'Bouncer Mode', enabled: !!selectedPreset?.settings?.bouncerMode },
             { label: 'Auto Lyrics', enabled: !!selectedPreset?.settings?.autoLyricsOnQueue },
             { label: 'Pop Trivia', enabled: selectedPreset?.settings?.popTriviaEnabled !== false }
@@ -12064,7 +13521,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             || String(quickLaunchDiscovery.lat || '').trim()
             || String(quickLaunchDiscovery.lng || '').trim()
         );
-        const landingListingDetailsOpen = showLandingListingOptions || hasDiscoveryDraft;
+        const landingListingDetailsOpen = showLandingListingOptions || Boolean(
+            String(quickLaunchDiscovery.address1 || '').trim()
+            || String(quickLaunchDiscovery.lat || '').trim()
+            || String(quickLaunchDiscovery.lng || '').trim()
+        );
         const recentLiveRooms = recentHostRooms.filter((roomItem) => !roomItem.archived);
         const featuredRecentRoom = recentLiveRooms[0] || recentHostRooms[0] || null;
         const launchModeMeta = {
@@ -12091,8 +13552,95 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const marketingChangelogUrl = typeof window !== 'undefined'
             ? `${String(getSurfaceBaseHref('marketing', window.location) || '/').replace(/\/$/, '')}/changelog`
             : '/changelog';
-        const recentRoomSnapshot = recentHostRooms.slice(0, 4);
+        const recentRoomSnapshot = recentHostRooms.slice(0, 3);
         const recentArchivedRoomCount = recentHostRooms.filter((roomItem) => roomItem.archived).length;
+        const launchRoomNameValue = String(launchRoomName || '').trim();
+        const resolvedLaunchPresetId = HOST_NIGHT_PRESETS[hostNightPreset] ? hostNightPreset : 'casual';
+        const selectedLaunchPreset = HOST_NIGHT_PRESETS[resolvedLaunchPresetId] || HOST_NIGHT_PRESETS.casual;
+        const canStartLauncherRoom = !!launchRoomNameValue && canQuickStartRoom && !primaryLaunchDisabled;
+        const filteredLaunchCoHosts = workspaceOperatorCandidates
+            .filter((candidate) => String(candidate?.uid || '').trim() && String(candidate?.uid || '').trim() !== String(uid || '').trim())
+            .filter((candidate) => {
+                const query = String(launchCoHostSearch || '').trim().toLowerCase();
+                if (!query) return true;
+                const haystack = [
+                    candidate?.name,
+                    candidate?.email,
+                    candidate?.uid,
+                    candidate?.role,
+                ].map((entry) => String(entry || '').toLowerCase()).join(' ');
+                return haystack.includes(query);
+            });
+        const discoverVenueSummary = [
+            String(quickLaunchDiscovery.city || '').trim(),
+            String(quickLaunchDiscovery.state || '').trim(),
+        ].filter(Boolean).join(', ');
+        const selectedVenueSource = String(quickLaunchDiscovery.venueSource || '').trim().toLowerCase();
+        const hasSelectedVenue = !!String(quickLaunchDiscovery.venueId || '').trim() && selectedVenueSource === 'selected';
+        const handleLaunchVenueInputChange = (value = '') => {
+            const nextValue = String(value || '');
+            setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
+                ...prev,
+                venueName: nextValue,
+                venueId: '',
+                venueSource: nextValue.trim() ? 'freeform' : '',
+            }));
+        };
+        const selectLaunchVenueMatch = (venue = {}) => {
+            const venueId = String(venue?.venueId || '').trim();
+            const title = String(venue?.title || '').trim();
+            const city = String(venue?.city || '').trim();
+            const state = String(venue?.state || '').trim();
+            const address1 = String(venue?.address1 || '').trim();
+            const lat = Number(venue?.location?.lat);
+            const lng = Number(venue?.location?.lng);
+            setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
+                ...prev,
+                venueName: title,
+                venueId,
+                venueSource: venueId ? 'selected' : 'freeform',
+                city: city || prev.city || '',
+                state: state || prev.state || '',
+                address1: address1 || prev.address1 || '',
+                lat: Number.isFinite(lat) ? String(lat) : (prev.lat || ''),
+                lng: Number.isFinite(lng) ? String(lng) : (prev.lng || ''),
+            }));
+            setVenueSearchResults([]);
+            setVenueSearchError('');
+        };
+        const toggleLaunchCoHost = (targetUid = '') => {
+            const safeUid = String(targetUid || '').trim();
+            if (!safeUid) return;
+            setLaunchCoHostUids((prev) => (
+                prev.includes(safeUid)
+                    ? prev.filter((entry) => entry !== safeUid)
+                    : [...prev, safeUid]
+            ));
+        };
+        const handleStartLauncherRoom = async ({ openNightSetup = false } = {}) => {
+            if (primaryLaunchDisabled) return;
+            if (!launchRoomNameValue) {
+                toast('Add a room name before starting.');
+                setEntryError('Add a room name before starting.');
+                return;
+            }
+            if (!canQuickStartRoom) {
+                if (canUseWorkspaceOnboarding) {
+                    toast('Finish host setup first, then start the room.');
+                    openOnboardingWizard();
+                    return;
+                }
+                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
+                return;
+            }
+            setEntryError('');
+            await createRoom({
+                roomName: launchRoomNameValue,
+                coHostUids: launchCoHostUids,
+                nightPresetId: resolvedLaunchPresetId,
+                openNightSetup,
+            });
+        };
         const portalMetrics = [
             {
                 label: 'Current build',
@@ -12269,758 +13817,65 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div className="absolute -right-10 top-10 h-64 w-64 rounded-full bg-pink-500/28 blur-3xl"></div>
                 <div className="absolute bottom-[-5rem] left-1/3 h-56 w-56 rounded-full bg-fuchsia-400/16 blur-3xl"></div>
             </div>
-            <div className="relative z-10 w-full max-w-6xl">
-                <div className="bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.16),transparent_24%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.18),transparent_30%),radial-gradient(circle_at_74%_78%,rgba(61,228,255,0.14),transparent_28%),linear-gradient(145deg,rgba(14,18,34,0.94),rgba(11,17,28,0.96))] p-5 md:p-6 lg:p-7 rounded-[2.1rem] border border-cyan-300/30 backdrop-blur-xl w-full shadow-[0_30px_90px_rgba(0,0,0,0.5),0_0_80px_rgba(236,72,153,0.12)] relative overflow-hidden">
-                <div className="pointer-events-none absolute inset-0 opacity-60">
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/45 to-transparent" />
-                    <div className="absolute right-[-3rem] top-[-2rem] h-40 w-40 rounded-full bg-pink-400/14 blur-3xl" />
-                    <div className="absolute left-[-2rem] bottom-[-3rem] h-48 w-48 rounded-full bg-cyan-300/12 blur-3xl" />
-                </div>
-                <div className="relative z-10 flex flex-wrap items-center justify-between gap-2 mb-4">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
-                        <span className="h-2 w-2 rounded-full bg-cyan-300 animate-pulse"></span>
-                        Host Portal
-                    </div>
-                    <div className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.2em] ${
-                        isFirstHostRun
-                            ? 'border-pink-300/30 bg-pink-500/10 text-pink-100'
-                            : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'
-                    }`}>
-                        {isFirstHostRun ? 'First Room Setup' : 'Ready To Host'}
-                    </div>
-                </div>
-                <div className="relative z-10 mb-5 flex flex-col items-center gap-3 md:flex-row md:items-center md:text-left">
-                    <img
-                        src={ASSETS.logo}
-                        className="w-44 md:w-52 shrink-0 object-contain drop-shadow-[0_0_30px_rgba(0,196,217,0.34)]"
-                        alt="BeauRocks Karaoke"
-                    />
-                    <div className="max-w-xl">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-amber-100/90">
-                            Operator briefing
-                        </div>
-                        <h1 className="mt-3 text-[2.1rem] md:text-[3rem] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#ffc56a] via-[#75e7ff] to-[#EC4899] leading-[0.96]">
-                            {isFirstHostRun ? 'Build your host base, then launch' : 'Run tonight from one host portal'}
-                        </h1>
-                        <div className="text-sm text-cyan-100/85 mt-2 max-w-2xl">
-                            {isFirstHostRun
-                                ? 'Finish setup once, then create rooms, manage old ones, and track what changed without leaving the landing screen.'
-                                : 'Create a room, reopen a recent one, manage older rooms, and keep release notes in view before you go live.'}
-                        </div>
-                    </div>
-                </div>
-                <div className="relative z-10 mb-5 grid gap-3 md:grid-cols-3">
-                    {portalMetrics.map((metric) => (
-                        <div
-                            key={metric.label}
-                            className="rounded-[1.4rem] border border-white/10 bg-[linear-gradient(145deg,rgba(8,18,30,0.82),rgba(17,10,31,0.72))] px-4 py-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-                        >
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/68">{metric.label}</div>
-                            <div className="mt-2 text-[1.35rem] md:text-[1.6rem] font-black text-white leading-none">{metric.value}</div>
-                            <div className="mt-1 text-[11px] text-cyan-100/65">{metric.detail}</div>
-                        </div>
-                    ))}
-                </div>
-                <div className="relative z-10 grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
-                <div className="space-y-3">
-                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-2.5 text-left" data-host-room-state>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/75">Status</div>
-                        <div className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${launchStateTone}`}>
-                            {launchState}
-                        </div>
-                    </div>
-                    <div className="mt-1 text-xs text-cyan-100/70">{launchStateHelp}</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${launchAccessPending ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'}`}>
-                            {launchAccessPending ? 'Syncing Host Access' : 'Host Access Ready'}
-                        </span>
-                        {hostPermissionLevel && (
-                            <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] border-white/15 bg-white/5 text-zinc-200">
-                                {hostPermissionLevel}
-                            </span>
-                        )}
-                    </div>
-                    {(authError || !isOnline) && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${authError ? 'border-rose-300/40 bg-rose-500/12 text-rose-100' : 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100'}`}>
-                                {authHealthLabel}
-                            </span>
-                            {!isOnline && (
-                                <span className="rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] border-amber-300/40 bg-amber-500/12 text-amber-100">
-                                    Offline
-                                </span>
-                            )}
-                        </div>
-                    )}
-                </div>
-                <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Launch Path</div>
-                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-                        {['start', 'resume', 'advanced'].map((modeId) => {
-                            const active = landingLaunchMode === modeId;
-                            const modeMeta = launchModeMeta[modeId];
-                            return (
-                                <button
-                                    key={modeId}
-                                    type="button"
-                                    onClick={() => setLandingLaunchMode(modeId)}
-                                    className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                                        active
-                                            ? 'border-pink-300/45 bg-gradient-to-r from-cyan-500/16 via-sky-500/14 to-pink-500/14 text-white'
-                                            : 'border-cyan-400/20 bg-[#0d1526]/70 text-cyan-100/88 hover:border-cyan-300/35 hover:bg-cyan-500/10'
-                                    }`}
-                                >
-                                    <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">{modeMeta.label}</div>
-                                    <div className="mt-2 text-sm font-semibold">{modeMeta.title}</div>
-                                    <div className="mt-1 text-xs text-cyan-100/70">{modeMeta.detail}</div>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-                {landingLaunchMode === 'start' && (
-                    <>
-                        <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Start Tonight</div>
-                            <div className="mt-1 text-sm font-semibold text-white">
-                                {shouldShowSetupCard ? 'Finish setup, then open your first room' : 'Create a fresh room and go live fast'}
-                            </div>
-                            <div className="mt-1 text-xs text-cyan-100/72">
-                                {shouldShowSetupCard
-                                    ? 'Keep the first launch simple.'
-                                    : 'Private by default. Publish to Discover only if you want tonight\'s room listed.'}
-                            </div>
-                            {shouldShowSetupCard && (
-                                <div className="mt-3 rounded-xl border border-pink-300/30 bg-gradient-to-r from-cyan-500/10 via-sky-500/10 to-pink-500/10 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100/75">First-Time Setup</div>
-                                    <div className="mt-1 text-sm font-semibold text-white">Set your host identity once.</div>
-                                    <button
-                                        onClick={() => {
-                                            if (!canUseWorkspaceOnboarding) {
-                                                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                                                return;
-                                            }
-                                            openOnboardingWizard();
-                                        }}
-                                        disabled={!canUseWorkspaceOnboarding}
-                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} mt-3 w-full py-3 text-sm uppercase tracking-[0.2em] bg-gradient-to-r from-[#00C4D9] via-[#48d5eb] to-[#EC4899] text-black border-transparent shadow-[0_0_24px_rgba(0,196,217,0.24)] ${!canUseWorkspaceOnboarding ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    >
-                                        Finish Host Setup
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                        {!shouldShowSetupCard && (
-                            <div className="mb-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-discovery-quick-toggle>
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Discover Listing</div>
-                                        <div className="mt-1 text-sm font-semibold text-white">Decide now if this room should be visible in Discover.</div>
-                                        <div className="mt-1 text-xs text-cyan-100/72">
-                                            No street address is required to publish. Venue name plus city/state is enough for a first pass, and exact map placement can be added later.
-                                        </div>
-                                    </div>
-                                    <div className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em] ${
-                                        discoveryListingEnabled
-                                            ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
-                                            : 'border-zinc-300/20 bg-white/5 text-zinc-200'
-                                    }`}>
-                                        {discoveryListingEnabled ? 'Discover On' : 'Private Default'}
-                                    </div>
-                                </div>
-                                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setDiscoveryListingMode(false)}
-                                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                                            !discoveryListingEnabled
-                                                ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
-                                                : 'border-white/10 bg-black/25 text-cyan-100/78 hover:border-cyan-300/25 hover:bg-cyan-500/8'
-                                        }`}
-                                    >
-                                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Keep Private</div>
-                                        <div className="mt-1 text-sm font-semibold">Start the room without listing it</div>
-                                        <div className="mt-1 text-xs text-cyan-100/68">Best default for test runs, invite-only rooms, or quick venue setup.</div>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDiscoveryListingMode(true)}
-                                        className={`rounded-xl border px-3 py-3 text-left transition-colors ${
-                                            discoveryListingEnabled
-                                                ? 'border-pink-300/45 bg-gradient-to-r from-cyan-500/16 via-sky-500/14 to-pink-500/14 text-white'
-                                                : 'border-white/10 bg-black/25 text-cyan-100/78 hover:border-pink-300/35 hover:bg-pink-500/8'
-                                        }`}
-                                    >
-                                        <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-100/70">Show In Discover</div>
-                                        <div className="mt-1 text-sm font-semibold">Publish this room for drop-in guests</div>
-                                        <div className="mt-1 text-xs text-cyan-100/68">Use a light listing now, then refine map details later if needed.</div>
-                                    </button>
-                                </div>
-                                <div className={`mt-3 rounded-xl border px-3 py-2.5 ${
-                                    discoveryListingEnabled
-                                        ? 'border-emerald-300/30 bg-emerald-500/10'
-                                        : 'border-white/10 bg-black/20'
-                                }`}>
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/70">
-                                        {discoveryListingEnabled ? 'Discover Summary' : 'Launch Default'}
-                                    </div>
-                                    <div className="mt-1 text-xs text-white/88">{discoveryLaunchSummary}</div>
-                                </div>
-                                {discoveryListingEnabled && (
-                                    <>
-                                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            <input
-                                                value={quickLaunchDiscovery.venueName}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, venueName: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                placeholder="Venue name or room label"
-                                            />
-                                            <input
-                                                value={quickLaunchDiscovery.title}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                placeholder="Public listing title (optional)"
-                                            />
-                                            <input
-                                                value={quickLaunchDiscovery.city}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                placeholder="City"
-                                            />
-                                            <input
-                                                value={quickLaunchDiscovery.state}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                placeholder="State"
-                                            />
-                                            <input
-                                                type="datetime-local"
-                                                value={quickLaunchDiscovery.startsAtLocal}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                            />
-                                            <label className="inline-flex items-center gap-2 rounded-md border border-cyan-400/25 bg-black/25 px-3 py-2 text-xs text-cyan-100/90">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!!quickLaunchDiscovery.virtualOnly}
-                                                    onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))}
-                                                />
-                                                Online-only room
-                                            </label>
-                                            <textarea
-                                                value={quickLaunchDiscovery.description}
-                                                onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))}
-                                                className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50 sm:col-span-2"
-                                                rows={2}
-                                                placeholder="Short listing description (optional)"
-                                            />
-                                        </div>
-                                        {!quickLaunchDiscovery.virtualOnly && (
-                                            <details className="mt-3 rounded-xl border border-cyan-400/20 bg-black/20 px-3 py-3 text-left">
-                                                <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">
-                                                    <span>Exact Map Placement</span>
-                                                    <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                                                </summary>
-                                                <div className="mt-2 text-[11px] text-cyan-100/72">
-                                                    Street address and coordinates are optional. Use them only when you want a more precise map pin.
-                                                </div>
-                                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                                    <input
-                                                        value={quickLaunchDiscovery.address1}
-                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))}
-                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50 sm:col-span-2"
-                                                        placeholder="Street address (optional)"
-                                                    />
-                                                    <input
-                                                        value={quickLaunchDiscovery.lat}
-                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))}
-                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                        placeholder="Latitude (optional)"
-                                                    />
-                                                    <input
-                                                        value={quickLaunchDiscovery.lng}
-                                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))}
-                                                        className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-2 text-xs text-cyan-50"
-                                                        placeholder="Longitude (optional)"
-                                                    />
-                                                </div>
-                                            </details>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        )}
-                        <button
-                            data-host-create-room-primary
-                            onClick={() => {
-                                if (creatingRoom || joiningRoom || roomManagerBusyCode || launchAccessPending) return;
-                                if (canQuickStartRoom) {
-                                    createRoom({ openNightSetup: false });
-                                    return;
-                                }
-                                if (canUseWorkspaceOnboarding) {
-                                    toast('Quick create is locked until Guided Setup completes workspace identity.');
-                                    openOnboardingWizard();
-                                    return;
-                                }
-                                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                            }}
-                            disabled={primaryLaunchDisabled}
-                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full py-3 text-sm uppercase tracking-[0.24em] mb-3 ${primaryLaunchDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            {launchAccessPending
-                                ? 'Checking Access...'
-                                : creatingRoom
-                                    ? 'Starting Room...'
-                                    : (shouldShowSetupCard && !canQuickStartRoom
-                                        ? 'Finish Setup First'
-                                        : discoveryListingEnabled
-                                            ? 'Start + Publish Room'
-                                            : 'Start New Room')}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setLandingLaunchMode('advanced')}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full py-2.5 text-xs uppercase tracking-[0.18em] mb-3 border-cyan-400/25 bg-cyan-500/8 text-cyan-100`}
-                        >
-                            Open Advanced Setup
-                        </button>
-                        {!shouldShowSetupCard && (
-                        <details className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                            <summary className="cursor-pointer list-none flex items-center justify-between text-xs uppercase tracking-[0.18em] text-cyan-100">
-                                <span>More Options For Returning Hosts</span>
-                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                            </summary>
-                            <div className="mt-3 text-xs text-cyan-100/70">
-                                Quick start opens a room immediately. Reopen and diagnostics stay separate.
-                            </div>
-                            <button
-                                data-host-quick-start
-                                onClick={() => createRoom()}
-                                disabled={creatingRoom || !canQuickStartRoom || launchAccessPending}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 w-full py-2.5 text-xs uppercase tracking-[0.2em] shadow-[0_0_28px_rgba(236,72,153,0.25)] ${creatingRoom || !canQuickStartRoom || launchAccessPending ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                {launchAccessPending ? 'Checking Access...' : creatingRoom ? 'Starting Room...' : 'Quick Start Room'}
-                            </button>
-                            {!canQuickStartRoom && (
-                                <div className="mt-2 text-[11px] text-amber-200/85">
-                                    Finish setup first to unlock quick start on this account.
-                                </div>
-                            )}
-                        </details>
-                        )}
-                    </>
-                )}
-                {!uid && authError && (
-                    <div className="mb-3 text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl px-3 py-2 text-left">
-                        Auth failed: {authError.code || authError.message || 'Unknown error'}
-                        {retryAuth && (
-                            <button onClick={retryAuth} className="ml-2 underline text-red-200">Retry</button>
-                        )}
-                    </div>
-                )}
-                {landingLaunchMode === 'resume' && (
-                    <>
-                        <div className="rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                        <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Reopen Previous Room</div>
-                        <div className="mt-1 text-sm font-semibold text-white">Enter a room code or pick a recent room</div>
-                        <div className="mt-1 text-xs text-cyan-100/72">
-                            This lane is for getting back into a live room quickly. Cleanup, archive, and recovery tools stay under Advanced Setup.
-                        </div>
-                        <div className="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
-                            <input
-                                value={roomCodeInput}
-                                onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') joinRoom();
-                                }}
-                                placeholder="ROOM CODE"
-                                className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                            />
-                            <button
-                                onClick={() => joinRoom()}
-                                disabled={joiningRoom || !!roomManagerBusyCode}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[120px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                {joiningRoom ? 'Opening...' : 'Open'}
-                            </button>
-                        </div>
-                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <button
-                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'queue.live_run')}
-                                disabled={joiningRoom || !!roomManagerBusyCode}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Open Host Controls
-                            </button>
-                            <button
-                                onClick={() => openExistingRoomWorkspace(roomCodeInput, 'ops.room_setup')}
-                                disabled={joiningRoom || !!roomManagerBusyCode}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Open Room Settings
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setLandingLaunchMode('advanced')}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/50 hover:bg-cyan-500/20`}
-                            >
-                                Advanced Tools
-                            </button>
-                        </div>
-                        <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left" data-host-share-launch>
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Share + Launch</div>
-                            <div className="mt-1 text-xs text-cyan-100/70">
-                                {hasLaunchRoomCode
-                                    ? `Room ${launchRoomCodeCandidate} ready. Send the audience link and open TV in one pass.`
-                                    : 'Enter a room code above to enable audience + TV launch actions.'}
-                            </div>
-                            {hasLaunchRoomCode && (
-                                <div className="mt-2 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2 py-1.5 text-[11px] text-cyan-100/80 font-mono break-all">
-                                    {launchAudienceUrl}
-                                </div>
-                            )}
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    disabled={!hasLaunchRoomCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Open Audience App
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        try {
-                                            await navigator.clipboard.writeText(launchUrls.audienceUrl);
-                                            toast('Audience join link copied.');
-                                        } catch {
-                                            toast(launchUrls.audienceUrl);
-                                        }
-                                    }}
-                                    disabled={!hasLaunchRoomCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Copy Join Link
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const code = resolveLaunchRoomCode();
-                                        if (!code) return;
-                                        window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer');
-                                    }}
-                                    disabled={!hasLaunchRoomCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.16em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Open Public TV
-                                </button>
-                            </div>
-                        </div>
-                        </div>
-                        {renderRecentRoomList({ managementMode: false })}
-                    </>
-                )}
-                {landingLaunchMode === 'advanced' && (
-                    <>
-                        <div className="mt-4 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Advanced Setup</div>
-                            <div className="mt-1 text-sm font-semibold text-white">Optional room listing details, diagnostics, and recovery</div>
-                            <div className="mt-1 text-xs text-cyan-100/72">
-                                Keep this lane for anything beyond the core launch path: public discover listing details, recovery shortcuts, cleanup, and archive tools.
-                            </div>
-                        </div>
-                        <div className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Room Tools By Code</div>
-                            <div className="mt-1 text-xs text-cyan-100/70">
-                                Enter a room code here when you need diagnostics, cleanup, or launch recovery without browsing recent rooms first.
-                            </div>
-                            <div className="mt-3 flex flex-col sm:flex-row gap-2 justify-center">
-                                <input
-                                    value={roomCodeInput}
-                                    onChange={e => setRoomCodeInput(e.target.value.toUpperCase())}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics');
-                                    }}
-                                    placeholder="ROOM CODE"
-                                    className={`${STYLES.input} text-center text-xl font-mono w-full tracking-[0.3em] bg-[#070b17]/90 border-cyan-300/35 focus:border-pink-300 placeholder-cyan-100/35`}
-                                />
-                                <button
-                                    onClick={() => openExistingRoomWorkspace(roomCodeInput, 'advanced.diagnostics')}
-                                    disabled={joiningRoom || !!roomManagerBusyCode}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[170px] border-cyan-300/35 bg-gradient-to-r from-[#0d2333] via-[#111a31] to-[#2b1330] text-cyan-100 hover:border-pink-300/55 ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    {joiningRoom ? 'Opening...' : 'Open Diagnostics'}
-                                </button>
-                                {canPermanentlyDeleteRooms && (
-                                    <button
-                                        onClick={() => runLandingRoomPermanentDelete(roomCodeInput)}
-                                        disabled={joiningRoom || !!roomManagerBusyCode}
-                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-6 py-3 text-sm uppercase tracking-[0.2em] sm:min-w-[170px] ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    >
-                                        {roomManagerBusyAction === 'delete' && roomManagerBusyCode === String(roomCodeInput || '').trim().toUpperCase() ? 'Deleting...' : 'Delete Forever'}
-                                    </button>
-                                )}
-                            </div>
-                            {canPermanentlyDeleteRooms && (
-                                <div className="mt-2 text-[11px] text-rose-200/85">
-                                    Permanent delete removes the room doc, queue/history/activity, uploads, and public listing. Type the room code to confirm.
-                                </div>
-                            )}
-                        </div>
-                        <details
-                            className="mt-3 rounded-xl border border-cyan-400/25 bg-[#0b1120]/78 px-3 py-3 text-left"
-                            data-host-discovery-launch
-                            open={landingListingDetailsOpen}
-                            onToggle={(event) => setShowLandingListingOptions(event.currentTarget.open)}
-                        >
-                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">
-                                <span>Discover Listing Refinements</span>
-                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                            </summary>
-                            <div className="mt-2 text-[11px] text-cyan-100/75">
-                                Private remains the default. Use this drawer to publish the room, add a venue label, or tighten map placement without slowing down the main launch path.
-                            </div>
-                            <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                <input type="checkbox" checked={!!quickLaunchDiscovery.publicRoom} onChange={(e) => setDiscoveryListingMode(e.target.checked)} />
-                                Publish this room in Discover
-                            </label>
-                            {quickLaunchDiscovery.publicRoom ? (
-                                <>
-                                    <label className="mt-2 inline-flex items-center gap-2 text-xs text-cyan-100/90">
-                                        <input type="checkbox" checked={!!quickLaunchDiscovery.virtualOnly} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, virtualOnly: e.target.checked }))} />
-                                        Online-only room
-                                    </label>
-                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                        <input value={quickLaunchDiscovery.venueName} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, venueName: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Venue name or room label" />
-                                        <input value={quickLaunchDiscovery.title} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, title: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Public title (optional)" />
-                                        <input value={quickLaunchDiscovery.city} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, city: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="City" />
-                                        <input value={quickLaunchDiscovery.state} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, state: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="State" />
-                                        <input type="datetime-local" value={quickLaunchDiscovery.startsAtLocal} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, startsAtLocal: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" />
-                                        <div className="rounded-md border border-cyan-400/18 bg-black/20 px-3 py-2 text-[11px] text-cyan-100/72">
-                                            Street address is optional. Venue plus city/state is enough for a lightweight Discover listing.
-                                        </div>
-                                        <textarea value={quickLaunchDiscovery.description} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, description: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" rows={2} placeholder="Short description (optional)" />
-                                    </div>
-                                    {!quickLaunchDiscovery.virtualOnly && (
-                                        <details className="mt-3 rounded-xl border border-cyan-400/20 bg-black/20 px-3 py-3 text-left">
-                                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-cyan-100/78">
-                                                <span>Exact Map Placement</span>
-                                                <i className="fa-solid fa-chevron-down text-cyan-200/70"></i>
-                                            </summary>
-                                            <div className="mt-2 text-[11px] text-cyan-100/72">
-                                                Add a street address or coordinates only when you want a tighter map pin.
-                                            </div>
-                                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                <input value={quickLaunchDiscovery.address1} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, address1: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50 sm:col-span-2" placeholder="Street address (optional)" />
-                                                <input value={quickLaunchDiscovery.lat} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lat: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Latitude (optional)" />
-                                                <input value={quickLaunchDiscovery.lng} onChange={(e) => setQuickLaunchDiscovery((prev) => ({ ...prev, lng: e.target.value }))} className="rounded-md border border-cyan-400/25 bg-black/35 px-2 py-1.5 text-xs text-cyan-50" placeholder="Longitude (optional)" />
-                                            </div>
-                                        </details>
-                                    )}
-                                </>
-                            ) : (
-                                <div className="mt-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-cyan-100/72">
-                                    Rooms stay unlisted until you explicitly turn publishing on.
-                                </div>
-                            )}
-                        </details>
-                        <details className="mt-3 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-3 text-left" data-host-troubleshooting>
-                            <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] uppercase tracking-[0.22em] text-amber-100/85">
-                                <span>Need Help?</span>
-                                <i className="fa-solid fa-chevron-down text-amber-200/70"></i>
-                            </summary>
-                            <div className="mt-2 text-xs text-amber-100/80">Quick recovery shortcuts when a launch step fails.</div>
-                            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; await openExistingRoomWorkspace(code, 'advanced.diagnostics'); }} disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode} className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}>Can&apos;t Open Room</button>
-                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; try { await navigator.clipboard.writeText(launchUrls.audienceUrl); toast('Audience join link copied.'); } catch { toast(launchUrls.audienceUrl); } window.open(launchUrls.audienceUrl, '_blank', 'noopener,noreferrer'); }} disabled={!hasLaunchRoomCode} className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode ? 'opacity-60 cursor-not-allowed' : ''}`}>Audience Can&apos;t Join</button>
-                                <button type="button" onClick={async () => { const code = resolveLaunchRoomCode(); if (!code) return; window.open(launchUrls.tvUrl, '_blank', 'noopener,noreferrer'); await openExistingRoomWorkspace(code, 'advanced.diagnostics'); }} disabled={!hasLaunchRoomCode || joiningRoom || !!roomManagerBusyCode} className={`${STYLES.btnStd} ${STYLES.btnInfo} text-xs uppercase tracking-[0.14em] ${!hasLaunchRoomCode || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}>TV Not Loading</button>
-                            </div>
-                        </details>
-                        {renderRecentRoomList({ managementMode: true })}
-                    </>
-                )}
-                {entryError && (
-                    <div className="mt-3 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-3 py-2 text-left">
-                        <div>{entryError}</div>
-                        <button
-                            type="button"
-                            onClick={retryLastHostAction}
-                            disabled={creatingRoom || joiningRoom || !!roomManagerBusyCode}
-                            className={`mt-2 inline-flex items-center gap-2 rounded-md border border-rose-300/45 bg-rose-500/15 px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-rose-100 ${creatingRoom || joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Retry Last Action
-                        </button>
-                    </div>
-                )}
-                {hostUpdateDeploymentBanner && (
-                    <div className="mt-3">
-                        {hostUpdateDeploymentBanner}
-                    </div>
-                )}
-                </div>
-                <div className="space-y-4 text-left">
-                    <div className="rounded-[1.6rem] border border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,17,29,0.92),rgba(21,11,34,0.82))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.22)]">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-100/68">Room Library</div>
-                                <div className="mt-1 text-xl font-black text-white">Manage old rooms without leaving launch.</div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setLandingLaunchMode('advanced')}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] uppercase tracking-[0.18em] border-cyan-300/28 bg-cyan-500/10 text-cyan-100`}
-                            >
-                                Open Full Tools
-                            </button>
-                        </div>
-                        <div className="mt-2 text-xs text-cyan-100/72">
-                            Keep reopen and recovery visible. This side rail is the fast path for recent rooms, while Advanced still holds deeper cleanup and diagnostics.
-                        </div>
-                        {recentHostRoomsLoading ? (
-                            <div className="mt-4 rounded-xl border border-cyan-400/18 bg-cyan-500/8 px-3 py-3 text-xs text-cyan-100/72">
-                                Syncing recent rooms...
-                            </div>
-                        ) : recentRoomSnapshot.length > 0 ? (
-                            <div className="mt-4 space-y-2.5">
-                                {recentRoomSnapshot.map((roomItem) => {
-                                    const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
-                                    return (
-                                        <div
-                                            key={`portal-${roomItem.code}`}
-                                            className="rounded-[1.15rem] border border-white/10 bg-[linear-gradient(145deg,rgba(9,18,30,0.86),rgba(24,11,34,0.72))] px-3 py-3"
-                                        >
-                                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <div className="text-base font-black tracking-[0.08em] text-white">{roomItem.code}</div>
-                                                        {roomItem.archived && (
-                                                            <span className="rounded-full border border-amber-300/35 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
-                                                                Archived
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="mt-1 text-[11px] text-cyan-100/70">
-                                                        {(roomItem.orgName || 'Workspace')}
-                                                        {' | '}
-                                                        {(roomItem.activeMode || 'karaoke')}
-                                                    </div>
-                                                    <div className="mt-1 text-[11px] text-cyan-100/55">
-                                                        {new Date(modifiedMs).toLocaleString()}
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-wrap gap-1.5">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
-                                                        disabled={joiningRoom || !!roomManagerBusyCode}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-2.5 py-1 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        Open
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openExistingRoomWorkspace(roomItem.code, 'advanced.diagnostics')}
-                                                        disabled={joiningRoom || !!roomManagerBusyCode}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] px-2.5 py-1 ${joiningRoom || roomManagerBusyCode ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        Manage
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : (
-                            <div className="mt-4 rounded-[1.15rem] border border-cyan-400/18 bg-cyan-500/8 px-3 py-3">
-                                <div className="text-sm font-semibold text-white">No previous rooms yet.</div>
-                                <div className="mt-1 text-xs text-cyan-100/72">Create your first room and this library becomes your reopen and cleanup shelf.</div>
-                                <button
-                                    type="button"
-                                    onClick={() => setLandingLaunchMode('start')}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} mt-3 text-[10px] uppercase tracking-[0.18em] px-3 py-1.5`}
-                                >
-                                    Start Tonight
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="rounded-[1.6rem] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_top,rgba(255,198,108,0.12),transparent_30%),linear-gradient(145deg,rgba(20,10,31,0.92),rgba(8,18,30,0.9))] px-4 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.26)]">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-amber-100/78">Release Desk</div>
-                                <div className="mt-1 text-xl font-black text-white">{HOST_PORTAL_RELEASE_BRIEF.headline}</div>
-                            </div>
-                            <div className="rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100/84">
-                                {VERSION}
-                            </div>
-                        </div>
-                        <div className="mt-2 text-xs text-cyan-100/72">{HOST_PORTAL_RELEASE_BRIEF.dateLabel}</div>
-                        <div className="mt-2 text-sm text-cyan-50/88">{HOST_PORTAL_RELEASE_BRIEF.summary}</div>
-                        <div className="mt-4 rounded-[1.15rem] border border-white/10 bg-black/18 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Latest update</div>
-                            <div className="mt-2 space-y-2">
-                                {HOST_PORTAL_RELEASE_BRIEF.shipped.map((item) => (
-                                    <div key={`release-${item}`} className="flex gap-2 text-xs text-cyan-50/88">
-                                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300" />
-                                        <span>{item}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                            <div className="rounded-[1.15rem] border border-amber-300/18 bg-amber-500/8 px-3 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-amber-100/80">Known issues</div>
-                                <div className="mt-2 space-y-2">
-                                    {HOST_PORTAL_RELEASE_BRIEF.knownIssues.map((item) => (
-                                        <div key={`issue-${item}`} className="flex gap-2 text-xs text-amber-50/88">
-                                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-300" />
-                                            <span>{item}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="rounded-[1.15rem] border border-emerald-300/18 bg-emerald-500/8 px-3 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100/80">Test focus</div>
-                                <div className="mt-2 space-y-2">
-                                    {HOST_PORTAL_RELEASE_BRIEF.qaFocus.map((item) => (
-                                        <div key={`qa-${item}`} className="flex gap-2 text-xs text-emerald-50/88">
-                                            <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-300" />
-                                            <span>{item}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                onClick={() => window.open(marketingChangelogUrl, '_blank', 'noopener,noreferrer')}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[10px] uppercase tracking-[0.18em]`}
-                            >
-                                Open Public Changelog
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setLandingLaunchMode('advanced')}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] uppercase tracking-[0.18em]`}
-                            >
-                                Review Diagnostics
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                </div>
-            </div>
+            <HostRoomLaunchPad
+                STYLES={STYLES}
+                launchState={launchState}
+                launchStateTone={launchStateTone}
+                launchStateHelp={launchStateHelp}
+                launchAccessPending={launchAccessPending}
+                shouldShowSetupCard={shouldShowSetupCard}
+                canUseWorkspaceOnboarding={canUseWorkspaceOnboarding}
+                openOnboardingWizard={openOnboardingWizard}
+                launchRoomName={launchRoomName}
+                setLaunchRoomName={setLaunchRoomName}
+                presets={Object.values(HOST_NIGHT_PRESETS)}
+                resolvedLaunchPresetId={resolvedLaunchPresetId}
+                setHostNightPreset={setHostNightPreset}
+                discoveryListingEnabled={discoveryListingEnabled}
+                setDiscoveryListingMode={setDiscoveryListingMode}
+                quickLaunchDiscovery={quickLaunchDiscovery}
+                setQuickLaunchDiscovery={setQuickLaunchDiscovery}
+                eventCreditsConfig={eventCreditsConfig}
+                setEventCreditsConfig={setEventCreditsConfig}
+                handleLaunchVenueInputChange={handleLaunchVenueInputChange}
+                hasSelectedVenue={hasSelectedVenue}
+                discoverVenueSummary={discoverVenueSummary}
+                venueSearchLoading={venueSearchLoading}
+                venueSearchError={venueSearchError}
+                venueSearchResults={venueSearchResults}
+                selectLaunchVenueMatch={selectLaunchVenueMatch}
+                landingListingDetailsOpen={landingListingDetailsOpen}
+                setShowLandingListingOptions={setShowLandingListingOptions}
+                showLaunchCoHosts={showLaunchCoHosts}
+                setShowLaunchCoHosts={setShowLaunchCoHosts}
+                launchCoHostUids={launchCoHostUids}
+                launchCoHostSearch={launchCoHostSearch}
+                setLaunchCoHostSearch={setLaunchCoHostSearch}
+                workspaceOperatorLoading={workspaceOperatorLoading}
+                workspaceOperatorError={workspaceOperatorError}
+                filteredLaunchCoHosts={filteredLaunchCoHosts}
+                toggleLaunchCoHost={toggleLaunchCoHost}
+                handleStartLauncherRoom={handleStartLauncherRoom}
+                canStartLauncherRoom={canStartLauncherRoom}
+                creatingRoom={creatingRoom}
+                selectedLaunchPreset={selectedLaunchPreset}
+                landingLaunchMode={landingLaunchMode}
+                setLandingLaunchMode={setLandingLaunchMode}
+                entryError={entryError}
+                retryLastHostAction={retryLastHostAction}
+                hostUpdateDeploymentBanner={hostUpdateDeploymentBanner}
+                recentHostRoomsLoading={recentHostRoomsLoading}
+                recentRoomSnapshot={recentRoomSnapshot}
+                roomManagerBusyCode={roomManagerBusyCode}
+                joiningRoom={joiningRoom}
+                openExistingRoomWorkspace={openExistingRoomWorkspace}
+                roomCodeInput={roomCodeInput}
+                setRoomCodeInput={setRoomCodeInput}
+                launchRoomCodeCandidate={launchRoomCodeCandidate}
+                hasLaunchRoomCode={hasLaunchRoomCode}
+                joinRoom={joinRoom}
+                renderRecentRoomList={renderRecentRoomList}
+            />
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
                     <div className="w-full max-w-5xl mx-auto bg-gradient-to-br from-[#151026]/95 via-[#0f1628]/95 to-[#0a111c]/95 border border-cyan-300/35 rounded-[2rem] shadow-[0_34px_100px_rgba(0,0,0,0.62),0_0_60px_rgba(236,72,153,0.16)] overflow-hidden text-left">
@@ -13290,7 +14145,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </div>
                 </div>
             )}
-            </div>
         </div>
     );
     }
@@ -13347,7 +14201,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
         showScoring: !!showScoring,
         showFameLevel: !!showFameLevel,
-        allowSingerTrackSelect: !!allowSingerTrackSelect,
+        requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
+        allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+        audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+        programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
+        runOfShowEnabled: !!runOfShowEnabled,
+        runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
@@ -13381,7 +14240,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             readyCheckRewardPoints: Math.max(0, Number(room.readyCheckRewardPoints || 0)),
             showScoring: room.showScoring !== false,
             showFameLevel: room.showFameLevel !== false,
-            allowSingerTrackSelect: !!room.allowSingerTrackSelect,
+            requestMode: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect),
+            allowSingerTrackSelect: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+            audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
+            programMode: normalizeRunOfShowProgramMode(room.programMode),
+            runOfShowEnabled: room.runOfShowEnabled === true || normalizeRunOfShowProgramMode(room.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+            runOfShowDirector: normalizeRunOfShowDirector(room.runOfShowDirector || {}),
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: !!room.autoLyricsOnQueue,
@@ -13840,6 +14704,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     audiencePreviewVisible={audiencePreviewVisible}
                     setAudiencePreviewVisible={setAudiencePreviewVisible}
                     tabletTouchViewport={tabletTouchViewport}
+                    runOfShowEnabled={isRunOfShowRoom}
+                    runOfShowDirector={runOfShowDirector}
+                    runOfShowLiveItem={runOfShowLiveItem}
+                    runOfShowStagedItem={runOfShowStagedItem}
+                    runOfShowNextItem={runOfShowNextItem}
+                    onOpenShowWorkspace={() => handleTopChromeTabChange('show')}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -13881,6 +14751,94 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <>
                         <QueueTab {...queueTabProps} />
                     </>
+                )}
+                {tab === 'run_of_show' && (
+                    <div className="flex h-full min-h-0 flex-col gap-4">
+                        <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 px-4 py-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Show Workspace</div>
+                                    <div className="mt-1 text-xl font-black text-white">Run of show is a first-class host surface now.</div>
+                                    <div className="mt-1 text-sm text-zinc-300">Build the timeline, review approvals, and run the night without opening admin settings first.</div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => openAdminWorkspace('ops.room_setup')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                    >
+                                        Admin Utilities
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTab('stage')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                    >
+                                        Back To Queue
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                            {roomCode ? (
+                                <RunOfShowDirectorPanel
+                                    enabled={runOfShowEnabled}
+                                    programMode={programMode}
+                                    director={runOfShowDirector}
+                                    runOfShowPolicy={runOfShowPolicy}
+                                    runOfShowRoles={runOfShowRoles}
+                                    runOfShowTemplateMeta={runOfShowTemplateMeta}
+                                    runOfShowTemplates={runOfShowTemplates}
+                                    submissions={runOfShowSubmissions}
+                                    roomUsers={users}
+                                    localLibrary={localLibrary}
+                                    ytIndex={ytIndex}
+                                    appleMusicAuthorized={appleMusicAuthorized}
+                                    previewActiveId={String(room?.tvPreviewOverlay?.active ? room?.tvPreviewOverlay?.itemId || '' : '')}
+                                    operatorRole={runOfShowOperatorRole}
+                                    operatorCapabilities={runOfShowOperatorCapabilities}
+                                    operatingHint={runOfShowOperatingHint}
+                                    onSetEnabled={setRunOfShowEnabledState}
+                                    onSetProgramMode={setRunOfShowProgramModeState}
+                                    onAddItem={addRunOfShowItem}
+                                    onDuplicateItem={duplicateRunOfShowItem}
+                                    onDeleteItem={deleteRunOfShowItem}
+                                    onMoveItem={moveRunOfShowItem}
+                                    onUpdateItem={patchRunOfShowItem}
+                                    onToggleAutomationPause={toggleRunOfShowAutomationPause}
+                                    onPrepareItem={prepareRunOfShowItem}
+                                    onPreviewItem={previewRunOfShowItem}
+                                    onClearPreview={clearRunOfShowPreview}
+                                    onStartItem={startRunOfShowItem}
+                                    onCompleteItem={completeRunOfShowItem}
+                                    onSkipItem={skipRunOfShowItem}
+                                    onReviewSubmission={reviewRunOfShowSubmission}
+                                    onUpdatePolicy={updateRunOfShowPolicyState}
+                                    onUpdateRoles={updateRunOfShowRolesState}
+                                    onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
+                                    onSaveTemplate={saveRunOfShowTemplate}
+                                    onApplyTemplate={applyRunOfShowTemplate}
+                                    onArchiveCurrent={archiveCurrentRunOfShow}
+                                />
+                            ) : (
+                                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-6 text-sm text-zinc-300">
+                                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Run Of Show</div>
+                                    <div className="mt-2 text-xl font-bold text-white">Create or reopen a room first.</div>
+                                    <div className="mt-2 max-w-2xl text-zinc-400">
+                                        Show planning stays out of the launch flow until there is an active room. Once a room exists, this workspace becomes the timeline-first planning surface for slots, approvals, co-hosts, and automation.
+                                    </div>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        <button type="button" onClick={() => openAdminWorkspace('ops.room_setup')} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
+                                            Open Room Setup
+                                        </button>
+                                        <button type="button" onClick={() => setTab('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>
+                                            Back To Queue
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
@@ -14936,16 +15894,74 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     );
                                 })}
                             </div>
-                            <label className="flex items-center gap-2 text-sm text-zinc-300 mt-3">
-                                <input
-                                    type="checkbox"
-                                    checked={allowSingerTrackSelect}
-                                    onChange={e => setAllowSingerTrackSelect(e.target.checked)}
-                                    className="accent-[#00C4D9]"
-                                />
-                                Singer-selected backing tracks
-                            </label>
-                            <div className="host-form-helper">Allows singers to attach a backing track URL to their request.</div>
+                            <div className="pt-3">
+                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience request policy</div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {REQUEST_MODE_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setRequestMode(option.id)}
+                                            className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                requestMode === option.id
+                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                            }`}
+                                        >
+                                            {option.shortLabel}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="host-form-helper mt-2">
+                                    {(REQUEST_MODE_OPTIONS.find((option) => option.id === requestMode) || REQUEST_MODE_OPTIONS[0]).description}
+                                </div>
+                            </div>
+                            <div className="pt-2">
+                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience shell experiment</div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {[
+                                        { id: 'classic', label: 'Classic' },
+                                        { id: 'streamlined', label: 'Streamlined' }
+                                    ].map((option) => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setAudienceShellVariant(option.id)}
+                                            className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                audienceShellVariant === option.id
+                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                            </div>
+                            <div className="host-form-helper">Classic keeps the current audience app. Streamlined uses the two-tab shell with soft live-mode takeovers.</div>
+                            </div>
+                            <div className="pt-4">
+                                <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-5">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.28em] text-cyan-300">Run Of Show</div>
+                                            <div className="mt-2 text-lg font-semibold text-white">Show planning lives in its own workspace now.</div>
+                                            <div className="mt-2 max-w-2xl text-sm text-zinc-300">
+                                                Use the top `Show` tab for the timeline, approvals, co-hosts, and live run-of-show controls. Admin keeps the room setup and deeper utilities, but no longer buries the main show board.
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button type="button" onClick={() => handleTopChromeTabChange('run_of_show')} className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}>
+                                                Open Show Workspace
+                                            </button>
+                                            {!roomCode ? (
+                                                <span className="rounded-full border border-white/10 bg-black/30 px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-300">
+                                                    Available after room creation
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         </>
                         )}
@@ -15943,6 +16959,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     {ytAddLoading ? EMOJI.refresh : 'Add to search'}
                                 </button>
+                                <button
+                                    onClick={() => { setShowYtIndex(true); setYtCurateQuery(''); setYtCurateResults([]); }}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 border-cyan-400/35 bg-cyan-500/10 text-cyan-100 hover:border-pink-300/55 hover:bg-cyan-500/20`}
+                                >
+                                    Open Curator
+                                </button>
                                 <div className="host-form-helper">Adds a backing track to search results.</div>
                             </div>
                             {ytAddStatus && <div className="host-form-helper host-form-helper-status">{ytAddStatus}</div>}
@@ -16288,43 +17310,166 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {showYtIndex && (
                             <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-                                    <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
-                                    <div className="text-lg font-bold">YouTube Index</div>
-                                    <div className="text-sm text-zinc-500">Playlist imports</div>
+                                    <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); setYtCurateQuery(''); setYtCurateResults([]); setYtCurateStatus(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
+                                    <div className="text-lg font-bold">YouTube Curator</div>
+                                    <div className="text-sm text-zinc-500">{ytIndexStats.total} indexed</div>
                                 </div>
-                                <div className="px-6 py-4">
-                                    <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl p-3 flex items-center gap-3">
-                                        <i className="fa-solid fa-magnifying-glass text-zinc-500"></i>
-                                        <input
-                                            value={ytIndexFilter}
-                                            onChange={e => setYtIndexFilter(e.target.value)}
-                                            className="flex-1 bg-transparent text-sm text-white outline-none"
-                                            placeholder="Filter YouTube index..."
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex-1 min-h-0 px-6 pb-6 custom-scrollbar touch-scroll-y">
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {ytIndex
-                                            .filter(item => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilter.toLowerCase()))
-                                            .map((item, idx) => (
-                                                <div key={`${item.videoId || item.trackName}-${idx}`} className="flex items-center gap-3 bg-zinc-800/60 border border-zinc-700 rounded-xl p-3">
-                                                    <img src={item.artworkUrl100} alt={item.trackName} className="w-12 h-12 rounded-lg object-cover" />
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="font-bold text-white truncate">{item.trackName}</div>
-                                                        <div className="text-sm text-zinc-400 truncate">{item.artistName}</div>
+                                <div className="flex-1 min-h-0 px-6 pb-6 pt-4 custom-scrollbar touch-scroll-y">
+                                    <div className="grid grid-cols-1 xl:grid-cols-[420px,minmax(0,1fr)] gap-4 min-h-0">
+                                        <div className="space-y-4">
+                                            <div className="rounded-2xl border border-cyan-400/20 bg-zinc-900/65 p-4">
+                                                <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/75">Build the room index</div>
+                                                <div className="mt-2 text-sm text-zinc-300">Search verified YouTube karaoke backings, then add the good ones to your room library so audience Apple requests can auto-resolve to them.</div>
+                                                <div className="mt-4 rounded-2xl border border-zinc-700 bg-black/25 px-4 py-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                                        <input
+                                                            value={ytCurateQuery}
+                                                            onChange={e => setYtCurateQuery(e.target.value)}
+                                                            className="flex-1 bg-transparent text-sm text-white outline-none"
+                                                            placeholder="Search verified YouTube karaoke..."
+                                                        />
                                                     </div>
-                                                    <button
-                                                        onClick={() => queueYouTubeFromCatalog(item)}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
-                                                    >
-                                                        + Add to Queue
-                                                    </button>
                                                 </div>
-                                            ))}
-                                        {ytIndex.filter(item => (`${item.trackName} ${item.artistName}`).toLowerCase().includes(ytIndexFilter.toLowerCase())).length === 0 && (
-                                            <div className="col-span-2 text-center text-zinc-500 text-sm">No matches</div>
-                                        )}
+                                                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Indexed</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{ytIndexStats.total}</div>
+                                                    </div>
+                                                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Playable</div>
+                                                        <div className="mt-1 text-lg font-black text-cyan-200">{ytIndexStats.playable}</div>
+                                                    </div>
+                                                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Proven</div>
+                                                        <div className="mt-1 text-lg font-black text-emerald-200">{ytIndexStats.proven}</div>
+                                                    </div>
+                                                </div>
+                                                {ytCurateStatus && (
+                                                    <div className="mt-3 text-xs text-zinc-400">{ytCurateStatus}</div>
+                                                )}
+                                            </div>
+                                            <div className="rounded-2xl border border-zinc-700 bg-zinc-900/50 p-4">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div>
+                                                        <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">Search results</div>
+                                                        <div className="text-sm text-white">{ytCurateLoading ? 'Checking YouTube...' : `${ytCurateResults.length} result${ytCurateResults.length === 1 ? '' : 's'}`}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 space-y-2 max-h-[60dvh] overflow-y-auto custom-scrollbar pr-1">
+                                                    {!ytCurateLoading && ytCurateResults.length === 0 && (
+                                                        <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
+                                                            Search song + artist to find verified YouTube karaoke tracks to add.
+                                                        </div>
+                                                    )}
+                                                    {ytCurateResults.map((item) => {
+                                                        const alreadyIndexed = (ytIndex || []).some((entry) => String(entry?.videoId || '').trim() === String(item.videoId || '').trim());
+                                                        return (
+                                                            <div key={item.videoId} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <img src={item.artworkUrl100} alt={item.trackName} className="h-12 w-12 rounded-lg object-cover" />
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="truncate text-sm font-bold text-white">{item.trackName}</div>
+                                                                        <div className="truncate text-sm text-zinc-400">{item.artistName}</div>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => addCuratedYouTubeResult(item)}
+                                                                        disabled={alreadyIndexed || ytIndexActionVideoId === item.videoId}
+                                                                        className={`${STYLES.btnStd} ${alreadyIndexed ? STYLES.btnNeutral : STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                                    >
+                                                                        {alreadyIndexed ? 'Indexed' : (ytIndexActionVideoId === item.videoId ? 'Adding...' : 'Add')}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-zinc-700 bg-zinc-900/55 p-4 min-h-0 flex flex-col">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">Room library</div>
+                                                    <div className="text-sm text-white">The audience can auto-land on these if the song intent matches.</div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl px-3 py-2 flex items-center gap-2">
+                                                        <i className="fa-solid fa-magnifying-glass text-zinc-500"></i>
+                                                        <input
+                                                            value={ytIndexFilter}
+                                                            onChange={e => setYtIndexFilter(e.target.value)}
+                                                            className="bg-transparent text-sm text-white outline-none"
+                                                            placeholder="Filter indexed tracks..."
+                                                        />
+                                                    </div>
+                                                    <select
+                                                        value={ytIndexSort}
+                                                        onChange={(e) => setYtIndexSort(e.target.value)}
+                                                        className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none"
+                                                    >
+                                                        <option value="recent">Newest first</option>
+                                                        <option value="usage">Most proven</option>
+                                                        <option value="alpha">A-Z</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid grid-cols-1 2xl:grid-cols-2 gap-3 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                                                {ytIndexFilteredSorted.map((item) => (
+                                                    <div key={item.videoId} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <img src={item.artworkUrl100} alt={item.trackName} className="w-14 h-14 rounded-lg object-cover" />
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="font-bold text-white truncate">{item.trackName}</div>
+                                                                <div className="text-sm text-zinc-400 truncate">{item.artistName}</div>
+                                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                                                        {item.playable !== false ? 'Playable' : 'Check embed'}
+                                                                    </span>
+                                                                    {Number(item.successCount || 0) > 0 && (
+                                                                        <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                                                            {item.successCount} successful
+                                                                        </span>
+                                                                    )}
+                                                                    {Number(item.usageCount || 0) > 0 && (
+                                                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                            {item.usageCount} uses
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            <button
+                                                                onClick={() => queueYouTubeFromCatalog(item)}
+                                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                            >
+                                                                + Add to Queue
+                                                            </button>
+                                                            <a
+                                                                href={item.url}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}
+                                                            >
+                                                                Open
+                                                            </a>
+                                                            <button
+                                                                onClick={() => removeCuratedYouTubeResult(item.videoId)}
+                                                                disabled={ytIndexActionVideoId === item.videoId}
+                                                                className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}
+                                                            >
+                                                                {ytIndexActionVideoId === item.videoId ? 'Removing...' : 'Remove'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                                {ytIndexFilteredSorted.length === 0 && (
+                                                    <div className="text-center text-zinc-500 text-sm rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6">
+                                                        No indexed YouTube tracks match this filter yet.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

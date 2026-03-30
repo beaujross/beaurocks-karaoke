@@ -76,18 +76,87 @@ async function run() {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         activeMode: "bingo",
         autoDj: true,
+        audienceShellVariant: "streamlined",
         lobbyOrbSkinUrl: "https://example.com/orb.png",
+        eventCredits: {
+          enabled: true,
+          eventId: "aahf_kickoff",
+          eventLabel: "AAHF Karaoke Kick-Off",
+          generalAdmissionPoints: 200,
+          vipBonusPoints: 400,
+        },
+        programMode: "run_of_show",
+        runOfShowEnabled: true,
+        runOfShowPolicy: {
+          defaultAutomationMode: "manual",
+          lateBlockPolicy: "compress",
+          noShowPolicy: "pull_from_queue",
+          queueDivergencePolicy: "queue_can_fill_gaps",
+          blockedActionPolicy: "manual_override_allowed",
+        },
+        runOfShowRoles: {
+          coHosts: ["cohost_1"],
+          stageManagers: ["stage_1"],
+          mediaCurators: ["media_1"],
+        },
+        runOfShowTemplateMeta: {
+          currentTemplateId: "template_1",
+          currentTemplateName: "AAHF Kick-Off",
+        },
+        tvPreviewOverlay: {
+          active: true,
+          itemId: "intro_1",
+          headline: "Preview Intro",
+        },
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          items: [
+            {
+              id: "intro_1",
+              type: "intro",
+              title: "Introductions",
+              sequence: 1,
+              status: "ready",
+              visibility: "public",
+              automationMode: "auto",
+            },
+          ],
+        },
       }));
       assert.equal(result.ok, true);
       assert.deepEqual(
         new Set(result.updatedKeys),
-        new Set(["activeMode", "autoDj", "lobbyOrbSkinUrl"])
+        new Set([
+          "activeMode",
+          "autoDj",
+          "audienceShellVariant",
+          "lobbyOrbSkinUrl",
+          "eventCredits",
+          "programMode",
+          "runOfShowEnabled",
+          "runOfShowPolicy",
+          "runOfShowRoles",
+          "runOfShowTemplateMeta",
+          "tvPreviewOverlay",
+          "runOfShowDirector",
+        ])
       );
 
       const snap = await roomRef.get();
       assert.equal(snap.get("activeMode"), "bingo");
       assert.equal(snap.get("autoDj"), true);
+      assert.equal(snap.get("audienceShellVariant"), "streamlined");
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
+      assert.equal(snap.get("eventCredits.enabled"), true);
+      assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);
+      assert.equal(snap.get("programMode"), "run_of_show");
+      assert.equal(snap.get("runOfShowEnabled"), true);
+      assert.equal(snap.get("runOfShowPolicy.defaultAutomationMode"), "manual");
+      assert.deepEqual(snap.get("runOfShowRoles.coHosts"), ["cohost_1"]);
+      assert.equal(snap.get("runOfShowTemplateMeta.currentTemplateName"), "AAHF Kick-Off");
+      assert.equal(snap.get("tvPreviewOverlay.headline"), "Preview Intro");
+      assert.equal((snap.get("runOfShowDirector")?.items || [])[0]?.title, "Introductions");
     }],
 
     ["host can archive and restore room metadata", async () => {

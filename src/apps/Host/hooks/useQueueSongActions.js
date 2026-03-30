@@ -210,6 +210,8 @@ const useQueueSongActions = ({
     resolveDurationForUrl,
     generateAIContent,
     getAppleMusicUserToken,
+    onPersistTrustedCatalogChoice,
+    onUpsertYtIndexEntries,
     toast
 }) => {
     const resolvePreferredDuration = async (url, fallbackDuration, audioOnly = false) => {
@@ -784,12 +786,21 @@ const useQueueSongActions = ({
         const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId);
         const latestSnap = await getDoc(songRef).catch(() => null);
         const latestSong = latestSnap?.exists() ? (latestSnap.data() || {}) : {};
+        const wasReviewRequired = String(latestSong?.resolutionStatus || '').trim().toLowerCase() === 'review_required';
         const normalizedBacking = normalizeBackingChoice({
             mediaUrl: editForm.url,
             appleMusicId: editForm.appleMusicId
         });
         const normalizedUrl = normalizedBacking.mediaUrl;
         const normalizedAppleMusicId = normalizedBacking.appleMusicId;
+        const youtubeId = extractYouTubeId(normalizedUrl);
+        const trackSource = normalizedAppleMusicId
+            ? 'apple'
+            : youtubeId
+                ? 'youtube'
+                : normalizedUrl
+                    ? 'custom'
+                    : '';
         const originalBacking = normalizeBackingChoice({
             mediaUrl: editForm.originalUrl,
             appleMusicId: editForm.originalAppleMusicId
@@ -803,7 +814,8 @@ const useQueueSongActions = ({
             singerName: editForm.singer,
             albumArtUrl: editForm.art,
             duration: safeDuration,
-            audioOnly: isAudioUrl(normalizedUrl)
+            audioOnly: isAudioUrl(normalizedUrl),
+            trackSource: trackSource || null
         };
         if (playbackChanged) {
             updates.mediaUrl = normalizedUrl;
@@ -845,9 +857,121 @@ const useQueueSongActions = ({
                 updates.lyricsGenerationResolution = latestLyricsResolution || (latestTimedLyrics ? 'resolved' : '');
             }
         }
+        if (wasReviewRequired && (normalizedUrl || normalizedAppleMusicId)) {
+            updates.playbackReady = true;
+            updates.mediaResolutionStatus = 'host_reviewed';
+            updates.resolutionStatus = 'resolved';
+            updates.resolutionLayer = trackSource === 'youtube' ? 'host_favorite' : 'host_reviewed';
+            updates.reviewResolvedAt = serverTimestamp();
+            if (String(latestSong?.status || '').trim().toLowerCase() === 'pending') {
+                updates.status = 'requested';
+            }
+        }
         await updateDoc(songRef, updates);
+
+        const fallbackSongId = buildSongKey(editForm.title, editForm.artist || 'Unknown');
+        const canonicalMatch = await resolveCanonicalIdentitySafe({
+            songId: latestSong?.songId || fallbackSongId,
+            title: editForm.title,
+            artist: editForm.artist || 'Unknown',
+            source: trackSource,
+            mediaUrl: normalizedUrl,
+            appleMusicId: normalizedAppleMusicId
+        });
+        const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || editForm.title) : editForm.title;
+        const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || editForm.artist || 'Unknown') : (editForm.artist || 'Unknown');
+        let resolvedSongId = canonicalMatch?.songId || latestSong?.songId || fallbackSongId;
+        try {
+            const songRecord = await ensureSong({
+                title: canonicalTitle,
+                artist: canonicalArtist,
+                artworkUrl: editForm.art || '',
+                appleMusicId: normalizedAppleMusicId,
+                verifyMeta: editForm.art ? {} : false,
+                verifiedBy: hostName || 'host'
+            });
+            resolvedSongId = songRecord?.songId || resolvedSongId;
+        } catch (err) {
+            if (isCatalogPermissionDeniedError(err)) {
+                logCatalogPermissionSkip('saveEdit.ensureSong');
+            } else {
+                console.warn('saveEdit ensureSong failed', err);
+            }
+        }
+
+        let resolvedTrackId = latestSong?.trackId || null;
+        if (trackSource) {
+            if (canonicalMatch?.trackId) {
+                resolvedTrackId = canonicalMatch.trackId;
+            } else {
+                try {
+                    const trackRecord = await ensureTrack({
+                        songId: resolvedSongId,
+                        source: trackSource,
+                        mediaUrl: normalizedUrl || '',
+                        appleMusicId: normalizedAppleMusicId,
+                        duration: Number(updates.duration || safeDuration || 0) || null,
+                        audioOnly: isAudioUrl(normalizedUrl),
+                        backingOnly: false,
+                        addedBy: hostName || 'Host'
+                    });
+                    resolvedTrackId = trackRecord?.trackId || resolvedTrackId;
+                } catch (err) {
+                    if (isCatalogPermissionDeniedError(err)) {
+                        logCatalogPermissionSkip('saveEdit.ensureTrack');
+                    } else {
+                        console.warn('saveEdit ensureTrack failed', err);
+                    }
+                }
+            }
+        }
+
+        const metadataUpdates = {
+            songId: resolvedSongId,
+            trackId: resolvedTrackId || null,
+            trackSource: trackSource || null
+        };
+        if (canonicalMatch?.found) {
+            metadataUpdates.songTitle = canonicalTitle;
+            metadataUpdates.artist = canonicalArtist;
+        }
+        await updateDoc(songRef, metadataUpdates);
+
+        if (youtubeId && typeof onUpsertYtIndexEntries === 'function') {
+            await onUpsertYtIndexEntries([{
+                videoId: youtubeId,
+                trackName: canonicalTitle || editForm.title,
+                artistName: canonicalArtist || editForm.artist || 'YouTube',
+                artworkUrl100: editForm.art || '',
+                url: normalizedUrl,
+                playable: true,
+                sourceDetail: wasReviewRequired
+                    ? 'Resolved from host review and saved to room library.'
+                    : 'Added from host playback edit.',
+                usageCountDelta: 1
+            }]);
+        }
+
+        if (wasReviewRequired && (normalizedUrl || normalizedAppleMusicId) && typeof onPersistTrustedCatalogChoice === 'function') {
+            await onPersistTrustedCatalogChoice({
+                ...latestSong,
+                songTitle: canonicalTitle || editForm.title,
+                artist: canonicalArtist || editForm.artist || 'Unknown',
+                songId: resolvedSongId
+            }, {
+                trackId: resolvedTrackId || '',
+                source: trackSource || '',
+                mediaUrl: normalizedUrl || '',
+                appleMusicId: normalizedAppleMusicId || '',
+                duration: Number(updates.duration || safeDuration || 0) || safeDuration,
+                label: 'Host review selection',
+                layer: 'host_favorite',
+                approvalState: 'approved'
+            }, 'host_favorite');
+        }
+
         setEditingSongId(null);
-        toast('Song Updated');
+        toast(wasReviewRequired ? 'Backing attached and request resolved.' : 'Song Updated');
     };
 
     const generateLyrics = async () => {

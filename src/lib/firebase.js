@@ -582,6 +582,18 @@ const mergeAnonymousAccountData = async (payload = {}) => {
   return data || null;
 };
 
+const claimAudienceEventGrant = async (payload = {}) => {
+  await requireAppCheckToken("claimAudienceEventGrant");
+  const data = await callFunction("claimAudienceEventGrant", payload || {});
+  return data || null;
+};
+
+const redeemPromoCode = async (payload = {}) => {
+  await requireAppCheckToken("redeemPromoCode");
+  const data = await callFunction("redeemPromoCode", payload || {});
+  return data || null;
+};
+
 const ensureOrganization = async (orgName = "") => {
   await requireAppCheckToken("ensureOrganization");
   const data = await callFunction("ensureOrganization", { orgName });
@@ -597,6 +609,18 @@ const bootstrapOnboardingWorkspace = async (opts = {}) => {
 const getMyEntitlements = async () => {
   await requireAppCheckToken("getMyEntitlements");
   const data = await callFunction("getMyEntitlements");
+  return data || null;
+};
+
+const listHostWorkspaceOperators = async (payload = {}) => {
+  await requireAppCheckToken("listHostWorkspaceOperators");
+  const data = await callFunction("listHostWorkspaceOperators", payload || {});
+  return data || null;
+};
+
+const searchHostVenueAutocomplete = async (payload = {}) => {
+  await requireAppCheckToken("searchHostVenueAutocomplete");
+  const data = await callFunction("searchHostVenueAutocomplete", payload || {});
   return data || null;
 };
 
@@ -649,6 +673,30 @@ const updateRoomAsHost = async (roomCode = "", updates = {}) => {
     roomCode,
     updates: updates || {},
   });
+  return data || null;
+};
+
+const submitRunOfShowSlotSong = async (payload = {}) => {
+  await requireAppCheckToken("submitRunOfShowSlotSong");
+  const data = await callFunction("submitRunOfShowSlotSong", payload || {});
+  return data || null;
+};
+
+const reviewRunOfShowSlotSubmission = async (payload = {}) => {
+  await requireAppCheckToken("reviewRunOfShowSlotSubmission");
+  const data = await callFunction("reviewRunOfShowSlotSubmission", payload || {});
+  return data || null;
+};
+
+const executeRunOfShowAction = async (payload = {}) => {
+  await requireAppCheckToken("executeRunOfShowAction");
+  const data = await callFunction("executeRunOfShowAction", payload || {});
+  return data || null;
+};
+
+const manageRunOfShowTemplate = async (payload = {}) => {
+  await requireAppCheckToken("manageRunOfShowTemplate");
+  const data = await callFunction("manageRunOfShowTemplate", payload || {});
   return data || null;
 };
 
@@ -785,6 +833,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
         tight15: [],
         unlockedEmojis: [],
         firstPerformanceUnlocked: false,
+        pointsBalance: 0,
         createdAt: serverTimestamp(),
 
         // Subscription (no pay-to-win multipliers - only convenience/features)
@@ -847,6 +896,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
     if (!('tight15' in data)) updates.tight15 = [];
     if (!('unlockedEmojis' in data)) updates.unlockedEmojis = [];
     if (!('firstPerformanceUnlocked' in data)) updates.firstPerformanceUnlocked = false;
+    if (!('pointsBalance' in data)) updates.pointsBalance = 0;
     if (!('createdAt' in data)) updates.createdAt = serverTimestamp();
     if (!('vipProfile' in data)) updates.vipProfile = {
       location: '',
@@ -930,9 +980,13 @@ export {
   sendBeauRocksEmailSignInLink,
   joinRoomAudience,
   mergeAnonymousAccountData,
+  claimAudienceEventGrant,
+  redeemPromoCode,
   ensureOrganization,
   bootstrapOnboardingWorkspace,
   getMyEntitlements,
+  listHostWorkspaceOperators,
+  searchHostVenueAutocomplete,
   getMyUsageSummary,
   getMyUsageInvoiceDraft,
   saveMyUsageInvoiceDraft,
@@ -941,6 +995,10 @@ export {
   removeHostRoomDiscoveryListing,
   provisionHostRoom,
   updateRoomAsHost,
+  submitRunOfShowSlotSong,
+  reviewRunOfShowSlotSubmission,
+  executeRunOfShowAction,
+  manageRunOfShowTemplate,
   resolveQueueSongLyrics,
   runDemoDirectorAction,
   recordMarketingTelemetry,

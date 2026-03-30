@@ -6,6 +6,7 @@ const {
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
+  selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("../../functions/lib/popTrivia");
 
@@ -67,6 +68,38 @@ test("popTriviaServer.test", async () => {
   });
   assert.equal(fallbackQuestions.length, 4);
   assert.equal(fallbackQuestions.every((row) => row.source === "fallback"), true);
+
+  const sparseSelectedRows = selectPopTriviaSeedRows({
+    song: {
+      songTitle: "Mystery YouTube Cut",
+      artist: "Indie Friend",
+      source: "youtube",
+      mediaUrl: "https://youtu.be/demo1234567",
+    },
+    aiRows: [
+      {
+        q: "What year did this song hit the Billboard Hot 100?",
+        correct: "2016",
+        w1: "2014",
+        w2: "2018",
+        w3: "2020",
+      },
+      {
+        q: "Which song section usually sells the hook fastest in karaoke?",
+        correct: "The chorus",
+        w1: "The stage reset",
+        w2: "The outro silence",
+        w3: "The cable check",
+      },
+    ],
+    fallbackRows,
+    limit: 4,
+  });
+  assert.equal(
+    sparseSelectedRows.some((row) => /billboard/i.test(row.q)),
+    false
+  );
+  assert.equal(sparseSelectedRows.length, 4);
 
   const cache = normalizePopTriviaSongCache({
     "take_on_me_a-ha": {

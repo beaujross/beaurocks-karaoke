@@ -22,6 +22,7 @@ let testEnv;
 
 const roomPath = (roomCode = ROOM_CODE) => `${ROOT}/rooms/${roomCode}`;
 const roomUserPath = (roomCode, uid) => `${ROOT}/room_users/${roomCode}_${uid}`;
+const karaokeSongPath = (songId = "song_1") => `${ROOT}/karaoke_songs/${songId}`;
 const nonAnonymousContext = (uid) => testEnv.authenticatedContext(uid, {
   firebase: { sign_in_provider: "password" },
 });
@@ -570,6 +571,23 @@ async function run() {
       );
     }],
 
+    ["firestore: user can update own room_user request intent fields", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+        })
+      );
+      await assertSucceeds(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          requestIntent: "host_pick_tight15",
+          requestIntentUpdatedAt: new Date(),
+        }, { merge: true })
+      );
+    }],
+
     ["firestore: user can update room_user points within delta limit", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertSucceeds(
@@ -615,6 +633,37 @@ async function run() {
       });
       const db = testEnv.authenticatedContext(HOST_UID).firestore();
       await assertSucceeds(db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).delete());
+    }],
+
+    ["firestore: audience user can create own karaoke song request", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(
+        db.doc(karaokeSongPath("song_self")).set({
+          roomCode: ROOM_CODE,
+          songTitle: "Will",
+          artist: "Joyner Lucas",
+          singerName: "Guest",
+          singerUid: GUEST_UID,
+          status: "requested",
+          resolutionStatus: "review_required",
+          resolutionLayer: "manual_review",
+          collabOpen: true,
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot create karaoke song for another singer", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(karaokeSongPath("song_other")).set({
+          roomCode: ROOM_CODE,
+          songTitle: "Will",
+          artist: "Joyner Lucas",
+          singerName: "Other",
+          singerUid: OTHER_UID,
+          status: "requested",
+        })
+      );
     }],
 
     ["firestore: non-anonymous account can create chat message", async () => {
@@ -852,6 +901,31 @@ async function run() {
       const ref = storage.ref(`room_branding/${ROOM_CODE}/logo.png`);
       await assertSucceeds(
         ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
+    ["storage: audience participant can upload room photo", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          uid: GUEST_UID,
+          roomCode: ROOM_CODE,
+          name: "Guest",
+          avatar: "😀",
+        });
+      });
+      const storage = anonymousContext(GUEST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_photos/${ROOM_CODE}/${GUEST_UID}/snap.jpg`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/jpeg" })
+      );
+    }],
+
+    ["storage: non-participant cannot upload room photo", async () => {
+      const storage = anonymousContext(OTHER_UID).storage(BUCKET);
+      const ref = storage.ref(`room_photos/${ROOM_CODE}/${OTHER_UID}/snap.jpg`);
+      await assertFails(
+        ref.putString("abc", "raw", { contentType: "image/jpeg" })
       );
     }],
 

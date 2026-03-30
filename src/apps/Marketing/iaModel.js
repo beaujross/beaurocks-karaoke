@@ -14,7 +14,7 @@ export const MARKETING_CANONICAL_ROUTE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.forHosts]: "/for-hosts",
   [MARKETING_ROUTE_PAGES.hostAccess]: "/host-access",
   [MARKETING_ROUTE_PAGES.demo]: "/demo",
-  [MARKETING_ROUTE_PAGES.demoAuto]: "/demo-auto",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "/auto-demo",
   [MARKETING_ROUTE_PAGES.changelog]: "/changelog",
   [MARKETING_ROUTE_PAGES.discover]: "/discover",
   [MARKETING_ROUTE_PAGES.join]: "/join",

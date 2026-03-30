@@ -27,7 +27,7 @@ test('getAutoEndSchedule schedules karaoke auto-end for Apple playback without A
 
     expect(schedule).toEqual({
         autoEndKey: 'song_123:1000:30',
-        delayMs: 31500
+        delayMs: 36000
     });
 });
 
@@ -44,6 +44,24 @@ test('getAutoEndSchedule returns immediate trigger once track should already be 
 
     expect(schedule).toEqual({
         autoEndKey: 'song_456:1000:45',
-        delayMs: 0
+        delayMs: 4000
+    });
+});
+
+test('getAutoEndSchedule prefers captured performance duration over stale request duration', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'song_789',
+        activeMode: 'karaoke',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        capturedDurationSec: 220,
+        currentDurationSec: 150,
+        now: 1000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'song_789:1000:220',
+        delayMs: 226000
     });
 });

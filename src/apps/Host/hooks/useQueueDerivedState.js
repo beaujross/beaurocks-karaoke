@@ -24,14 +24,32 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
         [safeSongs]
     );
     const hasLyrics = !!current?.lyrics || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
+    const reviewRequired = useMemo(
+        () => safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
+                return ['requested', 'pending'].includes(status) && resolutionStatus === 'review_required';
+            })
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        [safeSongs]
+    );
     const queue = useMemo(
         () => safeSongs
-            .filter(s => s.status === 'requested')
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
+                return status === 'requested' && resolutionStatus !== 'review_required';
+            })
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
         [safeSongs]
     );
     const pending = useMemo(
-        () => safeSongs.filter(s => s.status === 'pending'),
+        () => safeSongs.filter((song) => {
+            const status = String(song?.status || '').trim().toLowerCase();
+            const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
+            return status === 'pending' && resolutionStatus !== 'review_required';
+        }),
         [safeSongs]
     );
     const lobbyCount = safeUsers.length;
@@ -67,6 +85,7 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
     return {
         current,
         hasLyrics,
+        reviewRequired,
         queue,
         pending,
         lobbyCount,

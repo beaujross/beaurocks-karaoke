@@ -40,6 +40,7 @@ const LEGACY_PAGE_TO_CANONICAL = {
   discover: { page: MARKETING_ROUTE_PAGES.discover },
   demo: { page: MARKETING_ROUTE_PAGES.demo },
   demo_auto: { page: MARKETING_ROUTE_PAGES.demoAuto },
+  "auto-demo": { page: MARKETING_ROUTE_PAGES.demoAuto },
   "demo-auto": { page: MARKETING_ROUTE_PAGES.demoAuto },
   changelog: { page: MARKETING_ROUTE_PAGES.changelog },
   host_access: { page: MARKETING_ROUTE_PAGES.hostAccess },
@@ -106,7 +107,9 @@ const routeForPathTokens = (parts = []) => {
 
   if (normalizedParts[0] === "discover") return { page: MARKETING_ROUTE_PAGES.discover, id: "", params: {} };
   if (normalizedParts[0] === "demo") return { page: MARKETING_ROUTE_PAGES.demo, id: "", params: {} };
-  if (normalizedParts[0] === "demo-auto") return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
+  if (normalizedParts[0] === "auto-demo" || normalizedParts[0] === "demo-auto") {
+    return { page: MARKETING_ROUTE_PAGES.demoAuto, id: "", params: {} };
+  }
   if (normalizedParts[0] === "changelog") return { page: MARKETING_ROUTE_PAGES.changelog, id: "", params: {} };
   if (normalizedParts[0] === "host-access") return { page: MARKETING_ROUTE_PAGES.hostAccess, id: "", params: {} };
   if (normalizedParts[0] === "for-hosts") return { page: MARKETING_ROUTE_PAGES.forHosts, id: "", params: {} };
@@ -266,7 +269,7 @@ export const buildMarketingPath = ({ page = MARKETING_ROUTE_PAGES.discover, id =
   const safeId = String(id || "").trim();
   if (page === MARKETING_ROUTE_PAGES.discover) return applyBasePath("/discover");
   if (page === MARKETING_ROUTE_PAGES.demo) return applyBasePath("/demo");
-  if (page === MARKETING_ROUTE_PAGES.demoAuto) return applyBasePath("/demo-auto");
+  if (page === MARKETING_ROUTE_PAGES.demoAuto) return applyBasePath("/auto-demo");
   if (page === MARKETING_ROUTE_PAGES.changelog) return applyBasePath("/changelog");
   if (page === MARKETING_ROUTE_PAGES.hostAccess) return applyBasePath("/host-access");
   if (page === MARKETING_ROUTE_PAGES.forHosts) return applyBasePath("/for-hosts");

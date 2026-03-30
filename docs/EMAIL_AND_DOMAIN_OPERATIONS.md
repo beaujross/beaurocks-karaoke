@@ -143,3 +143,44 @@ To avoid stale chunk failures on custom domains:
 - current policy is `Cache-Control: public, max-age=0, must-revalidate`
 
 This prevents old hashed JS URLs from getting cached as HTML and breaking module boot with MIME-type errors.
+
+## Audience Email-Link Auth Invariants
+
+As of 2026-03-24, the audience app uses a BeauRocks-managed callable to generate and send sign-in links, but link completion still happens client-side with Firebase Auth credentials in `src/apps/Mobile/SingerApp.jsx`.
+
+Operational rules:
+
+- Treat every email-link verification URL as single-attempt from the client point of view.
+- Do not let the audience app keep retrying `signInWithEmailLink` or `signInWithCredential` against the same URL on every render/effect pass.
+- On terminal failures such as `auth/invalid-action-code` or `auth/expired-action-code`, immediately remove Firebase auth params from the browser URL so the client cannot loop on refresh or re-render.
+- Auth params to clear after a spent or invalid link:
+  - `oobCode`
+  - `mode`
+  - `apiKey`
+  - `lang`
+  - `continueUrl`
+- If the stored email is missing, reopen recovery UI once and prompt the user to open the link on the same device where they entered their email.
+- If the user corrects the email manually, allow one fresh verification attempt for that new email instead of permanently latching the failed state.
+
+Reason:
+
+- A production regression on 2026-03-24 caused the audience app to repeatedly retry a spent or invalid sign-in URL, producing an `auth/invalid-action-code` loop until the auth params were manually cleared from the address bar.
+
+Files to inspect if this regresses:
+
+- `src/apps/Mobile/SingerApp.jsx`
+- `src/hooks/usePasswordlessAuth.js`
+- `functions/index.js`
+
+## Audience Sign-In Email Readability
+
+The `auth_email_signin_link` template in `functions/index.js` should preserve the following requirements:
+
+- High-contrast body copy that remains readable in dark-mode and forced-color email clients.
+- A visible CTA button plus a plain-text fallback link block rendered inside the email body.
+- A short same-device handoff note because the audience flow depends on matching the stored local email state when possible.
+
+If sign-in email readability regresses, inspect:
+
+- `buildEmailTemplatePayload("auth_email_signin_link", ...)`
+- `buildBeauRocksEmailHtml(...)`

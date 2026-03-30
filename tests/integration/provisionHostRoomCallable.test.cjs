@@ -6,6 +6,7 @@ const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
 const ROOT = `artifacts/${APP_ID}/public/data`;
 const HOST_UID = "host-provisioner";
+const CO_HOST_UID = "host-sidekick";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -42,6 +43,7 @@ async function resetState() {
   await deleteCollection(["room_sessions"]);
   await deleteCollection(["organizations"]);
   await deleteCollection(["users"]);
+  await deleteCollection(["room_event_credit_configs"]);
   await deleteCollection(["host_access_approvals"]);
   await deleteCollection(["host_access_approval_invites"]);
   await deleteCollection(["host_access_applications"]);
@@ -53,6 +55,10 @@ async function resetState() {
   await deleteCollection(["artifacts", APP_ID, "public", "data", "room_provisioning_jobs"]);
   await db.doc(`users/${HOST_UID}`).set({
     uid: HOST_UID,
+    subscription: { tier: "free" },
+  }, { merge: true });
+  await db.doc(`users/${CO_HOST_UID}`).set({
+    uid: CO_HOST_UID,
     subscription: { tier: "free" },
   }, { merge: true });
   await db.doc(`host_access_approvals/${HOST_UID}`).set({
@@ -87,6 +93,8 @@ async function run() {
           hostName: "Neon Host",
           orgName: "Neon Org",
           logoUrl: "https://example.com/logo.png",
+          roomName: "Neon Friday",
+          coHostUids: [CO_HOST_UID],
         })
       );
       assert.equal(result.ok, true);
@@ -101,6 +109,9 @@ async function run() {
       assert.equal(roomSnap.get("hostName"), "Neon Host");
       assert.equal(roomSnap.get("orgName"), "Neon Org");
       assert.equal(roomSnap.get("logoUrl"), "https://example.com/logo.png");
+      assert.equal(roomSnap.get("roomName"), "Neon Friday");
+      assert.deepEqual(roomSnap.get("coHostUids"), [CO_HOST_UID]);
+      assert.deepEqual(roomSnap.get("hostUids"), [HOST_UID, CO_HOST_UID]);
 
       const libSnap = await db.doc(`${ROOT}/host_libraries/${result.roomCode}`).get();
       assert.equal(libSnap.exists, true);
@@ -143,9 +154,13 @@ async function run() {
         requestFor(HOST_UID, {
           requestId: "launch_discovery",
           hostName: "Discovery Host",
+          roomName: "Friday House Karaoke",
+          coHostUids: [CO_HOST_UID],
           discoveryListing: {
             publicRoom: true,
             title: "Friday House Karaoke",
+            venueId: "venue_house",
+            venueSource: "selected",
             city: "Seattle",
             state: "WA",
             startsAtMs: Date.now() + (60 * 60 * 1000),
@@ -164,11 +179,80 @@ async function run() {
       assert.equal(listingSnap.exists, true);
       assert.equal(String(listingSnap.get("roomCode")), result.roomCode);
       assert.equal(String(listingSnap.get("visibility")), "public");
+      assert.equal(String(listingSnap.get("venueId")), "venue_house");
+      assert.deepEqual(listingSnap.get("hostUids"), [HOST_UID, CO_HOST_UID]);
 
       const roomSnap = await db.doc(`${ROOT}/rooms/${result.roomCode}`).get();
       assert.equal(roomSnap.exists, true);
       assert.equal(String(roomSnap.get("discover.listingId")), listingId);
       assert.equal(!!roomSnap.get("discover.publicRoom"), true);
+      assert.equal(String(roomSnap.get("roomName")), "Friday House Karaoke");
+    }],
+
+    ["provisionHostRoom stores public event credits and secure claim config", async () => {
+      const result = await provisionHostRoom.run(
+        requestFor(HOST_UID, {
+          requestId: "launch_event_credits",
+          hostName: "AAHF Host",
+          roomName: "Kick-Off Room",
+          eventCredits: {
+            enabled: true,
+            presetId: "aahf_kickoff",
+            eventId: "aahf_kickoff",
+            eventLabel: "AAHF Karaoke Kick-Off",
+            sourceProvider: "givebutter",
+            sourceCampaignCode: "AAHF2026",
+            generalAdmissionPoints: 200,
+            vipBonusPoints: 400,
+            skipLineBonusPoints: 600,
+            websiteCheckInPoints: 150,
+            socialPromoPoints: 250,
+            promoCampaigns: [
+              {
+                id: "website_check_in",
+                label: "Website Check-In",
+                type: "timed_drop",
+                codeMode: "qr_link",
+                code: "",
+                pointsReward: 150,
+                safePerk: "website_check_in",
+                maxRedemptions: 5000,
+                perUserLimit: 1,
+                requiresRoomJoin: true,
+                enabled: true,
+              },
+            ],
+            claimCodes: {
+              vip: "VIP2026",
+              skipLine: "SKIP2026",
+              websiteCheckIn: "CHECKIN2026",
+              socialPromo: "POST2026",
+            },
+          },
+        })
+      );
+
+      assert.equal(result.ok, true);
+      const roomSnap = await db.doc(`${ROOT}/rooms/${result.roomCode}`).get();
+      assert.equal(roomSnap.exists, true);
+      assert.equal(roomSnap.get("eventCredits.enabled"), true);
+      assert.equal(roomSnap.get("eventCredits.presetId"), "aahf_kickoff");
+      assert.equal(roomSnap.get("eventCredits.sourceProvider"), "givebutter");
+      assert.equal(roomSnap.get("eventCredits.sourceCampaignCode"), "AAHF2026");
+      assert.equal(Number(roomSnap.get("eventCredits.generalAdmissionPoints")), 200);
+      assert.equal(String(roomSnap.get("eventCredits.eventLabel")), "AAHF Karaoke Kick-Off");
+      assert.equal(Number(roomSnap.get("eventCredits.promoCampaignCount")), 1);
+      assert.equal(roomSnap.get("eventCredits.claimCodes"), undefined);
+
+      const secureSnap = await db.doc(`room_event_credit_configs/${result.roomCode}`).get();
+      assert.equal(secureSnap.exists, true);
+      assert.equal(secureSnap.get("enabled"), true);
+      assert.equal(secureSnap.get("presetId"), "aahf_kickoff");
+      assert.equal(secureSnap.get("sourceProvider"), "givebutter");
+      assert.equal(String(secureSnap.get("claimCodes.vip")), "VIP2026");
+      assert.equal(String(secureSnap.get("claimCodes.skipLine")), "SKIP2026");
+      assert.equal(Array.isArray(secureSnap.get("promoCampaigns")), true);
+      assert.equal(String(secureSnap.get("promoCampaigns")[0].id), "website_check_in");
     }],
   ];
 

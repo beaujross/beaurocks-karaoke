@@ -17,6 +17,15 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - QuickBooks Self-Employed invoicing flow: `docs/QUICKBOOKS_SELF_EMPLOYED_INVOICE_FLOW.md`
 - Project history and lessons learned: `PROJECT_HISTORY_LESSONS_LEARNED.md`
 
+## Current Product Invariants
+
+- Audience requests are `song intent -> backing resolution`, not direct source selection.
+- Audience browse/search should stay source-agnostic even when known YouTube backings are auto-resolved behind the scenes.
+- AI/automation should rank and normalize candidate backings; it should not expose raw YouTube search to guests as the default model.
+- Run-of-show co-host capability is not the same thing as room-level host access.
+- Standard audience UX should remain guest-first and clean; backstage/co-host/operator tools should stay hidden unless explicitly granted.
+- Event points/credits should prefer ticket-linked or promo-campaign records over reusable shared codes for paid or scarce rewards.
+
 ## Development
 
 - Create local env file before running dev:

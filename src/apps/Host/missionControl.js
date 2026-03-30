@@ -53,6 +53,13 @@ const toNumber = (value, fallback = 0) => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
 };
+const normalizeRequestMode = (value = '', allowSingerTrackSelect = false) => {
+    const safeValue = String(value || '').trim().toLowerCase();
+    if (safeValue === 'playable_only' || safeValue === 'guest_backing_optional' || safeValue === 'canonical_open') {
+        return safeValue;
+    }
+    return allowSingerTrackSelect ? 'guest_backing_optional' : 'canonical_open';
+};
 
 const deepSet = (target, path, value) => {
     if (!isObject(target) || typeof path !== 'string' || !path.trim()) return target;
@@ -149,6 +156,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
         showLyricsTv: !!presetSettings.showLyricsTv,
         showScoring: presetSettings.showScoring !== false,
         showFameLevel: presetSettings.showFameLevel !== false,
+        requestMode: normalizeRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
         allowSingerTrackSelect: !!presetSettings.allowSingerTrackSelect,
         marqueeEnabled: !!presetSettings.marqueeEnabled,
         marqueeShowMode: presetSettings.marqueeShowMode || 'always',

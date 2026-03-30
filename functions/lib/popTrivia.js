@@ -4,6 +4,7 @@ const DEFAULT_POP_TRIVIA_ROUND_SEC = 16;
 const DEFAULT_POP_TRIVIA_MAX_QUESTIONS = 4;
 const POP_TRIVIA_PENDING_RETRY_AFTER_MS = 45 * 1000;
 const POP_TRIVIA_FAILED_RETRY_AFTER_MS = 5 * 60 * 1000;
+const POP_TRIVIA_FACT_HEAVY_PATTERN = /\b(what year|which year|release(?:d)?|release year|billboard|chart|grammy|award|which album|album\b|soundtrack|label\b|music video|director\b|producer\b|written by|city\b|country\b|born\b|debut|number one|top 10|peak(?:ed)? at)\b/i;
 
 const getTimestampMs = (value) => {
   if (!value) return 0;
@@ -59,6 +60,16 @@ const buildPopTriviaSongContext = (song = {}) => {
   const safeTitle = cleanText(song?.songTitle || song?.title || "");
   const safeArtist = cleanText(song?.artist || "Unknown") || "Unknown";
   const safeSinger = cleanText(song?.singerName || "");
+  const mediaUrl = cleanText(song?.mediaUrl || song?.backingUrl || "");
+  const sourceToken = cleanText(
+    song?.source
+    || song?.trackSource
+    || song?.backingSource
+    || song?.sourceType
+    || ""
+  ).toLowerCase();
+  const isYouTubeSource = sourceToken.includes("youtube") || /youtu\.?be/i.test(mediaUrl);
+  const isCustomSource = sourceToken.includes("custom");
   const metadata = {};
   const metadataPairs = [
     ["album", song?.album || song?.albumName || ""],
@@ -67,6 +78,10 @@ const buildPopTriviaSongContext = (song = {}) => {
     ["language", song?.language || ""],
     ["decade", song?.decade || ""],
     ["source", song?.source || song?.trackSource || ""],
+    ["youtubeId", song?.youtubeId || ""],
+    ["channelTitle", song?.channelTitle || song?.channel || ""],
+    ["videoTitle", song?.videoTitle || ""],
+    ["sourceDetail", song?.sourceDetail || ""],
     ["songId", song?.songId || ""],
     ["appleMusicId", song?.appleMusicId || ""],
   ];
@@ -74,11 +89,16 @@ const buildPopTriviaSongContext = (song = {}) => {
     const clean = cleanText(value);
     if (clean) metadata[key] = clean;
   });
+  const groundingKeys = ["album", "releaseYear", "genre", "language", "decade"];
+  const groundingCount = groundingKeys.reduce((sum, key) => sum + (metadata[key] ? 1 : 0), 0);
+  const metadataConfidence = groundingCount >= 2 ? "grounded" : (isYouTubeSource || isCustomSource ? "sparse" : "limited");
   return {
     songTitle: safeTitle,
     artist: safeArtist,
     singerName: safeSinger,
     metadata,
+    metadataConfidence,
+    sourceMode: isYouTubeSource ? "youtube" : isCustomSource ? "custom" : (sourceToken || "catalog"),
     style: "funny_insightful",
   };
 };
@@ -235,6 +255,53 @@ const normalizePopTriviaSongCache = (value = {}) => {
   return next;
 };
 
+const isFactHeavyPopTriviaRow = (entry = {}) => {
+  const haystack = [
+    cleanText(entry?.q || entry?.question),
+    cleanText(entry?.correct),
+    cleanText(entry?.w1),
+    cleanText(entry?.w2),
+    cleanText(entry?.w3),
+    ...(Array.isArray(entry?.options) ? entry.options.map((option) => cleanText(option)) : []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (!haystack) return false;
+  if (POP_TRIVIA_FACT_HEAVY_PATTERN.test(haystack)) return true;
+  return /\b(19|20)\d{2}\b/.test(haystack);
+};
+
+const selectPopTriviaSeedRows = ({
+  song = {},
+  aiRows = [],
+  fallbackRows = [],
+  limit = DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
+} = {}) => {
+  const context = buildPopTriviaSongContext(song);
+  const safeLimit = Math.max(1, Number(limit || DEFAULT_POP_TRIVIA_MAX_QUESTIONS));
+  const normalizedAiRows = normalizePopTriviaSeedRows(aiRows, { limit: safeLimit * 2 });
+  const normalizedFallbackRows = normalizePopTriviaSeedRows(fallbackRows, { limit: safeLimit * 2 });
+  const metadataSparse = context.metadataConfidence === "sparse";
+  const filteredAiRows = metadataSparse
+    ? normalizedAiRows.filter((entry) => !isFactHeavyPopTriviaRow(entry))
+    : normalizedAiRows;
+  const selected = [];
+  const seenQuestions = new Set();
+  const pushRow = (entry) => {
+    if (!entry || selected.length >= safeLimit) return;
+    const key = normalizeOptionText(entry.q || entry.question || "");
+    if (!key || seenQuestions.has(key)) return;
+    seenQuestions.add(key);
+    selected.push(entry);
+  };
+
+  filteredAiRows.forEach(pushRow);
+  normalizedFallbackRows.forEach(pushRow);
+  normalizedAiRows.forEach(pushRow);
+
+  return selected.slice(0, safeLimit);
+};
+
 const shouldAttemptPopTriviaGeneration = (
   song = {},
   {
@@ -285,6 +352,7 @@ module.exports = {
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
+  selectPopTriviaSeedRows,
   sanitizePopTriviaCacheKey,
   shouldAttemptPopTriviaGeneration,
 };

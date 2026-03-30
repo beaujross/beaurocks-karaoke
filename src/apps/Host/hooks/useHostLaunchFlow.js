@@ -3,8 +3,10 @@ import { ASSETS } from '../../../lib/assets';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../../billing/capabilities';
 import { HOST_ONBOARDING_PLAN_OPTIONS } from '../hostAppData';
 import {
+    buildProvisionEventCreditsPayload,
     buildHostProvisionRequestId,
     buildProvisionDiscoveryPayload,
+    createEventCreditsDraft,
     createQuickLaunchDiscoveryDraft,
     normalizeProvisionLaunchUrls,
     isProvisionHostRoomCallableUnavailableError,
@@ -45,6 +47,7 @@ const useHostLaunchFlow = ({
     const roomProvisionRequestIdRef = useRef('');
     const [creatingRoom, setCreatingRoom] = useState(false);
     const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState(() => createQuickLaunchDiscoveryDraft());
+    const [eventCreditsConfig, setEventCreditsConfig] = useState(() => createEventCreditsDraft());
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [onboardingStep, setOnboardingStep] = useState(0);
     const [onboardingBusy, setOnboardingBusy] = useState(false);
@@ -61,10 +64,16 @@ const useHostLaunchFlow = ({
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
         const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
+        const roomNameOverride = typeof options?.roomName === 'string' ? options.roomName.trim() : '';
+        const coHostUids = Array.from(new Set((Array.isArray(options?.coHostUids) ? options.coHostUids : [])
+            .map((entry) => String(entry || '').trim())
+            .filter(Boolean)));
         const discoveryDraft = createQuickLaunchDiscoveryDraft(quickLaunchDiscovery);
+        const eventCreditsDraft = createEventCreditsDraft(options?.eventCredits || eventCreditsConfig);
         const nextHostName = hostNameOverride || (hostName || '').trim() || 'Host';
         const nextOrgName = orgNameOverride || `${nextHostName} Workspace`;
         const nextLogoUrl = logoUrlOverride || (logoUrl || '').trim() || ASSETS.logo;
+        const nextRoomName = roomNameOverride || String(options?.roomLabel || '').trim();
         const requestId = requestIdOverride
             || roomProvisionRequestIdRef.current
             || buildHostProvisionRequestId('host_launch');
@@ -88,8 +97,13 @@ const useHostLaunchFlow = ({
                 hostName: nextHostName,
                 orgName: nextOrgName,
                 logoUrl: nextLogoUrl,
+                roomName: nextRoomName,
+                coHostUids,
                 nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
-                discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft),
+                discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft, {
+                    roomName: discoveryDraft.publicRoom ? nextRoomName : '',
+                }),
+                eventCredits: buildProvisionEventCreditsPayload(eventCreditsDraft),
             });
             const nextRoomCode = String(result?.roomCode || '').trim().toUpperCase();
             if (!nextRoomCode) {
@@ -129,6 +143,7 @@ const useHostLaunchFlow = ({
             setView('panel');
             setShowOnboardingWizard(false);
             setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
+            setEventCreditsConfig(createEventCreditsDraft());
             roomProvisionRequestIdRef.current = '';
             if (Array.isArray(result?.warnings) && result.warnings.includes('discovery_sync_failed')) {
                 toast(`Room ${nextRoomCode} created. Discovery listing sync needs retry.`);
@@ -193,6 +208,7 @@ const useHostLaunchFlow = ({
         hostRoomProvisionDeploymentWarning,
         logoUrl,
         provisionHostRoom,
+        eventCreditsConfig,
         quickLaunchDiscovery,
         setEntryError,
         setHostName,
@@ -294,6 +310,8 @@ const useHostLaunchFlow = ({
         createRoom,
         quickLaunchDiscovery,
         setQuickLaunchDiscovery,
+        eventCreditsConfig,
+        setEventCreditsConfig,
         showOnboardingWizard,
         onboardingStep,
         onboardingBusy,

@@ -28,6 +28,7 @@ export const getAutoEndSchedule = ({
     appleDurationSec = 0,
     videoPlaying = false,
     videoStartTimestamp = 0,
+    capturedDurationSec = 0,
     currentDurationSec = 0,
     now = Date.now()
 } = {}) => {
@@ -47,8 +48,12 @@ export const getAutoEndSchedule = ({
         ? Number(appleStartedAt || 0)
         : Number(videoStartTimestamp || 0);
     const durationSec = applePlaying
-        ? Number(appleDurationSec || currentDurationSec || 0)
-        : Number(currentDurationSec || 0);
+        ? Number(Math.max(
+            Number(appleDurationSec || 0),
+            Number(capturedDurationSec || 0),
+            Number(currentDurationSec || 0)
+        ) || 0)
+        : Number(capturedDurationSec || currentDurationSec || 0);
 
     if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
     if (!Number.isFinite(durationSec) || durationSec < 20) return null;

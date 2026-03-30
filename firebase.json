@@ -75,6 +75,11 @@
         "source": "/marketing/:path*",
         "destination": "/:path*",
         "type": 301
+      },
+      {
+        "source": "/demo-auto",
+        "destination": "/auto-demo",
+        "type": 301
       }
     ],
     "rewrites": [

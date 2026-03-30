@@ -105,6 +105,8 @@ service cloud.firestore {
         'visits',
         'isReady',
         'tight15Temp',
+        'requestIntent',
+        'requestIntentUpdatedAt',
         'guitarSessionId',
         'guitarHits',
         'strobeSessionId',
@@ -138,6 +140,8 @@ service cloud.firestore {
         'lastStormLayer',
         'lastVibeAt',
         'tight15Temp',
+        'requestIntent',
+        'requestIntentUpdatedAt',
         'isReady',
         'visits',
         'bingoVotesBySession'
@@ -901,6 +905,19 @@ service cloud.firestore {
               && resource.data.singerUid == request.auth.uid
             )
           );
+      }
+
+      match /run_of_show_slot_submissions/{submissionId} {
+        allow read: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            resource.data.uid == request.auth.uid
+            || (
+              resource.data.roomCode is string
+              && isRoomHost(resource.data.roomCode)
+            )
+          );
+        allow write: if false;
       }
 
       match /selfie_submissions/{docId} {

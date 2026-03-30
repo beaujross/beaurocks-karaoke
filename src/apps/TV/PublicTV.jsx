@@ -57,6 +57,10 @@ import {
     VOLLEY_ORB_BASE_ACTIONS,
     VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
+import { buildQaTvFixture } from './qaTvFixtures';
+
+const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
+const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
 
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
@@ -622,6 +626,247 @@ const seededUnit = (seed) => {
     return x - Math.floor(x);
 };
 
+const RUN_OF_SHOW_TAKEOVER_THEMES = {
+    cyan: {
+        accentClass: 'from-cyan-300 via-sky-200 to-blue-300',
+        chipClass: 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100',
+        panelClass: 'border-cyan-300/18 bg-cyan-400/[0.07]',
+        glowClass: 'from-cyan-300/18 via-sky-300/12 to-transparent',
+        lineClass: 'from-cyan-300/65 via-sky-200/50 to-white/0',
+        spotlightClass: 'from-cyan-400/28 via-sky-400/16 to-transparent'
+    },
+    pink: {
+        accentClass: 'from-pink-400 via-fuchsia-300 to-rose-300',
+        chipClass: 'border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100',
+        panelClass: 'border-fuchsia-300/18 bg-fuchsia-400/[0.07]',
+        glowClass: 'from-fuchsia-300/18 via-pink-300/12 to-transparent',
+        lineClass: 'from-fuchsia-300/65 via-pink-200/50 to-white/0',
+        spotlightClass: 'from-fuchsia-400/30 via-rose-400/14 to-transparent'
+    },
+    amber: {
+        accentClass: 'from-amber-300 via-yellow-200 to-orange-300',
+        chipClass: 'border-amber-300/35 bg-amber-500/12 text-amber-100',
+        panelClass: 'border-amber-300/18 bg-amber-400/[0.07]',
+        glowClass: 'from-amber-300/18 via-yellow-300/12 to-transparent',
+        lineClass: 'from-amber-300/65 via-yellow-200/50 to-white/0',
+        spotlightClass: 'from-amber-300/28 via-orange-300/16 to-transparent'
+    },
+    emerald: {
+        accentClass: 'from-emerald-300 via-teal-200 to-cyan-300',
+        chipClass: 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100',
+        panelClass: 'border-emerald-300/18 bg-emerald-400/[0.07]',
+        glowClass: 'from-emerald-300/18 via-teal-300/12 to-transparent',
+        lineClass: 'from-emerald-300/65 via-teal-200/50 to-white/0',
+        spotlightClass: 'from-emerald-300/28 via-teal-300/16 to-transparent'
+    }
+};
+
+const getRunOfShowTakeoverTheme = (accentTheme = 'cyan') => {
+    const key = String(accentTheme || '').trim().toLowerCase();
+    return RUN_OF_SHOW_TAKEOVER_THEMES[key] || RUN_OF_SHOW_TAKEOVER_THEMES.cyan;
+};
+
+const RUN_OF_SHOW_TAKEOVER_SCENES = {
+    intro: {
+        eyebrow: 'Show Opening',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_42%),radial-gradient(circle_at_82%_18%,rgba(250,204,21,0.18),transparent_30%),linear-gradient(145deg,#020617_12%,#071225_52%,#12071f_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(250,204,21,0.3),transparent_66%)]',
+        stripeClass: 'from-white/14 via-cyan-200/6 to-transparent',
+        detailLabel: 'Cue'
+    },
+    announcement: {
+        eyebrow: 'House Announcement',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_44%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_44%),linear-gradient(135deg,#04070c_10%,#0f172a_58%,#170b1f_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(34,211,238,0.26),transparent_66%)]',
+        stripeClass: 'from-white/12 via-cyan-200/7 to-transparent',
+        detailLabel: 'Control'
+    },
+    closing: {
+        eyebrow: 'Closing Moment',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_40%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.16),transparent_42%),linear-gradient(145deg,#09090b_5%,#111827_48%,#1f1329_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(236,72,153,0.28),transparent_68%)]',
+        stripeClass: 'from-white/12 via-amber-200/8 to-transparent',
+        detailLabel: 'Finale'
+    },
+    trivia_break: {
+        eyebrow: 'Trivia Break',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.18),transparent_44%),radial-gradient(circle_at_82%_16%,rgba(34,197,94,0.14),transparent_28%),linear-gradient(145deg,#020617_10%,#10213f_52%,#071a2a_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(59,130,246,0.28),transparent_66%)]',
+        stripeClass: 'from-white/12 via-blue-200/8 to-transparent',
+        detailLabel: 'Prompt'
+    },
+    would_you_rather_break: {
+        eyebrow: 'Would You Rather',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.18),transparent_44%),radial-gradient(circle_at_82%_16%,rgba(34,211,238,0.16),transparent_30%),linear-gradient(145deg,#11081a_10%,#1f1030_56%,#081825_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(236,72,153,0.3),transparent_66%)]',
+        stripeClass: 'from-white/12 via-fuchsia-200/8 to-transparent',
+        detailLabel: 'Debate'
+    },
+    game_break: {
+        eyebrow: 'Game Break',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.18),transparent_40%),radial-gradient(circle_at_bottom,rgba(34,211,238,0.16),transparent_42%),linear-gradient(145deg,#09090b_8%,#172033_54%,#08111f_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(251,191,36,0.28),transparent_66%)]',
+        stripeClass: 'from-white/12 via-amber-200/8 to-transparent',
+        detailLabel: 'Challenge'
+    },
+    performance: {
+        eyebrow: 'Performance Block',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(244,114,182,0.16),transparent_42%),radial-gradient(circle_at_80%_18%,rgba(34,211,238,0.16),transparent_28%),linear-gradient(145deg,#09090b_8%,#18181b_50%,#111827_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(244,114,182,0.26),transparent_66%)]',
+        stripeClass: 'from-white/12 via-pink-200/8 to-transparent',
+        detailLabel: 'Set'
+    },
+    default: {
+        eyebrow: 'Run Of Show',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_44%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.14),transparent_44%),linear-gradient(145deg,#05070a_10%,#101827_52%,#0b1020_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(34,211,238,0.24),transparent_66%)]',
+        stripeClass: 'from-white/12 via-cyan-200/6 to-transparent',
+        detailLabel: 'Details'
+    }
+};
+
+const getRunOfShowTakeoverScene = (scene = '') => {
+    const key = String(scene || '').trim().toLowerCase();
+    return RUN_OF_SHOW_TAKEOVER_SCENES[key] || RUN_OF_SHOW_TAKEOVER_SCENES.default;
+};
+
+const formatRunOfShowCountdown = (remainingMs = 0) => {
+    const safeMs = Math.max(0, Number(remainingMs || 0));
+    const totalSeconds = Math.ceil(safeMs / 1000);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+
+const toTitleCaseWords = (value = '') => String(value || '')
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const RunOfShowTakeoverOverlay = ({
+    overlay = {},
+    roomCode = '',
+    zClass = 'z-[195]',
+    preview = false,
+    nowValue = 0
+}) => {
+    const theme = getRunOfShowTakeoverTheme(overlay?.accentTheme || 'cyan');
+    const sceneKey = String(overlay?.takeoverScene || overlay?.type || 'default').trim().toLowerCase();
+    const scene = getRunOfShowTakeoverScene(sceneKey);
+    const headline = String(overlay?.headline || overlay?.title || 'Run Of Show').trim() || 'Run Of Show';
+    const subhead = String(overlay?.subhead || '').trim();
+    const summary = String(overlay?.summary || '').trim();
+    const options = Array.isArray(overlay?.options) ? overlay.options.filter(Boolean).slice(0, 4) : [];
+    const modeKey = String(overlay?.modeKey || '').trim();
+    const durationSec = Math.max(0, Number(overlay?.durationSec || 0));
+    const startedAtMs = Math.max(0, Number(overlay?.startedAtMs || 0));
+    const endsAtMs = startedAtMs && durationSec ? startedAtMs + (durationSec * 1000) : 0;
+    const remainingMs = endsAtMs ? Math.max(0, endsAtMs - Number(nowValue || nowMs())) : 0;
+    const progressPct = endsAtMs && durationSec
+        ? clampPct((remainingMs / (durationSec * 1000)) * 100)
+        : 0;
+    const roomLabel = String(roomCode || '').trim() ? `Room ${roomCode}` : 'Room Live';
+
+    return (
+        <div
+            className={`public-tv fixed inset-0 ${zClass} overflow-hidden ${scene.shellClass} text-white`}
+            style={overlay?.backgroundMedia ? {
+                backgroundImage: `linear-gradient(rgba(2,6,23,0.7), rgba(2,6,23,0.88)), url(${overlay.backgroundMedia})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center'
+            } : undefined}
+        >
+            <div className={`absolute -left-[12vw] top-[-12vh] h-[46vw] w-[46vw] rounded-full blur-3xl ${scene.orbClass}`}></div>
+            <div className={`absolute right-[-10vw] top-[20vh] h-[34vw] w-[34vw] rounded-full blur-3xl ${theme.spotlightClass}`}></div>
+            <div className={`absolute inset-0 bg-gradient-to-br ${scene.stripeClass}`}></div>
+            <div className="absolute inset-0 opacity-[0.14]" style={{
+                backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
+                backgroundSize: '36px 36px'
+            }}></div>
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent"></div>
+            <div className="relative z-10 grid h-full gap-8 px-6 py-8 md:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)] md:px-10 md:py-10">
+                <div className="flex flex-col justify-between gap-8">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
+                            {preview ? 'Preview Mode' : scene.eyebrow}
+                        </div>
+                        <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/75">
+                            {toTitleCaseWords(sceneKey || overlay?.type || 'run_of_show')}
+                        </div>
+                        {remainingMs > 0 ? (
+                            <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/75">
+                                {preview ? 'Preview ' : 'Remaining '} {formatRunOfShowCountdown(remainingMs)}
+                            </div>
+                        ) : null}
+                    </div>
+                    <div className="max-w-[1120px]">
+                        <div className={`mb-4 h-1.5 w-24 rounded-full bg-gradient-to-r ${theme.lineClass}`}></div>
+                        <div className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(3.2rem,8vw,8rem)] font-bebas leading-[0.9] text-transparent`}>
+                            {headline}
+                        </div>
+                        {subhead ? (
+                            <div className="mt-5 max-w-[960px] text-xl leading-snug text-zinc-100 md:text-3xl">
+                                {subhead}
+                            </div>
+                        ) : null}
+                        {summary ? (
+                            <div className="mt-6 inline-flex max-w-[920px] rounded-[1.75rem] border border-white/10 bg-black/28 px-5 py-3 text-left text-sm text-white/88 shadow-[0_18px_60px_rgba(0,0,0,0.32)] md:text-lg">
+                                {summary}
+                            </div>
+                        ) : null}
+                    </div>
+                    {options.length ? (
+                        <div className="grid max-w-[980px] gap-3 md:grid-cols-2">
+                            {options.map((option, index) => (
+                                <div key={`${option}-${index}`} className={`rounded-[1.5rem] border px-5 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.28)] ${theme.panelClass}`}>
+                                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Option {index + 1}</div>
+                                    <div className="mt-2 text-lg font-semibold text-zinc-50 md:text-2xl">{option}</div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : <div />}
+                </div>
+                <div className="flex flex-col justify-between gap-4">
+                    <div className={`rounded-[2rem] border p-5 backdrop-blur ${theme.panelClass}`}>
+                        <div className="text-[10px] uppercase tracking-[0.28em] text-white/45">{scene.detailLabel}</div>
+                        <div className="mt-3 space-y-3">
+                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">{preview ? 'Preview Scope' : 'Broadcast'}</div>
+                                <div className="mt-2 text-lg font-semibold text-white">{preview ? 'TV only preview' : 'Live room takeover'}</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Room</div>
+                                <div className="mt-2 text-lg font-semibold text-white">{roomLabel}</div>
+                            </div>
+                            {modeKey ? (
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Mode</div>
+                                    <div className="mt-2 text-lg font-semibold text-white">{toTitleCaseWords(modeKey)}</div>
+                                </div>
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="rounded-[2rem] border border-white/10 bg-black/20 px-5 py-4 backdrop-blur">
+                        <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/45">
+                            <span>{preview ? 'Preview Window' : 'Room Channel'}</span>
+                            <span>{remainingMs > 0 ? formatRunOfShowCountdown(remainingMs) : roomLabel}</span>
+                        </div>
+                        {remainingMs > 0 ? (
+                            <div className="mt-3 h-2 overflow-hidden rounded-full border border-white/10 bg-white/8">
+                                <div className={`h-full rounded-full bg-gradient-to-r ${theme.accentClass}`} style={{ width: `${progressPct}%` }}></div>
+                            </div>
+                        ) : null}
+                        <div className="mt-3 text-sm uppercase tracking-[0.18em] text-white/60 md:text-base">
+                            {preview ? 'TV-only preview | audience unaffected' : 'Show graphics live on Public TV'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // --- SUB-COMPONENTS ---
 const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     const [src, setSrc] = useState('');
@@ -1062,9 +1307,8 @@ const MiniVideoPane = ({ room, current }) => {
     const iframeSrc = useMemo(() => {
         const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
         const pageOrigin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-        const muted = Number(room?.videoVolume ?? 100) <= 0 ? 1 : 0;
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&rel=0&modestbranding=1&mute=${muted}`;
-    }, [youtubeId, room?.videoStartTimestamp, room?.videoVolume]);
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&rel=0&modestbranding=1`;
+    }, [youtubeId, room?.videoStartTimestamp]);
 
     const postYoutubeCommand = useCallback((func, args = []) => {
         if (!iframeRef.current?.contentWindow) return false;
@@ -1074,6 +1318,12 @@ const MiniVideoPane = ({ room, current }) => {
         );
         return true;
     }, []);
+    const syncYoutubeNow = useCallback(() => {
+        if (!iframeRef.current?.contentWindow || !youtubeId || !room?.videoStartTimestamp) return;
+        const targetTime = Math.max(0, (Date.now() - room.videoStartTimestamp) / 1000);
+        postYoutubeCommand('seekTo', [targetTime, true]);
+        postYoutubeCommand(room?.videoPlaying ? 'playVideo' : 'pauseVideo', []);
+    }, [postYoutubeCommand, room?.videoPlaying, room?.videoStartTimestamp, youtubeId]);
 
     useEffect(() => {
         setYoutubeIframeReady(false);
@@ -1097,6 +1347,16 @@ const MiniVideoPane = ({ room, current }) => {
     }, [isYoutube, youtubeId, room?.videoPlaying, room?.videoVolume, youtubeIframeReady, postYoutubeCommand]);
 
     useEffect(() => {
+        if (!isYoutube || !youtubeId || !youtubeIframeReady || !room?.videoStartTimestamp) return undefined;
+        const initialSync = setTimeout(syncYoutubeNow, 180);
+        const syncTimer = setInterval(syncYoutubeNow, room?.videoPlaying ? 1600 : 2400);
+        return () => {
+            clearTimeout(initialSync);
+            clearInterval(syncTimer);
+        };
+    }, [isYoutube, room?.videoPlaying, room?.videoStartTimestamp, syncYoutubeNow, youtubeId, youtubeIframeReady]);
+
+    useEffect(() => {
         if (nativeVideoRef.current && room?.videoVolume !== undefined) {
             nativeVideoRef.current.volume = room.videoVolume / 100;
         }
@@ -1117,13 +1377,14 @@ const MiniVideoPane = ({ room, current }) => {
             ) : (isYoutube && youtubeId ? (
                 room?.videoPlaying ? (
                     <iframe
-                        key={`${youtubeId}_${room?.videoStartTimestamp || 0}_${Number(room?.videoVolume ?? 100) <= 0 ? 'muted' : 'live'}`}
+                        key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
                         ref={iframeRef}
                         className="absolute inset-0 w-full h-full pointer-events-none"
                         src={iframeSrc}
                         allow="autoplay; encrypted-media"
                         title="YT"
                         frameBorder="0"
+                        onLoad={() => setYoutubeIframeReady(true)}
                     ></iframe>
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-zinc-400">VIDEO PAUSED</div>
@@ -1143,7 +1404,11 @@ const PublicTV = ({ roomCode }) => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
-    const [demoFixture, setDemoFixture] = useState(null);
+    const qaTvFixtureId = useMemo(() => {
+        if (typeof window === 'undefined') return '';
+        return String(new URLSearchParams(window.location.search || '').get('qaTvFixture') || '').trim();
+    }, []);
+    const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const [room, setRoom] = useState(null);
     const [songs, setSongs] = useState([]);
@@ -1213,6 +1478,7 @@ const PublicTV = ({ roomCode }) => {
     const [popTriviaRevealSnapshot, setPopTriviaRevealSnapshot] = useState(null);
     const [previewNowMs, setPreviewNowMs] = useState(nowMs());
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
+    const [takeoverNowMs, setTakeoverNowMs] = useState(nowMs());
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
     const [featuredReaction, setFeaturedReaction] = useState(null);
     const [selfieArrivalSpotlight, setSelfieArrivalSpotlight] = useState(null);
@@ -1221,6 +1487,12 @@ const PublicTV = ({ roomCode }) => {
         if (!isMarketingDemoEmbed) return;
         setStarted(true);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isMarketingDemoEmbed || !qaTvFixtureId) return;
+        const fixture = buildQaTvFixture(qaTvFixtureId, { roomCode, nowMs: nowMs() });
+        if (!fixture) return;
+        setDemoFixture(fixture);
+    }, [isMarketingDemoEmbed, qaTvFixtureId, roomCode]);
     useEffect(() => {
         if (!isMarketingDemoEmbed || typeof window === 'undefined') return undefined;
         const handleMessage = (event) => {
@@ -1236,6 +1508,20 @@ const PublicTV = ({ roomCode }) => {
         }
         return () => window.removeEventListener('message', handleMessage);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        const previewActive = !!(room?.tvPreviewOverlay && room.tvPreviewOverlay.active);
+        const announcementActive = !!room?.announcement?.active;
+        if (!previewActive && !announcementActive) return undefined;
+        setTakeoverNowMs(nowMs());
+        const timer = setInterval(() => setTakeoverNowMs(nowMs()), 500);
+        return () => clearInterval(timer);
+    }, [
+        room?.tvPreviewOverlay?.active,
+        room?.tvPreviewOverlay?.startedAtMs,
+        room?.tvPreviewOverlay?.durationSec,
+        room?.announcement?.active,
+        room?.announcement?.startedAtMs
+    ]);
     useEffect(() => {
         if (!isMarketingDemoFixture) return;
         const fixture = demoFixture || {};
@@ -1267,6 +1553,7 @@ const PublicTV = ({ roomCode }) => {
     const stormAnalyserUnavailableRef = useRef(false);
     const popTriviaPrevQuestionIdRef = useRef('');
     const popTriviaPrevTimeLeftRef = useRef(null);
+    const popTriviaAwardedQuestionIdsRef = useRef(new Set());
     const playStormLayerPulseRef = useRef(() => {});
     const playLobbyVolleyCueRef = useRef(() => {});
     const lobbyVolleySceneRef = useRef(null);
@@ -3317,6 +3604,14 @@ const PublicTV = ({ roomCode }) => {
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
     );
+    const popTriviaRevealHoldMs = Math.max(
+        6000,
+        Number(room?.gameDefaults?.popTriviaRevealHoldSec || DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC) * 1000
+    );
+    const popTriviaCorrectPoints = Math.max(
+        0,
+        Number(room?.gameDefaults?.popTriviaCorrectPoints || DEFAULT_POP_TRIVIA_CORRECT_POINTS)
+    );
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
         if (room?.popTriviaEnabled === false) return null;
@@ -3331,7 +3626,7 @@ const PublicTV = ({ roomCode }) => {
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
     const showPopTriviaEndState = (
         popTriviaState?.status === 'complete'
-        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < 8000
+        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < popTriviaRevealHoldMs
     );
     const popTriviaVoteCounts = useMemo(() => {
         const count = Array.from({ length: popTriviaQuestion?.options?.length || 0 }, () => 0);
@@ -3367,6 +3662,22 @@ const PublicTV = ({ roomCode }) => {
             }))
             .slice(0, 12);
     }, [showPopTriviaEndState, popTriviaRevealCorrectIndex, popTriviaRevealVotes]);
+    const popTriviaRevealAwardableResponders = useMemo(() => {
+        if (!showPopTriviaEndState || popTriviaRevealCorrectIndex < 0 || !popTriviaCorrectPoints) return [];
+        const seenUids = new Set();
+        return popTriviaRevealVotes
+            .filter((vote) => Number(vote?.val) === popTriviaRevealCorrectIndex)
+            .map((vote) => ({
+                uid: String(vote?.uid || '').trim(),
+                name: String(vote?.userName || vote?.user || 'Guest').trim() || 'Guest',
+                avatar: String(vote?.avatar || EMOJI.sparkle || '').trim() || EMOJI.sparkle
+            }))
+            .filter((entry) => {
+                if (!entry.uid || seenUids.has(entry.uid)) return false;
+                seenUids.add(entry.uid);
+                return true;
+            });
+    }, [showPopTriviaEndState, popTriviaCorrectPoints, popTriviaRevealCorrectIndex, popTriviaRevealVotes]);
     const popTriviaRevealAnswerCount = popTriviaRevealVotes.length;
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
@@ -3466,6 +3777,37 @@ const PublicTV = ({ roomCode }) => {
         }
         popTriviaPrevTimeLeftRef.current = timeLeftSec;
     }, [popTriviaQuestionId, popTriviaState?.timeLeftSec]);
+    useEffect(() => {
+        popTriviaAwardedQuestionIdsRef.current = new Set();
+    }, [roomCode, isMarketingDemoFixture]);
+    useEffect(() => {
+        if (isMarketingDemoFixture) return;
+        const revealQuestionId = String(popTriviaRevealQuestion?.id || '').trim();
+        if (!showPopTriviaEndState || !revealQuestionId || !popTriviaCorrectPoints) return;
+        if (!popTriviaRevealAwardableResponders.length) return;
+        if (popTriviaAwardedQuestionIdsRef.current.has(revealQuestionId)) return;
+        popTriviaAwardedQuestionIdsRef.current.add(revealQuestionId);
+        const awards = popTriviaRevealAwardableResponders.map((entry) => ({
+            uid: entry.uid,
+            points: popTriviaCorrectPoints
+        }));
+        void awardRoomPointsOnce({
+            awardKey: `pop_trivia_${roomCode}_${revealQuestionId}`,
+            source: 'pop_trivia',
+            awards
+        }).then((result) => {
+            if (result?.ok) return;
+            popTriviaAwardedQuestionIdsRef.current.delete(revealQuestionId);
+        });
+    }, [
+        awardRoomPointsOnce,
+        isMarketingDemoFixture,
+        popTriviaCorrectPoints,
+        popTriviaRevealAwardableResponders,
+        popTriviaRevealQuestion?.id,
+        roomCode,
+        showPopTriviaEndState
+    ]);
 
     const handleVolume = (vol) => {
         const level = Math.min(100, Math.round(vol / 1.5));
@@ -4330,6 +4672,65 @@ const PublicTV = ({ roomCode }) => {
     }
 
     // 1. Full Screen Overlays (Top Priority)
+    const tvPreviewOverlay = room?.tvPreviewOverlay && room.tvPreviewOverlay.active ? room.tvPreviewOverlay : null;
+    const tvPreviewExpired = tvPreviewOverlay
+        ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
+        : true;
+    if (tvPreviewOverlay && !tvPreviewExpired) {
+        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
+        const accentTheme = String(tvPreviewOverlay.accentTheme || 'cyan').trim().toLowerCase();
+        const accentClass = accentTheme === 'pink'
+            ? 'from-pink-400 via-fuchsia-300 to-rose-300'
+            : accentTheme === 'amber'
+                ? 'from-amber-300 via-yellow-200 to-orange-300'
+                : accentTheme === 'emerald'
+                    ? 'from-emerald-300 via-teal-200 to-cyan-300'
+                    : 'from-cyan-300 via-sky-200 to-blue-300';
+        return (
+            <div
+                className="public-tv fixed inset-0 z-[205] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.22),transparent_55%),radial-gradient(circle_at_bottom,rgba(6,182,212,0.18),transparent_45%),#05070a] text-white"
+                style={tvPreviewOverlay.backgroundMedia ? {
+                    backgroundImage: `linear-gradient(rgba(2,6,23,0.8), rgba(2,6,23,0.9)), url(${tvPreviewOverlay.backgroundMedia})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                } : undefined}
+            >
+                <div className="relative h-full flex flex-col items-center justify-center px-6 md:px-10 text-center">
+                    <div className="rounded-full border border-violet-300/35 bg-violet-500/12 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-[0.28em] text-violet-100">
+                        Preview Mode
+                    </div>
+                    <div className="mt-4 text-xs md:text-sm uppercase tracking-[0.22em] text-white/70">
+                        {tvPreviewOverlay.takeoverScene || tvPreviewOverlay.type || 'preview'}
+                    </div>
+                    <div className={`mt-5 bg-gradient-to-r ${accentClass} bg-clip-text text-transparent text-[clamp(3rem,8vw,7rem)] font-bebas leading-[0.92] max-w-[1100px]`}>
+                        {tvPreviewOverlay.headline || tvPreviewOverlay.title || 'Run Of Show Preview'}
+                    </div>
+                    {!!tvPreviewOverlay.subhead && (
+                        <div className="mt-4 max-w-[900px] text-xl md:text-3xl text-zinc-100 leading-snug">
+                            {tvPreviewOverlay.subhead}
+                        </div>
+                    )}
+                    {!!tvPreviewOverlay.summary && (
+                        <div className="mt-5 rounded-full border border-white/10 bg-black/25 px-5 py-2 text-sm md:text-lg text-white/90">
+                            {tvPreviewOverlay.summary}
+                        </div>
+                    )}
+                    {Array.isArray(tvPreviewOverlay.options) && tvPreviewOverlay.options.length > 0 ? (
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 max-w-[920px]">
+                            {tvPreviewOverlay.options.slice(0, 4).map((option, index) => (
+                                <div key={`${option}-${index}`} className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm md:text-lg text-zinc-100">
+                                    {option}
+                                </div>
+                            ))}
+                        </div>
+                    ) : null}
+                    <div className="mt-8 text-sm md:text-lg uppercase tracking-[0.18em] text-white/60">
+                        TV-only preview · audience unaffected
+                    </div>
+                </div>
+            </div>
+        );
+    }
     if (room?.activeScreen === 'leaderboard') return <LeaderboardOverlay users={roomUsers} songs={songs} />;
     if (room?.activeScreen === 'tipping') return <TipOverlay room={room} />;
             if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} />;
@@ -4357,6 +4758,47 @@ const PublicTV = ({ roomCode }) => {
                     <div className="text-sm md:text-lg text-cyan-200 mt-4">{autoCrowdMomentDetail}</div>
                 )}
                 <div className="text-sm md:text-lg text-zinc-300 mt-3">Grab your phone and tap READY before the clock hits zero.</div>
+            </div>
+        );
+    }
+    if (room?.announcement?.active) {
+        const announcement = room.announcement || {};
+        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} zClass="z-[195]" nowValue={takeoverNowMs} />;
+        const accentTheme = String(announcement.accentTheme || 'cyan').trim().toLowerCase();
+        const accentClass = accentTheme === 'pink'
+            ? 'from-pink-400 via-fuchsia-300 to-rose-300'
+            : accentTheme === 'amber'
+                ? 'from-amber-300 via-yellow-200 to-orange-300'
+                : accentTheme === 'emerald'
+                    ? 'from-emerald-300 via-teal-200 to-cyan-300'
+                    : 'from-cyan-300 via-sky-200 to-blue-300';
+        const backgroundMedia = String(announcement.backgroundMedia || '').trim();
+        return (
+            <div
+                className="public-tv fixed inset-0 z-[195] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.24),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_45%),#05070a] text-white"
+                style={backgroundMedia ? {
+                    backgroundImage: `linear-gradient(rgba(2,6,23,0.76), rgba(2,6,23,0.88)), url(${backgroundMedia})`,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                } : undefined}
+            >
+                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_36%,rgba(255,255,255,0.02))]"></div>
+                <div className="relative h-full flex flex-col items-center justify-center px-6 md:px-10 text-center">
+                    <div className="rounded-full border border-white/15 bg-black/35 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-[0.28em] text-zinc-200">
+                        {announcement.takeoverScene || announcement.type || 'Announcement'}
+                    </div>
+                    <div className={`mt-5 bg-gradient-to-r ${accentClass} bg-clip-text text-transparent text-[clamp(3rem,8vw,7rem)] font-bebas leading-[0.92] max-w-[1100px]`}>
+                        {announcement.headline || 'Tonight In Progress'}
+                    </div>
+                    {!!announcement.subhead && (
+                        <div className="mt-4 max-w-[920px] text-xl md:text-3xl text-zinc-100 leading-snug">
+                            {announcement.subhead}
+                        </div>
+                    )}
+                    <div className="mt-8 text-sm md:text-lg uppercase tracking-[0.22em] text-white/70">
+                        Room {roomCode || '--'}
+                    </div>
+                </div>
             </div>
         );
     }
@@ -5548,14 +5990,14 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                                 <div className="shrink-0 text-right">
                                     {popTriviaQuestion ? (
-                                        <>
-                                            <div className={`text-5xl md:text-7xl 2xl:text-[5.8rem] font-black font-mono leading-none ${popTriviaUrgent ? 'text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,0.55)]' : 'text-white'} ${popTriviaUrgencyPulseVisible ? 'animate-pulse' : ''}`}>
+                                        <div className={`rounded-[1.5rem] border px-4 py-3 md:px-5 md:py-4 ${popTriviaUrgent ? 'border-yellow-300/55 bg-yellow-300/12 shadow-[0_0_28px_rgba(253,224,71,0.2)]' : 'border-cyan-300/30 bg-cyan-300/10 shadow-[0_0_24px_rgba(34,211,238,0.12)]'} ${popTriviaUrgencyPulseVisible ? 'animate-pulse' : ''}`}>
+                                            <div className={`text-5xl md:text-7xl 2xl:text-[5.8rem] font-black font-mono leading-none ${popTriviaUrgent ? 'text-yellow-200 drop-shadow-[0_0_18px_rgba(253,224,71,0.55)]' : 'text-white'}`}>
                                                 {Math.max(0, Number(popTriviaState?.timeLeftSec || 0))}
                                             </div>
-                                            <div className={`mt-1 text-[11px] md:text-[13px] tracking-[0.18em] ${popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}`}>
+                                            <div className={`mt-1 text-[11px] md:text-[13px] tracking-[0.18em] ${popTriviaUrgent ? 'text-yellow-100' : 'text-cyan-100'}`}>
                                                 {popTriviaUrgent ? 'Answer now' : 'Seconds left'}
                                             </div>
-                                        </>
+                                        </div>
                                     ) : (
                                         <>
                                             <div className="text-3xl md:text-5xl font-black text-emerald-100 leading-none">
@@ -5589,7 +6031,7 @@ const PublicTV = ({ roomCode }) => {
                                             {popTriviaQuestion.q}
                                         </div>
                                         <div className="mt-3 flex items-center justify-between gap-4 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100/90">
-                                            <span>Correct answer wins a TV shoutout</span>
+                                            <span>{popTriviaCorrectPoints > 0 ? `Correct answers earn +${popTriviaCorrectPoints} pts` : 'Correct answers earn a TV shoutout'}</span>
                                             <span>{popTriviaTotalVotes} answers locked</span>
                                         </div>
                                         <div className="mt-5 grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto pr-1">
@@ -5630,7 +6072,7 @@ const PublicTV = ({ roomCode }) => {
                                             })}
                                         </div>
                                         <div className="mt-4 flex items-center justify-between gap-4 text-[11px] md:text-sm uppercase tracking-[0.18em] text-zinc-200">
-                                            <span>Correct responders get the spotlight next</span>
+                                            <span>{popTriviaCorrectPoints > 0 ? `Correct responders bank +${popTriviaCorrectPoints} pts` : 'Correct responders get the spotlight next'}</span>
                                             <span className={popTriviaUrgent ? 'text-yellow-200' : 'text-cyan-100'}>
                                                 {popTriviaUrgent ? 'Question closing' : 'Vote in Party app'}
                                             </span>
@@ -5649,7 +6091,7 @@ const PublicTV = ({ roomCode }) => {
                                                 </div>
                                             </div>
                                             <div className="shrink-0 rounded-full border border-emerald-200/40 bg-emerald-300/18 px-4 py-2 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-50">
-                                                TV shoutout
+                                                {popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts each` : 'TV shoutout'}
                                             </div>
                                         </div>
                                     </div>
@@ -5661,6 +6103,11 @@ const PublicTV = ({ roomCode }) => {
                                                     ? `${popTriviaRevealCorrectResponders.length} nailed it`
                                                     : 'No correct answers yet'}
                                             </div>
+                                            {popTriviaCorrectPoints > 0 && popTriviaRevealAwardableResponders.length > 0 ? (
+                                                <div className="mt-2 text-[11px] md:text-[13px] uppercase tracking-[0.16em] text-emerald-100/75">
+                                                    {`${popTriviaRevealAwardableResponders.length} credited at +${popTriviaCorrectPoints} pts`}
+                                                </div>
+                                            ) : null}
                                         </div>
                                         <div className="text-right">
                                             <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-zinc-300">Answers locked</div>
@@ -5767,7 +6214,7 @@ const PublicTV = ({ roomCode }) => {
                                     combo={combo}
                                     minimalUI={isMinimal || lobbyVolleySceneActive || guitarTakeoverMode}
                                     fitToWindow
-                                    showVideo={!isMinimal}
+                                    showVideo
                                 />
                             </>
                         )}

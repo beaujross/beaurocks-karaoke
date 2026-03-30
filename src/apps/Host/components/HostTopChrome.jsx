@@ -1,6 +1,7 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
+import { getRunOfShowItemLabel, normalizeRunOfShowDirector } from '../../../lib/runOfShowDirector';
 
 const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
     const Comp = typeof onClick === 'function' ? 'button' : 'div';
@@ -115,7 +116,13 @@ const HostTopChrome = ({
     onDismissStageQuickStart,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
-    tabletTouchViewport = false
+    tabletTouchViewport = false,
+    runOfShowEnabled = false,
+    runOfShowDirector = null,
+    runOfShowLiveItem = null,
+    runOfShowStagedItem = null,
+    runOfShowNextItem = null,
+    onOpenShowWorkspace
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -245,6 +252,43 @@ const HostTopChrome = ({
         || showVibeQuickMenu
         || showLaunchMenu
         || showNavMenu;
+    const compactRunOfShowItems = React.useMemo(() => {
+        if (!runOfShowEnabled) return [];
+        const items = normalizeRunOfShowDirector(runOfShowDirector || {}).items || [];
+        return items.slice(0, 10).map((item, index) => {
+            const status = String(item?.status || '').trim().toLowerCase();
+            const type = String(item?.type || '').trim().toLowerCase();
+            const isLive = item?.id && item.id === runOfShowLiveItem?.id;
+            const isStaged = item?.id && item.id === runOfShowStagedItem?.id;
+            const isNext = item?.id && item.id === runOfShowNextItem?.id;
+            const badgeLabel = isLive ? 'Live' : isStaged ? 'Staged' : isNext ? 'Next' : `#${index + 1}`;
+            const typeToneClass = type === 'performance'
+                ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
+                : type.includes('trivia') || type.includes('game') || type.includes('would_you_rather')
+                    ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
+                    : type === 'announcement' || type === 'intro' || type === 'closing'
+                        ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
+                        : 'border-white/10 bg-white/5 text-zinc-100';
+            const statusToneClass = isLive
+                ? 'border-emerald-300/40 bg-emerald-500/15 text-emerald-100'
+                : isStaged
+                    ? 'border-sky-300/35 bg-sky-500/14 text-sky-100'
+                    : status === 'blocked'
+                        ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
+                        : isNext
+                            ? 'border-amber-300/35 bg-amber-500/12 text-amber-100'
+                            : 'border-white/10 bg-black/25 text-zinc-300';
+            return {
+                id: item?.id || `run-of-show-${index}`,
+                title: String(item?.title || '').trim() || getRunOfShowItemLabel(item?.type),
+                detail: type.replace(/_/g, ' '),
+                status,
+                badgeLabel,
+                typeToneClass,
+                statusToneClass
+            };
+        });
+    }, [runOfShowDirector, runOfShowEnabled, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id]);
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -778,6 +822,7 @@ const HostTopChrome = ({
                     />
                     {[
                         { key: 'stage', label: 'Queue' },
+                        { key: 'run_of_show', label: 'Show' },
                         { key: 'games', label: 'Games' },
                         { key: 'lobby', label: 'Audience' },
                         { key: 'admin', label: 'Admin' }
@@ -865,6 +910,7 @@ const HostTopChrome = ({
                             )}
                             {[
                                 { key: 'stage', label: 'Queue' },
+                                { key: 'run_of_show', label: 'Show' },
                                 { key: 'games', label: 'Games' },
                                 { key: 'lobby', label: 'Audience' },
                                 { key: 'admin', label: 'Admin' }
@@ -1692,6 +1738,45 @@ const HostTopChrome = ({
                 </div>
             )}
         </div>
+        {runOfShowEnabled && compactRunOfShowItems.length > 0 && (
+            <div className="w-full">
+                <div className="rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Run Of Show</div>
+                            <div className="mt-1 text-sm text-zinc-300">Compressed sequence strip for the current room plan.</div>
+                        </div>
+                        {typeof onOpenShowWorkspace === 'function' && (
+                            <button
+                                type="button"
+                                onClick={onOpenShowWorkspace}
+                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                            >
+                                Open Show
+                            </button>
+                        )}
+                    </div>
+                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {compactRunOfShowItems.map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => onOpenShowWorkspace?.()}
+                                className={`min-w-[168px] max-w-[220px] shrink-0 rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-cyan-300/45 ${item.typeToneClass}`}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${item.statusToneClass}`}>
+                                        {item.badgeLabel}
+                                    </span>
+                                    <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">{item.detail}</span>
+                                </div>
+                                <div className="mt-2 line-clamp-2 text-sm font-black text-white">{item.title}</div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        )}
         <div className="w-full">
             <button
                 onClick={() => setAudioPanelOpen(v => !v)}

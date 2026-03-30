@@ -349,12 +349,11 @@ const buildMarkerVisual = (
   color,
   selected = false,
   isElevated = false,
-  isOfficialRoom = false,
-  pulsePhase = 0
+  isOfficialRoom = false
 ) => {
   const mutedAccentColor = mixHexColors(color || "#26d7e8", "#667487", selected ? 0.36 : 0.52);
   const accentColor = isOfficialRoom
-    ? (pulsePhase ? "#ff72c1" : "#ff4fae")
+    ? "#ff4fae"
     : isElevated
       ? "#f1c76f"
       : mutedAccentColor;
@@ -384,8 +383,8 @@ const buildMarkerVisual = (
       ? hexToRgba("#fff3c7", selected ? 0.22 : 0.14)
       : hexToRgba(accentColor, selected ? 0.09 : 0.05);
   const radius = selected
-    ? (isOfficialRoom ? (17 + (pulsePhase ? 1 : 0)) : isElevated ? 15 : 12)
-    : (isOfficialRoom ? (14 + (pulsePhase ? 1 : 0)) : isElevated ? 12 : 9);
+    ? (isOfficialRoom ? 17 : isElevated ? 15 : 12)
+    : (isOfficialRoom ? 14 : isElevated ? 12 : 9);
   const strokeWidth = selected
     ? (isOfficialRoom ? 4 : isElevated ? 3.3 : 2.3)
     : (isOfficialRoom ? 3.2 : isElevated ? 2.5 : 1.8);
@@ -424,10 +423,9 @@ const buildMarkerIcon = (
   color,
   selected = false,
   isElevated = false,
-  isOfficialRoom = false,
-  pulsePhase = 0
+  isOfficialRoom = false
 ) => {
-  const visual = buildMarkerVisual(color, selected, isElevated, isOfficialRoom, pulsePhase);
+  const visual = buildMarkerVisual(color, selected, isElevated, isOfficialRoom);
   return {
     path: googleMaps.SymbolPath.CIRCLE,
     fillColor: visual.fillColor,
@@ -597,7 +595,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
     padBottom: 0,
   });
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  const [officialMarkerPulsePhase, setOfficialMarkerPulsePhase] = useState(0);
   const mobileBootstrapRegion = isMobileViewport ? KITSAP_BOOTSTRAP_REGION : "";
   const bootstrapMapView = useMemo(() => {
     const regionToken = String(region || "").trim().toLowerCase();
@@ -783,13 +780,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
     () => rankedListings.filter((entry) => !!entry.location),
     [rankedListings]
   );
-  useEffect(() => {
-    if (!mappableListings.some((entry) => entry.isOfficialBeauRocksListing)) return () => {};
-    const timer = window.setInterval(() => {
-      setOfficialMarkerPulsePhase((prev) => (prev ? 0 : 1));
-    }, 900);
-    return () => window.clearInterval(timer);
-  }, [mappableListings]);
   const listingsInBounds = useMemo(() => {
     if (!mapBounds) return mappableListings;
     return mappableListings.filter((entry) => pointInBounds(entry.location, mapBounds));
@@ -1168,8 +1158,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
         entry.markerColor,
         selected,
         !!entry.isBeauRocksElevated,
-        !!entry.isOfficialBeauRocksListing,
-        officialMarkerPulsePhase
+        !!entry.isOfficialBeauRocksListing
       );
       const zIndex = selected ? 999 : entry.isBeauRocksElevated ? 320 : 180;
       let markerEntry = markerMap.get(entry.key);
@@ -1221,8 +1210,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
               entry.markerColor,
               selected,
               !!entry.isBeauRocksElevated,
-              !!entry.isOfficialBeauRocksListing,
-              officialMarkerPulsePhase
+              !!entry.isOfficialBeauRocksListing
             )
           );
           markerEntry.marker.setLabel(null);
@@ -1301,7 +1289,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
     `;
     infoWindow.setContent(
       hasSelectedHeroImage
-        ? `<div class="mk3-map-marker-selected is-with-hero" style="background-image: url('${escapeHtml(selectedHeroImageUrl)}');">
+        ? `<div class="mk3-map-marker-selected is-with-hero">
+            <div class="mk3-map-marker-selected-hero">
+              <img src="${escapeHtml(selectedHeroImageUrl)}" alt="${escapeHtml(selectedListingInMap.title)}" loading="lazy" />
+            </div>
             <div class="mk3-map-marker-selected-content">
               ${selectedContent}
             </div>
@@ -1311,7 +1302,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
           </div>`
     );
     infoWindow.open({ map, anchor: markerEntry.marker });
-  }, [mappableListings, effectiveSelectedKey, focusListing, officialMarkerPulsePhase, hasCloudStyledMapId]);
+  }, [mappableListings, effectiveSelectedKey, focusListing, hasCloudStyledMapId]);
 
   const hiddenWithoutCoords = boundsOnly
     ? rankedListings.length - mappableListings.length
@@ -1879,7 +1870,10 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
             <div className="mk3-discover-map-head-copy">
               <span>Discover</span>
               <h2>Setlist map</h2>
-              <p>Browse nearby events, venues, and live rooms without leaving the map.</p>
+              {!isMobileViewport && (
+                <b>{mappableListings.length.toLocaleString()} pins ready</b>
+              )}
+              {isMobileViewport && <p>Browse nearby events, venues, and live rooms without leaving the map.</p>}
             </div>
             <div className="mk3-discover-map-head-stats">
               <article>
@@ -1896,43 +1890,6 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
               </article>
             </div>
           </div>
-          <div className={`mk3-map-toolbar mk3-discover-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
-            {!isMobileViewport && (
-              <label className="mk3-inline">
-                <input
-                  type="checkbox"
-                  checked={boundsOnly}
-                  onChange={(event) => setBoundsOnly(event.target.checked)}
-                />
-                Inside map only
-              </label>
-            )}
-            {!isMobileViewport && (
-              <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
-                Fit map
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={requestUserLocation}
-              disabled={geoLoading}
-            >
-              {geoLoading ? "Locating..." : userLocation ? "Refresh location" : "My location"}
-            </button>
-            <button
-              type="button"
-              onClick={toggleMapFullscreen}
-              disabled={!mapEnabled || !mapsLoaded}
-            >
-              {mapFullscreen ? "Exit full screen" : "Full screen"}
-            </button>
-            {!isMobileViewport ? (
-              <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
-                {mapFirst ? "Split view" : "Map first"}
-              </button>
-            ) : null}
-          </div>
-
           {!mapEnabled && (
             <div className="mk3-status">
               The live map is temporarily unavailable, but you can still browse listings below.
@@ -1949,6 +1906,42 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref }) =>
               </div>
             )}
             <div className="mk3-map-stage-overlay">
+              <div className={`mk3-map-toolbar mk3-discover-map-toolbar ${isMobileViewport ? "is-mobile-compact" : ""}`}>
+                {!isMobileViewport && (
+                  <label className="mk3-inline">
+                    <input
+                      type="checkbox"
+                      checked={boundsOnly}
+                      onChange={(event) => setBoundsOnly(event.target.checked)}
+                    />
+                    Inside map only
+                  </label>
+                )}
+                {!isMobileViewport && (
+                  <button type="button" onClick={recenterMap} disabled={!mappableListings.length || !mapsLoaded}>
+                    Fit map
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={requestUserLocation}
+                  disabled={geoLoading}
+                >
+                  {geoLoading ? "Locating..." : userLocation ? "Refresh location" : "My location"}
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleMapFullscreen}
+                  disabled={!mapEnabled || !mapsLoaded}
+                >
+                  {mapFullscreen ? "Exit full screen" : "Full screen"}
+                </button>
+                {!isMobileViewport ? (
+                  <button type="button" onClick={() => setMapFirst((prev) => !prev)}>
+                    {mapFirst ? "Split view" : "Map first"}
+                  </button>
+                ) : null}
+              </div>
               <div className="mk3-map-legend" aria-label="Map legend">
                 <span className="mk3-map-legend-item is-event">Events {listingTypeCounts.event}</span>
                 <span className="mk3-map-legend-item is-venue">Venues {listingTypeCounts.venue}</span>

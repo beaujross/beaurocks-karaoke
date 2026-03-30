@@ -23,6 +23,7 @@ const {
   setDirectoryReminderPreferences,
   listDirectoryGeoLanding,
   listDirectoryDiscover,
+  searchHostVenueAutocomplete,
   redeemMarketingPrivateHostAccess,
   setHostApprovalStatus,
   listHostApplications,
@@ -42,6 +43,7 @@ const MOD_UID = "directory-mod";
 const ADMIN_UID = "directory-admin";
 const USER_UID = "directory-user";
 const OTHER_UID = "directory-other";
+const HOST_UID = "directory-host";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -117,6 +119,19 @@ async function resetState() {
     uid: USER_UID,
     name: "Directory User",
     subscription: { tier: "free" },
+  }, { merge: true });
+  await db.doc(`users/${HOST_UID}`).set({
+    uid: HOST_UID,
+    name: "Directory Host",
+    subscription: { tier: "free" },
+  }, { merge: true });
+  await db.doc(`host_access_approvals/${HOST_UID}`).set({
+    uid: HOST_UID,
+    hostApprovalEnabled: true,
+  }, { merge: true });
+  await db.doc(`marketing_private_access/${HOST_UID}`).set({
+    uid: HOST_UID,
+    privateHostAccessEnabled: true,
   }, { merge: true });
 }
 
@@ -849,6 +864,40 @@ async function run() {
       assert.equal(result.ok, true);
       assert.equal(result.roomCode, "VIP123");
       assert.equal(result.session?.id, "session_by_code");
+    }],
+
+    ["searchHostVenueAutocomplete returns approved public venue matches for hosts", async () => {
+      await db.doc("venues/venue_neon_house").set({
+        title: "Neon Karaoke House",
+        status: "approved",
+        visibility: "public",
+        city: "Seattle",
+        state: "WA",
+        address1: "101 Pine St",
+        location: { lat: 47.6062, lng: -122.3321 },
+      });
+      await db.doc("venues/venue_private_hide").set({
+        title: "Neon Hidden Lounge",
+        status: "approved",
+        visibility: "private",
+        city: "Seattle",
+        state: "WA",
+      });
+
+      const result = await searchHostVenueAutocomplete.run(
+        requestFor(HOST_UID, {
+          query: "neon",
+          limit: 5,
+        })
+      );
+
+      assert.equal(result.ok, true);
+      assert.equal(Array.isArray(result.items), true);
+      assert.equal(result.items.length, 1);
+      assert.equal(result.items[0].venueId, "venue_neon_house");
+      assert.equal(result.items[0].title, "Neon Karaoke House");
+      assert.equal(result.items[0].city, "Seattle");
+      assert.equal(result.items[0].state, "WA");
     }],
 
     ["listDirectoryDiscover paginates and filters by search", async () => {

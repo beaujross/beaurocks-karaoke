@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  buildMarketingPath,
   MARKETING_ROUTE_PAGES,
   isMarketingPath,
   parseMarketingRouteFromLocation,
@@ -19,6 +20,18 @@ test("marketingRoutingLegacy.test", () => {
     search: "",
   });
   assert.equal(fromLegacyPath.page, MARKETING_ROUTE_PAGES.forVenues);
+
+  const fromAutoDemoPath = parseMarketingRouteFromLocation({
+    pathname: "/auto-demo",
+    search: "",
+  });
+  assert.equal(fromAutoDemoPath.page, MARKETING_ROUTE_PAGES.demoAuto);
+
+  const fromLegacyAutoDemoPath = parseMarketingRouteFromLocation({
+    pathname: "/demo-auto",
+    search: "",
+  });
+  assert.equal(fromLegacyAutoDemoPath.page, MARKETING_ROUTE_PAGES.demoAuto);
 
   const fromChangelogPath = parseMarketingRouteFromLocation({
     pathname: "/changelog",
@@ -43,6 +56,7 @@ test("marketingRoutingLegacy.test", () => {
 
   assert.equal(isMarketingPath("/for-fans"), true);
   assert.equal(isMarketingPath("/marketing"), true);
+  assert.equal(isMarketingPath("/auto-demo"), true);
   assert.equal(isMarketingPath("/random-unrelated-path"), false);
   assert.equal(isMarketingPath("/karaoke/terms"), false);
   assert.equal(parseMarketingRouteFromLocation({
@@ -59,4 +73,5 @@ test("marketingRoutingLegacy.test", () => {
     search: "",
   });
   assert.equal(fromRootFallback.page, MARKETING_ROUTE_PAGES.forFans);
+  assert.equal(buildMarketingPath({ page: MARKETING_ROUTE_PAGES.demoAuto }), "/auto-demo");
 });

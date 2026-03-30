@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { 
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
@@ -10,6 +11,7 @@ import {
     callFunction,
     ensureAppCheckToken,
     setMyVipAccountStatus,
+    redeemPromoCode,
     mergeAnonymousAccountData,
     joinRoomAudience
 } from '../../lib/firebase';
@@ -22,9 +24,18 @@ import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
 import { POINTS_PACKS, SUBSCRIPTIONS } from '../../billing/catalog';
 import { BILLING_PLATFORMS, createBillingProvider, detectBillingPlatform } from '../../billing/provider';
-import { DEFAULT_TIP_CRATES } from '../Host/hostAppData';
+import { DEFAULT_TIP_CRATES, TOP100_SEED } from '../Host/hostAppData';
 import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import {
+    decorateBrowseSongs
+} from '../../lib/browseCatalog';
+import {
+    REQUEST_MODES,
+    allowsGuestBackingSelection,
+    isPlayableOnlyRequestMode,
+    normalizeRoomRequestMode
+} from '../../lib/requestModes';
 import GameContainer from '../../components/GameContainer';
 import AppleLyricsRenderer from '../../components/AppleLyricsRenderer';
 import { FameLevelProgressBar } from '../../components/FameLevelBadge';
@@ -69,6 +80,13 @@ import {
     isBracketSignupOpen,
     summarizeBracketSignup
 } from '../../lib/karaokeBracketSupport';
+import {
+    AUDIENCE_SHELL_VARIANTS,
+    deriveAudienceTakeoverKind,
+    getAudienceTakeoverLabel,
+    normalizeAudienceShellVariant
+} from './audienceShellVariant';
+import { buildQaAudienceFixture } from './qaAudienceFixtures';
 
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 
@@ -100,7 +118,65 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
     );
 };
 
+const AudienceBrowseSongRow = ({
+    index = null,
+    art = '',
+    title = '',
+    artist = '',
+    loading = false,
+    ready = false,
+    onRequest,
+    onTight15 = null,
+    requestLabel = 'Request',
+    requestToneClass = 'bg-[#00C4D9]/18 text-[#46D7E8] border-[#00C4D9]/30',
+}) => (
+    <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 hover:border-[#00C4D9]/40">
+        {index !== null ? (
+            <div className="w-6 text-center font-mono text-sm text-zinc-500">{index}</div>
+        ) : null}
+        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg">
+            <img src={art} alt={title} className="h-full w-full object-cover" />
+            {loading ? (
+                <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/60 text-[10px] uppercase tracking-[0.18em] text-zinc-200">
+                    Load
+                </div>
+            ) : null}
+        </div>
+        <div className="min-w-0 flex-1">
+            <div className="truncate text-[17px] font-black leading-tight text-white">{title}</div>
+            <div className="truncate text-sm leading-tight text-zinc-400">{artist}</div>
+            {ready ? (
+                <div className="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-400/25 bg-emerald-500/12 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-200">
+                    <i className="fa-solid fa-circle-check"></i>
+                    Ready
+                </div>
+            ) : null}
+        </div>
+        <div className="ml-1 flex shrink-0 items-center gap-2">
+            <button
+                type="button"
+                onClick={onRequest}
+                className={`rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${requestToneClass}`}
+            >
+                {requestLabel}
+            </button>
+            {typeof onTight15 === 'function' ? (
+                <button
+                    type="button"
+                    onClick={onTight15}
+                    aria-label="Add to Tight 15"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/12 text-amber-300"
+                >
+                    <i className="fa-solid fa-list-ul text-[12px]"></i>
+                </button>
+            ) : null}
+        </div>
+    </div>
+);
+
 const DEFAULT_EMOJI = emoji(0x1F600);
+const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
+const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
 const BRAND_ICON = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
 const MOBILE_THEME_COLOR = '#7a2b76';
 const MOBILE_APP_BG = '#090612';
@@ -322,7 +398,7 @@ const VIP_TOS_SUMMARY = [
     'Keep it fun: no harassment, threats, hate speech, or illegal content.',
     'Only share content you own or have permission to use.',
     'We can remove content that breaks the rules or disrupts the party.',
-    'VIP SMS alerts are optional and you can opt out any time.'
+    'VIP profile details help the room celebrate you without slowing down the night.'
 ];
 
 const VIP_BIRTH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -680,19 +756,43 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
 };
 
 const SingerApp = ({ roomCode, uid }) => {
-    const [user, setUser] = useState(null);
-    const [profile, setProfile] = useState(null);
-    const [allUsers, setAllUsers] = useState([]); // For Leaderboard
-    const [room, setRoom] = useState(null);
-    const [songs, setSongs] = useState([]);
-    const [tab, setTab] = useState('home');
+    const initialAudienceDemoFixture = (() => {
+        if (typeof window === 'undefined') return null;
+        const params = new URLSearchParams(window.location.search || '');
+        const fixtureId = String(params.get('qaAudienceFixture') || '').trim();
+        if (!fixtureId) return null;
+        const targetRoomCode = String(params.get('room') || roomCode || '').trim().toUpperCase() || 'DEMOAUD';
+        return buildQaAudienceFixture(fixtureId, { roomCode: targetRoomCode }) || null;
+    })();
+    const [user, setUser] = useState(initialAudienceDemoFixture?.user || null);
+    const [profile, setProfile] = useState(initialAudienceDemoFixture?.profile || null);
+    const [allUsers, setAllUsers] = useState(Array.isArray(initialAudienceDemoFixture?.allUsers) ? initialAudienceDemoFixture.allUsers : []); // For Leaderboard
+    const [room, setRoom] = useState(initialAudienceDemoFixture?.room || null);
+    const [songs, setSongs] = useState(Array.isArray(initialAudienceDemoFixture?.songs) ? initialAudienceDemoFixture.songs : []);
+    const [tab, setTab] = useState(initialAudienceDemoFixture?.tab || 'home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
+    const shellVariant = useMemo(
+        () => normalizeAudienceShellVariant(room?.audienceShellVariant),
+        [room?.audienceShellVariant]
+    );
+    const isStreamlinedAudienceShell = shellVariant === AUDIENCE_SHELL_VARIANTS.streamlined;
+    const takeoverKind = useMemo(
+        () => deriveAudienceTakeoverKind({ activeMode: room?.activeMode, lightMode: room?.lightMode }),
+        [room?.activeMode, room?.lightMode]
+    );
+    const [takeoverState, setTakeoverState] = useState('closed');
+    const authUserUid = String(auth?.currentUser?.uid || '').trim();
     const isAnon = !!auth?.currentUser?.isAnonymous;
-    const canSaveTight15 = !isAnon;
-    const isVipAccount = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
-    const [songsTab, setSongsTab] = useState('requests');
-    const [socialTab, setSocialTab] = useState('lounge'); // Sub-tab for Social
-    const [profileSubTab, setProfileSubTab] = useState('overview');
+    const canSaveTight15 = !!authUserUid && !isAnon;
+    const [vipUnlockPending, setVipUnlockPending] = useState(false);
+    const isVipAccount = vipUnlockPending
+        || !!user?.isVip
+        || (Number(user?.vipLevel || 0) > 0)
+        || !!profile?.isVip
+        || (Number(profile?.vipLevel || 0) > 0);
+    const [songsTab, setSongsTab] = useState(initialAudienceDemoFixture?.songsTab || 'requests');
+    const [socialTab, setSocialTab] = useState(initialAudienceDemoFixture?.socialTab || 'lounge'); // Sub-tab for Social
+    const [profileSubTab, setProfileSubTab] = useState(initialAudienceDemoFixture?.profileSubTab || 'overview');
     const [leaderboardMode, _setLeaderboardMode] = useState('performances');
     const [browseFilter, setBrowseFilter] = useState('');
     const [showTop100, setShowTop100] = useState(false);
@@ -707,11 +807,15 @@ const SingerApp = ({ roomCode, uid }) => {
         () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
         [authReadyUid, uid]
     );
+    const accountProfileUid = useMemo(
+        () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
+        [authReadyUid, uid]
+    );
     const isMarketingDemoEmbed = useMemo(() => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
-    const [demoFixture, setDemoFixture] = useState(null);
+    const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const demoGuestProfile = useMemo(() => {
         const audienceNames = ['Alex', 'Jordan', 'Taylor', 'Casey', 'Riley', 'Morgan', 'Harper', 'Kai'];
@@ -769,6 +873,7 @@ const SingerApp = ({ roomCode, uid }) => {
 
     // Form state for profile editing
     const [form, setForm] = useState({ name: '', emoji: DEFAULT_EMOJI, song: '', artist: '', art: '', backingUrl: '' });
+    const [requestCollabOpen, setRequestCollabOpen] = useState(false);
     const NAME_LIMIT = 18;
     const clampName = (value) => value.slice(0, NAME_LIMIT);
     const getRoomUserProjection = useMemo(() => {
@@ -818,6 +923,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const [results, setResults] = useState([]);
     const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
     const [manualRequestComposerOpen, setManualRequestComposerOpen] = useState(false);
+    const takeoverSeenRef = useRef({ kind: '', state: 'closed' });
+    const shellVariantSeenRef = useRef(new Set());
+    const audienceExperimentViewRef = useRef(new Set());
     const [lastSongRequestFeedback, setLastSongRequestFeedback] = useState(null);
     const [tight15SearchQ, setTight15SearchQ] = useState('');
     const [tight15Results, setTight15Results] = useState([]);
@@ -831,6 +939,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
     const [showPointsShop, setShowPointsShop] = useState(false);
+    const [eventGrantCode, setEventGrantCode] = useState('');
+    const [eventGrantBusy, setEventGrantBusy] = useState(false);
+    const eventGrantAutoClaimRef = useRef('');
     const [showHowToPlay, setShowHowToPlay] = useState(false);
     const [howToPlayIndex, setHowToPlayIndex] = useState(0);
     const howToPlayTouchStart = useRef(null);
@@ -841,13 +952,16 @@ const SingerApp = ({ roomCode, uid }) => {
     const [popTriviaNow, setPopTriviaNow] = useState(Date.now());
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
+    const [popTriviaRevealSnapshot, setPopTriviaRevealSnapshot] = useState(null);
     const [dismissedPopTriviaCardKey, setDismissedPopTriviaCardKey] = useState('');
 
     // Email-link account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(false);
+    const [avatarUnlockModal, setAvatarUnlockModal] = useState(null);
     const [accountEmail, setAccountEmail] = useState('');
     const [emailLinkSent, setEmailLinkSent] = useState(false);
     const [accountAuthLoading, setAccountAuthLoading] = useState(false);
+    const audienceEmailLinkAttemptRef = useRef({ href: '', phase: 'idle', email: '' });
     const [showAbout, setShowAbout] = useState(false);
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
     const [feedbackSending, setFeedbackSending] = useState(false);
@@ -1042,6 +1156,15 @@ const SingerApp = ({ roomCode, uid }) => {
         });
         return !err;
     }, [isVipAccount, vipProfileData?.location, vipProfileData?.birthMonth, vipProfileData?.birthDay, vipProfileData?.tosAccepted]);
+    const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
+    const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
+    const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
+    const autoCrowdMomentTitle = String(activeAutoCrowdMoment?.title || '').trim()
+        || (autoCrowdMomentType === 'volley' ? 'Auto Party: Volley Orb' : 'Auto Party: Ready Check');
+    const autoCrowdMomentDetail = String(activeAutoCrowdMoment?.detail || '').trim()
+        || (autoCrowdMomentType === 'volley'
+            ? 'Audience relay is live between singers.'
+            : 'Audience check-in is live before the next singer.');
     const _vipCount = useMemo(() => allUsers.filter(u => u.isVip || (u.vipLevel || 0) > 0).length, [allUsers]);
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
@@ -1065,7 +1188,7 @@ const SingerApp = ({ roomCode, uid }) => {
         return picks.slice(0, 2);
     }, [availableTipCrates]);
     const isNativeMobileLayout = mobileLayoutMode === 'native';
-    const isCompactBottomNav = isNativeMobileLayout && isBottomNavCollapsed;
+    const isCompactBottomNav = false;
     const mobileSafeTopInset = 'env(safe-area-inset-top)';
     const mobileSafeLeftInset = 'env(safe-area-inset-left)';
     const mobileSafeRightInset = 'env(safe-area-inset-right)';
@@ -1086,7 +1209,7 @@ const SingerApp = ({ roomCode, uid }) => {
         ? `max(0px, ${mobileSafeBottomInset})`
         : (isStandaloneDisplay ? `max(10px, ${mobileSafeBottomInset})` : '10px');
     const mobileFloatingBottomInset = isNativeMobileLayout
-        ? `calc(${mobileBottomInset} + ${isCompactBottomNav ? '62px' : '80px'})`
+        ? `calc(${mobileBottomInset} + 68px)`
         : (isStandaloneDisplay ? `calc(${mobileSafeBottomInset} + 80px)` : '80px');
     const showBallad = room?.lightMode === 'ballad';
     const showBanger = room?.lightMode === 'banger';
@@ -1555,114 +1678,18 @@ const SingerApp = ({ roomCode, uid }) => {
         vinyl: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=200&q=80',
         lights: 'https://images.unsplash.com/photo-1485579149621-3123dd979885?auto=format&fit=crop&w=200&q=80'
     }), []);
-    const top100Seed = useMemo(() => ([
-        { title: 'Dont Stop Believin', artist: 'Journey' },
-        { title: 'Bohemian Rhapsody', artist: 'Queen' },
-        { title: 'Sweet Caroline', artist: 'Neil Diamond' },
-        { title: 'I Will Survive', artist: 'Gloria Gaynor' },
-        { title: 'Livin on a Prayer', artist: 'Bon Jovi' },
-        { title: 'Billie Jean', artist: 'Michael Jackson' },
-        { title: 'Sweet Home Alabama', artist: 'Lynyrd Skynyrd' },
-        { title: 'Friends in Low Places', artist: 'Garth Brooks' },
-        { title: 'Uptown Funk', artist: 'Bruno Mars' },
-        { title: 'Wonderwall', artist: 'Oasis' },
-        { title: 'Hey Jude', artist: 'The Beatles' },
-        { title: 'My Girl', artist: 'The Temptations' },
-        { title: 'Dancing Queen', artist: 'ABBA' },
-        { title: 'Girls Just Want to Have Fun', artist: 'Cyndi Lauper' },
-        { title: 'I Wanna Dance with Somebody', artist: 'Whitney Houston' },
-        { title: 'Respect', artist: 'Aretha Franklin' },
-        { title: 'Rolling in the Deep', artist: 'Adele' },
-        { title: 'Firework', artist: 'Katy Perry' },
-        { title: 'Shake It Off', artist: 'Taylor Swift' },
-        { title: 'Dont Stop Me Now', artist: 'Queen' },
-        { title: 'Summer of 69', artist: 'Bryan Adams' },
-        { title: 'Like a Virgin', artist: 'Madonna' },
-        { title: 'Total Eclipse of the Heart', artist: 'Bonnie Tyler' },
-        { title: 'Sweet Child O Mine', artist: 'Guns N Roses' },
-        { title: 'Eye of the Tiger', artist: 'Survivor' },
-        { title: 'September', artist: 'Earth Wind and Fire' },
-        { title: 'Celebration', artist: 'Kool and The Gang' },
-        { title: 'Brown Eyed Girl', artist: 'Van Morrison' },
-        { title: 'Take On Me', artist: 'A-ha' },
-        { title: 'Another One Bites the Dust', artist: 'Queen' },
-        { title: 'With or Without You', artist: 'U2' },
-        { title: 'I Love Rock n Roll', artist: 'Joan Jett' },
-        { title: 'You Shook Me All Night Long', artist: 'AC/DC' },
-        { title: 'Hotel California', artist: 'Eagles' },
-        { title: 'Sweet Dreams', artist: 'Eurythmics' },
-        { title: 'Stand By Me', artist: 'Ben E King' },
-        { title: 'Lean on Me', artist: 'Bill Withers' },
-        { title: 'Take Me Home Country Roads', artist: 'John Denver' },
-        { title: 'Shallow', artist: 'Lady Gaga' },
-        { title: 'Halo', artist: 'Beyonce' },
-        { title: 'Crazy in Love', artist: 'Beyonce' },
-        { title: 'Since U Been Gone', artist: 'Kelly Clarkson' },
-        { title: 'You Belong with Me', artist: 'Taylor Swift' },
-        { title: 'Stayin Alive', artist: 'Bee Gees' },
-        { title: 'Let It Be', artist: 'The Beatles' },
-        { title: 'I Will Always Love You', artist: 'Whitney Houston' },
-        { title: 'Torn', artist: 'Natalie Imbruglia' },
-        { title: 'Hit Me with Your Best Shot', artist: 'Pat Benatar' },
-        { title: 'The Time of My Life', artist: 'Bill Medley and Jennifer Warnes' },
-        { title: 'Come Together', artist: 'The Beatles' },
-        { title: 'Landslide', artist: 'Fleetwood Mac' },
-        { title: 'Go Your Own Way', artist: 'Fleetwood Mac' },
-        { title: 'Dreams', artist: 'Fleetwood Mac' },
-        { title: 'Crazy', artist: 'Gnarls Barkley' },
-        { title: 'Mr Brightside', artist: 'The Killers' },
-        { title: 'Valerie', artist: 'Amy Winehouse' },
-        { title: 'Rehab', artist: 'Amy Winehouse' },
-        { title: 'All Star', artist: 'Smash Mouth' },
-        { title: 'Livin La Vida Loca', artist: 'Ricky Martin' },
-        { title: 'Bye Bye Bye', artist: 'NSYNC' },
-        { title: 'Wannabe', artist: 'Spice Girls' },
-        { title: 'No Scrubs', artist: 'TLC' },
-        { title: 'Waterfalls', artist: 'TLC' },
-        { title: 'Killing Me Softly', artist: 'Fugees' },
-        { title: 'My Heart Will Go On', artist: 'Celine Dion' },
-        { title: 'Genie in a Bottle', artist: 'Christina Aguilera' },
-        { title: 'Believe', artist: 'Cher' },
-        { title: 'Im Yours', artist: 'Jason Mraz' },
-        { title: 'Say My Name', artist: 'Destinys Child' },
-        { title: 'Single Ladies', artist: 'Beyonce' },
-        { title: 'Poker Face', artist: 'Lady Gaga' },
-        { title: 'Bad Romance', artist: 'Lady Gaga' },
-        { title: 'Somebody to Love', artist: 'Queen' },
-        { title: 'Beat It', artist: 'Michael Jackson' },
-        { title: 'Man in the Mirror', artist: 'Michael Jackson' },
-        { title: 'Smooth', artist: 'Santana' },
-        { title: 'Faith', artist: 'George Michael' },
-        { title: 'Under the Bridge', artist: 'Red Hot Chili Peppers' },
-        { title: 'Losing My Religion', artist: 'REM' },
-        { title: 'Creep', artist: 'Radiohead' },
-        { title: 'The Middle', artist: 'Jimmy Eat World' },
-        { title: 'Sk8er Boi', artist: 'Avril Lavigne' },
-        { title: 'Complicated', artist: 'Avril Lavigne' },
-        { title: 'Ironic', artist: 'Alanis Morissette' },
-        { title: 'Hand in My Pocket', artist: 'Alanis Morissette' },
-        { title: 'The Scientist', artist: 'Coldplay' },
-        { title: 'Yellow', artist: 'Coldplay' },
-        { title: 'Viva La Vida', artist: 'Coldplay' },
-        { title: 'Drops of Jupiter', artist: 'Train' },
-        { title: 'Hey Ya', artist: 'OutKast' },
-        { title: 'Ms Jackson', artist: 'OutKast' },
-        { title: 'I Gotta Feeling', artist: 'Black Eyed Peas' },
-        { title: 'No Diggity', artist: 'Blackstreet' },
-        { title: 'Yeah!', artist: 'Usher' },
-        { title: 'Enter Sandman', artist: 'Metallica' },
-        { title: 'Nothing Else Matters', artist: 'Metallica' },
-        { title: 'Purple Rain', artist: 'Prince' },
-        { title: 'Tennessee Whiskey', artist: 'Chris Stapleton' },
-        { title: 'Before He Cheats', artist: 'Carrie Underwood' }
-    ]), []);
+    const top100Seed = TOP100_SEED;
+    const roomRequestMode = normalizeRoomRequestMode(room?.requestMode, room?.allowSingerTrackSelect);
+    const playableOnlyRequestMode = isPlayableOnlyRequestMode(roomRequestMode, room?.allowSingerTrackSelect);
+    const guestBackingAllowed = allowsGuestBackingSelection(roomRequestMode, room?.allowSingerTrackSelect);
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
-        return top100Seed.map((s, idx) => {
+        const decorated = decorateBrowseSongs(top100Seed, { playableOnly: playableOnlyRequestMode });
+        return decorated.map((s, idx) => {
             const artKey = `${s.title}__${s.artist}`;
             return { ...s, artKey, art: top100Art[artKey] || arts[idx % arts.length] };
         });
-    }, [top100Art, sampleArt, top100Seed]);
+    }, [playableOnlyRequestMode, top100Art, sampleArt, top100Seed]);
     const fetchTop100Art = async (song) => {
         const artKey = song.artKey || `${song.title}__${song.artist}`;
         if (top100Art[artKey] || top100ArtLoading[artKey]) return top100Art[artKey];
@@ -1697,7 +1724,8 @@ const SingerApp = ({ roomCode, uid }) => {
         return sampleArtPool[base % sampleArtPool.length];
     };
     const buildBrowseList = (list, listIdx) => {
-        const songs = list.songs.map((song, idx) => ({
+        const enrichedSongs = decorateBrowseSongs(list.songs, { playableOnly: playableOnlyRequestMode });
+        const songs = enrichedSongs.map((song, idx) => ({
             ...song,
             artKey: `${song.title}__${song.artist}`,
             art: resolveBrowseArt(song, (listIdx * 20) + idx)
@@ -1708,8 +1736,8 @@ const SingerApp = ({ roomCode, uid }) => {
             songs
         };
     };
-    const browseCategories = BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx));
-    const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length));
+    const browseCategories = BROWSE_CATEGORIES.map((list, idx) => buildBrowseList(list, idx)).filter((list) => list.songs.length > 0);
+    const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length)).filter((list) => list.songs.length > 0);
     const balladLights = [
         { left: '6%', bottom: '4%', size: '140px', sway: '7s', delay: '0s', opacity: '0.7' },
         { left: '18%', bottom: '10%', size: '170px', sway: '8s', delay: '0.6s', opacity: '0.75' },
@@ -1762,6 +1790,86 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof toast !== 'function') return;
         toast(message, options);
     }, [toast]);
+    const takeoverLabel = getAudienceTakeoverLabel(takeoverKind);
+    const takeoverOpen = isStreamlinedAudienceShell && !!takeoverKind && takeoverState === 'open';
+    const takeoverMinimized = isStreamlinedAudienceShell && !!takeoverKind && takeoverState === 'minimized';
+
+    const minimizeAudienceTakeover = useCallback(() => {
+        if (!isStreamlinedAudienceShell || !takeoverKind) return;
+        setTakeoverState('minimized');
+        if (roomCode) {
+            trackEvent('audience_takeover_minimized', {
+                room_code: roomCode,
+                shell_variant: shellVariant,
+                takeover_kind: takeoverKind
+            });
+        }
+    }, [isStreamlinedAudienceShell, roomCode, shellVariant, takeoverKind]);
+
+    const reopenAudienceTakeover = useCallback(() => {
+        if (!isStreamlinedAudienceShell || !takeoverKind) return;
+        setTakeoverState('open');
+        setTab('home');
+        if (roomCode) {
+            trackEvent('audience_takeover_reopened', {
+                room_code: roomCode,
+                shell_variant: shellVariant,
+                takeover_kind: takeoverKind
+            });
+        }
+    }, [isStreamlinedAudienceShell, roomCode, shellVariant, takeoverKind]);
+
+    useEffect(() => {
+        if (!roomCode) return;
+        const seenKey = `${roomCode}:${shellVariant}`;
+        if (shellVariantSeenRef.current.has(seenKey)) return;
+        shellVariantSeenRef.current.add(seenKey);
+        trackEvent('audience_shell_variant_seen', {
+            room_code: roomCode,
+            shell_variant: shellVariant
+        });
+    }, [roomCode, shellVariant]);
+
+    useEffect(() => {
+        const previous = takeoverSeenRef.current;
+        if (previous.kind && previous.kind !== takeoverKind && roomCode && isStreamlinedAudienceShell) {
+            trackEvent('audience_takeover_completed', {
+                room_code: roomCode,
+                shell_variant: shellVariant,
+                takeover_kind: previous.kind,
+                final_state: previous.state || 'closed'
+            });
+        }
+
+        if (!isStreamlinedAudienceShell || !takeoverKind) {
+            takeoverSeenRef.current = { kind: takeoverKind, state: 'closed' };
+            setTakeoverState('closed');
+            return;
+        }
+
+        if (previous.kind !== takeoverKind) {
+            setTakeoverState('open');
+            setTab('home');
+            if (roomCode) {
+                trackEvent('audience_takeover_opened', {
+                    room_code: roomCode,
+                    shell_variant: shellVariant,
+                    takeover_kind: takeoverKind
+                });
+            }
+        }
+        takeoverSeenRef.current = {
+            kind: takeoverKind,
+            state: previous.kind === takeoverKind ? previous.state : 'open'
+        };
+    }, [isStreamlinedAudienceShell, roomCode, shellVariant, takeoverKind]);
+
+    useEffect(() => {
+        takeoverSeenRef.current = {
+            kind: takeoverKind,
+            state: takeoverState
+        };
+    }, [takeoverKind, takeoverState]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -2014,6 +2122,146 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [user, activeUid, roomCode]);
 
     const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
+    const activeEventCredits = useMemo(() => {
+        const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
+        return {
+            enabled: !!source.enabled,
+            presetId: String(source.presetId || '').trim(),
+            eventId: String(source.eventId || '').trim(),
+            eventLabel: String(source.eventLabel || '').trim(),
+            sourceProvider: String(source.sourceProvider || '').trim(),
+            sourceCampaignCode: String(source.sourceCampaignCode || '').trim(),
+            generalAdmissionPoints: Math.max(0, Number(source.generalAdmissionPoints || 0) || 0),
+            vipBonusPoints: Math.max(0, Number(source.vipBonusPoints || 0) || 0),
+            skipLineBonusPoints: Math.max(0, Number(source.skipLineBonusPoints || 0) || 0),
+            websiteCheckInPoints: Math.max(0, Number(source.websiteCheckInPoints || 0) || 0),
+            socialPromoPoints: Math.max(0, Number(source.socialPromoPoints || 0) || 0),
+            promoCampaignCount: Math.max(0, Number(source.promoCampaignCount || 0) || 0),
+            promoCampaigns: Array.isArray(source.promoCampaigns)
+                ? source.promoCampaigns.map((campaign) => ({
+                    id: String(campaign?.id || '').trim(),
+                    label: String(campaign?.label || '').trim(),
+                    type: String(campaign?.type || '').trim(),
+                    codeMode: String(campaign?.codeMode || '').trim(),
+                    pointsReward: Math.max(0, Number(campaign?.pointsReward || 0) || 0),
+                    safePerk: String(campaign?.safePerk || '').trim(),
+                    maxRedemptions: Math.max(0, Number(campaign?.maxRedemptions || 0) || 0),
+                    perUserLimit: Math.max(0, Number(campaign?.perUserLimit || 0) || 0),
+                    requiresRoomJoin: campaign?.requiresRoomJoin !== false,
+                    validFromMs: Math.max(0, Number(campaign?.validFromMs || 0) || 0),
+                    validUntilMs: Math.max(0, Number(campaign?.validUntilMs || 0) || 0),
+                })).filter((campaign) => campaign.id)
+                : [],
+        };
+    }, [room?.eventCredits]);
+    const eventPromoSummary = useMemo(() => {
+        const promoCampaigns = Array.isArray(activeEventCredits.promoCampaigns) ? activeEventCredits.promoCampaigns : [];
+        return {
+            promoCampaigns,
+            usesGivebutter: activeEventCredits.sourceProvider === 'givebutter',
+            hasPromoClaims: promoCampaigns.length > 0 || activeEventCredits.websiteCheckInPoints > 0 || activeEventCredits.socialPromoPoints > 0,
+        };
+    }, [activeEventCredits]);
+    const eventCreditsSummary = useMemo(() => {
+        if (!roomCode) {
+            return {
+                title: 'Room points',
+                body: 'You are seeing the standard BeauRocks points wallet right now.',
+                tone: 'cyan',
+                showClaims: false,
+            };
+        }
+        if (!activeEventCredits.enabled) {
+            return {
+                title: 'No event bonuses on this room',
+                body: 'This room is using the standard BeauRocks points view right now. No custom credits or promo campaigns are configured here yet.',
+                tone: 'zinc',
+                showClaims: false,
+            };
+        }
+        if (!eventPromoSummary.hasPromoClaims) {
+            return {
+                title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
+                body: activeEventCredits.generalAdmissionPoints > 0
+                    ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Ticket-linked perks can still attach automatically if your signed-in email matches an attendee record.`
+                    : 'Custom credits are enabled for this room, but no active promo campaigns are configured yet.',
+                tone: 'amber',
+                showClaims: false,
+            };
+        }
+        return {
+            title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
+            body: activeEventCredits.generalAdmissionPoints > 0
+                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Promo links, QR drops, and ticket-matched perks can add more without slowing down the room.`
+                : 'This room has optional promo campaigns and linked event perks available below.',
+            tone: 'amber',
+            showClaims: true,
+        };
+    }, [activeEventCredits, eventPromoSummary, roomCode]);
+    const claimEventCredit = useCallback(async ({ campaignId = '', claimCode = '' } = {}) => {
+        const safeClaimCode = String(claimCode || '').trim();
+        const safeCampaignId = String(campaignId || '').trim();
+        if (!roomCode || (!safeClaimCode && !safeCampaignId)) return null;
+        setEventGrantBusy(true);
+        try {
+            const result = await redeemPromoCode({
+                roomCode,
+                campaignId: safeCampaignId,
+                code: safeClaimCode,
+            });
+            const grantedPoints = Math.max(0, Number(result?.pointsGranted || 0) || 0);
+            if (result?.duplicate) {
+                toast('That promo was already redeemed for this room.');
+            } else if (grantedPoints > 0) {
+                showRewardToast(`${result?.rewardLabel || 'Promo redeemed!'} +${grantedPoints} PTS`, grantedPoints, { durationMs: 3200 });
+                setEventGrantCode('');
+                if (result?.safePerk) {
+                    toast(`Perk unlocked: ${String(result.safePerk).replaceAll('_', ' ')}`);
+                }
+            } else {
+                toast(result?.rewardLabel || 'Promo redeemed.');
+            }
+            return result || null;
+        } catch (error) {
+            console.error('promo redemption error', error);
+            const code = String(error?.code || '').toLowerCase();
+            if (code.includes('permission-denied') || code.includes('not-found')) {
+                toast('That promo is invalid, unavailable, or already gone.');
+            } else if (code.includes('resource-exhausted')) {
+                toast('That promo has already been fully claimed.');
+            } else if (code.includes('failed-precondition')) {
+                toast('That promo is not live for this room yet.');
+            } else {
+                toast('Could not redeem that promo right now.');
+            }
+            return null;
+        } finally {
+            setEventGrantBusy(false);
+        }
+    }, [roomCode, showRewardToast, toast]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || !activeUid || !roomCode || !activeEventCredits.enabled) return;
+        const params = new URLSearchParams(window.location.search);
+        const claimCode = String(params.get('promoCode') || params.get('eventCode') || '').trim();
+        const campaignId = String(params.get('promoCampaign') || params.get('eventGrant') || '').trim();
+        if (!claimCode && !campaignId) return;
+        const attemptKey = `${roomCode}:${activeUid}:${campaignId}:${claimCode}`;
+        if (eventGrantAutoClaimRef.current === attemptKey) return;
+        eventGrantAutoClaimRef.current = attemptKey;
+        claimEventCredit({ campaignId, claimCode }).finally(() => {
+            try {
+                const nextUrl = new URL(window.location.href);
+                nextUrl.searchParams.delete('eventGrant');
+                nextUrl.searchParams.delete('eventCode');
+                nextUrl.searchParams.delete('promoCampaign');
+                nextUrl.searchParams.delete('promoCode');
+                window.history.replaceState({}, document.title, nextUrl.toString());
+            } catch {
+                // Ignore URL cleanup failures.
+            }
+        });
+    }, [activeEventCredits.enabled, activeUid, claimEventCredit, roomCode]);
 
     const getWeekKey = (date = new Date()) => {
         const utc = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -2456,11 +2704,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const getAvatarStatus = useCallback((item) => {
         const unlocked = profile?.unlockedEmojis || [];
-        const isVip = !!user?.isVip || !!profile?.isVip || (profile?.vipLevel || 0) > 0;
         const fameLevel = getLevelFromFame(profile?.totalFamePoints || 0);
 
         if (item.unlock.type === 'free') return { locked: false, note: 'FREE' };
-        if (item.unlock.type === 'vip') return { locked: !isVip, note: 'VIP' };
+        if (item.unlock.type === 'vip') return { locked: !isVipAccount, note: 'VIP' };
         if (item.unlock.type === 'fame') return { locked: fameLevel < item.unlock.level, note: `LV ${item.unlock.level}` };
         if (item.unlock.type === 'first_performance') {
             const unlockedByPerformance = !!profile?.firstPerformanceUnlocked;
@@ -2469,7 +2716,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (item.unlock.type === 'guitar_winner') return { locked: !unlocked.includes(item.id), note: 'WIN SOLO' };
         if (item.unlock.type === 'points') return { locked: !unlocked.includes(item.id), note: `${item.unlock.cost} PTS` };
         return { locked: false, note: '' };
-    }, [profile, user]);
+    }, [isVipAccount, profile]);
 
     const getUnlockHint = useCallback((item) => {
         if (item.unlock.type === 'vip') return 'VIP only - verify to unlock.';
@@ -2724,23 +2971,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
 
-        if (item.unlock.type !== 'points') {
-            return;
-        }
-
-        if (!user) return;
-        if (getEffectivePoints() < item.unlock.cost) return;
-
-        try {
-            queuePointDelta(-item.unlock.cost);
-            await updateDoc(doc(db, 'users', uid), { unlockedEmojis: arrayUnion(item.id) });
-            setForm(prev => ({ ...prev, emoji: item.emoji }));
-            syncPoints(true);
-            toast(`Unlocked ${item.label}!`);
-        } catch (e) {
-            console.error(e);
-            toast('Unlock failed. Try again.');
-        }
+        setAvatarUnlockModal({
+            item,
+            status,
+            hint: getUnlockHint(item),
+        });
+        return;
     };
 
     // Helper: Log Activity
@@ -2874,6 +3110,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
     );
+    const popTriviaRevealHoldMs = Math.max(
+        6000,
+        Number(room?.gameDefaults?.popTriviaRevealHoldSec || DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC) * 1000
+    );
+    const popTriviaCorrectPoints = Math.max(
+        0,
+        Number(room?.gameDefaults?.popTriviaCorrectPoints || DEFAULT_POP_TRIVIA_CORRECT_POINTS)
+    );
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
         if (room?.popTriviaEnabled === false) return null;
@@ -2888,8 +3132,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const popTriviaQuestionId = popTriviaQuestion?.id || '';
     const showPopTriviaEndState = (
         popTriviaState?.status === 'complete'
-        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < 8000
+        && (popTriviaNow - Number(popTriviaState?.completedAtMs || 0)) < popTriviaRevealHoldMs
     );
+    const popTriviaProgressPct = popTriviaQuestion
+        ? Math.max(0, Math.min(100, (Number(popTriviaState?.timeLeftSec || 0) / Math.max(1, Number(popTriviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC))) * 100))
+        : 0;
     const popTriviaCardKey = popTriviaQuestionId || (
         showPopTriviaEndState
             ? `complete_${Number(popTriviaState?.completedAtMs || 0)}`
@@ -2920,6 +3167,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const val = Number(mine.val);
         return Number.isInteger(val) ? val : null;
     }, [form.emoji, form.name, popTriviaVotes, uid, user?.avatar, user?.name]);
+    const popTriviaRevealQuestion = showPopTriviaEndState ? (popTriviaRevealSnapshot?.question || null) : null;
+    const popTriviaRevealCorrectIndex = Number.isInteger(popTriviaRevealQuestion?.correct)
+        ? Number(popTriviaRevealQuestion.correct)
+        : -1;
+    const popTriviaRevealCorrectOption = popTriviaRevealCorrectIndex >= 0
+        ? String(popTriviaRevealQuestion?.options?.[popTriviaRevealCorrectIndex] || '').trim()
+        : '';
+    const popTriviaRevealMyVote = showPopTriviaEndState && Number.isInteger(popTriviaRevealSnapshot?.myVote)
+        ? Number(popTriviaRevealSnapshot.myVote)
+        : null;
+    const popTriviaRevealWasCorrect = popTriviaRevealMyVote !== null && popTriviaRevealMyVote === popTriviaRevealCorrectIndex;
+    const popTriviaRevealCorrectCount = showPopTriviaEndState
+        ? (Array.isArray(popTriviaRevealSnapshot?.votes) ? popTriviaRevealSnapshot.votes.filter((vote) => Number(vote?.val) === popTriviaRevealCorrectIndex).length : 0)
+        : 0;
     const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
@@ -2973,6 +3234,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return () => unsub();
     }, [roomCode, popTriviaQuestionId]);
     useEffect(() => {
+        if (!popTriviaQuestion) return;
+        setPopTriviaRevealSnapshot({
+            question: popTriviaQuestion,
+            votes: Array.isArray(popTriviaVotes) ? [...popTriviaVotes] : [],
+            myVote: popTriviaMyVote,
+            capturedAtMs: popTriviaNow
+        });
+    }, [popTriviaMyVote, popTriviaNow, popTriviaQuestion, popTriviaVotes]);
+    useEffect(() => {
         if (room?.activeMode !== 'karaoke') return;
         if (room?.popTriviaEnabled === false) return;
         if (!currentSinger?.id || !Array.isArray(currentSinger?.popTrivia) || currentSinger.popTrivia.length === 0) return;
@@ -3016,19 +3286,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [authReadyUid]);
 
     useEffect(() => {
-        if (!activeUid || isAnon || !user || !profile) return;
-        if (tight15MigrationDoneRef.current === uid) return;
+        if (!activeUid || !accountProfileUid || isAnon || !user || !profile) return;
+        if (tight15MigrationDoneRef.current === accountProfileUid) return;
         const tempList = Array.isArray(user?.tight15Temp) ? user.tight15Temp : [];
         const savedList = Array.isArray(profile?.tight15) ? profile.tight15 : [];
         if (!tempList.length || savedList.length) {
-            tight15MigrationDoneRef.current = uid;
+            tight15MigrationDoneRef.current = accountProfileUid;
             return;
         }
         let cancelled = false;
         const migrate = async () => {
             try {
                 const merged = sanitizeTight15List([...savedList, ...tempList]);
-                await setDoc(doc(db, 'users', uid), { tight15: merged }, { merge: true });
+                await setDoc(doc(db, 'users', accountProfileUid), { tight15: merged }, { merge: true });
                 await setDoc(
                     doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
                     { tight15Temp: merged },
@@ -3038,14 +3308,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             } catch (error) {
                 console.error('Tight 15 migration failed', error);
             } finally {
-                tight15MigrationDoneRef.current = uid;
+                tight15MigrationDoneRef.current = accountProfileUid;
             }
         };
         migrate();
         return () => {
             cancelled = true;
         };
-    }, [uid, activeUid, isAnon, user, profile, roomCode, toast]);
+    }, [accountProfileUid, activeUid, isAnon, user, profile, roomCode, toast]);
 
     useEffect(() => {
         if (!activeUid || !canSaveTight15) return;
@@ -3059,6 +3329,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             { merge: true }
         ).catch(() => {});
     }, [activeUid, roomCode, canSaveTight15, profile?.tight15, user?.tight15Temp]);
+
+    useEffect(() => {
+        if (!vipUnlockPending) return;
+        const resolvedVip = (
+            !!user?.isVip
+            || (Number(user?.vipLevel || 0) > 0)
+            || !!profile?.isVip
+            || (Number(profile?.vipLevel || 0) > 0)
+        );
+        if (resolvedVip) {
+            setVipUnlockPending(false);
+        }
+    }, [profile?.isVip, profile?.vipLevel, user?.isVip, user?.vipLevel, vipUnlockPending]);
+
+    useEffect(() => {
+        if (activeUid) return;
+        setVipUnlockPending(false);
+    }, [activeUid]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -3512,7 +3800,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     useEffect(() => {
         if (!catalogSearchOpen) return;
         const raf = requestAnimationFrame(() => {
-            audienceCatalogSearchInputRef.current?.focus?.();
+            try {
+                audienceCatalogSearchInputRef.current?.focus?.({ preventScroll: true });
+            } catch {
+                audienceCatalogSearchInputRef.current?.focus?.();
+            }
         });
         return () => cancelAnimationFrame(raf);
     }, [catalogSearchOpen]);
@@ -3520,10 +3812,47 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     useEffect(() => {
         if (!manualRequestComposerOpen) return;
         const raf = requestAnimationFrame(() => {
-            manualRequestSongInputRef.current?.focus?.();
+            try {
+                manualRequestSongInputRef.current?.focus?.({ preventScroll: true });
+            } catch {
+                manualRequestSongInputRef.current?.focus?.();
+            }
         });
         return () => cancelAnimationFrame(raf);
     }, [manualRequestComposerOpen]);
+
+    useEffect(() => {
+        if (!(catalogSearchOpen || manualRequestComposerOpen)) return undefined;
+        if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+        const scrollY = window.scrollY || window.pageYOffset || 0;
+        const { body, documentElement } = document;
+        const previousBodyPosition = body.style.position;
+        const previousBodyTop = body.style.top;
+        const previousBodyWidth = body.style.width;
+        const previousBodyOverflow = body.style.overflow;
+        const previousBodyOverscroll = body.style.overscrollBehavior;
+        const previousRootOverscroll = documentElement.style.overscrollBehavior;
+        body.style.position = 'fixed';
+        body.style.top = `-${scrollY}px`;
+        body.style.width = '100%';
+        body.style.overflow = 'hidden';
+        body.style.overscrollBehavior = 'none';
+        documentElement.style.overscrollBehavior = 'none';
+        return () => {
+            body.style.position = previousBodyPosition;
+            body.style.top = previousBodyTop;
+            body.style.width = previousBodyWidth;
+            body.style.overflow = previousBodyOverflow;
+            body.style.overscrollBehavior = previousBodyOverscroll;
+            documentElement.style.overscrollBehavior = previousRootOverscroll;
+            window.scrollTo(0, scrollY);
+        };
+    }, [catalogSearchOpen, manualRequestComposerOpen]);
+
+    const renderAudienceViewportSheet = (node) => {
+        if (typeof document === 'undefined') return node;
+        return createPortal(node, document.body);
+    };
 
     useEffect(() => {
         if (songsTab === 'browse') return;
@@ -4042,6 +4371,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return roomUserSnap.exists();
         };
         const tryUploadOnce = async () => {
+            await ensureAppCheckToken(false).catch(() => false);
             const storagePath = `room_photos/${roomCode}/${authUid}/${Date.now()}_${suffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
             const fileRef = storageRef(storage, storagePath);
             const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
@@ -4065,7 +4395,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const code = String(error?.code || '').toLowerCase();
                 const message = String(error?.message || '').toLowerCase();
                 const retryableUnauthorized = code.includes('storage/unauthorized') || message.includes('unauthorized') || message.includes('403');
+                const retryableAppCheck = code.includes('app-check') || message.includes('app check') || message.includes('recaptcha');
                 if (!retryableUnauthorized || attempt >= 2) {
+                    if (!retryableAppCheck) {
+                        throw error;
+                    }
+                }
+                await Promise.allSettled([
+                    ensureRoomUserMembership(),
+                    waitForJoinAuthUid(),
+                    ensureAppCheckToken(true).catch(() => false)
+                ]);
+                if ((!retryableUnauthorized && !retryableAppCheck) || attempt >= 2) {
                     throw error;
                 }
             }
@@ -4093,8 +4434,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (code.includes('auth/missing') || code.includes('auth') || message.includes('sign in')) {
             return 'Session expired. Refresh and rejoin the room, then try again.';
         }
+        if (code.includes('app-check') || message.includes('app check') || message.includes('recaptcha')) {
+            return 'Security check expired. Keep the app open, wait a moment, and try again.';
+        }
         if (code.includes('storage/unauthorized') || message.includes('403')) {
-            return 'Photo upload blocked by storage permissions. Host should deploy updated storage rules.';
+            return 'Photo upload was blocked. Keep the room open for a second and try again.';
         }
         if (message.includes('camera frame unavailable') || message.includes('missing selfie canvas')) {
             return 'Camera is still warming up. Keep it open and tap again.';
@@ -4500,7 +4844,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 priorityScore -= 120000;
             }
             const enforcePending = (limitMode === 'soft' && limitCount > 0 && myTotalCount >= limitCount);
-            const allowTrack = !!room?.allowSingerTrackSelect || !!options.allowTrack || !!options.mediaUrl;
+            const allowTrack = guestBackingAllowed || !!options.allowTrack || !!options.mediaUrl;
             const backingUrl = (options.mediaUrl || (allowTrack ? form.backingUrl : '') || '').trim();
             const trackSource = options.trackSource || 'youtube';
             if (backingUrl && trackSource === 'youtube' && !extractYouTubeId(backingUrl)) {
@@ -4514,24 +4858,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             let resolvedTrackSource = backingUrl ? trackSource : null;
             let resolvedMediaUrl = backingUrl || '';
             let resolvedAppleMusicId = String(options.itunesId || '').trim();
+            let resolvedDurationSec = Math.max(0, Math.round(Number(options.durationSec || 0)));
             let playbackReady = !!backingUrl;
             let mediaResolutionStatus = backingUrl ? 'audience_selected' : 'needs_backing';
+            let resolutionStatus = backingUrl ? 'resolved' : 'review_required';
+            let resolutionLayer = backingUrl ? 'audience_selected' : 'manual_review';
 
             if (!backingUrl && !resolvedAppleMusicId) {
                 try {
                     const resolved = await resolveSongCatalog({
                         songId: fallbackSongId,
                         title: song,
-                        artist: artist || 'Unknown'
+                        artist: artist || 'Unknown',
+                        roomCode
                     });
                     if (resolved?.songId) songId = resolved.songId;
                     if (resolved?.track && (resolved.track.mediaUrl || resolved.track.appleMusicId)) {
-                        trackId = resolved.track.id || null;
+                        trackId = String(resolved.track.id || '').startsWith('yt_index:') ? null : (resolved.track.id || null);
                         resolvedTrackSource = resolved.track.source || null;
                         resolvedMediaUrl = resolved.track.mediaUrl || '';
                         resolvedAppleMusicId = resolved.track.appleMusicId || '';
+                        resolvedDurationSec = Math.max(resolvedDurationSec, Math.round(Number(resolved.track.durationSec || 0)));
                         playbackReady = true;
                         mediaResolutionStatus = 'catalog_ready';
+                        resolutionStatus = 'resolved';
+                        resolutionLayer = resolved.track.resolutionLayer || resolved.resolutionLayer || 'global_catalog';
                     }
                 } catch (catalogError) {
                     console.warn('Singer resolveSongCatalog failed', catalogError);
@@ -4542,9 +4893,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 resolvedTrackSource = 'apple_music';
                 playbackReady = true;
                 mediaResolutionStatus = 'catalog_ready';
+                resolutionStatus = 'resolved';
+                resolutionLayer = resolutionLayer === 'manual_review' ? 'global_catalog' : resolutionLayer;
+            }
+
+            if (playableOnlyRequestMode && !playbackReady) {
+                toast('This room only accepts songs that already have approved playable backing. Try Browse or a different song.');
+                return;
             }
 
             const requestStatus = (room?.bouncerMode || enforcePending) ? 'pending' : 'requested';
+            const collabOpen = options?.collabOpen === true || (!!requestCollabOpen && options?.collabOpen !== false);
             const createdSongDoc = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
                 songTitle: song,
@@ -4561,12 +4920,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 trackSource: resolvedTrackSource,
                 mediaUrl: resolvedMediaUrl,
                 appleMusicId: resolvedAppleMusicId,
+                duration: resolvedDurationSec > 0 ? resolvedDurationSec : null,
                 playbackReady,
                 mediaResolutionStatus,
-                requestedBackingMode: allowTrack ? 'audience_optional' : 'host_or_catalog_only'
+                requestedBackingMode: roomRequestMode,
+                resolutionStatus,
+                resolutionLayer,
+                collabOpen,
+                collabMode: collabOpen ? 'duet_or_group' : 'solo',
+                reviewRequestedAt: resolutionStatus === 'review_required' ? serverTimestamp() : null
             }); 
-            await clearHostPickRequest({ silent: true });
-            trackEvent('song_request', { room_code: roomCode, source: room?.bouncerMode ? 'bouncer' : 'standard' });
+            await clearHostPickRequest({ silent: true }).catch((error) => {
+                console.warn('Singer host-pick request clear failed', error);
+            });
+            trackEvent('song_request', {
+                room_code: roomCode,
+                source: room?.bouncerMode ? 'bouncer' : 'standard',
+                shell_variant: shellVariant
+            });
             setForm(prev => ({...prev, song:'', artist:'', art:'', backingUrl: ''})); 
             setSearchQ(''); setResults([]);
             setManualRequestComposerOpen(false);
@@ -4578,9 +4949,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 artist: artist || 'Unknown',
                 status: requestStatus,
                 playbackReady,
+                resolutionStatus,
+                resolutionLayer,
+                collabOpen,
                 requestedAt: Date.now()
             });
-            toast(playbackReady ? "Request Sent!" : "Request Sent! Host may need to add backing."); 
+            toast(resolutionStatus === 'review_required' ? 'Queued. Host review needed.' : 'Queued. Ready.');
             logActivity(`requested ${song}`, EMOJI.musicNotes);
             syncPoints(true);
         } catch (err) {
@@ -4641,7 +5015,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`),
             getRoomUserProjection({ name: safeName, avatar: nextAvatar })
         );
-        if (uid) {
+        if (accountProfileUid) {
             const vipProfileUpdate = isVipAccount ? {
                 vipProfile: {
                     location: normalizedVipForm.location,
@@ -4657,7 +5031,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const nameEmojiUpdate = nameEmojiChanged ? {
                 nameEmojiChangeCount: increment(1)
             } : {};
-            await setDoc(doc(db, 'users', uid), { name: safeName, avatar: nextAvatar, ...vipProfileUpdate, ...nameEmojiUpdate }, { merge: true });
+            await setDoc(doc(db, 'users', accountProfileUid), { name: safeName, avatar: nextAvatar, ...vipProfileUpdate, ...nameEmojiUpdate }, { merge: true });
         }
         if (nameEmojiChanged && changeCost > 0) {
             queuePointDelta(-changeCost);
@@ -4669,7 +5043,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const saveVipOnboarding = async () => {
-        if (!uid) return;
+        if (!accountProfileUid) return;
         const normalizedVipForm = normalizeVipForm(vipForm);
         const validationError = getVipProfileValidationError(normalizedVipForm);
         if (validationError) {
@@ -4686,7 +5060,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 tosAcceptedAt: profile?.vipProfile?.tosAcceptedAt || serverTimestamp()
             }
         };
-        await setDoc(doc(db, 'users', uid), updates, { merge: true });
+        await setDoc(doc(db, 'users', accountProfileUid), updates, { merge: true });
         setShowVipOnboarding(false);
         toast('VIP profile saved');
     };
@@ -4731,7 +5105,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
             return;
         }
-        await setDoc(doc(db, 'users', uid), { tight15: sanitized }, { merge: true });
+        await setDoc(doc(db, 'users', accountProfileUid), { tight15: sanitized }, { merge: true });
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { tight15Temp: sanitized }, { merge: true });
     };
     const setRoomUserRequestIntent = async (nextIntent = '') => {
@@ -5022,6 +5396,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
             await deleteDoc(previousRoomUserRef).catch(() => {});
         }
+        const nextVipLevel = Math.max(1, Number(vipStatus?.vipLevel || 1));
+        setVipUnlockPending(true);
+        setProfile((prev) => ({
+            ...(prev || {}),
+            isVip: true,
+            vipLevel: Math.max(nextVipLevel, Number(prev?.vipLevel || 0)),
+        }));
+        setUser((prev) => prev ? ({
+            ...prev,
+            isVip: true,
+            vipLevel: Math.max(nextVipLevel, Number(prev?.vipLevel || 0)),
+        }) : prev);
         if (typeof window !== 'undefined') {
             localStorage.removeItem(AUDIENCE_EMAIL_LINK_STORAGE_KEY);
         }
@@ -5070,14 +5456,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        if (!isSignInWithEmailLink(auth, window.location.href)) return;
+        const emailLinkHref = window.location.href;
+        if (!isSignInWithEmailLink(auth, emailLinkHref)) return;
         const storedState = readStoredAudienceEmailLinkState();
         const email = normalizeAccountEmail(accountEmail || storedState?.email || '');
+        const attemptState = audienceEmailLinkAttemptRef.current || { href: '', phase: 'idle', email: '' };
         if (!email) {
-            setShowPhoneModal(true);
-            toast('Open the verification link on the same device where you entered your email.');
+            if (attemptState.href !== emailLinkHref || attemptState.phase !== 'needs_email') {
+                audienceEmailLinkAttemptRef.current = { href: emailLinkHref, phase: 'needs_email', email: '' };
+                setEmailLinkSent(false);
+                setShowPhoneModal(true);
+                toast('Open the verification link on the same device where you entered your email.');
+            }
             return;
         }
+        if (
+            attemptState.href === emailLinkHref
+            && (
+                attemptState.phase === 'pending'
+                || attemptState.phase === 'success'
+                || (attemptState.phase === 'failed' && attemptState.email === email)
+            )
+        ) {
+            return;
+        }
+        audienceEmailLinkAttemptRef.current = { href: emailLinkHref, phase: 'pending', email };
         let cancelled = false;
 
         const finishEmailLinkSignIn = async () => {
@@ -5097,7 +5500,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     }
                 }
 
-                const credential = EmailAuthProvider.credentialWithLink(email, window.location.href);
+                const credential = EmailAuthProvider.credentialWithLink(email, emailLinkHref);
                 let verifiedUser = auth.currentUser;
                 try {
                     if (auth.currentUser?.isAnonymous) {
@@ -5128,6 +5531,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 }
 
                 if (!cancelled) {
+                    audienceEmailLinkAttemptRef.current = { href: emailLinkHref, phase: 'success', email };
                     await completeAudienceAccountUpgrade({
                         verifiedUser,
                         sourceUid,
@@ -5139,7 +5543,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 }
             } catch (error) {
                 console.error('email link verify error', error);
-                toast(getAccountEmailErrorMessage(error));
+                const errorCode = String(error?.code || '').toLowerCase();
+                const invalidEmailLink = errorCode.includes('expired-action-code') || errorCode.includes('invalid-action-code');
+                audienceEmailLinkAttemptRef.current = { href: emailLinkHref, phase: 'failed', email };
+                if (!cancelled) {
+                    setAccountEmail(email);
+                    setEmailLinkSent(false);
+                    setShowPhoneModal(true);
+                    if (invalidEmailLink) {
+                        stripEmailLinkParamsFromUrl();
+                    }
+                    toast(getAccountEmailErrorMessage(error));
+                }
             } finally {
                 if (!cancelled) {
                     setAccountAuthLoading(false);
@@ -5411,8 +5826,58 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         </div>
     );
 
+    useEffect(() => {
+        if (!roomCode) return;
+        const keys = [];
+        if (tab === 'social' && ['lounge', 'host'].includes(socialTab)) {
+            keys.push(`chat:${socialTab}`);
+        }
+        if (tab === 'request' && songsTab === 'queue') {
+            keys.push('queue');
+        }
+        if (tab === 'request' && songsTab === 'tight15') {
+            keys.push('tight15');
+        }
+        if (tab === 'request' && songsTab === 'requests') {
+            keys.push('request_start');
+        }
+        keys.forEach((key) => {
+            const seenKey = `${roomCode}:${shellVariant}:${key}`;
+            if (audienceExperimentViewRef.current.has(seenKey)) return;
+            audienceExperimentViewRef.current.add(seenKey);
+            if (key.startsWith('chat:')) {
+                trackEvent('audience_chat_opened', {
+                    room_code: roomCode,
+                    shell_variant: shellVariant,
+                    chat_tab: key.split(':')[1] || 'lounge'
+                });
+                return;
+            }
+            if (key === 'queue') {
+                trackEvent('audience_queue_viewed', {
+                    room_code: roomCode,
+                    shell_variant: shellVariant
+                });
+                return;
+            }
+            if (key === 'tight15') {
+                trackEvent('audience_tight15_opened', {
+                    room_code: roomCode,
+                    shell_variant: shellVariant
+                });
+                return;
+            }
+            if (key === 'request_start') {
+                trackEvent('audience_request_started', {
+                    room_code: roomCode,
+                    shell_variant: shellVariant
+                });
+            }
+        });
+    }, [roomCode, shellVariant, songsTab, socialTab, tab]);
+
     // --- RENDER ---
-    if(!user) return (
+    const joinScreen = (
         <>
         <div
             data-singer-view="join"
@@ -5511,6 +5976,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 >
                     {activeUid ? 'JOIN THE PARTY' : 'CONNECTING...'}
                 </button>
+                <button
+                    type="button"
+                    onClick={() => setShowPhoneModal(true)}
+                    className="mt-3 w-full max-w-sm rounded-xl border border-cyan-400/35 bg-cyan-500/12 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-cyan-100 shadow-[0_0_18px_rgba(0,196,217,0.18)]"
+                >
+                    {isAnon ? 'Use BeauRocks Account' : 'BeauRocks Account Connected'}
+                </button>
+                <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
+                    Already have a BeauRocks account? Sign in with your email link here before or after you join the room.
+                </div>
                 {returningProfile && showReturningPrompt ? (
                     <button
                         onClick={() => {
@@ -5654,8 +6129,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         </>
     );
 
+    const renderStreamlinedTakeoverChrome = (label = takeoverLabel) => (
+        isStreamlinedAudienceShell && !!takeoverKind ? (
+            <div className="absolute top-5 right-5 z-[260] flex items-center gap-2">
+                <div className="rounded-full border border-white/15 bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-100">
+                    {label}
+                </div>
+                <button
+                    type="button"
+                    onClick={minimizeAudienceTakeover}
+                    className="rounded-full border border-cyan-300/35 bg-black/60 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100"
+                >
+                    Minimize
+                </button>
+            </div>
+        ) : null
+    );
+
     // --- VIBE SYNC OVERLAYS ---
-    if (room?.lightMode === 'storm') {
+    if (room?.lightMode === 'storm' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const phaseLabel = {
             approach: 'Storm approaching',
             peak: 'Lightning peak',
@@ -5670,6 +6162,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         return (
             <div className={`h-screen w-full relative overflow-hidden text-white font-saira storm-screen storm-phase-${stormPhase} ${motionSafeFx ? 'motion-safe-fx' : ''}`}>
+                {renderStreamlinedTakeoverChrome('Storm Mode')}
                 <div className="absolute inset-0 storm-clouds mix-blend-multiply"></div>
                 <div className="absolute inset-0 vibe-lightning mix-blend-screen"></div>
                 <div className="rain"></div>
@@ -5725,7 +6218,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
     }
 
-    if (room?.lightMode === 'guitar') {
+    if (room?.lightMode === 'guitar' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const beatMs = GUITAR_BEAT_MS;
         const sessionId = room?.guitarSessionId || 'beaurocks-guitar';
         const beatMod = ((guitarNow % beatMs) + beatMs) % beatMs;
@@ -5767,6 +6260,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
         return (
             <div className="h-screen bg-black/90 flex flex-col relative overflow-hidden text-white font-saira justify-center">
+                {renderStreamlinedTakeoverChrome('Guitar Mode')}
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_52%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_60%)]"></div>
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[min(92vw,460px)] text-center z-30 pointer-events-none">
                     <div className="text-[10px] uppercase tracking-[0.42em] text-zinc-300">Vibe Sync</div>
@@ -5866,7 +6360,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
     }
 
-    if (room?.lightMode === 'strobe') {
+    if (room?.lightMode === 'strobe' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const countdownUntil = room?.strobeCountdownUntil || 0;
         const endsAt = room?.strobeEndsAt || 0;
         const phase = strobeNow < countdownUntil ? 'countdown' : strobeNow < endsAt ? 'active' : 'ended';
@@ -5884,6 +6378,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         return (
             <div className={`h-screen w-full ${motionSafeFx ? 'motion-safe-fx' : ''} ${motionSafeFx ? '' : 'vibe-strobe'} flex flex-col items-center justify-center text-white relative overflow-hidden`}>
+                {renderStreamlinedTakeoverChrome('Beat Drop')}
                 <div className={`absolute inset-0 ${motionSafeFx ? 'bg-white/28' : 'bg-white/45'} mix-blend-screen`}></div>
                 <div className={`absolute inset-0 ${motionSafeFx ? 'bg-gradient-to-b from-pink-500/12 via-transparent to-cyan-400/8' : 'bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-400/20'}`}></div>
                 <div className="relative z-10 w-full max-w-sm px-6 text-center">
@@ -5923,7 +6418,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
     }
 
-    if (room?.activeMode === 'doodle_oke' && room?.doodleOke) {
+    if (room?.activeMode === 'doodle_oke' && room?.doodleOke && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const doodle = room.doodleOke;
         const participants = room?.doodleOkeConfig?.participants || [];
         const eligibleToDraw = !participants.length || participants.includes(uid);
@@ -5948,6 +6443,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         return (
             <div data-feature-id="singer-doodle-oke" className="h-screen w-full bg-zinc-950 text-white font-saira flex flex-col items-center justify-center px-5 py-6 overflow-hidden">
+                {renderStreamlinedTakeoverChrome('Doodle-oke')}
                 <div className="w-full max-w-3xl text-center space-y-2">
                     <div className="text-[10px] uppercase tracking-[0.5em] text-zinc-500">Doodle-oke</div>
                     <div className="text-3xl font-bebas text-cyan-300">Lyric Line Showdown</div>
@@ -6095,7 +6591,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }
     
     // --- SELFIE CAM ---
-    if (room?.activeMode === 'selfie_challenge') {
+    if (room?.activeMode === 'selfie_challenge' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const challenge = room?.selfieChallenge;
         const isParticipant = !!challenge?.participants?.includes(uid);
         const hasSubmitted = selfieSubmissions.some(s => s.uid === uid);
@@ -6122,6 +6618,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         return (
             <div data-feature-id="singer-selfie-challenge" className="h-screen bg-black flex flex-col relative overflow-hidden text-white font-saira">
+                {renderStreamlinedTakeoverChrome('Selfie Challenge')}
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center z-20">
                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">Selfie Challenge</div>
                     <div className="text-2xl font-bold text-white">{challenge?.prompt || 'Get ready'}</div>
@@ -6240,9 +6737,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
     }
 
-    if (isAudienceSelfieCam) {
+    if (isAudienceSelfieCam && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         return (
             <div className="h-screen bg-black flex flex-col relative overflow-hidden">
+                {renderStreamlinedTakeoverChrome('Selfie Cam')}
                 <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                 {!cameraActive && (
                     <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/80 text-center p-6">
@@ -6299,7 +6797,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const rngActive = isMysteryBingo && bingoRng?.active;
         const canLateJoin = isMysteryBingo && isMysteryParticipant && !rngActive && bingoRng?.finalized && !bingoRng?.results?.[uid];
         const bingoSessionVotes = user?.bingoVotesBySession?.[bingoSessionId] || {};
-        const hideBingoOverlay = isBingo && !showBingoOverlay;
+        const hideBingoOverlay = isBingo && (isStreamlinedAudienceShell ? takeoverMinimized : !showBingoOverlay);
         
         let gamePayload = room.gameData;
         if (isTrivia) gamePayload = room.triviaQuestion;
@@ -6542,7 +7040,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         setTab('request');
                         setSongsTab('tight15');
                     }}
-                    onClose={isBingo ? () => setShowBingoOverlay(false) : undefined}
+                    onClose={isStreamlinedAudienceShell ? minimizeAudienceTakeover : (isBingo ? () => setShowBingoOverlay(false) : undefined)}
+                    closeLabel={isStreamlinedAudienceShell ? 'Minimize' : 'Close'}
                     rulesToken={room?.gameRulesId}
                     view="mobile"
                 />
@@ -6842,14 +7341,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     ))}
                                 </select>
                             </div>
-                            <label className="flex items-center gap-2 text-sm text-zinc-200">
-                                <input
-                                    type="checkbox"
-                                    checked={vipForm.smsOptIn}
-                                    onChange={(e) => setVipForm(prev => ({ ...prev, smsOptIn: e.target.checked }))}
-                                />
-                                Text me when I am up next
-                            </label>
                             <label className="flex items-center gap-2 text-sm text-zinc-200 mt-2">
                                 <input
                                     type="checkbox"
@@ -6908,14 +7399,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         ))}
                     </select>
                 </div>
-                <label className="flex items-center gap-2 text-base text-zinc-300 mb-3">
-                    <input
-                        type="checkbox"
-                        checked={vipForm.smsOptIn}
-                        onChange={(e) => setVipForm(prev => ({ ...prev, smsOptIn: e.target.checked }))}
-                    />
-                    Text me when I'm up next (only if I opt in; host sets timing)
-                </label>
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
                     <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">VIP House Rules</div>
                     <ul className="text-base text-zinc-200 space-y-2">
@@ -7085,25 +7568,133 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (showFeedbackForm) return renderFeedbackModal();
     if (showAbout) return renderAboutModal();
 
+    if (avatarUnlockModal) {
+        const lockedAvatar = avatarUnlockModal.item || {};
+        const unlockType = String(lockedAvatar?.unlock?.type || '').trim().toLowerCase();
+        const pointsCost = Math.max(0, Number(lockedAvatar?.unlock?.cost || 0));
+        const effectivePoints = Math.max(0, getEffectivePoints());
+        const canBuyWithPoints = unlockType === 'points' && !!user && effectivePoints >= pointsCost;
+        const canNotAffordWithPoints = unlockType === 'points' && effectivePoints < pointsCost;
+        return (
+            <div className="fixed inset-0 bg-black/80 z-[140] flex items-center justify-center p-6 text-white font-saira" onClick={() => setAvatarUnlockModal(null)}>
+                <div className="w-full max-w-sm rounded-3xl border border-fuchsia-300/25 bg-gradient-to-br from-[#140d22] via-[#11131b] to-[#0a0d12] p-6 shadow-[0_0_40px_rgba(236,72,153,0.2)]" onClick={(e) => e.stopPropagation()}>
+                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Avatar Unlock</div>
+                    <div className="mt-3 flex items-center gap-4">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-white/10 bg-black/35 text-5xl">
+                            {lockedAvatar.emoji || DEFAULT_EMOJI}
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-2xl font-black text-white">{lockedAvatar.label || 'Locked Avatar'}</div>
+                            <div className="mt-1 text-sm text-zinc-300">{lockedAvatar.flavor || avatarUnlockModal.hint}</div>
+                            <div className="mt-2 inline-flex rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                {avatarUnlockModal.status?.note || 'Locked'}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-200">
+                        {avatarUnlockModal.hint || 'This avatar unlocks through room progress, perks, or points.'}
+                    </div>
+                    {unlockType === 'points' ? (
+                        <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            {canBuyWithPoints
+                                ? `You have ${effectivePoints} PTS, so this unlock can happen instantly without leaving the room.`
+                                : `You have ${effectivePoints} PTS. Earn or buy more points later if you want to unlock this one.`}
+                        </div>
+                    ) : null}
+                    {unlockType === 'vip' ? (
+                        <div className="mt-3 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/10 px-4 py-3 text-sm text-zinc-200">
+                            VIP avatars are optional. You can keep going as a guest right now and link or verify later if you want the premium pack.
+                        </div>
+                    ) : null}
+                    <div className="mt-5 flex gap-2">
+                        <button onClick={() => setAvatarUnlockModal(null)} className="flex-1 bg-zinc-700 py-3 rounded-xl font-bold">Keep Guest Avatar</button>
+                        {canBuyWithPoints ? (
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        queuePointDelta(-pointsCost);
+                                        if (!accountProfileUid) throw new Error('Missing account UID');
+                                        await updateDoc(doc(db, 'users', accountProfileUid), { unlockedEmojis: arrayUnion(lockedAvatar.id) });
+                                        setForm(prev => ({ ...prev, emoji: lockedAvatar.emoji || prev.emoji }));
+                                        setAvatarUnlockModal(null);
+                                        syncPoints(true);
+                                        toast(`Unlocked ${lockedAvatar.label}!`);
+                                    } catch (error) {
+                                        console.error(error);
+                                        toast('Unlock failed. Try again.');
+                                    }
+                                }}
+                                className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
+                            >
+                                Unlock Now
+                            </button>
+                        ) : canNotAffordWithPoints ? (
+                            <button
+                                onClick={() => {
+                                    setAvatarUnlockModal(null);
+                                    setShowPoints(true);
+                                }}
+                                className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
+                            >
+                                Get More Points
+                            </button>
+                        ) : unlockType === 'vip' ? (
+                            <button
+                                onClick={() => {
+                                    setAvatarUnlockModal(null);
+                                    openVipUpgrade();
+                                }}
+                                className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
+                            >
+                                View VIP Perks
+                            </button>
+                        ) : (
+                            <button
+                                onClick={() => setAvatarUnlockModal(null)}
+                                className="flex-1 bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-100 py-3 rounded-xl font-bold"
+                            >
+                                Got It
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (showPhoneModal) return (
         <div className="fixed inset-0 bg-black/80 z-[130] flex items-center justify-center p-6">
-            <div className="bg-zinc-900 p-6 rounded-xl w-full max-w-md">
-                <h2 className="text-2xl font-bold mb-2">Create BeauRocks Account by Email</h2>
-                <p className="text-sm text-zinc-400 mb-4">Enter your email and we will send a secure sign-in link. Open it on this device to finish creating your BeauRocks account and unlock VIP perks.</p>
-                <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 mb-3 rounded bg-zinc-800 border border-zinc-700" />
+            <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(0,196,217,0.18),_rgba(24,24,27,0.96)_38%,_rgba(10,10,14,0.98)_100%)] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+                <div className="mb-5 flex items-center gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-[22px] border border-cyan-300/35 bg-white/5 shadow-[0_0_24px_rgba(0,196,217,0.18)]">
+                        <img
+                            src={room?.logoUrl || BRAND_ICON}
+                            alt="BeauRocks Karaoke"
+                            className="h-12 w-12 object-contain drop-shadow-[0_0_14px_rgba(255,255,255,0.45)]"
+                        />
+                    </div>
+                    <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-200/80">Audience Access</div>
+                        <div className="text-xl font-black uppercase tracking-[0.08em] text-white">BeauRocks Karaoke</div>
+                        <div className="text-xs uppercase tracking-[0.22em] text-white/45">Secure account link</div>
+                    </div>
+                </div>
+                <h2 className="mb-2 text-2xl font-black leading-tight text-white">Sign In or Create Your Account</h2>
+                <p className="mb-4 text-sm leading-6 text-zinc-300">Enter your email and we will send a secure sign-in link. Use the same email for an existing BeauRocks account, or a new one to create it. Open the link on this device to finish automatically.</p>
+                <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full mb-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-white placeholder:text-zinc-500 focus:border-cyan-300/60 focus:outline-none" />
                 {!emailLinkSent ? (
                     <div className="flex gap-2">
-                        <button onClick={()=>setShowPhoneModal(false)} className="flex-1 bg-zinc-700 py-3 rounded">Cancel</button>
-                        <button onClick={sendAccountEmailLink} className="flex-1 bg-cyan-500 py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Send Link'}</button>
+                        <button onClick={()=>setShowPhoneModal(false)} className="flex-1 rounded-2xl border border-white/10 bg-white/10 py-3 font-bold text-white transition hover:bg-white/15">Cancel</button>
+                        <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-cyan-500 py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Email Sign-In Link'}</button>
                     </div>
                 ) : (
                     <>
-                        <div className="mb-3 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                            Verification link sent to <span className="font-bold text-white">{accountEmail}</span>. Open it on this device and the app will finish automatically.
+                        <div className="mb-3 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            Sign-in link sent to <span className="font-bold text-white">{accountEmail}</span>. Open it on this device and the app will finish automatically.
                         </div>
                         <div className="flex gap-2">
-                            <button onClick={()=>{ setEmailLinkSent(false); }} className="flex-1 bg-zinc-700 py-3 rounded">Use Different Email</button>
-                            <button onClick={sendAccountEmailLink} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
+                            <button onClick={()=>{ setEmailLinkSent(false); }} className="flex-1 rounded-2xl border border-white/10 bg-white/10 py-3 font-bold text-white transition hover:bg-white/15">Use Different Email</button>
+                            <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-[#00C4D9] py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
                         </div>
                     </>
                 )}
@@ -7271,6 +7862,54 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {!showPointsShop ? (
                     <>
                         <div className="grid gap-3">
+                            <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
+                                <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
+                                    {eventCreditsSummary.title}
+                                </div>
+                                <div className="text-base text-zinc-100">
+                                    {eventCreditsSummary.body}
+                                </div>
+                                {eventCreditsSummary.showClaims && (
+                                    <>
+                                        <div className="mt-3 text-sm text-zinc-300">
+                                            Redeem promo drops, QR links, or claim links here. Paid ticket perks should land automatically when your signed-in email matches the event attendee record.
+                                        </div>
+                                        {eventPromoSummary.usesGivebutter && (
+                                            <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
+                                                Givebutter attendee matching is active for this room. If your ticket email matches your BeauRocks sign-in, your VIP or entry credits can attach automatically.
+                                            </div>
+                                        )}
+                                        {eventPromoSummary.promoCampaigns.length > 0 && (
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {eventPromoSummary.promoCampaigns.slice(0, 4).map((campaign) => (
+                                                    <span key={campaign.id} className="rounded-full border border-amber-300/30 bg-amber-500/12 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-amber-100">
+                                                        {campaign.label || campaign.id}
+                                                        {campaign.pointsReward > 0 ? ` +${campaign.pointsReward}` : ''}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="mt-3 grid gap-2">
+                                            <label className="block">
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Promo code or claim link token</div>
+                                                <input
+                                                    value={eventGrantCode}
+                                                    onChange={(e) => setEventGrantCode(e.target.value)}
+                                                    placeholder="Enter promo code"
+                                                    className="mt-2 w-full rounded-xl border border-amber-400/20 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-300/45"
+                                                />
+                                            </label>
+                                            <button
+                                                onClick={() => claimEventCredit({ claimCode: eventGrantCode })}
+                                                disabled={eventGrantBusy || !String(eventGrantCode || '').trim()}
+                                                className={`w-full rounded-xl border border-amber-300/40 bg-amber-500/12 px-4 py-2.5 font-bold text-amber-100 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                {eventGrantBusy ? 'Redeeming promo...' : 'Redeem promo'}
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                             <div className="bg-black/30 border border-pink-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-pink-200 mb-2">Earn points</div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100">
@@ -7279,18 +7918,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
                                     <span className="text-2xl">{EMOJI.star}</span>
-                                    Create a BeauRocks account to unlock VIP perks and +5000 PTS.
+                                    Sign in or create a BeauRocks account later to keep tonight&apos;s event perks, profile, and future bonuses.
                                 </div>
                                 <button
                                     onClick={() => openVipUpgrade()}
                                     className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
                                 >
-                                    Create BeauRocks Account
+                                    Sign In / Create Account
                                 </button>
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
-                                <div className="text-lg text-zinc-100">Room points power tonight&apos;s session. Your BeauRocks account keeps your identity, VIP perks, and history between rooms.</div>
+                                <div className="text-lg text-zinc-100">Room points power tonight&apos;s session. Linking BeauRocks later keeps your identity, event bonuses, VIP perks, and history tied to one account.</div>
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 mt-4">
@@ -7490,14 +8129,158 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         </div>
     );
 
-    if (room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') {
+    if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         return (
             <div className="fixed inset-0 z-50 bg-[#00C4D9]/20 flex flex-col items-center justify-center p-6 text-white font-saira">
+                {renderStreamlinedTakeoverChrome('Applause Meter')}
                 <h1 className="text-5xl font-bebas mb-8 text-cyan-300 animate-bounce">APPLAUSE METER!</h1>
                 <button onClick={()=>react('clap', 0)} className={`w-full h-64 bg-[#00C4D9] rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 shadow-2xl active:scale-95 transition-transform ${cooldownFlash ? 'ring-4 ring-red-300 animate-pulse' : ''}`}>
                     <span className="text-8xl">{String.fromCodePoint(0x1F44F)}</span>
                 </button>
                 <p className="mt-8 font-bold">TAP FAST! (Free)</p>
+            </div>
+        );
+    }
+
+    if (takeoverOpen && room?.lightMode === 'ballad') {
+        return (
+            <div className="h-screen w-full relative overflow-hidden text-white font-saira bg-[#090612]">
+                {renderStreamlinedTakeoverChrome('Phone Lighter Mode')}
+                <div className="absolute inset-0 ballad-haze"></div>
+                <div className="absolute inset-x-0 bottom-0 h-[74%] ballad-glow"></div>
+                <div className="absolute inset-0 fire-overlay opacity-85"></div>
+                <div className="absolute inset-0 pointer-events-none">
+                    {balladFireParticles.map((particle) => (
+                        <div
+                            key={particle.id}
+                            className="fire-particle"
+                            style={{
+                                left: particle.left,
+                                animationDelay: particle.animationDelay,
+                                animationDuration: particle.animationDuration,
+                                fontSize: `${particle.sizeRem}rem`,
+                                opacity: particle.opacity
+                            }}
+                        >
+                            {EMOJI.fire}
+                        </div>
+                    ))}
+                </div>
+                <div className="absolute inset-x-0 top-20 text-center">
+                    <div className="text-[10px] font-bold tracking-[0.45em] text-white/85 uppercase">Phone Lighter Mode</div>
+                    <div className="mt-1 text-xs uppercase tracking-[0.2em] text-amber-100/90">Raise and sway your phone like a zippo flame</div>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center px-6 pointer-events-none">
+                    <div className="relative w-full max-w-[340px] h-[48dvh] flex items-end justify-center">
+                        <div className="ballad-lighter-beam" style={{ opacity: balladRaised ? 1 : 0.72 }}></div>
+                        <div className="ballad-lighter-halo" style={{ opacity: balladFlamePulseOpacity }}></div>
+                        <div className={`ballad-lighter-flame-shell ${balladRaised ? 'raised' : ''}`} style={{ transform: balladFlameTransform }}>
+                            <div className="ballad-lighter-flame"></div>
+                            <div className="ballad-lighter-flame-inner"></div>
+                        </div>
+                        <div className="ballad-lighter-phone"></div>
+                    </div>
+                </div>
+                <div className="absolute bottom-44 left-1/2 -translate-x-1/2 w-[min(92vw,360px)] pointer-events-auto">
+                    <button
+                        onTouchStart={handleBalladLiftStart}
+                        onTouchMove={handleBalladLiftMove}
+                        onTouchEnd={handleBalladLiftEnd}
+                        onTouchCancel={handleBalladLiftEnd}
+                        onMouseDown={handleBalladLiftStart}
+                        onMouseMove={handleBalladLiftMove}
+                        onMouseUp={handleBalladLiftEnd}
+                        onMouseLeave={handleBalladLiftEnd}
+                        className="w-full rounded-2xl border border-amber-300/35 bg-black/55 backdrop-blur px-4 py-3 text-center text-xs font-black uppercase tracking-[0.18em] text-amber-100 shadow-[0_0_28px_rgba(255,186,117,0.25)] active:scale-[0.99] transition-transform"
+                        style={{ touchAction: 'none' }}
+                    >
+                        {balladRaised ? 'SWAY TO FEED THE FLAME' : 'PRESS + SWAY YOUR LIGHTER'}
+                    </button>
+                </div>
+                <div className="absolute bottom-[8.75rem] left-1/2 -translate-x-1/2 flex items-end gap-1.5 pointer-events-none">
+                    {balladAudienceLights.map((light) => (
+                        <div key={light.id} className="relative w-5 h-8 rounded-md border border-white/20 bg-black/40 overflow-visible" style={{ transform: `translateY(${light.nudge}px)` }}>
+                            <div className="ballad-mini-flame" style={{ animationDelay: light.delay }}></div>
+                        </div>
+                    ))}
+                </div>
+                {balladLights.map((light, idx) => (
+                    <div
+                        key={idx}
+                        className="absolute ballad-orb"
+                        style={{
+                            left: light.left,
+                            bottom: light.bottom,
+                            '--orb-size': light.size,
+                            '--sway-duration': light.sway,
+                            '--float-delay': light.delay,
+                            '--orb-alpha': light.opacity
+                        }}
+                    ></div>
+                ))}
+                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                    <div className="rounded-2xl border border-pink-300/40 bg-black/65 backdrop-blur px-3 py-3">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-pink-100">Concert Lighters</div>
+                        <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                            <button
+                                onClick={() => react('heart', REACTION_COSTS.heart)}
+                                className="rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 active:scale-95 transition-transform"
+                            >
+                                {getEmojiChar('heart')} Love
+                            </button>
+                            <button
+                                onClick={() => react('drink', REACTION_COSTS.drink)}
+                                className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                            >
+                                {getEmojiChar('drink')} Cheers
+                            </button>
+                            <button
+                                onClick={openLoungeChat}
+                                className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
+                            >
+                                <i className="fa-solid fa-comments mr-1"></i> Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (takeoverOpen && room?.lightMode === 'banger') {
+        return (
+            <div className="h-screen w-full relative overflow-hidden text-white font-saira bg-[#090612]">
+                {renderStreamlinedTakeoverChrome('Banger Mode')}
+                <div className="absolute inset-0 vibe-banger"></div>
+                <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-500/25"></div>
+                <div className="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.45em] text-white/80 uppercase">Banger Mode - Feel The Bass</div>
+                <div className="absolute bottom-5 left-1/2 -translate-x-1/2 w-[min(92vw,420px)] pointer-events-auto">
+                    <div className="rounded-2xl border border-orange-300/40 bg-black/65 backdrop-blur px-3 py-3">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-orange-100">Banger Mode</div>
+                        <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
+                        <div className="grid grid-cols-3 gap-2 mt-2">
+                            <button
+                                onClick={() => react('fire', REACTION_COSTS.fire)}
+                                className="rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 active:scale-95 transition-transform"
+                            >
+                                {getEmojiChar('fire')} Hype
+                            </button>
+                            <button
+                                onClick={() => react('clap', REACTION_COSTS.clap)}
+                                className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                            >
+                                {getEmojiChar('clap')} Clap
+                            </button>
+                            <button
+                                onClick={openLoungeChat}
+                                className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
+                            >
+                                <i className="fa-solid fa-comments mr-1"></i> Chat
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -7648,15 +8431,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         timedOut: lobbyVolleyTimedOut,
         relayActive: lobbyRelayObjective.active
     });
-    const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
-    const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
-    const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
-    const autoCrowdMomentTitle = String(activeAutoCrowdMoment?.title || '').trim()
-        || (autoCrowdMomentType === 'volley' ? 'Auto Party: Volley Orb' : 'Auto Party: Ready Check');
-    const autoCrowdMomentDetail = String(activeAutoCrowdMoment?.detail || '').trim()
-        || (autoCrowdMomentType === 'volley'
-            ? 'Audience relay is live between singers.'
-            : 'Audience check-in is live before the next singer.');
     const primaryStageTabs = ['home', 'request', 'social'];
     const activePrimaryStageTab = primaryStageTabs.includes(tab) ? tab : 'home';
     const activePrimaryStageTabLabel = activePrimaryStageTab === 'request'
@@ -7819,12 +8593,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setStagePanelCollapsedForTab(true, tab);
     };
 
+    if(!user && !isMarketingDemoFixture) return joinScreen;
+
     return (
         <div
             data-singer-view="main"
             data-singer-room-user={String(user?.uid || activeUid || '').trim()}
             data-singer-room-user-name={String(user?.name || '').trim()}
             data-singer-room-code={String(roomCode || '').trim().toUpperCase()}
+            data-singer-shell-variant={shellVariant}
+            data-singer-takeover-state={takeoverState}
+            data-singer-takeover-kind={takeoverKind || ''}
             className={`relative ${tabletTouchViewport ? 'singer-tablet-touch min-h-[100dvh] h-auto overflow-y-auto overflow-x-hidden' : 'h-[100dvh] min-h-[100dvh] overflow-hidden'} bg-[#090612] text-white font-saira flex flex-col ${isNativeMobileLayout ? 'mobile-shell-native' : ''}`}
         >
             {isNativeMobileLayout && (
@@ -7846,7 +8625,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             )}
             {/* Header: Reorganized Layout */}
               <div
-                  className={`bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative overflow-visible ${isNativeMobileLayout ? 'h-28 mobile-native-header' : 'h-24'}`}
+                  className={`bg-gradient-to-r from-[#4b1436] via-[#FF67B6] to-[#4b1436] shadow-lg z-20 relative overflow-visible ${isNativeMobileLayout ? 'h-[92px] mobile-native-header' : 'h-24'}`}
                   style={{
                       paddingTop: mobileHeaderTopInset
                   }}
@@ -7858,7 +8637,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
-                          <button onClick={() => { pulseNativeUiFeedback(); setTab('social'); setSocialTab('profile'); }} className={`bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-11 w-[126px] sm:w-[140px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
+                          <button onClick={() => { pulseNativeUiFeedback(); setTab('social'); setSocialTab('profile'); }} className={`bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-10 w-[118px] sm:w-[132px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
                               <span className="text-2xl">{user?.avatar}</span>
                               <span className="font-bold truncate text-sm text-white">{user?.name}</span>
                           </button>
@@ -7869,7 +8648,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                           <AnimatedPoints
                               value={Math.max(0, getEffectivePoints())}
                               onClick={() => setShowPoints(true)}
-                              className="w-[126px] sm:w-[140px]"
+                              className="h-10 w-[118px] sm:w-[132px]"
                           />
                       </div>
                   </div>
@@ -7878,7 +8657,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
             {/* Local Reactions Layer */}
             <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden">{localReactions.map(r => (<div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.left}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div></div>))}</div>
-            {showBallad && (
+            {showBallad && !(isStreamlinedAudienceShell && takeoverMinimized) && (
                 <div className="absolute inset-0 z-[80] pointer-events-none overflow-hidden">
                     <div className="absolute inset-0 ballad-haze"></div>
                     <div className="absolute inset-x-0 bottom-0 h-[74%] ballad-glow"></div>
@@ -7980,7 +8759,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                 </div>
             )}
-            {showBanger && (
+            {showBanger && !(isStreamlinedAudienceShell && takeoverMinimized) && (
                 <div className="absolute inset-0 z-[80] pointer-events-none overflow-hidden">
                     <div className="absolute inset-0 vibe-banger"></div>
                     <div className="absolute inset-0 bg-gradient-to-b from-pink-500/25 via-transparent to-cyan-500/25"></div>
@@ -8156,7 +8935,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 </div>
                                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
+                                    {!isStreamlinedAudienceShell && room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setShowBingoOverlay(true); }}
                                             className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border border-purple-400/40 px-3 py-1.5 rounded-full text-base font-bold min-h-[28px] leading-none hover:bg-purple-500/30"
@@ -8340,11 +9119,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
                                             <span>{popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}</span>
                                             <div className="flex items-center gap-2">
-                                                <span className="font-bold">
-                                                    {popTriviaQuestion
-                                                        ? `${popTriviaState?.index + 1}/${popTriviaState?.total} | ${popTriviaState?.timeLeftSec}s`
-                                                        : `${popTriviaState?.total || 0} questions`}
-                                                </span>
+                                                {popTriviaQuestion ? (
+                                                    <span className={`rounded-full border px-3 py-1 font-black ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'border-yellow-300/60 bg-yellow-300/15 text-yellow-100' : 'border-cyan-300/45 bg-cyan-300/12 text-cyan-100'}`}>
+                                                        {`${popTriviaState?.timeLeftSec}s`}
+                                                    </span>
+                                                ) : (
+                                                    <span className="font-bold">
+                                                        {`${popTriviaState?.total || 0} questions`}
+                                                    </span>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => setDismissedPopTriviaCardKey(popTriviaCardKey)}
@@ -8358,8 +9141,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                         {popTriviaQuestion ? (
                                             <>
+                                                <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/10">
+                                                    <div
+                                                        className={`h-full rounded-full transition-all duration-700 ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-gradient-to-r from-cyan-300 via-sky-400 to-fuchsia-400'}`}
+                                                        style={{ width: `${popTriviaProgressPct}%` }}
+                                                    ></div>
+                                                </div>
                                                 <div className="mt-3 max-h-[min(42dvh,25rem)] overflow-y-auto overscroll-contain pr-1 touch-scroll-y custom-scrollbar">
                                                     <div className="text-base font-black text-white leading-snug">{popTriviaQuestion.q}</div>
+                                                    <div className="mt-2 text-[11px] uppercase tracking-[0.2em] text-cyan-100/80">
+                                                        {popTriviaCorrectPoints > 0 ? `Correct answer earns +${popTriviaCorrectPoints} pts` : 'Answer before the timer runs out'}
+                                                    </div>
                                                     <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                                                         {popTriviaQuestion.options?.map((option, idx) => {
                                                             const isSelected = popTriviaMyVote === idx;
@@ -8392,9 +9184,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </>
                                         ) : (
                                             <div className="mt-3">
-                                                <div className="text-lg font-black text-white leading-snug">Trivia complete. Back to the song.</div>
+                                                <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-100/80">Correct answer</div>
+                                                <div className="mt-2 text-lg font-black text-white leading-snug">
+                                                    {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
+                                                </div>
                                                 <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
-                                                    The side round is done. Keep singing, then send the next request when you are ready.
+                                                    {popTriviaRevealWasCorrect
+                                                        ? (popTriviaCorrectPoints > 0 ? `You got it right. +${popTriviaCorrectPoints} pts should land in your room balance.` : 'You got it right.')
+                                                        : popTriviaRevealMyVote !== null
+                                                            ? 'Your answer locked in, but this was not the winning choice.'
+                                                            : 'Trivia complete. Back to the song.'}
+                                                </div>
+                                                <div className="mt-3 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                                                    <span>{popTriviaRevealCorrectCount > 0 ? `${popTriviaRevealCorrectCount} correct` : 'No correct answers yet'}</span>
+                                                    <span>{popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts` : 'Karaoke resumes'}</span>
                                                 </div>
                                             </div>
                                         )}
@@ -8490,7 +9293,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </button>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2 justify-end">
-                                        {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
+                                        {!isStreamlinedAudienceShell && room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                                             <button
                                                 onClick={() => setShowBingoOverlay(true)}
                                                 className="flex items-center gap-1 bg-purple-500/20 text-purple-200 border border-purple-400/40 px-3 py-1.5 rounded-full text-base font-bold min-h-[28px] leading-none hover:bg-purple-500/30"
@@ -8762,13 +9565,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="mb-3 bg-cyan-500/10 border border-cyan-400/40 rounded-xl p-4 text-left">
                                             <div className="text-xs uppercase tracking-widest text-cyan-200 mb-1">BeauRocks Account</div>
                                             <div className="text-base text-zinc-100">Create or log in to your BeauRocks account to start chatting.</div>
-                                            <button onClick={() => setShowPhoneModal(true)} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Create BeauRocks Account</button>
+                                            <button onClick={() => setShowPhoneModal(true)} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Sign In / Create Account</button>
                                         </div>
                                     ) : chatTab === 'lounge' && chatLocked ? (
                                         <div className="mb-3 bg-pink-500/10 border border-pink-400/40 rounded-xl p-4 text-left">
                                             <div className="text-xs uppercase tracking-widest text-pink-200 mb-1">VIP Lounge</div>
                                             <div className="text-base text-zinc-100">VIP-only chat is live. Create or verify your BeauRocks account to unlock lounge access.</div>
-                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Create BeauRocks Account</button>
+                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Sign In / Create Account</button>
                                         </div>
                                     ) : null}
                                     {!chatLocked && (
@@ -9032,7 +9835,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">BeauRocks Account & History</button>
                                     )}
                                     {!isVipAccount && (
-                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">Create BeauRocks Account</button>
+                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">Sign In / Create Account</button>
                                     )}
                                     <button onClick={() => { setTab('request'); setSongsTab('tight15'); }} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Edit Tight 15</button>
                                 </div>
@@ -9155,102 +9958,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'request' && (
                     <div className="flex flex-col h-full">
-                        {(() => {
-                            const tight15Count = getTight15List().length;
-                            const hasPendingHostPick = String(user?.requestIntent || '').trim() === ROOM_REQUEST_INTENT_HOST_PICK;
-                            const hostPickSummary = tight15Count > 0
-                                ? `${tight15Count} Tight 15 song${tight15Count === 1 ? '' : 's'} ready for the host`
-                                : favoriteSongs.length > 0
-                                    ? 'Build your Tight 15 first so the host can pull from it'
-                                    : 'Add a few signature songs to Tight 15 first';
-                            return (
-                                <div className="mb-3 rounded-2xl border border-cyan-400/25 bg-gradient-to-br from-cyan-500/12 via-sky-500/10 to-pink-500/10 p-4">
-                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                        <div className="text-left">
-                                            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-200/80">First Song</div>
-                                            <div className="text-xl font-bebas text-white">Choose how you want to get on deck.</div>
-                                            <div className="text-sm text-zinc-300">
-                                                {activeRequestCount > 0
-                                                    ? `${activeRequestCount} active request${activeRequestCount === 1 ? '' : 's'} in this room.`
-                                                    : 'Pick the fastest path for your first song.'}
-                                            </div>
-                                        </div>
-                                        {hasPendingHostPick && (
-                                            <button
-                                                onClick={() => clearHostPickRequest({ silent: false })}
-                                                className="rounded-full border border-amber-300/35 bg-amber-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-amber-100"
-                                            >
-                                                Cancel Host Pick
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className="mt-4 grid grid-cols-1 gap-3">
-                                        <button
-                                            onClick={() => {
-                                                setSongsTab('requests');
-                                                setCatalogSearchOpen(false);
-                                                setManualRequestComposerOpen(false);
-                                            }}
-                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
-                                                songsTab === 'requests'
-                                                    ? 'border-cyan-300/70 bg-cyan-500/20 text-white shadow-[0_0_18px_rgba(34,211,238,0.2)]'
-                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-cyan-300/45'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <div className="text-base font-black">Request a song now</div>
-                                                    <div className="text-sm text-zinc-300">Search the catalog or type it in manually.</div>
-                                                </div>
-                                                <div className="text-cyan-200 text-xs font-black uppercase tracking-[0.2em]">Fastest</div>
-                                            </div>
-                                        </button>
-                                        <button
-                                            onClick={() => setSongsTab('tight15')}
-                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
-                                                songsTab === 'tight15'
-                                                    ? 'border-cyan-300/70 bg-cyan-500/20 text-white shadow-[0_0_18px_rgba(34,211,238,0.2)]'
-                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-cyan-300/45'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <div className="text-base font-black">Pick from Tight 15</div>
-                                                    <div className="text-sm text-zinc-300">
-                                                        {tight15Count > 0
-                                                            ? `${tight15Count} saved song${tight15Count === 1 ? '' : 's'} ready to queue`
-                                                            : 'Build your go-to setlist once, then queue from it fast'}
-                                                    </div>
-                                                </div>
-                                                <div className="text-cyan-200 text-xs font-black uppercase tracking-[0.2em]">
-                                                    {tight15Count}/{TIGHT15_MAX}
-                                                </div>
-                                            </div>
-                                        </button>
-                                        <button
-                                            onClick={requestHostPickFromTight15}
-                                            className={`rounded-2xl border px-4 py-3 text-left transition-all ${
-                                                hasPendingHostPick
-                                                    ? 'border-amber-300/70 bg-amber-500/18 text-white shadow-[0_0_18px_rgba(251,191,36,0.16)]'
-                                                    : 'border-white/10 bg-black/25 text-zinc-100 hover:border-amber-300/45'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <div className="text-base font-black">Let host pick from my favorites</div>
-                                                    <div className="text-sm text-zinc-300">
-                                                        {hasPendingHostPick ? 'Host pick requested. Your Tight 15 is ready for them.' : hostPickSummary}
-                                                    </div>
-                                                </div>
-                                                <div className="text-amber-100 text-xs font-black uppercase tracking-[0.2em]">
-                                                    {hasPendingHostPick ? 'Pending' : 'Host Assist'}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })()}
                         <div className="sticky top-0 z-20 -mx-4 px-4 pb-3 pt-1 bg-zinc-900/95 backdrop-blur">
                             <div className="grid grid-cols-4 gap-2 bg-zinc-800 p-2 rounded-xl">
                                 <button data-feature-id="singer-requests-tab" onClick={()=>setSongsTab('requests')} className={`py-2 rounded-lg text-base font-bold transition-all ${songsTab==='requests' ? 'bg-cyan-600 text-white shadow' : 'text-zinc-500'}`}>REQUESTS</button>
@@ -9271,12 +9978,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             {lastSongRequestFeedback.artist}
                                         </div>
                                         <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-50">
-                                            <i className={`fa-solid ${lastSongRequestFeedback.status === 'pending' ? 'fa-hourglass-half' : 'fa-check-circle'}`}></i>
-                                            {lastSongRequestFeedback.status === 'pending' ? 'Waiting for host review' : 'Added to the room queue'}
+                                            <i className={`fa-solid ${lastSongRequestFeedback.resolutionStatus === 'review_required' || lastSongRequestFeedback.status === 'pending' ? 'fa-hourglass-half' : 'fa-check-circle'}`}></i>
+                                            {lastSongRequestFeedback.resolutionStatus === 'review_required'
+                                                ? 'Host review'
+                                                : lastSongRequestFeedback.status === 'pending'
+                                                    ? 'Host review'
+                                                    : 'Ready'}
                                         </div>
                                         {!lastSongRequestFeedback.playbackReady && (
                                             <div className="mt-2 text-sm text-zinc-300">
-                                                Host may still need to attach a backing track.
+                                                {lastSongRequestFeedback.resolutionStatus === 'review_required'
+                                                    ? 'Your request is in. The host still needs to attach or approve the backing.'
+                                                    : 'The host still needs to finalize playback for this request.'}
+                                            </div>
+                                        )}
+                                        {lastSongRequestFeedback.collabOpen && (
+                                            <div className="mt-2 text-xs uppercase tracking-[0.24em] text-pink-100/85">
+                                                Open to duet or group version
                                             </div>
                                         )}
                                     </div>
@@ -9310,7 +10028,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                             </div>
                         )}
-                        {catalogSearchOpen && ['requests', 'browse'].includes(songsTab) && (
+                        {catalogSearchOpen && ['requests', 'browse'].includes(songsTab) && renderAudienceViewportSheet(
                             <React.Fragment>
                                 <button
                                     type="button"
@@ -9319,17 +10037,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     className="fixed inset-0 z-[82] bg-black/60 backdrop-blur-sm"
                                 ></button>
                                 <div
-                                    className="fixed z-[83] rounded-[1.75rem] border border-cyan-300/25 bg-[#090d18]/96 shadow-[0_22px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl flex flex-col min-h-0"
+                                    className="fixed inset-0 z-[83] h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
                                     style={{
-                                        top: `calc(${mobileHeaderTopInset} + 5rem)`,
-                                        left: mobileSideInsetLeft,
-                                        right: mobileSideInsetRight,
-                                        bottom: `calc(${mobileBottomInset} + 1rem)`
+                                        paddingTop: `calc(${mobileSafeTopInset} + 12px)`,
+                                        paddingLeft: mobileSideInsetLeft,
+                                        paddingRight: mobileSideInsetRight,
+                                        paddingBottom: `calc(${mobileSafeBottomInset} + 12px)`
                                     }}
                                 >
+                                    <div className="flex min-h-0 flex-1 flex-col rounded-[1.75rem] border border-cyan-300/25 bg-[#090d18]/96 shadow-[0_22px_60px_rgba(0,0,0,0.45)]">
                                     <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-white/10">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/80">Apple Music Catalog</div>
+                                            <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/80">Song Search</div>
                                             <div className="text-lg font-black text-white">
                                                 {searchQ.trim().length >= 3
                                                     ? `${results.length} match${results.length === 1 ? '' : 'es'}`
@@ -9353,11 +10072,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     value={searchQ}
                                                     onChange={(e) => setSearchQ(e.target.value)}
                                                     className="flex-1 bg-transparent text-base text-white outline-none"
-                                                    placeholder="Search Apple Music songs..."
+                                                    placeholder="Search songs..."
                                                 />
                                             </div>
                                             <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
-                                                Search results come from Apple Music. Host-curated YouTube picks live below in Browse.
+                                                Search by song and artist. Browse only shows picks that already have approved backing.
                                             </div>
                                         </div>
                                     </div>
@@ -9388,14 +10107,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                         ) : (
                                             <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                No Apple Music matches yet. Try a more specific song + artist search.
+                                                No matches yet. Try a more specific song + artist search.
                                             </div>
                                         )}
+                                    </div>
                                     </div>
                                 </div>
                             </React.Fragment>
                         )}
-                        {manualRequestComposerOpen && songsTab === 'requests' && (
+                        {manualRequestComposerOpen && songsTab === 'requests' && renderAudienceViewportSheet(
                             <React.Fragment>
                                 <button
                                     type="button"
@@ -9404,14 +10124,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     className="fixed inset-0 z-[84] bg-black/65 backdrop-blur-sm"
                                 ></button>
                                 <div
-                                    className="fixed z-[85] rounded-[1.75rem] border border-pink-300/25 bg-[#090d18]/97 shadow-[0_22px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl flex flex-col min-h-0"
+                                    className="fixed inset-0 z-[85] h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#090d18]/98 backdrop-blur-xl flex flex-col"
                                     style={{
-                                        top: `calc(${mobileHeaderTopInset} + 5rem)`,
-                                        left: mobileSideInsetLeft,
-                                        right: mobileSideInsetRight,
-                                        bottom: `calc(${mobileBottomInset} + 1rem)`
+                                        paddingTop: `calc(${mobileSafeTopInset} + 12px)`,
+                                        paddingLeft: mobileSideInsetLeft,
+                                        paddingRight: mobileSideInsetRight,
+                                        paddingBottom: `calc(${mobileSafeBottomInset} + 12px)`
                                     }}
                                 >
+                                    <div className="flex min-h-0 flex-1 flex-col rounded-[1.75rem] border border-pink-300/25 bg-[#090d18]/97 shadow-[0_22px_60px_rgba(0,0,0,0.45)]">
                                     <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3 border-b border-white/10">
                                         <div className="text-left">
                                             <div className="text-xs uppercase tracking-[0.3em] text-pink-200/80">Manual Request</div>
@@ -9453,7 +10174,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 placeholder="Artist"
                                             />
                                         </div>
-                                        {room?.allowSingerTrackSelect && (
+                                        {guestBackingAllowed && (
                                             <div className="space-y-2">
                                                 <label className="text-sm uppercase tracking-[0.35em] text-zinc-400">Optional Backing Track</label>
                                                 <input
@@ -9465,6 +10186,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <div className="text-sm text-zinc-400">YouTube links only. Host still controls playback.</div>
                                             </div>
                                         )}
+                                        <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
+                                            <input
+                                                type="checkbox"
+                                                checked={requestCollabOpen}
+                                                onChange={(event) => setRequestCollabOpen(event.target.checked)}
+                                                className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
+                                            />
+                                            <div>
+                                                <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
+                                                <div className="text-sm text-zinc-300">Let the host pair you if someone else wants the same song.</div>
+                                            </div>
+                                        </label>
                                         <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-300">
                                             This request will show up in the queue right after you send it.
                                         </div>
@@ -9476,6 +10209,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             Send Request
                                         </button>
                                     </form>
+                                    </div>
                                 </div>
                             </React.Fragment>
                         )}
@@ -9487,18 +10221,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <h2 className="text-2xl font-bebas text-cyan-400">Request Song</h2>
                                     </div>
                                     <div className="space-y-2">
-                                        <input
+                                        <button
                                             id="song-search"
-                                            value={searchQ}
-                                            onChange={e=>setSearchQ(e.target.value)}
-                                            onFocus={() => setCatalogSearchOpen(true)}
-                                            className="w-full bg-zinc-800 border border-zinc-600 rounded-lg p-2.5 text-base text-white outline-none"
-                                            placeholder="Search Apple Music songs..."
-                                        />
+                                            type="button"
+                                            onClick={() => setCatalogSearchOpen(true)}
+                                            className="flex w-full items-center gap-3 rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-3 text-left text-base text-white"
+                                        >
+                                            <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                            <span className={searchQ ? 'text-white' : 'text-zinc-400'}>
+                                                {searchQ || 'Search songs...'}
+                                            </span>
+                                        </button>
                                         <div className="text-sm text-zinc-500">
-                                            Search opens a full-screen Apple Music picker so results stay visible above the keyboard.
+                                            Search opens a full-screen song picker so results stay visible above the keyboard.
                                         </div>
                                     </div>
+                                    <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
+                                        <input
+                                            type="checkbox"
+                                            checked={requestCollabOpen}
+                                            onChange={(event) => setRequestCollabOpen(event.target.checked)}
+                                            className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
+                                        />
+                                        <div>
+                                            <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
+                                            <div className="text-sm text-zinc-300">Applies to your next request from search, manual entry, or browse.</div>
+                                        </div>
+                                    </label>
                                     <button
                                         type="button"
                                         onClick={() => setManualRequestComposerOpen(true)}
@@ -9515,7 +10264,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                         </div>
                                     </button>
-                                    {room?.allowSingerTrackSelect && form.backingUrl && (
+                                    {guestBackingAllowed && form.backingUrl && (
                                         <div className="rounded-2xl border border-cyan-300/20 bg-black/20 px-4 py-3 text-left">
                                             <div className="text-xs uppercase tracking-[0.3em] text-cyan-200/75">Backing Track Ready</div>
                                             <div className="mt-1 text-sm text-zinc-200 break-all">{form.backingUrl}</div>
@@ -9550,6 +10299,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                         {latestMyRequest && (
                                             <div className="mt-3 flex flex-wrap gap-2">
+                                                {String(latestMyRequest?.resolutionStatus || '').trim().toLowerCase() === 'review_required' && (
+                                                    <div className="rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
+                                                        Host review
+                                                    </div>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => setSongsTab('queue')}
@@ -9580,18 +10334,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="text-base text-zinc-300">Tap a category to explore hits.</div>
                                 </div>
                                 <div className="space-y-2">
-                                    <input
-                                        value={searchQ}
-                                        onChange={e => setSearchQ(e.target.value)}
-                                        onFocus={() => setCatalogSearchOpen(true)}
-                                        className="w-full bg-zinc-900/60 border border-zinc-700 rounded-2xl p-4 text-base text-white outline-none"
-                                        placeholder="Search Apple Music songs..."
-                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setCatalogSearchOpen(true)}
+                                        className="flex w-full items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-900/60 px-4 py-4 text-left text-base text-white"
+                                    >
+                                        <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                        <span className={searchQ ? 'text-white' : 'text-zinc-400'}>
+                                            {searchQ || 'Search songs...'}
+                                        </span>
+                                    </button>
                                     <div className="text-sm text-zinc-500">
-                                        Search uses Apple Music. The YouTube section below is a separate host-curated list.
+                                        Search by song and artist. Browse only shows songs that are already ready to play.
                                     </div>
                                 </div>
-                                {room?.allowSingerTrackSelect && (
+                                <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
+                                    <input
+                                        type="checkbox"
+                                        checked={requestCollabOpen}
+                                        onChange={(event) => setRequestCollabOpen(event.target.checked)}
+                                        className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
+                                    />
+                                    <div>
+                                        <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
+                                        <div className="text-sm text-zinc-300">If someone else wants the same song, the host can pair you up.</div>
+                                    </div>
+                                </label>
+                                {guestBackingAllowed && (
                                     <div className="space-y-2">
                                         <div className="text-sm uppercase tracking-[0.35em] text-zinc-500">Optional Backing Track</div>
                                         <input
@@ -9686,42 +10455,30 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
                                                 {activeBrowseSongsFiltered.map((song, idx) => (
-                                                        <div
-                                                            key={`${song.title}-${song.artist}`}
-                                                            className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
-                                                        >
-                                                            <div className="text-base text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
-                                                            <div className="relative">
-                                                                <img src={song.art} alt={song.title} className="w-10 h-10 rounded-lg object-cover" />
-                                                            {top100ArtLoading[song.artKey] && (
-                                                                <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center text-sm text-zinc-200">Loading</div>
-                                                            )}
-                                                        </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="font-bold text-white truncate text-base">{song.title}</div>
-                                                                <div className="text-base text-zinc-400 truncate">{song.artist}</div>
-                                                            </div>
-                                                            <button
-                                                                onClick={async () => {
-                                                                    const art = await fetchTop100Art(song);
-                                                                    submitSong(song.title, song.artist, art || song.art);
-                                                                }}
-                                                                className="text-base font-bold bg-[#00C4D9]/20 text-[#00C4D9] border border-[#00C4D9]/30 px-3 py-1 rounded-full"
-                                                            >
-                                                                + Request
-                                                            </button>
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    const art = await fetchTop100Art(song);
-                                                                    addToTight15({ songTitle: song.title, artist: song.artist, albumArtUrl: art || song.art });
-                                                                }}
-                                                                className="text-base font-bold bg-amber-500/15 text-amber-300 border border-amber-600/30 px-3 py-1 rounded-full"
-                                                            >
-                                                                + Tight 15
-                                                            </button>
-                                                        </div>
-                                                    ))}
+                                                    <AudienceBrowseSongRow
+                                                        key={`${song.title}-${song.artist}`}
+                                                        index={idx + 1}
+                                                        art={song.art}
+                                                        title={song.title}
+                                                        artist={song.artist}
+                                                        ready={song.hasApprovedBacking}
+                                                        loading={!!top100ArtLoading[song.artKey]}
+                                                        onRequest={async () => {
+                                                            const art = await fetchTop100Art(song);
+                                                            submitSong(song.title, song.artist, art || song.art, song.backing?.mediaUrl ? {
+                                                                mediaUrl: song.backing.mediaUrl,
+                                                                trackSource: song.backing.trackSource || 'youtube',
+                                                                durationSec: song.backing.durationSec || 0,
+                                                                allowTrack: true,
+                                                                trackLabel: song.backing.label || 'Browse approved backing'
+                                                            } : undefined);
+                                                        }}
+                                                        onTight15={async () => {
+                                                            const art = await fetchTop100Art(song);
+                                                            addToTight15({ songTitle: song.title, artist: song.artist, albumArtUrl: art || song.art });
+                                                        }}
+                                                    />
+                                                ))}
                                                 {activeBrowseSongsFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
                                                 )}
@@ -9771,41 +10528,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
                                                 {top100SongsFiltered.map((song, idx) => (
-                                                    <div
+                                                    <AudienceBrowseSongRow
                                                         key={`${song.title}-${song.artist}`}
-                                                        className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
-                                                    >
-                                                        <div className="text-base text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
-                                                        <div className="relative">
-                                                            <img src={song.art} alt={song.title} className="w-10 h-10 rounded-lg object-cover" />
-                                                            {top100ArtLoading[song.artKey] && (
-                                                                <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center text-sm text-zinc-200">Loading</div>
-                                                            )}
-                                                        </div>
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="font-bold text-white truncate text-base">{song.title}</div>
-                                                            <div className="text-base text-zinc-400 truncate">{song.artist}</div>
-                                                        </div>
-                                                        <button
-                                                            onClick={async () => {
-                                                                const art = await fetchTop100Art(song);
-                                                                submitSong(song.title, song.artist, art || song.art);
-                                                            }}
-                                                            className="text-base font-bold bg-[#00C4D9]/20 text-[#00C4D9] border border-[#00C4D9]/30 px-3 py-1 rounded-full"
-                                                        >
-                                                            + Request
-                                                        </button>
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                const art = await fetchTop100Art(song);
-                                                                addToTight15({ songTitle: song.title, artist: song.artist, albumArtUrl: art || song.art });
-                                                            }}
-                                                            className="text-base font-bold bg-amber-500/15 text-amber-300 border border-amber-600/30 px-3 py-1 rounded-full"
-                                                        >
-                                                            + Tight 15
-                                                        </button>
-                                                    </div>
+                                                        index={idx + 1}
+                                                        art={song.art}
+                                                        title={song.title}
+                                                        artist={song.artist}
+                                                        ready={song.hasApprovedBacking}
+                                                        loading={!!top100ArtLoading[song.artKey]}
+                                                        onRequest={async () => {
+                                                            const art = await fetchTop100Art(song);
+                                                            submitSong(song.title, song.artist, art || song.art, song.backing?.mediaUrl ? {
+                                                                mediaUrl: song.backing.mediaUrl,
+                                                                trackSource: song.backing.trackSource || 'youtube',
+                                                                durationSec: song.backing.durationSec || 0,
+                                                                allowTrack: true,
+                                                                trackLabel: song.backing.label || 'Browse approved backing'
+                                                            } : undefined);
+                                                        }}
+                                                        onTight15={async () => {
+                                                            const art = await fetchTop100Art(song);
+                                                            addToTight15({ songTitle: song.title, artist: song.artist, albumArtUrl: art || song.art });
+                                                        }}
+                                                    />
                                                 ))}
                                                 {top100SongsFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
@@ -9835,24 +10580,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
                                                 {ytIndexFiltered.map((item, idx) => (
-                                                        <div
-                                                            key={`${item.videoId || item.trackName}-${idx}`}
-                                                            className="flex items-center gap-3 bg-zinc-900/70 border border-zinc-800 rounded-xl p-3 hover:border-[#00C4D9]/40"
-                                                        >
-                                                                <div className="text-base text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
-                                                                <img src={item.artworkUrl100} alt={item.trackName} className="w-10 h-10 rounded-lg object-cover" />
-                                                                <div className="min-w-0 flex-1">
-                                                                    <div className="font-bold text-white truncate text-base">{item.trackName}</div>
-                                                                    <div className="text-base text-zinc-400 truncate">{item.artistName}</div>
-                                                                </div>
-                                                                <button
-                                                                    onClick={() => submitSong(item.trackName, item.artistName, item.artworkUrl100, { mediaUrl: item.url, trackSource: 'youtube', allowTrack: true, trackLabel: 'Host index' })}
-                                                                    className="text-base font-bold bg-[#00C4D9]/20 text-[#00C4D9] border border-[#00C4D9]/30 px-3 py-1 rounded-full"
-                                                                >
-                                                                    + Request
-                                                                </button>
-                                                            </div>
-                                                        ))}
+                                                    <AudienceBrowseSongRow
+                                                        key={`${item.videoId || item.trackName}-${idx}`}
+                                                        index={idx + 1}
+                                                        art={item.artworkUrl100}
+                                                        title={item.trackName}
+                                                        artist={item.artistName}
+                                                        onRequest={() => submitSong(item.trackName, item.artistName, item.artworkUrl100, { mediaUrl: item.url, trackSource: 'youtube', durationSec: item.durationSec || 0, allowTrack: true, trackLabel: 'Host index' })}
+                                                    />
+                                                ))}
                                                 {ytIndexFiltered.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-base">No matches</div>
                                                 )}
@@ -9914,6 +10650,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             {s.id === lastSongRequestFeedback?.requestId && (
                                                 <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-100 bg-emerald-500/15 border border-emerald-300/30 px-2 py-0.5 rounded-full">
                                                     Just added
+                                                </div>
+                                            )}
+                                            {String(s?.resolutionStatus || '').trim().toLowerCase() === 'review_required' && (
+                                                <div className="text-[10px] uppercase tracking-[0.22em] text-amber-100 bg-amber-500/15 border border-amber-300/30 px-2 py-0.5 rounded-full">
+                                                    Host review
+                                                </div>
+                                            )}
+                                            {s.collabOpen && (
+                                                <div className="text-[10px] uppercase tracking-[0.22em] text-pink-100 bg-pink-500/15 border border-pink-300/30 px-2 py-0.5 rounded-full">
+                                                    Duet open
                                                 </div>
                                             )}
                                             {idx === 0 && (
@@ -10029,14 +10775,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
 
                                 {!canSaveTight15 && (
-                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Create BeauRocks Account to Save Across Rooms</button>
+                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Sign In / Create Account to Save Across Rooms</button>
                                 )}
                             </div>
                         )}
                     </div>
                 )}
             </div>
-            {room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
+            {takeoverMinimized && takeoverKind && (
+                <button
+                    onClick={() => {
+                        pulseNativeUiFeedback();
+                        reopenAudienceTakeover();
+                    }}
+                    className={`fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] ${isNativeMobileLayout ? 'mobile-native-engagement-pill' : ''}`}
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 4.75rem)` }}
+                >
+                    <i className="fa-solid fa-expand mr-2"></i>
+                    {takeoverLabel || 'Live Mode'}
+                </button>
+            )}
+            {!isStreamlinedAudienceShell && room?.activeMode === 'bingo' && !showBingoOverlay && room?.bingoAudienceReopenEnabled !== false && (
                 <button
                     onClick={() => setShowBingoOverlay(true)}
                     className="fixed right-4 bottom-28 z-[95] bg-purple-500/85 text-white border border-purple-300/40 shadow-[0_10px_28px_rgba(147,51,234,0.45)] px-4 py-2 rounded-full text-sm font-black uppercase tracking-[0.2em]"
@@ -10069,69 +10828,58 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {floatingEngagementPrompt.label}
                 </button>
             )}
-            <div
-                className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? `backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar ${isCompactBottomNav ? 'mobile-native-tabbar-collapsed' : ''}` : ''}`}
-                style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
-            >
-                <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
-                {isNativeMobileLayout && (
-                    <button
-                        type="button"
-                        aria-label={isCompactBottomNav ? 'Expand bottom navigation' : 'Collapse bottom navigation'}
-                        aria-pressed={!isCompactBottomNav}
-                        onClick={() => {
-                            pulseNativeUiFeedback();
-                            setIsBottomNavCollapsed((current) => !current);
-                        }}
-                        className="mobile-native-tabbar-toggle"
-                    >
-                        <i className={`fa-solid ${isCompactBottomNav ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
-                        <span>{isCompactBottomNav ? 'Expand' : 'Compact'}</span>
-                    </button>
-                )}
+            {!takeoverOpen && (
                 <div
-                    className={`relative py-1.5 flex ${isNativeMobileLayout ? 'mobile-native-tabbar-row' : ''}`}
-                    style={{
-                        paddingLeft: isNativeMobileLayout
-                            ? mobileSideInsetLeft
-                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px'),
-                        paddingRight: isNativeMobileLayout
-                            ? mobileSideInsetRight
-                            : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
-                    }}
+                    className={`relative border-t border-pink-400/30 flex-none z-20 ${isNativeMobileLayout ? 'backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] mobile-native-tabbar' : ''}`}
+                    style={{ paddingBottom: isNativeMobileLayout ? mobileBottomInset : (isStandaloneDisplay ? 'env(safe-area-inset-bottom)' : '0px') }}
                 >
-                    <button
-                        onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
-                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='home' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}
-                    >
-                        <i className="fa-solid fa-champagne-glasses text-[28px]"></i>
-                        <span className="text-base font-semibold">PARTY</span>
-                    </button>
-                    <button
-                        data-feature-id="singer-nav-songs"
-                        onClick={() => { pulseNativeUiFeedback(); setTab('request'); }}
-                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}
-                    >
-                        <i className="fa-solid fa-music text-[28px]"></i>
-                        <span className="text-base font-semibold">SONGS</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            pulseNativeUiFeedback();
-                            setTab('social');
-                            setSocialTab('lounge');
-                            const newest = getNewestRelevantChatTimestamp(chatMessages);
-                            if (newest) chatLastSeenRef.current = newest;
-                            setChatUnread(false);
+                    <div className="absolute inset-0" style={{ background: MOBILE_NAV_GRADIENT }}></div>
+                    <div
+                        className={`relative py-1 flex ${isNativeMobileLayout ? 'mobile-native-tabbar-row' : ''}`}
+                        style={{
+                            paddingLeft: isNativeMobileLayout
+                                ? mobileSideInsetLeft
+                                : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-left))' : '8px'),
+                            paddingRight: isNativeMobileLayout
+                                ? mobileSideInsetRight
+                                : (isStandaloneDisplay ? 'max(8px, env(safe-area-inset-right))' : '8px')
                         }}
-                        className={`flex-1 py-3 flex flex-col items-center gap-1.5 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='social' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'} relative`}
                     >
-                        <i className="fa-solid fa-comments text-[28px]"></i>
-                        {chatUnread && <span className={`absolute w-2.5 h-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)] ${isCompactBottomNav ? 'top-3 right-5' : 'top-2 right-8'}`}></span>}
-                        <span className="text-base font-semibold">SOCIAL</span>
-                    </button>
+                        <button
+                            onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
+                            className={`flex-1 py-2 flex flex-col items-center gap-1 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${(tab === 'home' || (isStreamlinedAudienceShell && tab === 'social')) ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'}`}
+                        >
+                            <i className="fa-solid fa-champagne-glasses text-[24px]"></i>
+                            <span className="text-[13px] font-semibold">PARTY</span>
+                        </button>
+                        <button
+                            data-feature-id="singer-nav-songs"
+                            onClick={() => { pulseNativeUiFeedback(); setTab('request'); }}
+                            className={`flex-1 py-2 flex flex-col items-center gap-1 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab === 'request' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#46D7E8] drop-shadow-[0_0_12px_rgba(70,215,232,0.55)]` : 'text-zinc-300'}`}
+                        >
+                            <i className="fa-solid fa-music text-[24px]"></i>
+                            <span className="text-[13px] font-semibold">SONGS</span>
+                        </button>
+                        {!isStreamlinedAudienceShell && (
+                            <button
+                                onClick={() => {
+                                    pulseNativeUiFeedback();
+                                    setTab('social');
+                                    setSocialTab('lounge');
+                                    const newest = getNewestRelevantChatTimestamp(chatMessages);
+                                    if (newest) chatLastSeenRef.current = newest;
+                                    setChatUnread(false);
+                                }}
+                                className={`flex-1 py-2 flex flex-col items-center gap-1 leading-tight ${isNativeMobileLayout ? 'mobile-native-tab-btn' : ''} ${tab==='social' ? `${isNativeMobileLayout ? 'mobile-native-tab-btn-active' : ''} text-[#FF7AC8] drop-shadow-[0_0_12px_rgba(255,122,200,0.6)]` : 'text-zinc-300'} relative`}
+                            >
+                                <i className="fa-solid fa-comments text-[24px]"></i>
+                                {chatUnread && <span className="absolute top-2 right-8 h-2.5 w-2.5 rounded-full bg-pink-400 ring-2 ring-pink-300/60 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>}
+                                <span className="text-[13px] font-semibold">SOCIAL</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Photo Overlay */}
             {room?.photoOverlay && (!dismissedPhotoTs || (room.photoOverlay.timestamp || 0) > dismissedPhotoTs) && (

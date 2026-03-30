@@ -4,7 +4,7 @@ import { createDiscoverViewState, reduceDiscoverViewState } from "../../src/apps
 
 test("discoverViewState.test", () => {
   const mobileInitial = createDiscoverViewState({ isMobile: true });
-  assert.equal(mobileInitial.mobileSurface, "list");
+  assert.equal(mobileInitial.mobileSurface, "map");
   assert.equal(mobileInitial.mobileFiltersExpanded, false);
 
   const desktopInitial = createDiscoverViewState({ isMobile: false });
@@ -26,4 +26,8 @@ test("discoverViewState.test", () => {
   const viewportDesktop = reduceDiscoverViewState(tilesState, { type: "viewport_changed", isMobile: false });
   assert.equal(viewportDesktop.mobileSurface, "list");
   assert.equal(viewportDesktop.mobileFiltersExpanded, true);
+
+  const viewportMobile = reduceDiscoverViewState(viewportDesktop, { type: "viewport_changed", isMobile: true });
+  assert.equal(viewportMobile.mobileSurface, "map");
+  assert.equal(viewportMobile.mobileFiltersExpanded, false);
 });

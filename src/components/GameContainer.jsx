@@ -80,7 +80,7 @@ const GAME_RULES = {
     }
 };
 
-const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
+const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...props }) => {
     // 1. Check if the current mode matches a registered game
     const GameComponent = GAME_REGISTRY[activeMode];
     const [showRules, setShowRules] = useState(false);
@@ -152,7 +152,7 @@ const GameContainer = ({ activeMode, rulesToken, view, ...props }) => {
                     className="absolute top-6 right-6 z-[260] bg-black/70 border border-white/20 text-white px-4 py-2 rounded-full text-xs uppercase tracking-[0.35em] hover:border-cyan-300/60"
                     aria-label="Close game"
                 >
-                    Close
+                    {closeLabel}
                 </button>
             )}
             {inputLabel && (

@@ -131,7 +131,9 @@ const ensureTrack = async ({
   duration,
   audioOnly,
   backingOnly,
-  addedBy
+  addedBy,
+  approvalState,
+  qualityScore
 } = {}) => {
   if (!songId) return null;
   if (shouldSkipCatalogWrites()) {
@@ -147,7 +149,9 @@ const ensureTrack = async ({
       duration: duration ?? null,
       audioOnly: !!audioOnly,
       backingOnly: !!backingOnly,
-      addedBy: addedBy || ''
+      addedBy: addedBy || '',
+      approvalState: approvalState || '',
+      qualityScore: Number.isFinite(Number(qualityScore)) ? Number(qualityScore) : null
     });
     clearCatalogWriteBlocked();
     return { trackId: res?.trackId || null };
@@ -160,11 +164,12 @@ const ensureTrack = async ({
   }
 };
 
-const resolveSongCatalog = async ({ songId, title, artist } = {}) => {
+const resolveSongCatalog = async ({ songId, title, artist, roomCode } = {}) => {
   const payload = {};
   if (songId) payload.songId = songId;
   if (title) payload.title = title;
   if (artist) payload.artist = artist;
+  if (roomCode) payload.roomCode = roomCode;
   const res = await callFunction('resolveSongCatalog', payload);
   return res || null;
 };

@@ -1,6 +1,7 @@
 export const HOST_WORKSPACE_VIEWS = Object.freeze([
     { id: 'ops', label: 'Operations', icon: 'fa-sliders', defaultSection: 'ops.room_setup' },
     { id: 'queue', label: 'Queue & Performances', icon: 'fa-list-check', defaultSection: 'queue.live_run' },
+    { id: 'show', label: 'Run Of Show', icon: 'fa-clapperboard', defaultSection: 'show.timeline' },
     { id: 'audience', label: 'Audience', icon: 'fa-users', defaultSection: 'audience.roster' },
     { id: 'media', label: 'Media & Displays', icon: 'fa-tv', defaultSection: 'media.playback' },
     { id: 'games', label: 'Games', icon: 'fa-gamepad', defaultSection: 'games.live_controls' },
@@ -13,6 +14,7 @@ export const HOST_WORKSPACE_SECTIONS = Object.freeze([
     { id: 'ops.automation', view: 'ops', label: 'Automation', legacyTab: 'automations' },
     { id: 'queue.live_run', view: 'queue', label: 'Live Run', hostTab: 'stage' },
     { id: 'queue.catalog', view: 'queue', label: 'Catalog', hostTab: 'browse' },
+    { id: 'show.timeline', view: 'show', label: 'Run Of Show', hostTab: 'run_of_show' },
     { id: 'audience.roster', view: 'audience', label: 'Roster', hostTab: 'lobby' },
     { id: 'audience.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' },
     { id: 'audience.moderation', view: 'audience', label: 'Moderation', legacyTab: 'moderation' },
@@ -27,6 +29,7 @@ export const HOST_WORKSPACE_SECTIONS = Object.freeze([
 
 export const LEGACY_TAB_REDIRECTS = Object.freeze({
     stage: { view: 'queue', section: 'queue.live_run' },
+    run_of_show: { view: 'show', section: 'show.timeline' },
     games: { view: 'games', section: 'games.live_controls' },
     lobby: { view: 'audience', section: 'audience.roster' },
     browse: { view: 'queue', section: 'queue.catalog' }
@@ -58,4 +61,3 @@ export const getViewDefaultSection = (viewId = 'ops') =>
 
 export const getSectionMeta = (sectionId = '') =>
     HOST_WORKSPACE_SECTIONS.find((section) => section.id === sectionId) || null;
-

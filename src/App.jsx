@@ -9,8 +9,10 @@ import { buildSurfaceUrl, inferSurfaceFromHostname } from './lib/surfaceDomains'
 // App Views
 const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
 const SingerApp = lazy(() => import('./apps/Mobile/SingerApp'));
+const AudienceQaHarness = lazy(() => import('./apps/Mobile/AudienceQaHarness'));
 const RecapView = lazy(() => import('./apps/Recap/RecapView'));
 const HostApp = lazy(() => import('./apps/Host/HostApp'));
+const HostRunOfShowQaHarness = lazy(() => import('./apps/Host/HostRunOfShowQaHarness'));
 const MarketingSite = lazy(() => import('./apps/Marketing/MarketingSite'));
 
 const ViewLoader = () => (
@@ -126,6 +128,15 @@ const getInitialRouteState = () => {
     const detectedSurface = inferSurfaceFromHostname(window.location.hostname, window.location);
     const r = params.get('room');
     const m = params.get('mode');
+    const qaHostFixture = String(params.get('qaHostFixture') || '').trim();
+    const qaAudienceFixture = String(params.get('qaAudienceFixture') || '').trim();
+    const hostRouteRequested = m === 'host' || pathname === '/host' || pathname === '/host-dashboard';
+    if (qaHostFixture && !hostRouteRequested) {
+        return { view: 'host_qa', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (m === 'audience-qa' && qaAudienceFixture) {
+        return { view: 'audience_qa', roomCode: r ? r.toUpperCase() : '' };
+    }
     if (m === 'host') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
     }
@@ -346,6 +357,21 @@ const App = () => {
             </Suspense>
         );
     }
+    if (view === 'host_qa') return (
+        <Suspense fallback={<ViewLoader />}>
+            <ToastProvider>
+                <HostRunOfShowQaHarness roomCode={roomCode} fixtureId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search || '').get('qaHostFixture') || 'run-of-show-console' : 'run-of-show-console'} />
+            </ToastProvider>
+        </Suspense>
+    );
+    if (view === 'audience_qa') return (
+        <Suspense fallback={<ViewLoader />}>
+            <AudienceQaHarness
+                roomCode={roomCode || 'DEMOAUD'}
+                fixtureId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search || '').get('qaAudienceFixture') || 'classic-home' : 'classic-home'}
+            />
+        </Suspense>
+    );
     if (view === 'recap') return (
         <Suspense fallback={<ViewLoader />}>
             <RecapView roomCode={roomCode} />

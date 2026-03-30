@@ -404,8 +404,8 @@ const GUIDED_SCENES = [
     durationMs: 8500,
     accent: "cyan",
     kicker: "scene 02",
-    headline: "Audience taps should look like they land on the Public TV in the same moment.",
-    summary: "This is the proof beat for audience participation: the phone shows reaction controls, then the TV visibly reflects the crowd burst.",
+    headline: "Audience votes in real time and the Public TV answers in sync.",
+    summary: "The phone asks for one obvious crowd action, then the room immediately sees that vote show up as a public visual moment on the TV.",
     host: {
       panel: "Live room",
       status: "Calling for a reaction burst",
@@ -416,8 +416,8 @@ const GUIDED_SCENES = [
       activeControl: 1,
     },
     audience: {
-      title: "The audience votes with taps",
-      subtitle: "Simple buttons, immediate room payoff",
+      title: "Audience votes with taps",
+      subtitle: "One button press becomes a visible room moment",
       actions: ["Fire", "Clap", "Heart", "Cheer"],
       feed: ["Fire streak rising", "Clap wave landed", "Heart burst mirrored on TV"],
       metricLabel: "reaction burst",
@@ -433,7 +433,7 @@ const GUIDED_SCENES = [
     tv: {
       mode: "Crowd support",
       title: "ROOM ENERGY RISING",
-      lines: ["Tap bursts show up publicly", "The room watches the reaction loop", "Audience input changes the feel instantly"],
+      lines: ["Votes land on the TV instantly", "The room watches the reaction loop", "Audience input changes the feel instantly"],
       footer: "Audience participation should feel visible, not hidden in the phone.",
     },
     callouts: [
@@ -1748,6 +1748,10 @@ const activeSceneSurfaceLabel = (scene, surface) => {
   return scene?.audience?.title || "Audience action";
 };
 
+const getAbstractBeatAnchorIndex = (beatId = "") => (
+  ABSTRACT_SCROLL_EVENTS.findIndex((entry) => entry.beatId === beatId)
+);
+
 const getSequenceIndex = (sceneId = "", progress = 0) => {
   if (sceneId === "trivia_break") {
     if (progress < 0.26) return 0;
@@ -1849,6 +1853,7 @@ const GuidedAudiencePhone = ({
   showFocus = false,
   focusFrame = null,
   focusLabel = "",
+  showNotes = true,
 }) => {
   const sceneCallouts = Array.isArray(scene?.callouts) ? scene.callouts.slice(0, 3) : [];
 
@@ -1874,17 +1879,19 @@ const GuidedAudiencePhone = ({
         </div>
       </div>
 
-      <div className="mk3-demo-guided-audience-notes">
-        <span>Audience scene callouts</span>
-        <ul>
-          {sceneCallouts.map((callout) => (
-            <li key={`${scene?.id || "scene"}_${callout.title}`}>
-              <strong>{callout.title}</strong>
-              <p>{callout.detail}</p>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {showNotes ? (
+        <div className="mk3-demo-guided-audience-notes">
+          <span>Audience scene callouts</span>
+          <ul>
+            {sceneCallouts.map((callout) => (
+              <li key={`${scene?.id || "scene"}_${callout.title}`}>
+                <strong>{callout.title}</strong>
+                <p>{callout.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -1892,12 +1899,20 @@ const GuidedAudiencePhone = ({
 const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   const isAutoPage = String(demoMode || "").trim().toLowerCase() === "auto";
   const [timelineMs, setTimelineMs] = useState(0);
-  const [playing, setPlaying] = useState(true);
+  const [playing, setPlaying] = useState(false);
+  const [abstractAutoPlay, setAbstractAutoPlay] = useState(false);
+  const [isAutoDemoMobile, setIsAutoDemoMobile] = useState(false);
+  const [activeMobileSurface, setActiveMobileSurface] = useState("tv");
+  const [followMobileSurfaceFocus, setFollowMobileSurfaceFocus] = useState(true);
   const [activeAbstractEventId, setActiveAbstractEventId] = useState(ABSTRACT_SCROLL_EVENTS[0]?.id || "");
+  const [activeAutoSceneId, setActiveAutoSceneId] = useState(WALKTHROUGH_TIMELINE[0]?.id || "");
+  const [autoSceneScrollProgress, setAutoSceneScrollProgress] = useState(0);
   const abstractBeatRefs = useRef([]);
+  const autoSceneRefs = useRef([]);
   const hostFrameRef = useRef(null);
   const tvFrameRef = useRef(null);
   const audienceFrameRef = useRef(null);
+  const autoStageRef = useRef(null);
 
   const hostDemoUrl = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -1931,6 +1946,22 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
       },
     }, window.location);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return undefined;
+    const media = window.matchMedia("(max-width: 900px)");
+    const update = () => {
+      setIsAutoDemoMobile(media.matches);
+    };
+    update();
+    if (typeof media.addEventListener === "function") media.addEventListener("change", update);
+    else if (typeof media.addListener === "function") media.addListener(update);
+    return () => {
+      if (typeof media.removeEventListener === "function") media.removeEventListener("change", update);
+      else if (typeof media.removeListener === "function") media.removeListener(update);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isAutoPage) return () => {};
     if (!playing) return () => {};
@@ -1976,7 +2007,93 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     };
   }, [isAutoPage]);
 
-  const sceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
+  useEffect(() => {
+    if (!isAutoPage) return undefined;
+    if (typeof window === "undefined" || typeof window.IntersectionObserver !== "function") return undefined;
+    const nodes = autoSceneRefs.current.filter(Boolean);
+    if (!nodes.length) return undefined;
+    let frameId = 0;
+    const observer = new window.IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+      if (!visible.length) return;
+      const nextSceneId = String(visible[0].target.dataset.autoScene || "").trim();
+      if (!nextSceneId) return;
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        setActiveAutoSceneId((prev) => (prev === nextSceneId ? prev : nextSceneId));
+      });
+    }, {
+      threshold: [0.35, 0.6],
+      rootMargin: "-20% 0px -20% 0px",
+    });
+    nodes.forEach((node) => observer.observe(node));
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [isAutoPage]);
+
+  useEffect(() => {
+    if (!isAutoPage || typeof window === "undefined") return undefined;
+    let frameId = 0;
+    const update = () => {
+      const sceneId = playing
+        ? (getSceneAtMs(timelineMs).scene?.id || activeAutoSceneId)
+        : activeAutoSceneId;
+      const sceneIndex = WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === sceneId);
+      const node = autoSceneRefs.current[sceneIndex];
+      if (!node) {
+        setAutoSceneScrollProgress(0);
+        return;
+      }
+      const rect = node.getBoundingClientRect();
+      const viewportHeight = Math.max(1, window.innerHeight || 1);
+      const anchor = viewportHeight * 0.42;
+      const travel = Math.max(1, rect.height - viewportHeight * 0.18);
+      const progress = clampNumber((anchor - rect.top) / travel, 0, 1, 0);
+      setAutoSceneScrollProgress((prev) => (Math.abs(prev - progress) < 0.01 ? prev : progress));
+    };
+    const onScroll = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(update);
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [activeAutoSceneId, isAutoPage, playing, timelineMs]);
+
+  useEffect(() => {
+    if (isAutoPage || !abstractAutoPlay) return undefined;
+    const nodes = abstractBeatRefs.current.filter(Boolean);
+    if (!nodes.length) return undefined;
+    const timer = window.setInterval(() => {
+      const currentIndex = ABSTRACT_SCROLL_EVENTS.findIndex((entry) => entry.id === activeAbstractEventId);
+      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % nodes.length : 0;
+      nodes[nextIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      trackEvent("mk_demo_abstract_autoplay_step", {
+        eventId: ABSTRACT_SCROLL_EVENTS[nextIndex]?.id || "",
+      });
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [abstractAutoPlay, activeAbstractEventId, isAutoPage]);
+
+  const autoplaySceneState = useMemo(() => getSceneAtMs(timelineMs), [timelineMs]);
+  const scrollDrivenSceneState = useMemo(() => {
+    const activeScrollScene = WALKTHROUGH_TIMELINE.find((entry) => entry.id === activeAutoSceneId)
+      || WALKTHROUGH_TIMELINE[0];
+    const scrollMs = activeScrollScene.startMs + (activeScrollScene.durationMs * autoSceneScrollProgress);
+    return getSceneAtMs(scrollMs);
+  }, [activeAutoSceneId, autoSceneScrollProgress]);
+  const sceneState = isAutoPage
+    ? (playing ? autoplaySceneState : scrollDrivenSceneState)
+    : autoplaySceneState;
   const activeScene = sceneState.scene;
   const sceneProgress = sceneState.progress;
   const activeAbstractEvent = useMemo(
@@ -2047,6 +2164,14 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeScene.host.search, sceneProgress]
   );
   const scenePercent = Math.round(sceneProgress * 100);
+  const currentSceneIndex = useMemo(
+    () => WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id),
+    [activeScene.id]
+  );
+  const previousScene = useMemo(() => {
+    if (currentSceneIndex <= 0) return null;
+    return WALKTHROUGH_TIMELINE[currentSceneIndex - 1];
+  }, [currentSceneIndex]);
   const nextScene = useMemo(() => {
     const index = WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id);
     if (index < 0 || index >= WALKTHROUGH_TIMELINE.length - 1) return null;
@@ -2061,26 +2186,6 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     () => getTriviaRowsAuto(activeScene, sceneProgress),
     [activeScene, sceneProgress]
   );
-  const hostCursorStyle = useMemo(() => {
-    switch (activeScene.id) {
-      case "karaoke_video_lyrics":
-        return { left: `${24 + sceneProgress * 18}%`, top: "18%" };
-      case "crowd_vote_burst":
-        return { left: "42%", top: `${54 - sceneProgress * 12}%` };
-      case "guitar_vibe_sync":
-        return { left: "44%", top: "57%" };
-      case "volley_vibe_sync":
-        return { left: "30%", top: "57%" };
-      case "trivia_break":
-        return { left: "33%", top: "57%" };
-      case "would_you_rather":
-        return { left: "48%", top: "57%" };
-      default:
-        return { left: "72%", top: `${34 + sceneProgress * 14}%` };
-    }
-  }, [activeScene.id, sceneProgress]);
-  const hostFocusFrame = useMemo(() => getHostFocusFrameAuto(activeScene.id), [activeScene.id]);
-  const tvFocusFrame = useMemo(() => getTvFocusFrameAuto(activeScene.id), [activeScene.id]);
   const audienceFocusFrame = useMemo(
     () => getAudienceFocusFrameAuto(activeScene.id, activeActionIndex),
     [activeActionIndex, activeScene.id]
@@ -2098,6 +2203,54 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeScene.id, sceneProgress]
   );
   const activeSequenceStep = sceneSequence[activeSequenceIndex] || sceneSequence[0];
+  const activeSequenceSurfaceLabel = activeSequenceStep?.surface === "tv"
+    ? "Public TV"
+    : activeSequenceStep?.surface === "host"
+      ? "Host Deck"
+      : activeSequenceStep?.surface === "audience"
+        ? "Audience App"
+        : "Live Surface";
+  const autoHeroSummary = useMemo(
+    () => activeScene.summary || activeScene.headline || "Three real surfaces autoplay through one room moment at a time.",
+    [activeScene.headline, activeScene.summary]
+  );
+  const activeSceneWatchFor = useMemo(
+    () => activeScene.callouts?.[0]?.detail || activeSequenceStep?.detail || "",
+    [activeScene.callouts, activeSequenceStep?.detail]
+  );
+  const activeSceneProofLabel = useMemo(
+    () => activeSequenceStep?.surface === "audience"
+      ? tapCoach.prompt
+      : activeSequenceStep?.title || activeScene.label,
+    [activeScene.label, activeSequenceStep?.surface, activeSequenceStep?.title, tapCoach.prompt]
+  );
+  const activeSceneProofNote = useMemo(() => {
+    if (activeSceneWatchFor && activeSceneWatchFor !== activeSceneProofLabel) return activeSceneWatchFor;
+    return activeScene.tv?.title || activeScene.summary || "";
+  }, [activeScene.summary, activeScene.tv?.title, activeSceneProofLabel, activeSceneWatchFor]);
+  const abstractBeatSummary = useMemo(
+    () => activeBeat.body || activeAbstractEvent?.detail || "One host move should cause a visible room-wide consequence.",
+    [activeAbstractEvent?.detail, activeBeat.body]
+  );
+  const abstractBeatProof = useMemo(
+    () => activeBeat.bullets?.[0] || activeBeat.signals?.[0]?.label || "The room reacts as one system.",
+    [activeBeat.bullets, activeBeat.signals]
+  );
+
+  useEffect(() => {
+    if (!isAutoPage || !isAutoDemoMobile || !followMobileSurfaceFocus) return undefined;
+    setActiveMobileSurface(activeSequenceStep?.surface || "tv");
+    return undefined;
+  }, [activeSequenceStep?.surface, followMobileSurfaceFocus, isAutoDemoMobile, isAutoPage]);
+
+  useEffect(() => {
+    if (!isAutoPage || !playing) return undefined;
+    const sceneIndex = WALKTHROUGH_TIMELINE.findIndex((entry) => entry.id === activeScene.id);
+    const node = autoSceneRefs.current[sceneIndex];
+    if (!node) return undefined;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    return undefined;
+  }, [activeScene.id, isAutoPage, playing]);
   const audienceFixture = useMemo(
     () => buildAudienceFixtureAuto({
       scene: activeScene,
@@ -2156,12 +2309,25 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     return undefined;
   }, [activeScene.id, activeScene.label, isAutoPage]);
 
-  const jumpToScene = (sceneId = "") => {
+  const jumpToScene = (sceneId = "", options = {}) => {
     const nextSceneTarget = WALKTHROUGH_TIMELINE.find((scene) => scene.id === sceneId);
     if (!nextSceneTarget) return;
+    if (options?.scrollTrack === true) {
+      const sceneIndex = WALKTHROUGH_TIMELINE.findIndex((scene) => scene.id === sceneId);
+      autoSceneRefs.current[sceneIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (options?.snapStage === true) {
+      autoStageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    setActiveAutoSceneId(nextSceneTarget.id);
+    setAutoSceneScrollProgress(0);
     setTimelineMs(nextSceneTarget.startMs);
-    setPlaying(true);
     trackEvent("mk_demo_scene_jump", { scene: nextSceneTarget.id });
+  };
+  const jumpToAbstractBeat = (beatId = "") => {
+    const beatAnchorIndex = getAbstractBeatAnchorIndex(beatId);
+    if (beatAnchorIndex < 0) return;
+    abstractBeatRefs.current[beatAnchorIndex]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    trackEvent("mk_demo_abstract_jump", { beatId });
   };
   const handleDemoFrameLoad = (surface = "") => {
     try {
@@ -2177,35 +2343,136 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     }
   };
 
-  const totalSceneElapsedMs = Math.max(0, Math.round(timelineMs));
+  const totalSceneElapsedMs = Math.max(0, Math.round((activeScene?.startMs || 0) + (sceneState?.sceneMs || 0)));
 
   return (
-    <section className="mk3-page mk3-demo-page mk3-demo-sales-page">
+    <section className={`mk3-page mk3-demo-page mk3-demo-sales-page${isAutoPage ? " is-auto" : " is-abstract"}`}>
       <article className="mk3-demo-sales-hero">
-        <div>
+        <div className="mk3-demo-sales-hero-copy">
           <div className="mk3-chip">{isAutoPage ? "auto demo" : "abstract demo"}</div>
-          <h1>{isAutoPage ? "Watch the room run." : "Scroll the room logic."}</h1>
+          <h1>{isAutoPage ? "Watch the room run." : "See the room logic in four moves."}</h1>
           <p>
             {isAutoPage
-              ? "Real host, TV, and audience surfaces autoplay in sync."
-              : "One scroll beat changes host, TV, phones, and singer together."}
+              ? "Chapter-driven proof across the real host, TV, and audience surfaces."
+              : "A shorter conceptual pass that explains what each surface does and why the room feels coherent."}
           </p>
         </div>
-        <div className="mk3-demo-sales-hero-pills">
-          <span>{isAutoPage ? "Real room surfaces" : "Concept-first visuals"}</span>
-          <span>{isAutoPage ? "Autoplay sync" : "Scroll-driven beats"}</span>
-          <span>{isAutoPage ? "Host + TV + audience" : "Host + TV + phones + singer"}</span>
+        <div className="mk3-demo-sales-hero-status">
+          {isAutoPage ? (
+            <>
+              <div className="mk3-demo-sales-hero-stat">
+                <span>Current scene</span>
+                <strong>{activeScene.label}</strong>
+                <p>{activeScene.headline}</p>
+              </div>
+              <div className="mk3-demo-sales-hero-stat">
+                <span>Surface in focus</span>
+                <strong>{activeSequenceSurfaceLabel}</strong>
+                <p>{activeSequenceStep.surface === "audience" ? tapCoach.prompt : activeSequenceStep.title}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mk3-demo-sales-hero-stat">
+                <span>Concept chapter</span>
+                <strong>{activeBeat.title}</strong>
+                <p>{activeBeat.kicker}</p>
+              </div>
+              <div className="mk3-demo-sales-hero-stat">
+                <span>Why it matters</span>
+                <strong>{abstractBeatProof}</strong>
+                <p>{abstractBeatSummary}</p>
+              </div>
+            </>
+          )}
+          <div className="mk3-demo-sales-hero-pills">
+            <span>{isAutoPage ? "Real room surfaces" : "Concept-first story"}</span>
+            <span>{isAutoPage ? "Chapter proof" : "Four system moves"}</span>
+          </div>
           {typeof navigate === "function" && (
-            <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "demo_auto")}>
-              {isAutoPage ? "Open Abstract Demo" : "Open Auto Demo"}
+            <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "auto-demo")}>
+              {isAutoPage ? "Compare Abstract View" : "Open Auto Demo"}
             </button>
           )}
         </div>
       </article>
 
+      {!isAutoPage ? (
+        <article className="mk3-demo-concept-rail">
+          <div className="mk3-demo-concept-rail-head">
+            <div>
+              <span>System chapters</span>
+              <strong>Shorter, clearer story beats</strong>
+            </div>
+            <p>Each chapter isolates one room promise before the page drops into the animated system map.</p>
+          </div>
+          <div className="mk3-demo-concept-grid">
+            {ABSTRACT_BEATS.map((beat) => (
+              <button
+                key={beat.id}
+                type="button"
+                className={activeBeat.id === beat.id ? "is-active" : ""}
+                onClick={() => jumpToAbstractBeat(beat.id)}
+              >
+                <span>{beat.kicker}</span>
+                <strong>{beat.title}</strong>
+                <p>{beat.bullets?.[0] || beat.body}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+      ) : (
+        <article className="mk3-demo-chapter-strip">
+          <div className="mk3-demo-chapter-strip-head">
+            <div>
+              <span>Proof chapters</span>
+              <strong>Open a chapter directly or play the full sequence</strong>
+            </div>
+            <p>The page should read like a guided proof, not three independent app previews competing for attention.</p>
+          </div>
+          <div className="mk3-demo-chapter-strip-grid">
+            {WALKTHROUGH_TIMELINE.map((scene) => (
+              <button
+                key={scene.id}
+                type="button"
+                className={activeScene.id === scene.id ? "is-active" : ""}
+                onClick={() => {
+                  setPlaying(false);
+                  jumpToScene(scene.id);
+                }}
+              >
+                <span>{scene.kicker}</span>
+                <strong>{scene.label}</strong>
+                <p>{scene.callouts?.[0]?.detail || scene.summary}</p>
+              </button>
+            ))}
+          </div>
+        </article>
+      )}
+
       {!isAutoPage && (
       <article className="mk3-demo-story mk3-demo-story-immersive">
-          <div className="mk3-demo-story-stage mk3-demo-story-stage-full">
+        <div className="mk3-demo-guided-toolbar mk3-demo-abstract-toolbar">
+          <div className="mk3-demo-guided-toolbar-main">
+            <button type="button" className={abstractAutoPlay ? "active" : ""} onClick={() => setAbstractAutoPlay((prev) => !prev)}>
+              {abstractAutoPlay ? "Pause Auto-play" : "Auto-play Scroll"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                abstractBeatRefs.current[0]?.scrollIntoView({ behavior: "smooth", block: "center" });
+                trackEvent("mk_demo_abstract_restart", { source: "toolbar" });
+              }}
+            >
+              Restart
+            </button>
+          </div>
+          <div className="mk3-demo-guided-toolbar-meta">
+            <span>{`Chapter ${Math.max(1, activeAbstractBeatIndex + 1)} of ${ABSTRACT_BEATS.length}`}</span>
+            <strong>{abstractBeatProof}</strong>
+          </div>
+        </div>
+        <div className="mk3-demo-story-stage mk3-demo-story-stage-full">
             <div className={`mk3-demo-story-stage-frame is-${activeBeat.stageVariant} is-moment-${activeAbstractMomentIndex + 1}${isArrivalIntroBeat ? " is-arrival-intro" : ""}`}>
               <div className="mk3-demo-story-glow mk3-demo-story-glow-one" />
               <div className="mk3-demo-story-glow mk3-demo-story-glow-two" />
@@ -2365,121 +2632,224 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
 
       {isAutoPage && (
       <article className="mk3-demo-guided">
-        <div className="mk3-demo-guided-toolbar">
-          <button type="button" className={playing ? "active" : ""} onClick={() => setPlaying((prev) => !prev)}>
-            {playing ? "Pause Walkthrough" : "Resume Walkthrough"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTimelineMs(0);
-              setPlaying(true);
-              trackEvent("mk_demo_walkthrough_restart", { source: "toolbar" });
-            }}
-          >
-            Restart From Scene 01
-          </button>
-          <span>{activeScene.label}</span>
-        </div>
-
-        <div className="mk3-demo-shell mk3-demo-shell-testing">
-          <article className="mk3-demo-surface mk3-demo-host">
-            <header>
-              <span>Host Deck</span>
-              <strong>Queue + room control</strong>
-            </header>
-            <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap">
-              <iframe
-                ref={hostFrameRef}
-                title="BeauRocks Host Demo"
-                src={hostDemoUrl}
-                className="mk3-demo-iframe mk3-demo-native-surface"
-                loading="eager"
-                onLoad={() => handleDemoFrameLoad("host")}
-              />
-              {activeSequenceStep?.surface === "host" ? (
-                <>
-                  <div className="mk3-demo-focus-ring is-host" style={hostFocusFrame}><span>{activeSequenceStep.title}</span></div>
-                  <div className="mk3-demo-sim-cursor is-host" style={hostCursorStyle}><span>{activeScene.host.search ? "type" : "click"}</span></div>
-                </>
-              ) : null}
-            </div>
-          </article>
-
-          <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}`}>
-            <header>
-              <span>Public TV</span>
-              <strong>Wall-sized room state</strong>
-            </header>
-            <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
-              <iframe
-                ref={tvFrameRef}
-                title="BeauRocks Public TV Demo"
-                src={tvDemoUrl}
-                className="mk3-demo-iframe mk3-demo-native-surface"
-                loading="eager"
-                onLoad={() => handleDemoFrameLoad("tv")}
-              />
-              <DemoTvOverlay scene={activeScene} reactionItems={reactionItems} triviaRows={triviaRows} />
-              {activeSequenceStep?.surface === "tv" ? (
-                <div className="mk3-demo-focus-ring is-tv" style={tvFocusFrame}><span>{activeSequenceStep.title}</span></div>
-              ) : null}
-            </div>
-          </article>
-
-          <article className="mk3-demo-surface mk3-demo-audience">
-            <header>
-              <span>Audience App</span>
-              <strong>Join + react</strong>
-            </header>
-            <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
-              <GuidedAudiencePhone
-                scene={activeScene}
-                audienceDemoUrl={audienceDemoUrl}
-                audienceFrameRef={audienceFrameRef}
-                onFrameLoad={handleDemoFrameLoad}
-                activeActionIndex={activeActionIndex}
-                showFocus={activeSequenceStep?.surface === "audience"}
-                focusFrame={audienceFocusFrame}
-                focusLabel={tapCoach.prompt}
-              />
-            </div>
-          </article>
-        </div>
-
-        <div className="mk3-demo-guided-stage-rail is-minimal">
-          <div className="mk3-demo-guided-stage-rail-head">
-            <div>
-              <span>{activeScene.kicker}</span>
-              <strong>{activeScene.label}</strong>
-            </div>
-            <div className="mk3-demo-guided-stage-rail-meta">
-              <span>{formatClock(totalSceneElapsedMs)} / {formatClock(WALKTHROUGH_TOTAL_MS)}</span>
-              <strong>{scenePercent}%</strong>
-            </div>
-          </div>
-          <div className="mk3-demo-guided-progress">
-            <i style={{ width: `${Math.min(100, (totalSceneElapsedMs / WALKTHROUGH_TOTAL_MS) * 100)}%` }} />
-          </div>
-          <div className="mk3-demo-guided-stage-rail-footer">
-            <div className="mk3-demo-guided-stage-inline">
-              <span>{activeSequenceStep.surface} live now</span>
-              <strong>{activeSequenceStep.surface === "audience" ? tapCoach.prompt : activeSequenceStep.title}</strong>
-            </div>
-            <div className="mk3-demo-guided-stage-rail-controls">
-              <div className="mk3-demo-guided-scene-nav">
-                {WALKTHROUGH_TIMELINE.map((scene) => (
-                  <button
-                    key={scene.id}
-                    type="button"
-                    className={activeScene.id === scene.id ? "active" : ""}
-                    onClick={() => jumpToScene(scene.id)}
-                  >
-                    {scene.label}
-                  </button>
-                ))}
+        <div className="mk3-demo-guided-scroll">
+          <div className="mk3-demo-guided-scroll-stage">
+            <div ref={autoStageRef} />
+            <div className="mk3-demo-guided-scene-lead">
+              <div className="mk3-demo-guided-scene-copy">
+                <div className="mk3-demo-guided-scene-eyebrow">
+                  <span>{activeScene.kicker}</span>
+                  <b>{`Scene ${String(Math.max(1, currentSceneIndex + 1)).padStart(2, "0")} / ${String(WALKTHROUGH_TIMELINE.length).padStart(2, "0")}`}</b>
+                </div>
+                <strong>{activeScene.label}</strong>
+                <p>{autoHeroSummary}</p>
+              </div>
+              <div className="mk3-demo-guided-scene-proof">
+                <span>{activeSequenceSurfaceLabel} in focus</span>
+                <strong>{activeSceneProofLabel}</strong>
+                <p>{activeSceneProofNote}</p>
               </div>
             </div>
+
+            <div className="mk3-demo-guided-toolbar">
+              <div className="mk3-demo-guided-toolbar-main">
+                <button
+                  type="button"
+                  className={playing ? "active" : ""}
+                  onClick={() => {
+                    if (!playing) {
+                      setTimelineMs((scrollDrivenSceneState.scene?.startMs || 0) + (scrollDrivenSceneState.sceneMs || 0));
+                    }
+                    setPlaying((prev) => !prev);
+                  }}
+                >
+                  {playing ? "Pause Auto-play" : "Auto-play Scroll"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimelineMs(0);
+                    setActiveAutoSceneId(WALKTHROUGH_TIMELINE[0]?.id || "");
+                    setAutoSceneScrollProgress(0);
+                    autoStageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    trackEvent("mk_demo_walkthrough_restart", { source: "toolbar" });
+                  }}
+                >
+                  Restart
+                </button>
+              </div>
+              <div className="mk3-demo-guided-toolbar-meta">
+                <span>{`Scene ${Math.max(1, currentSceneIndex + 1)} of ${WALKTHROUGH_TIMELINE.length}`}</span>
+                <strong>{playing ? "Auto-play running" : "Scroll drives chapters"}</strong>
+              </div>
+            </div>
+
+            {isAutoDemoMobile ? (
+              <div className="mk3-demo-guided-mobile-controls">
+                <div className="mk3-demo-guided-surface-picker" role="tablist" aria-label="Auto demo surfaces">
+                  {[
+                    { id: "tv", label: "TV" },
+                    { id: "audience", label: "Audience" },
+                    { id: "host", label: "Host" },
+                  ].map((surface) => (
+                    <button
+                      key={surface.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeMobileSurface === surface.id}
+                      className={activeMobileSurface === surface.id ? "active" : ""}
+                      onClick={() => {
+                        setFollowMobileSurfaceFocus(false);
+                        setActiveMobileSurface(surface.id);
+                        trackEvent("mk_demo_mobile_surface_switch", { surface: surface.id });
+                      }}
+                    >
+                      {surface.label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={`mk3-demo-mobile-follow-toggle${followMobileSurfaceFocus ? " active" : ""}`}
+                  onClick={() => {
+                    if (followMobileSurfaceFocus) {
+                      setFollowMobileSurfaceFocus(false);
+                      return;
+                    }
+                    setFollowMobileSurfaceFocus(true);
+                    setActiveMobileSurface(activeSequenceStep?.surface || "tv");
+                  }}
+                >
+                  {followMobileSurfaceFocus ? "Pin current surface" : "Resume demo focus"}
+                </button>
+              </div>
+            ) : null}
+
+            <div
+              className={`mk3-demo-shell mk3-demo-shell-testing is-focus-${activeSequenceStep?.surface || "tv"}${isAutoDemoMobile ? " is-mobile-spotlight" : ""}`}
+              data-scene={activeScene.id}
+              data-mobile-surface={activeMobileSurface}
+              data-stage-focus={activeSequenceStep?.surface || "tv"}
+            >
+              <article className={`mk3-demo-surface mk3-demo-host${activeMobileSurface === "host" ? " is-mobile-active" : ""}`}>
+                <header>
+                  <span>Host Deck</span>
+                  <strong>{activeScene.host.actionLabel}</strong>
+                </header>
+                <div className="mk3-demo-frame-wrap mk3-demo-host-frame-wrap">
+                  <iframe
+                    ref={hostFrameRef}
+                    title="BeauRocks Host Demo"
+                    src={hostDemoUrl}
+                    className="mk3-demo-iframe mk3-demo-native-surface"
+                    loading="eager"
+                    onLoad={() => handleDemoFrameLoad("host")}
+                  />
+                </div>
+              </article>
+
+              <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}${activeMobileSurface === "tv" ? " is-mobile-active" : ""}`}>
+                <header>
+                  <span>Public TV</span>
+                  <strong>{activeScene.tv.mode}</strong>
+                </header>
+                <div className="mk3-demo-frame-wrap mk3-demo-tv-frame-wrap">
+                  <iframe
+                    ref={tvFrameRef}
+                    title="BeauRocks Public TV Demo"
+                    src={tvDemoUrl}
+                    className="mk3-demo-iframe mk3-demo-native-surface"
+                    loading="eager"
+                    onLoad={() => handleDemoFrameLoad("tv")}
+                  />
+                  <DemoTvOverlay scene={activeScene} reactionItems={reactionItems} triviaRows={triviaRows} />
+                </div>
+              </article>
+
+              <article className={`mk3-demo-surface mk3-demo-audience${activeMobileSurface === "audience" ? " is-mobile-active" : ""}`}>
+                <header>
+                  <span>Audience App</span>
+                  <strong>{activeScene.audience.title}</strong>
+                </header>
+                <div className="mk3-demo-frame-wrap mk3-demo-audience-frame-wrap">
+                  <GuidedAudiencePhone
+                    scene={activeScene}
+                    audienceDemoUrl={audienceDemoUrl}
+                    audienceFrameRef={audienceFrameRef}
+                    onFrameLoad={handleDemoFrameLoad}
+                    activeActionIndex={activeActionIndex}
+                    showFocus={false}
+                    focusFrame={audienceFocusFrame}
+                    focusLabel={tapCoach.prompt}
+                    showNotes={false}
+                  />
+                </div>
+              </article>
+            </div>
+
+            <div className="mk3-demo-guided-stage-rail is-minimal">
+              <div className="mk3-demo-guided-stage-rail-head">
+                <div className="mk3-demo-guided-stage-inline is-primary">
+                  <span>{activeSequenceSurfaceLabel} in focus</span>
+                  <strong>{activeSceneProofLabel}</strong>
+                </div>
+                <div className="mk3-demo-guided-stage-rail-meta">
+                  <span>{formatClock(totalSceneElapsedMs)} / {formatClock(WALKTHROUGH_TOTAL_MS)}</span>
+                  <strong>{scenePercent}%</strong>
+                </div>
+              </div>
+              <div className="mk3-demo-guided-progress">
+                <i style={{ width: `${Math.min(100, (totalSceneElapsedMs / WALKTHROUGH_TOTAL_MS) * 100)}%` }} />
+              </div>
+              <div className="mk3-demo-guided-stage-rail-footer">
+                <div className="mk3-demo-guided-stage-rail-scene">
+                  <span>{`Scene ${Math.max(1, currentSceneIndex + 1)} of ${WALKTHROUGH_TIMELINE.length}`}</span>
+                  <strong>{activeSceneProofNote}</strong>
+                </div>
+                <div className="mk3-demo-guided-stage-rail-controls is-compact">
+                  <button type="button" disabled={!previousScene} onClick={() => previousScene && jumpToScene(previousScene.id, { snapStage: true })}>
+                    Previous Scene
+                  </button>
+                  <button type="button" disabled={!nextScene} onClick={() => nextScene && jumpToScene(nextScene.id, { snapStage: true })}>
+                    Next Scene
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mk3-demo-guided-track">
+            {WALKTHROUGH_TIMELINE.map((scene, sceneIndex) => {
+              const isActive = scene.id === activeScene.id;
+              const sceneFocus = scene.audience?.title || scene.tv?.mode || scene.label;
+              const scenePrompt = scene.callouts?.[0]?.detail || scene.summary;
+              const sceneIndexLabel = `Scene ${String(sceneIndex + 1).padStart(2, "0")}`;
+              return (
+                <section
+                  key={scene.id}
+                  ref={(node) => {
+                    autoSceneRefs.current[sceneIndex] = node;
+                  }}
+                  data-auto-scene={scene.id}
+                  className={`mk3-demo-guided-track-beat${isActive ? " is-active" : ""}`}
+                >
+                  <article className={`mk3-demo-guided-track-card is-${scene.accent || "cyan"}${isActive ? " is-current" : " is-upcoming"}`}>
+                    <span>{isActive ? `${sceneIndexLabel} - current` : sceneIndexLabel}</span>
+                    <strong>{scene.headline}</strong>
+                    <p>{isActive ? scene.summary : scenePrompt}</p>
+                    <div className={`mk3-demo-guided-track-inline${isActive ? " is-current" : ""}`}>
+                      <b>{sceneFocus}</b>
+                      <strong>{scene.tv.title}</strong>
+                    </div>
+                     {!isActive ? (
+                      <button type="button" onClick={() => { setPlaying(false); jumpToScene(scene.id, { snapStage: true }); }}>
+                         Jump to scene
+                       </button>
+                     ) : null}
+                  </article>
+                </section>
+              );
+            })}
           </div>
         </div>
       </article>

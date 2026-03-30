@@ -3,6 +3,7 @@ const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
 const { defineSecret } = require("firebase-functions/params");
+const crypto = require("node:crypto");
 const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
@@ -32,6 +33,7 @@ const {
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
+  selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("./lib/popTrivia");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
@@ -66,6 +68,7 @@ const EMAIL_WEBHOOK_TOKEN = defineSecret("EMAIL_WEBHOOK_TOKEN");
 const SMTP_USER = defineSecret("SMTP_USER");
 const SMTP_PASS = defineSecret("SMTP_PASS");
 const SMTP_FROM = defineSecret("SMTP_FROM");
+const GIVEBUTTER_WEBHOOK_SECRET = defineSecret("GIVEBUTTER_WEBHOOK_SECRET");
 const LYRICS_PIPELINE_V2_ENABLED_DEFAULT = String(process.env.LYRICS_PIPELINE_V2_ENABLED || "true")
   .trim()
   .toLowerCase() === "true";
@@ -630,6 +633,7 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoEndOnTrackFinish: true,
     showScoring: false,
     showFameLevel: false,
+    requestMode: "guest_backing_optional",
     allowSingerTrackSelect: true,
     marqueeEnabled: true,
     marqueeShowMode: "idle",
@@ -650,6 +654,7 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoEndOnTrackFinish: true,
     showScoring: true,
     showFameLevel: true,
+    requestMode: "canonical_open",
     allowSingerTrackSelect: false,
     marqueeEnabled: false,
     marqueeShowMode: "idle",
@@ -670,6 +675,7 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoEndOnTrackFinish: true,
     showScoring: false,
     showFameLevel: false,
+    requestMode: "guest_backing_optional",
     allowSingerTrackSelect: true,
     marqueeEnabled: true,
     marqueeShowMode: "always",
@@ -685,6 +691,7 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoEndOnTrackFinish: true,
     showScoring: true,
     showFameLevel: false,
+    requestMode: "playable_only",
     allowSingerTrackSelect: false,
     marqueeEnabled: false,
     marqueeShowMode: "idle",
@@ -750,13 +757,573 @@ const buildDefaultMissionControlPayload = () => ({
   lastAppliedAt: admin.firestore.FieldValue.serverTimestamp(),
   lastSuggestedAction: "",
 });
+const RUN_OF_SHOW_ALLOWED_TYPES = new Set([
+  "intro",
+  "performance",
+  "trivia_break",
+  "game_break",
+  "would_you_rather_break",
+  "announcement",
+  "intermission",
+  "buffer",
+  "closing",
+]);
+const RUN_OF_SHOW_ALLOWED_STATUSES = new Set([
+  "draft",
+  "ready",
+  "staged",
+  "live",
+  "complete",
+  "skipped",
+  "blocked",
+]);
+const RUN_OF_SHOW_ALLOWED_PERFORMER_MODES = new Set([
+  "assigned",
+  "placeholder",
+  "open_submission",
+]);
+const RUN_OF_SHOW_ALLOWED_BACKING_SOURCES = new Set([
+  "canonical_default",
+  "youtube",
+  "apple_music",
+  "user_submitted",
+  "local_file",
+  "manual_external",
+]);
+const normalizeRunOfShowProgramMode = (value = "") =>
+  String(value || "").trim().toLowerCase() === "run_of_show"
+    ? "run_of_show"
+    : "standard_karaoke";
+const normalizeRunOfShowText = (value = "", max = 240) =>
+  String(value || "").trim().slice(0, max);
+const normalizeRunOfShowTimestamp = (value = 0) => {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+};
+const normalizeRunOfShowSubmissionStatus = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "approved" || token === "declined" || token === "withdrawn") return token;
+  return "pending";
+};
+const RUN_OF_SHOW_OPERATOR_ROLES = Object.freeze({
+  host: "host",
+  coHost: "co_host",
+  stageManager: "stage_manager",
+  mediaCurator: "media_curator",
+  viewer: "viewer",
+});
+const normalizeRunOfShowUidList = (value = []) =>
+  [...new Set((Array.isArray(value) ? value : [])
+    .map((entry) => normalizeRunOfShowText(entry || "", 180))
+    .filter(Boolean)
+    .slice(0, 40))];
+const normalizeRunOfShowPolicy = (input = {}) => {
+  const source = input && typeof input === "object" ? input : {};
+  const defaultAutomationMode = String(source.defaultAutomationMode || "").trim().toLowerCase();
+  const lateBlockPolicy = String(source.lateBlockPolicy || "").trim().toLowerCase();
+  const noShowPolicy = String(source.noShowPolicy || "").trim().toLowerCase();
+  const queueDivergencePolicy = String(source.queueDivergencePolicy || "").trim().toLowerCase();
+  const blockedActionPolicy = String(source.blockedActionPolicy || "").trim().toLowerCase();
+  return {
+    defaultAutomationMode: defaultAutomationMode === "manual" ? "manual" : "auto",
+    lateBlockPolicy: ["hold", "compress", "skip_optional"].includes(lateBlockPolicy) ? lateBlockPolicy : "hold",
+    noShowPolicy: ["hold_for_host", "skip_to_next", "pull_from_queue"].includes(noShowPolicy) ? noShowPolicy : "hold_for_host",
+    queueDivergencePolicy: ["host_override_only", "allow_stage_manager", "queue_can_fill_gaps"].includes(queueDivergencePolicy)
+      ? queueDivergencePolicy
+      : "host_override_only",
+    blockedActionPolicy: ["focus_next_fix", "manual_override_allowed", "skip_blocked_after_review"].includes(blockedActionPolicy)
+      ? blockedActionPolicy
+      : "focus_next_fix",
+  };
+};
+const normalizeRunOfShowRoles = (input = {}) => {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    coHosts: normalizeRunOfShowUidList([
+      ...(Array.isArray(source.coHosts || source.cohosts) ? (source.coHosts || source.cohosts) : []),
+      ...(Array.isArray(source.stageManagers || source.stage_managers) ? (source.stageManagers || source.stage_managers) : []),
+      ...(Array.isArray(source.mediaCurators || source.media_curators) ? (source.mediaCurators || source.media_curators) : []),
+    ]),
+  };
+};
+const normalizeRunOfShowTemplateMeta = (input = {}) => {
+  const source = input && typeof input === "object" ? input : {};
+  return {
+    currentTemplateId: normalizeRunOfShowText(source.currentTemplateId || "", 180),
+    currentTemplateName: normalizeRunOfShowText(source.currentTemplateName || "", 180),
+    lastArchiveId: normalizeRunOfShowText(source.lastArchiveId || "", 180),
+    archivedAtMs: normalizeRunOfShowTimestamp(source.archivedAtMs || 0),
+  };
+};
+const getRunOfShowRoleCapabilities = (role = "") => {
+  const safeRole = String(role || "").trim().toLowerCase();
+  if (safeRole === RUN_OF_SHOW_OPERATOR_ROLES.host) {
+    return { canOperate: true, canPauseAutomation: true, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: true };
+  }
+  if (safeRole === RUN_OF_SHOW_OPERATOR_ROLES.coHost) {
+    return { canOperate: true, canPauseAutomation: false, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: false };
+  }
+  if (safeRole === RUN_OF_SHOW_OPERATOR_ROLES.stageManager || safeRole === RUN_OF_SHOW_OPERATOR_ROLES.mediaCurator) {
+    return { canOperate: true, canPauseAutomation: false, canReviewSubmissions: true, canCurateMedia: true, canEditFlow: true, canManageTemplates: true, canManageRoles: false };
+  }
+  return { canOperate: false, canPauseAutomation: false, canReviewSubmissions: false, canCurateMedia: false, canEditFlow: false, canManageTemplates: false, canManageRoles: false };
+};
+const getRoomRunOfShowRole = ({ roomData = {}, callerUid = "", superAdmin = false }) => {
+  if (superAdmin) return RUN_OF_SHOW_OPERATOR_ROLES.host;
+  const safeUid = normalizeRunOfShowText(callerUid || "", 180);
+  if (!safeUid) return RUN_OF_SHOW_OPERATOR_ROLES.viewer;
+  const hostUid = typeof roomData?.hostUid === "string" ? roomData.hostUid.trim() : "";
+  const hostUids = Array.isArray(roomData?.hostUids) ? roomData.hostUids.map((entry) => String(entry || "").trim()).filter(Boolean) : [];
+  if (safeUid === hostUid || hostUids.includes(safeUid)) return RUN_OF_SHOW_OPERATOR_ROLES.host;
+  const roles = normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
+  if (roles.coHosts.includes(safeUid)) return RUN_OF_SHOW_OPERATOR_ROLES.coHost;
+  return RUN_OF_SHOW_OPERATOR_ROLES.viewer;
+};
+const assertRunOfShowPermission = ({ roomData = {}, callerUid = "", superAdmin = false, action = "", deniedMessage = "" }) => {
+  const role = getRoomRunOfShowRole({ roomData, callerUid, superAdmin });
+  const caps = getRunOfShowRoleCapabilities(role);
+  const safeAction = String(action || "").trim().toLowerCase();
+  const allowed = safeAction === "review_submission"
+    ? caps.canReviewSubmissions
+    : safeAction === "curate_media"
+      ? caps.canCurateMedia
+      : safeAction === "manage_templates"
+        ? caps.canManageTemplates
+        : safeAction === "manage_roles"
+          ? caps.canManageRoles
+          : safeAction === "pause_automation" || safeAction === "resume_automation"
+            ? caps.canPauseAutomation
+            : safeAction === "edit_flow"
+              ? caps.canEditFlow
+              : caps.canOperate;
+  if (!allowed) {
+    throw new HttpsError("permission-denied", deniedMessage || "You do not have permission for this run-of-show action.");
+  }
+  return { role, caps };
+};
+const isApprovedRunOfShowBacking = (backingPlan = {}) => {
+  const sourceType = String(backingPlan?.sourceType || "").trim().toLowerCase();
+  if (!RUN_OF_SHOW_ALLOWED_BACKING_SOURCES.has(sourceType)) return false;
+  if (sourceType === "manual_external") return false;
+  const approvalStatus = String(backingPlan?.approvalStatus || "").trim().toLowerCase();
+  return approvalStatus === "approved" && backingPlan?.playbackReady === true;
+};
+const buildDefaultRunOfShowDirector = () => ({
+  version: 1,
+  enabled: false,
+  automationPaused: false,
+  automationStatus: "idle",
+  currentItemId: "",
+  lastCompletedItemId: "",
+  lastPreparedItemId: "",
+  lastAutomationAtMs: 0,
+  audioSnapshot: null,
+  items: [],
+});
+const buildDefaultRunOfShowPolicy = () => normalizeRunOfShowPolicy({});
+const buildDefaultRunOfShowRoles = () => normalizeRunOfShowRoles({});
+const buildDefaultRunOfShowTemplateMeta = () => normalizeRunOfShowTemplateMeta({});
+const normalizeRunOfShowBackingSuggestion = (input = {}) => ({
+  sourceType: RUN_OF_SHOW_ALLOWED_BACKING_SOURCES.has(String(input?.sourceType || "").trim().toLowerCase())
+    ? String(input.sourceType || "").trim().toLowerCase()
+    : "user_submitted",
+  label: normalizeRunOfShowText(input?.label || "", 160),
+  url: normalizeRunOfShowText(input?.url || input?.mediaUrl || "", 2048),
+  youtubeId: normalizeRunOfShowText(input?.youtubeId || "", 120),
+  appleMusicId: normalizeRunOfShowText(input?.appleMusicId || "", 120),
+  localAssetId: normalizeRunOfShowText(input?.localAssetId || "", 160),
+  approvalStatus: "pending",
+  playbackReady: false,
+  resolutionStatus: "submitted",
+});
+const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
+  const source = roomData?.runOfShowDirector && typeof roomData.runOfShowDirector === "object"
+    ? roomData.runOfShowDirector
+    : {};
+  const base = buildDefaultRunOfShowDirector();
+  const items = Array.isArray(source.items) ? source.items : [];
+  return {
+    ...base,
+    ...source,
+    enabled: source.enabled === true || roomData?.runOfShowEnabled === true,
+    automationPaused: source.automationPaused === true,
+    automationStatus: normalizeRunOfShowText(source.automationStatus || "idle", 40) || "idle",
+    currentItemId: normalizeRunOfShowText(source.currentItemId || "", 160),
+    lastCompletedItemId: normalizeRunOfShowText(source.lastCompletedItemId || "", 160),
+    lastPreparedItemId: normalizeRunOfShowText(source.lastPreparedItemId || "", 160),
+    lastAutomationAtMs: normalizeRunOfShowTimestamp(source.lastAutomationAtMs || 0),
+    audioSnapshot: source.audioSnapshot && typeof source.audioSnapshot === "object"
+      ? source.audioSnapshot
+      : null,
+    items: items
+      .map((rawItem, index) => {
+        const item = rawItem && typeof rawItem === "object" ? rawItem : {};
+        const safeType = String(item.type || "").trim().toLowerCase();
+        const type = RUN_OF_SHOW_ALLOWED_TYPES.has(safeType) ? safeType : "buffer";
+        const performerMode = String(item.performerMode || "").trim().toLowerCase();
+        return {
+          ...item,
+          id: normalizeRunOfShowText(item.id || "", 160) || `ros_item_${index + 1}`,
+          type,
+          title: normalizeRunOfShowText(item.title || "", 180) || type,
+          sequence: Math.max(1, Number(item.sequence || index + 1) || (index + 1)),
+          plannedDurationSec: Math.max(0, Math.min(3600, Number(item.plannedDurationSec || 0) || 0)),
+          startsAtMs: normalizeRunOfShowTimestamp(item.startsAtMs || 0),
+          status: RUN_OF_SHOW_ALLOWED_STATUSES.has(String(item.status || "").trim().toLowerCase())
+            ? String(item.status || "").trim().toLowerCase()
+            : "draft",
+          visibility: String(item.visibility || "").trim().toLowerCase() === "private" ? "private" : "public",
+          notes: normalizeRunOfShowText(item.notes || "", 2000),
+          automationMode: String(item.automationMode || "").trim().toLowerCase() === "manual" ? "manual" : "auto",
+          performerMode: RUN_OF_SHOW_ALLOWED_PERFORMER_MODES.has(performerMode)
+            ? performerMode
+            : (type === "performance" ? "placeholder" : ""),
+          assignedPerformerUid: normalizeRunOfShowText(item.assignedPerformerUid || "", 180),
+          assignedPerformerName: normalizeRunOfShowText(item.assignedPerformerName || "", 120),
+          approvedSubmissionId: normalizeRunOfShowText(item.approvedSubmissionId || "", 180),
+          songId: normalizeRunOfShowText(item.songId || "", 180),
+          songTitle: normalizeRunOfShowText(item.songTitle || "", 180),
+          artistName: normalizeRunOfShowText(item.artistName || "", 180),
+          queueLinkState: normalizeRunOfShowText(item.queueLinkState || "unlinked", 40) || "unlinked",
+          blockedReason: normalizeRunOfShowText(item.blockedReason || "", 120),
+          backingPlan: item.backingPlan && typeof item.backingPlan === "object"
+            ? item.backingPlan
+            : {},
+          slotCriteria: item.slotCriteria && typeof item.slotCriteria === "object"
+            ? item.slotCriteria
+            : { requiresAccount: true, minTight15Count: 0, hostApprovalRequired: true },
+        };
+      })
+      .sort((a, b) => Number(a.sequence || 0) - Number(b.sequence || 0))
+      .map((item, index) => ({
+        ...item,
+        sequence: index + 1,
+      })),
+  };
+};
+const getNormalizedRoomRunOfShowPolicy = (roomData = {}) => normalizeRunOfShowPolicy(roomData?.runOfShowPolicy || {});
+const getNormalizedRoomRunOfShowRoles = (roomData = {}) => normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
+const getNormalizedRoomRunOfShowTemplateMeta = (roomData = {}) => normalizeRunOfShowTemplateMeta(roomData?.runOfShowTemplateMeta || {});
+const ROOM_EVENT_CREDIT_CONFIGS_COLLECTION = "room_event_credit_configs";
+const ROOM_EVENT_CREDIT_GRANTS_COLLECTION = "room_event_credit_grants";
+const ROOM_PROMO_REDEMPTIONS_COLLECTION = "room_promo_redemptions";
+const EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION = "event_attendee_entitlements";
+const buildDefaultRoomEventCredits = () => ({
+  enabled: false,
+  presetId: "custom_event_credits",
+  eventId: "aahf_kickoff",
+  eventLabel: "AAHF Karaoke Kick-Off",
+  sourceProvider: "",
+  sourceCampaignCode: "",
+  generalAdmissionPoints: 0,
+  vipBonusPoints: 0,
+  skipLineBonusPoints: 0,
+  websiteCheckInPoints: 0,
+  socialPromoPoints: 0,
+  promoCampaigns: [],
+});
+const normalizeRoomEventCreditCode = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 64);
+const normalizeRoomEventCreditDateMs = (value = 0) =>
+  clampNumber(value, 0, 9999999999999, 0);
+const normalizePromoCampaignType = (value = "") =>
+  normalizeDirectoryToken(value || "multi_use_capped", 40) || "multi_use_capped";
+const normalizePromoCodeMode = (value = "") =>
+  normalizeDirectoryToken(value || "vanity", 40) || "vanity";
+const normalizeRoomEventSafePerk = (value = "") =>
+  normalizeDirectoryToken(value || "", 80);
+const normalizeRoomPromoCampaign = (input = {}, index = 0) => {
+  const source = isPlainObject(input) ? input : {};
+  const id = normalizeRoomEventCreditCode(source.id || `promo_${index + 1}`) || `promo_${index + 1}`;
+  return {
+    id,
+    label: safeDirectoryString(source.label || source.name || `Promo ${index + 1}`, 120) || `Promo ${index + 1}`,
+    type: normalizePromoCampaignType(source.type),
+    codeMode: normalizePromoCodeMode(source.codeMode),
+    code: normalizeRoomEventCreditCode(source.code || ""),
+    pointsReward: clampNumber(source.pointsReward, 0, 100000, 0),
+    safePerk: normalizeRoomEventSafePerk(source.safePerk),
+    maxRedemptions: clampNumber(source.maxRedemptions, 1, 100000, 1),
+    perUserLimit: clampNumber(source.perUserLimit, 1, 100, 1),
+    requiresRoomJoin: source.requiresRoomJoin !== false,
+    enabled: source.enabled !== false,
+    validFromMs: normalizeRoomEventCreditDateMs(source.validFromMs),
+    validUntilMs: normalizeRoomEventCreditDateMs(source.validUntilMs),
+  };
+};
+const normalizeRoomPromoCampaignList = (input = []) =>
+  (Array.isArray(input) ? input : [])
+    .map((campaign, index) => normalizeRoomPromoCampaign(campaign, index))
+    .filter((campaign) => !!campaign.id);
+const normalizeRoomEventCredits = (input = {}) => {
+  const source = isPlainObject(input) ? input : {};
+  const defaults = buildDefaultRoomEventCredits();
+  const eventId = normalizeDirectoryToken(source.eventId || defaults.eventId, 80) || defaults.eventId;
+  const eventLabel = safeDirectoryString(source.eventLabel || defaults.eventLabel, 120) || defaults.eventLabel;
+  return {
+    enabled: !!source.enabled,
+    presetId: normalizeDirectoryToken(source.presetId || defaults.presetId, 80) || defaults.presetId,
+    eventId,
+    eventLabel,
+    sourceProvider: normalizeDirectoryToken(source.sourceProvider || defaults.sourceProvider, 40),
+    sourceCampaignCode: normalizeRoomEventCreditCode(source.sourceCampaignCode || defaults.sourceCampaignCode),
+    generalAdmissionPoints: clampNumber(source.generalAdmissionPoints ?? defaults.generalAdmissionPoints, 0, 100000, 0),
+    vipBonusPoints: clampNumber(source.vipBonusPoints ?? defaults.vipBonusPoints, 0, 100000, 0),
+    skipLineBonusPoints: clampNumber(source.skipLineBonusPoints ?? defaults.skipLineBonusPoints, 0, 100000, 0),
+    websiteCheckInPoints: clampNumber(source.websiteCheckInPoints ?? defaults.websiteCheckInPoints, 0, 100000, 0),
+    socialPromoPoints: clampNumber(source.socialPromoPoints ?? defaults.socialPromoPoints, 0, 100000, 0),
+    promoCampaigns: normalizeRoomPromoCampaignList(source.promoCampaigns || defaults.promoCampaigns),
+  };
+};
+const normalizeRoomEventCreditConfigRecord = (input = {}) => {
+  const source = isPlainObject(input) ? input : {};
+  const publicConfig = normalizeRoomEventCredits(source);
+  const claimCodes = isPlainObject(source.claimCodes) ? source.claimCodes : {};
+  return {
+    ...publicConfig,
+    claimCodes: {
+      vip: normalizeRoomEventCreditCode(claimCodes.vip),
+      skipLine: normalizeRoomEventCreditCode(claimCodes.skipLine),
+      websiteCheckIn: normalizeRoomEventCreditCode(claimCodes.websiteCheckIn),
+      socialPromo: normalizeRoomEventCreditCode(claimCodes.socialPromo),
+    },
+  };
+};
+const buildRoomEventCreditPublicSummary = (config = {}) => {
+  const normalized = normalizeRoomEventCredits(config);
+  return {
+    enabled: normalized.enabled,
+    presetId: normalized.presetId,
+    eventId: normalized.eventId,
+    eventLabel: normalized.eventLabel,
+    sourceProvider: normalized.sourceProvider,
+    sourceCampaignCode: normalized.sourceCampaignCode,
+    generalAdmissionPoints: normalized.generalAdmissionPoints,
+    vipBonusPoints: normalized.vipBonusPoints,
+    skipLineBonusPoints: normalized.skipLineBonusPoints,
+    websiteCheckInPoints: normalized.websiteCheckInPoints,
+    socialPromoPoints: normalized.socialPromoPoints,
+    promoCampaignCount: normalized.promoCampaigns.length,
+    promoCampaigns: normalized.promoCampaigns
+      .filter((campaign) => campaign.enabled)
+      .map((campaign) => ({
+        id: campaign.id,
+        label: campaign.label,
+        type: campaign.type,
+        codeMode: campaign.codeMode,
+        pointsReward: campaign.pointsReward,
+        safePerk: campaign.safePerk,
+        maxRedemptions: campaign.maxRedemptions,
+        perUserLimit: campaign.perUserLimit,
+        requiresRoomJoin: campaign.requiresRoomJoin,
+        validFromMs: campaign.validFromMs,
+        validUntilMs: campaign.validUntilMs,
+      })),
+  };
+};
+const resolveRoomEventCreditGrant = (config = {}, grantType = "") => {
+  const safeType = normalizeDirectoryToken(grantType, 40);
+  if (!config?.enabled) return { grantType: safeType, points: 0, requiresCode: false, skipLineEntitled: false };
+  switch (safeType) {
+    case "general_admission":
+      return {
+        grantType: safeType,
+        points: clampNumber(config.generalAdmissionPoints ?? 0, 0, 100000, 0),
+        requiresCode: false,
+        skipLineEntitled: false,
+      };
+    case "vip":
+      return {
+        grantType: safeType,
+        points: clampNumber(config.vipBonusPoints ?? 0, 0, 100000, 0),
+        requiresCode: true,
+        skipLineEntitled: false,
+      };
+    case "skip_line":
+      return {
+        grantType: safeType,
+        points: clampNumber(config.skipLineBonusPoints ?? 0, 0, 100000, 0),
+        requiresCode: true,
+        skipLineEntitled: true,
+      };
+    case "website_check_in":
+      return {
+        grantType: safeType,
+        points: clampNumber(config.websiteCheckInPoints ?? 0, 0, 100000, 0),
+        requiresCode: !!String(config.claimCodes?.websiteCheckIn || "").trim(),
+        skipLineEntitled: false,
+      };
+    case "social_promo":
+      return {
+        grantType: safeType,
+        points: clampNumber(config.socialPromoPoints ?? 0, 0, 100000, 0),
+        requiresCode: !!String(config.claimCodes?.socialPromo || "").trim(),
+        skipLineEntitled: false,
+      };
+    default:
+      return { grantType: safeType, points: 0, requiresCode: false, skipLineEntitled: false };
+  }
+};
+const buildPromoRedemptionDocId = ({
+  roomCode = "",
+  campaignId = "",
+  uid = "",
+} = {}) => [
+  normalizeRoomCode(roomCode),
+  normalizeDirectoryToken(campaignId, 80),
+  normalizeUidToken(uid || ""),
+].filter(Boolean).join("_").slice(0, 220);
+const buildEventAttendeeEntitlementDocId = ({
+  sourceProvider = "givebutter",
+  externalId = "",
+} = {}) => [
+  normalizeDirectoryToken(sourceProvider || "givebutter", 40),
+  normalizeDirectoryToken(externalId, 180),
+].filter(Boolean).join("_").slice(0, 220);
+const promoCampaignCanGrantSafePerk = (campaign = {}) =>
+  !!normalizeRoomEventSafePerk(campaign.safePerk || "");
+const normalizeGivebutterLineItems = (payload = {}) => {
+  const source = isPlainObject(payload) ? payload : {};
+  const raw = [
+    source.line_items,
+    source.items,
+    source.ticket_types,
+    source.tickets,
+    source.purchase?.line_items,
+    source.data?.line_items,
+  ].find((entry) => Array.isArray(entry));
+  return Array.isArray(raw) ? raw : [];
+};
+const extractGivebutterPayloadSubject = (payload = {}) => {
+  const source = isPlainObject(payload) ? payload : {};
+  return source.data && typeof source.data === "object"
+    ? source.data
+    : source;
+};
+const inferGivebutterEntitlementRewards = ({
+  payload = {},
+  eventId = "",
+  config = {},
+} = {}) => {
+  const source = extractGivebutterPayloadSubject(payload);
+  const lineItems = normalizeGivebutterLineItems(source);
+  const labelTokens = [
+    source.ticket_name,
+    source.ticket_type,
+    source.ticketTier,
+    source.ticket_tier,
+    source.name,
+    source.title,
+    ...lineItems.map((entry) => entry?.name || entry?.label || entry?.title || ""),
+  ]
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .filter(Boolean);
+  const hasVip = labelTokens.some((entry) => entry.includes("vip"));
+  const hasSkipLine = labelTokens.some((entry) => entry.includes("skip") && entry.includes("line"));
+  const normalizedConfig = normalizeRoomEventCreditConfigRecord(config);
+  const pointsGranted = clampNumber(
+    normalizedConfig.generalAdmissionPoints
+      + (hasVip ? normalizedConfig.vipBonusPoints : 0)
+      + (hasSkipLine ? normalizedConfig.skipLineBonusPoints : 0),
+    0,
+    100000,
+    0,
+  );
+  return {
+    eventId: normalizeDirectoryToken(eventId || normalizedConfig.eventId || "", 80),
+    ticketTier: hasVip ? "vip" : "general_admission",
+    pointsGranted,
+    vipEntitled: hasVip,
+    skipLineEntitled: hasSkipLine,
+  };
+};
+const matchGivebutterEntitlementToConfig = ({
+  entitlement = {},
+  config = {},
+} = {}) => {
+  const safeEntitlement = isPlainObject(entitlement) ? entitlement : {};
+  const safeConfig = normalizeRoomEventCreditConfigRecord(config);
+  if (!safeConfig.enabled) return false;
+  if (safeConfig.sourceProvider !== "givebutter") return false;
+  const entitlementEventId = normalizeDirectoryToken(safeEntitlement.eventId || "", 80);
+  const entitlementCampaign = normalizeRoomEventCreditCode(safeEntitlement.sourceCampaignCode || "");
+  if (entitlementEventId && entitlementEventId === safeConfig.eventId) return true;
+  if (entitlementCampaign && safeConfig.sourceCampaignCode && entitlementCampaign === safeConfig.sourceCampaignCode) return true;
+  return false;
+};
+const buildEntitlementRoomGrantDocId = ({
+  roomCode = "",
+  eventId = "",
+  uid = "",
+  entitlementId = "",
+} = {}) => [
+  normalizeRoomCode(roomCode),
+  normalizeDirectoryToken(eventId, 80),
+  normalizeUidToken(uid || ""),
+  normalizeDirectoryToken(entitlementId, 180),
+].filter(Boolean).join("_").slice(0, 220);
+const resolvePromoCampaignFromConfig = ({
+  config = {},
+  code = "",
+  campaignId = "",
+} = {}) => {
+  const safeConfig = normalizeRoomEventCreditConfigRecord(config);
+  const safeCode = normalizeRoomEventCreditCode(code || "");
+  const safeCampaignId = normalizeRoomEventCreditCode(campaignId || "");
+  const campaigns = Array.isArray(safeConfig.promoCampaigns) ? safeConfig.promoCampaigns : [];
+  if (safeCampaignId) {
+    const byId = campaigns.find((campaign) => campaign.id === safeCampaignId && campaign.enabled);
+    if (byId) return byId;
+  }
+  if (!safeCode) return null;
+  return campaigns.find((campaign) => campaign.enabled && normalizeRoomEventCreditCode(campaign.code || "") === safeCode) || null;
+};
+const buildPromoRewardLabel = (campaign = {}) => {
+  const points = clampNumber(campaign.pointsReward, 0, 100000, 0);
+  if (points > 0 && campaign.safePerk) {
+    return `+${points} points and ${String(campaign.safePerk).replaceAll("_", " ")}`;
+  }
+  if (points > 0) return `+${points} points`;
+  if (campaign.safePerk) return String(campaign.safePerk).replaceAll("_", " ");
+  return "Promo applied";
+};
+const buildRoomEventCreditGrantDocId = ({
+  roomCode = "",
+  eventId = "",
+  uid = "",
+  grantType = "",
+} = {}) => [
+  normalizeRoomCode(roomCode),
+  normalizeDirectoryToken(eventId, 80),
+  normalizeUidToken(uid || ""),
+  normalizeDirectoryToken(grantType, 40),
+].filter(Boolean).join("_").slice(0, 220);
+const normalizeProvisionCoHostUids = (hostUid = "", entries = []) => {
+  const primaryHostUid = normalizeUidToken(hostUid || "");
+  const out = [];
+  const seen = new Set(primaryHostUid ? [primaryHostUid] : []);
+  (Array.isArray(entries) ? entries : []).forEach((entry) => {
+    const safeUid = normalizeUidToken(entry || "");
+    if (!safeUid || seen.has(safeUid)) return;
+    seen.add(safeUid);
+    out.push(safeUid);
+  });
+  return out;
+};
 const buildProvisionedRoomData = ({
   hostUid = "",
   hostName = "Host",
   orgId = "",
   orgName = "",
   logoUrl = "",
+  roomName = "",
+  coHostUids = [],
   presetId = "custom",
+  eventCredits = {},
 } = {}) => {
   const presetOverrides = resolveProvisionPresetOverrides(presetId);
   const resolvedHostName = normalizeOptionalName(hostName, "Host");
@@ -764,6 +1331,9 @@ const buildProvisionedRoomData = ({
   const resolvedLogoUrl = typeof logoUrl === "string"
     ? logoUrl.trim().slice(0, 2048)
     : "";
+  const resolvedRoomName = String(roomName || "").trim().slice(0, 120);
+  const resolvedCoHostUids = normalizeProvisionCoHostUids(hostUid, coHostUids);
+  const resolvedHostUids = [hostUid, ...resolvedCoHostUids].filter(Boolean);
   const baseData = {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     activeMode: "karaoke",
@@ -783,7 +1353,9 @@ const buildProvisionedRoomData = ({
     autoBonusPoints: 25,
     hostName: resolvedHostName,
     hostUid,
-    hostUids: [hostUid],
+    hostUids: resolvedHostUids,
+    coHostUids: resolvedCoHostUids,
+    roomName: resolvedRoomName || `${resolvedHostName} Room`,
     orgId: orgId || null,
     orgName: resolvedOrgName,
     logoUrl: resolvedLogoUrl || null,
@@ -817,14 +1389,25 @@ const buildProvisionedRoomData = ({
     gameRulesId: 0,
     showScoring: true,
     showFameLevel: true,
+    requestMode: "canonical_open",
     allowSingerTrackSelect: false,
     hostNightPreset: "custom",
     bingoAudienceReopenEnabled: true,
     autoLyricsOnQueue: false,
     popTriviaEnabled: true,
+    programMode: "standard_karaoke",
+    eventCredits: buildRoomEventCreditPublicSummary(eventCredits),
+    runOfShowEnabled: false,
+    runOfShowDirector: buildDefaultRunOfShowDirector(),
+    runOfShowPolicy: buildDefaultRunOfShowPolicy(),
+    runOfShowRoles: buildDefaultRunOfShowRoles(),
+    runOfShowTemplateMeta: buildDefaultRunOfShowTemplateMeta(),
+    tvPreviewOverlay: null,
     gameDefaults: {
       triviaRoundSec: 20,
       triviaAutoReveal: true,
+      popTriviaCorrectPoints: 40,
+      popTriviaRevealHoldSec: 14,
       bingoVotingMode: "host+votes",
       bingoAutoApprovePct: 50,
     },
@@ -852,9 +1435,11 @@ const buildProvisionedRoomData = ({
       ...(baseData.gameDefaults || {}),
       ...(presetOverrides.gameDefaults || {}),
     },
-    hostUids: [hostUid],
+    hostUids: resolvedHostUids,
+    coHostUids: resolvedCoHostUids,
     hostUid,
     hostName: resolvedHostName,
+    roomName: resolvedRoomName || `${resolvedHostName} Room`,
     orgId: orgId || null,
     orgName: resolvedOrgName,
     logoUrl: resolvedLogoUrl || null,
@@ -924,6 +1509,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
   "audienceVideoMode",
+  "audienceShellVariant",
   "autoBgFadeInMs",
   "autoBgFadeOutMs",
   "autoBgMixDuringSong",
@@ -970,9 +1556,11 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "chatTvMode",
   "closedAt",
   "currentApplauseLevel",
+  "currentPerformanceMeta",
   "doodleOke",
   "doodleOkeConfig",
   "doodleOkeIndex",
+  "eventCredits",
   "featuredPhotoId",
   "gameData",
   "gameDefaults",
@@ -1020,9 +1608,17 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "readyCheck",
   "readyCheckDurationSec",
   "readyCheckRewardPoints",
+  "requestMode",
   "reduceMotionFx",
   "recap",
   "recapPreview",
+  "runOfShowEnabled",
+  "runOfShowDirector",
+  "runOfShowPolicy",
+  "runOfShowRoles",
+  "runOfShowTemplateMeta",
+  "programMode",
+  "tvPreviewOverlay",
   "selfieChallenge",
   "selfieMoment",
   "selfieMomentExpiresAt",
@@ -1088,6 +1684,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "marqueeEnabled",
   "popTriviaEnabled",
   "reduceMotionFx",
+  "runOfShowEnabled",
   "showFameLevel",
   "showLyricsSinger",
   "showLyricsTv",
@@ -1146,6 +1743,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "archivedBy",
   "archivedStatus",
   "audienceVideoMode",
+  "audienceShellVariant",
   "bgMusicUrl",
   "bingoBoardId",
   "bingoMode",
@@ -1168,6 +1766,8 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "lyricsMode",
   "marqueeShowMode",
   "mediaUrl",
+  "programMode",
+  "requestMode",
   "stormPhase",
   "tipQrUrl",
   "tipUrl",
@@ -1195,6 +1795,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "bracketLastSummary",
   "doodleOke",
   "doodleOkeConfig",
+  "eventCredits",
   "gameData",
   "gameDefaults",
   "guitarVictory",
@@ -1207,6 +1808,11 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "readyCheck",
   "recap",
   "recapPreview",
+  "runOfShowDirector",
+  "runOfShowPolicy",
+  "runOfShowRoles",
+  "runOfShowTemplateMeta",
+  "tvPreviewOverlay",
   "selfieChallenge",
   "selfieMoment",
   "missionControl",
@@ -1448,7 +2054,9 @@ const normalizeHostRoomUpdates = (rawUpdates = {}) => {
 
     const value = decodeHostRoomUpdateValue(rawValue);
     if (value === undefined) return;
-    normalized[key] = value;
+    normalized[key] = key === "eventCredits"
+      ? buildRoomEventCreditPublicSummary(value)
+      : value;
     estimatedChars += key.length;
     try {
       estimatedChars += JSON.stringify(rawValue).length;
@@ -2919,6 +3527,34 @@ const matchesDirectoryDiscoverSearch = (item = {}, token = "") => {
     item.roomCode,
   ].filter(Boolean).join(" "), 1000).toLowerCase();
   return haystack.includes(searchToken);
+};
+
+const scoreHostVenueAutocompleteMatch = (venue = {}, token = "") => {
+  const searchToken = String(token || "").trim().toLowerCase();
+  if (!searchToken) return 0;
+  const title = safeDirectoryString(venue?.title || venue?.venueName || "", 180).toLowerCase();
+  const city = safeDirectoryString(venue?.city || "", 80).toLowerCase();
+  const state = safeDirectoryString(venue?.state || "", 40).toLowerCase();
+  const address = safeDirectoryString(venue?.address1 || venue?.address || "", 160).toLowerCase();
+  const joined = [title, city, state, address].filter(Boolean).join(" ");
+  if (!joined.includes(searchToken)) return -1;
+
+  let score = 20;
+  if (title === searchToken) score += 140;
+  else if (title.startsWith(searchToken)) score += 110;
+  else if (title.includes(searchToken)) score += 70;
+
+  if (city === searchToken || state === searchToken) score += 36;
+  if (`${title} ${city}`.startsWith(searchToken)) score += 18;
+  if (address.startsWith(searchToken)) score += 12;
+
+  const lastActiveAtMs = Math.max(0, Number(venue?.lastActiveAtMs || 0) || 0);
+  const reviewCount = Math.max(0, Number(venue?.reviewCount || 0) || 0);
+  const checkinCount = Math.max(0, Number(venue?.checkinCount || 0) || 0);
+  score += Math.min(18, Math.floor(reviewCount / 4));
+  score += Math.min(18, Math.floor(checkinCount / 5));
+  score += Math.min(12, Math.floor(lastActiveAtMs / (1000 * 60 * 60 * 24 * 45)));
+  return score;
 };
 
 const matchesDirectoryDiscoverTimeWindow = (item = {}, timeWindow = "all", nowMs = Date.now()) => {
@@ -5604,6 +6240,8 @@ const ensureTrackAdmin = async ({
   audioOnly,
   backingOnly,
   addedBy,
+  approvalState,
+  qualityScore,
 }) => {
   if (!songId) return null;
   const cleanSource = source || "custom";
@@ -5635,6 +6273,8 @@ const ensureTrackAdmin = async ({
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   };
   if (addedBy) payload.addedBy = addedBy;
+  if (approvalState) payload.approvalState = normalizeTrackApprovalState(approvalState);
+  if (Number.isFinite(Number(qualityScore))) payload.qualityScore = Number(qualityScore);
 
   if (trackId) {
     const ref = admin.firestore().collection("tracks").doc(trackId);
@@ -6101,7 +6741,10 @@ const processPopTriviaForSong = async ({
     const rawText = geminiPayload?.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const cleanText = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleanText);
-    const seedRows = normalizePopTriviaSeedRows(parsed?.result || parsed || [], {
+    const seedRows = selectPopTriviaSeedRows({
+      song: latestSong,
+      aiRows: parsed?.result || parsed || [],
+      fallbackRows: buildFallbackPopTriviaSeedRows(latestSong),
       limit: DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
     });
     const triviaQuestions = normalizePopTriviaQuestions(seedRows, {
@@ -6206,22 +6849,203 @@ const toMillisSafe = (value) => {
   return 0;
 };
 
-const scoreTrack = (track = {}) => {
+const normalizeTrackApprovalState = (value = "") => String(value || "").trim().toLowerCase();
+
+const normalizeTrustedCatalogMap = (value = {}) => (
+  value && typeof value === "object" && !Array.isArray(value) ? value : {}
+);
+
+const normalizeRoomYouTubeIndex = (value = []) => (
+  Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object") : []
+);
+
+const readRoomHostLibrary = async (roomCode = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeRoomCode) return { trustedCatalog: {}, ytIndex: [] };
+  try {
+    const snap = await getRootRef().collection("host_libraries").doc(safeRoomCode).get();
+    const data = snap.data() || {};
+    return {
+      trustedCatalog: normalizeTrustedCatalogMap(data.trustedCatalog || {}),
+      ytIndex: normalizeRoomYouTubeIndex(data.ytIndex || []),
+    };
+  } catch (_error) {
+    return { trustedCatalog: {}, ytIndex: [] };
+  }
+};
+
+const readRoomTrustedCatalog = async (roomCode = "") => {
+  const library = await readRoomHostLibrary(roomCode);
+  return library.trustedCatalog || {};
+};
+
+const getTrustedSongEntry = (trustedCatalog = {}, songId = "") => {
+  const safeSongId = String(songId || "").trim();
+  if (!safeSongId) return null;
+  const value = trustedCatalog?.[safeSongId];
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+};
+
+const getTrackLayer = (track = {}, trustedSongEntry = null) => {
+  const safeTrackId = String(track?.id || track?.trackId || "").trim();
+  if (!safeTrackId || !trustedSongEntry) return "global_catalog";
+  if (String(trustedSongEntry.hostFavoriteTrackId || "").trim() === safeTrackId) return "host_favorite";
+  if (String(trustedSongEntry.roomRecentTrackId || "").trim() === safeTrackId) return "room_recent";
+  return normalizeTrackApprovalState(track?.approvalState) === "approved"
+    ? "global_approved"
+    : "global_catalog";
+};
+
+const getTrackLayerScore = (track = {}, trustedSongEntry = null) => {
+  const layer = getTrackLayer(track, trustedSongEntry);
+  if (layer === "host_favorite") return 120;
+  if (layer === "room_recent") return 90;
+  if (layer === "global_approved") return 70;
+  return 35;
+};
+
+const buildTrackUsageScore = (track = {}) => {
+  const qualityScore = Math.max(0, Number(track?.qualityScore || 0));
+  const successScore = Math.min(40, Math.max(0, Number(track?.successCount || 0)) * 4);
+  const usageScore = Math.min(24, Math.max(0, Number(track?.usageCount || 0)) * 2);
+  const failurePenalty = Math.min(24, Math.max(0, Number(track?.failureCount || 0)) * 6);
+  const approvalState = normalizeTrackApprovalState(track?.approvalState);
+  const approvalScore = approvalState === "approved"
+    ? 20
+    : approvalState === "submitted"
+      ? 10
+      : 0;
+  return qualityScore + successScore + usageScore + approvalScore - failurePenalty;
+};
+
+const scoreTrack = (track = {}, trustedSongEntry = null) => {
   const source = String(track.source || "").toLowerCase();
   const sourceScore = source === "apple" ? 30 : source === "youtube" ? 20 : source ? 10 : 0;
   const backingScore = track.backingOnly ? 5 : 0;
-  return sourceScore + backingScore;
+  const layerScore = getTrackLayerScore(track, trustedSongEntry);
+  const usageScore = buildTrackUsageScore(track);
+  return sourceScore + backingScore + layerScore + usageScore;
 };
 
-const pickBestTrack = (tracks = []) => {
+const pickBestTrack = (tracks = [], trustedSongEntry = null) => {
   if (!Array.isArray(tracks) || !tracks.length) return null;
   return tracks
     .slice()
     .sort((a, b) => {
-      const scoreDiff = scoreTrack(b) - scoreTrack(a);
+      const scoreDiff = scoreTrack(b, trustedSongEntry) - scoreTrack(a, trustedSongEntry);
       if (scoreDiff !== 0) return scoreDiff;
       return toMillisSafe(b.updatedAt) - toMillisSafe(a.updatedAt);
-    })[0];
+    })
+    .map((track) => ({
+      ...track,
+      resolutionLayer: getTrackLayer(track, trustedSongEntry),
+      resolutionScore: scoreTrack(track, trustedSongEntry),
+    }))[0];
+};
+
+const buildTrackCandidateSummary = (track = {}, trustedSongEntry = null) => ({
+  id: track.id || "",
+  source: track.source || "",
+  mediaUrl: track.mediaUrl || "",
+  appleMusicId: track.appleMusicId || "",
+  duration: track.duration || null,
+  backingOnly: !!track.backingOnly,
+  audioOnly: !!track.audioOnly,
+  updatedAt: track.updatedAt || null,
+  approvalState: normalizeTrackApprovalState(track.approvalState),
+  qualityScore: Number(track.qualityScore || 0),
+  successCount: Number(track.successCount || 0),
+  usageCount: Number(track.usageCount || 0),
+  failureCount: Number(track.failureCount || 0),
+  layer: getTrackLayer(track, trustedSongEntry),
+  score: scoreTrack(track, trustedSongEntry),
+});
+
+const normalizeCatalogMatchText = (value = "") => cleanCatalogTitle(value)
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ")
+  .trim()
+  .replace(/\s+/g, " ");
+
+const tokenizeCatalogMatchText = (value = "") => normalizeCatalogMatchText(value)
+  .split(" ")
+  .map((token) => token.trim())
+  .filter(Boolean);
+
+const countCatalogTokenOverlap = (left = [], right = []) => {
+  if (!left.length || !right.length) return 0;
+  const rightSet = new Set(right);
+  return left.reduce((count, token) => count + (rightSet.has(token) ? 1 : 0), 0);
+};
+
+const scoreCatalogTextMatch = (needle = "", haystack = "") => {
+  const safeNeedle = normalizeCatalogMatchText(needle);
+  const safeHaystack = normalizeCatalogMatchText(haystack);
+  if (!safeNeedle || !safeHaystack) return 0;
+  if (safeNeedle === safeHaystack) return 120;
+  if (safeHaystack.includes(safeNeedle) || safeNeedle.includes(safeHaystack)) return 80;
+  return countCatalogTokenOverlap(
+    tokenizeCatalogMatchText(safeNeedle),
+    tokenizeCatalogMatchText(safeHaystack),
+  ) * 12;
+};
+
+const buildYouTubeIndexCandidateSummaries = ({
+  ytIndex = [],
+  songId = "",
+  title = "",
+  artist = "",
+} = {}) => {
+  const requestSongIds = new Set(
+    [
+      String(songId || "").trim(),
+      ...deriveCanonicalSongCandidates({ title, artist }).map((candidate) => String(candidate.songId || "").trim()),
+    ].filter(Boolean),
+  );
+  const requestTitle = String(title || "").trim();
+  const requestArtist = String(artist || "").trim();
+  return normalizeRoomYouTubeIndex(ytIndex)
+    .map((entry, index) => {
+      const videoId = String(entry?.videoId || entry?.id || "").trim();
+      const mediaUrl = String(entry?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : "")).trim();
+      const candidateTitle = String(entry?.trackName || entry?.title || "").trim();
+      const candidateArtist = String(entry?.artistName || entry?.channelTitle || entry?.channel || "YouTube").trim() || "YouTube";
+      const candidateSongIds = deriveCanonicalSongCandidates({
+        title: candidateTitle,
+        artist: candidateArtist,
+      }).map((candidate) => String(candidate.songId || "").trim()).filter(Boolean);
+      const exactSongMatch = candidateSongIds.some((candidateSongId) => requestSongIds.has(candidateSongId));
+      const titleScore = scoreCatalogTextMatch(requestTitle, candidateTitle);
+      const artistScore = scoreCatalogTextMatch(requestArtist, candidateArtist);
+      if (!exactSongMatch && (titleScore + artistScore) < 48) return null;
+      const qualityScore = Math.max(0, Number(entry?.qualityScore || 0));
+      const successCount = Math.max(0, Number(entry?.successCount || 0));
+      const usageCount = Math.max(0, Number(entry?.usageCount || 0));
+      const failureCount = Math.max(0, Number(entry?.failureCount || 0));
+      const popularityScore = Math.min(40, successCount * 4) + Math.min(24, usageCount * 2) - Math.min(24, failureCount * 6);
+      const exactMatchScore = exactSongMatch ? 170 : 0;
+      return {
+        id: videoId ? `yt_index:${videoId}` : `yt_index:${index}`,
+        source: "youtube",
+        mediaUrl,
+        appleMusicId: "",
+        duration: null,
+        backingOnly: true,
+        audioOnly: false,
+        updatedAt: null,
+        approvalState: entry?.playable === false ? "candidate" : "approved",
+        qualityScore,
+        successCount,
+        usageCount,
+        failureCount,
+        layer: "room_index",
+        score: exactMatchScore + titleScore + artistScore + qualityScore + popularityScore,
+        label: String(entry?.sourceDetail || "Host-curated YouTube").trim() || "Host-curated YouTube",
+      };
+    })
+    .filter((entry) => entry && entry.mediaUrl)
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))
+    .slice(0, 5);
 };
 
 const ensureSongLyricsAdmin = async ({
@@ -6333,6 +7157,8 @@ const buildGeminiPrompt = (type, context) => {
     const songTitle = String(singleSong?.songTitle || "").trim() || "Unknown Song";
     const artist = String(singleSong?.artist || "").trim() || "Unknown Artist";
     const singerName = String(singleSong?.singerName || "").trim();
+    const metadataConfidence = String(singleSong?.metadataConfidence || "").trim() || "limited";
+    const sourceMode = String(singleSong?.sourceMode || "").trim() || "catalog";
     const metadata = (singleSong?.metadata && typeof singleSong.metadata === "object" && !Array.isArray(singleSong.metadata))
       ? Object.entries(singleSong.metadata)
         .map(([k, v]) => `${k}: ${String(v || "").trim()}`)
@@ -6343,12 +7169,16 @@ const buildGeminiPrompt = (type, context) => {
 Tone: funny, clever, and insightful (VH1 Pop-Up Video vibe), never mean.
 Audience: live karaoke crowd answering quickly on phones while the song plays.
 Known metadata: ${metadataLine}.
+Metadata confidence: ${metadataConfidence}.
+Source mode: ${sourceMode}.
 Current singer: ${singerName || "N/A"}.
 Rules:
 - Each question must be answerable in under 10 seconds.
 - Mix playful culture facts and music-insight facts.
 - Keep each answer option concise (under 45 characters).
 - Avoid obscure deep-cut facts and avoid speculation.
+- If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
+- In sparse mode, prefer song structure, karaoke performance, hook recognition, instrumentation, and crowd-energy questions that are answerable without deep catalog facts.
 Format strictly as JSON array of objects:
 [{"q":"...","correct":"...","w1":"...","w2":"...","w3":"..."}]
 Do not include markdown.`;
@@ -6466,6 +7296,8 @@ exports.ensureTrack = onCall({ cors: true }, async (request) => {
     audioOnly: !!data.audioOnly,
     backingOnly: !!data.backingOnly,
     addedBy: data.addedBy || "",
+    approvalState: data.approvalState || "",
+    qualityScore: data.qualityScore ?? null,
   });
   return { trackId: res?.trackId || null };
 });
@@ -6589,6 +7421,52 @@ exports.logPerformance = onCall({ cors: true }, async (request) => {
       addedBy: data.addedBy || data.hostName || "Host",
     });
     trackId = trackResult?.trackId || null;
+  }
+
+  if (trackId) {
+    await admin.firestore().collection("tracks").doc(trackId).set({
+      songId,
+      source: sourceGuess || null,
+      mediaUrl: data.mediaUrl || null,
+      appleMusicId: data.appleMusicId || null,
+      label: data.label || null,
+      approvalState: normalizeTrackApprovalState(data.approvalState || "candidate"),
+      usageCount: admin.firestore.FieldValue.increment(1),
+      successCount: admin.firestore.FieldValue.increment(1),
+      lastSuccessfulRoomCode: roomCode || null,
+      lastSuccessfulAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
+
+  if (roomCode && trackId) {
+    const hostLibraryRef = getRootRef().collection("host_libraries").doc(roomCode);
+    const hostLibrarySnap = await hostLibraryRef.get();
+    const trustedCatalog = normalizeTrustedCatalogMap(hostLibrarySnap.data()?.trustedCatalog || {});
+    const existingEntry = getTrustedSongEntry(trustedCatalog, songId) || {};
+    const nextEntry = {
+      ...existingEntry,
+      songId,
+      title: canonicalTitle,
+      artist: canonicalArtist,
+      roomRecentTrackId: trackId,
+      roomRecentMediaUrl: data.mediaUrl || "",
+      roomRecentAppleMusicId: data.appleMusicId || "",
+      roomRecentSource: sourceGuess || "",
+      roomRecentLabel: data.label || "Recent successful backing",
+      roomRecentApprovalState: normalizeTrackApprovalState(data.approvalState || "candidate") || "candidate",
+      roomRecentUsageCount: Math.max(1, Number(existingEntry.roomRecentUsageCount || 0) + 1),
+      roomRecentSuccessCount: Math.max(1, Number(existingEntry.roomRecentSuccessCount || 0) + 1),
+      roomRecentQualityScore: Math.max(0, Number(existingEntry.roomRecentQualityScore || 0)),
+      roomRecentUpdatedAtMs: Date.now(),
+      updatedAtMs: Date.now(),
+    };
+    await hostLibraryRef.set({
+      trustedCatalog: {
+        [songId]: nextEntry,
+      },
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
   }
 
   const applauseScore = Math.round(data.applauseScore || 0);
@@ -7012,7 +7890,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     units: 1,
   });
   const ids = baseItems.map((item) => item.id).slice(0, 50);
-  const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails&id=${ids.join(",")}`;
+  const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
   const detailsRes = await fetch(detailsUrl);
   if (!detailsRes.ok) {
     const text = await detailsRes.text();
@@ -7030,11 +7908,13 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     const isAllowedPrivacy = privacyStatus === "public" || privacyStatus === "unlisted";
     const playable = embeddable && isUploadReady && isAllowedPrivacy;
     const durationSec = parseIsoDuration(item.contentDetails?.duration || "");
+    const viewCount = clampNumber(Number(item.statistics?.viewCount || 0), 0, Number.MAX_SAFE_INTEGER, 0);
     statusById.set(id, {
       embeddable,
       uploadStatus,
       privacyStatus,
       durationSec,
+      viewCount,
       playable,
     });
   });
@@ -7047,6 +7927,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
         uploadStatus: status.uploadStatus || "",
         privacyStatus: status.privacyStatus || "",
         durationSec: Number(status.durationSec || 0),
+        viewCount: Number(status.viewCount || 0),
         playable: !!status.playable,
       };
     })
@@ -7593,7 +8474,13 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
   const rawSongId = (data.songId || "").trim();
   const title = (data.title || "").trim();
   const artist = (data.artist || "Unknown").trim() || "Unknown";
-  const songId = rawSongId || (title ? buildSongKey(title, artist) : "");
+  const roomCode = normalizeRoomCode(data.roomCode || "");
+  const canonicalMatch = await resolveCanonicalTrackIdentityInternal({
+    songId: rawSongId,
+    title,
+    artist,
+  });
+  const songId = String(canonicalMatch?.songId || rawSongId || (title ? buildSongKey(title, artist) : "")).trim();
   if (!songId) {
     throw new HttpsError("invalid-argument", "songId or title is required.");
   }
@@ -7601,20 +8488,40 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
   const songRef = admin.firestore().collection("songs").doc(songId);
   const lyricsRef = admin.firestore().collection("song_lyrics").doc(songId);
   const trackQuery = admin.firestore().collection("tracks").where("songId", "==", songId).limit(20);
+  const roomLibraryPromise = roomCode
+    ? readRoomHostLibrary(roomCode)
+    : Promise.resolve({ trustedCatalog: {}, ytIndex: [] });
 
-  const [songSnap, lyricsSnap, trackSnap] = await Promise.all([
+  const [songSnap, lyricsSnap, trackSnap, roomLibrary] = await Promise.all([
     songRef.get(),
     lyricsRef.get(),
     trackQuery.get(),
+    roomLibraryPromise,
   ]);
 
   const tracks = trackSnap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-  const bestTrack = pickBestTrack(tracks);
+  const trustedSongEntry = getTrustedSongEntry(roomLibrary?.trustedCatalog || {}, songId);
+  const trackCandidates = tracks
+    .map((track) => buildTrackCandidateSummary(track, trustedSongEntry))
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0));
+  const ytIndexCandidates = buildYouTubeIndexCandidateSummaries({
+    ytIndex: roomLibrary?.ytIndex || [],
+    songId,
+    title: canonicalMatch?.title || title,
+    artist: canonicalMatch?.artist || artist,
+  });
+  const rankedCandidates = [...trackCandidates, ...ytIndexCandidates]
+    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .slice(0, 5);
+  const bestTrack = rankedCandidates[0] || null;
   const lyrics = lyricsSnap.exists ? lyricsSnap.data() : null;
+  const candidates = rankedCandidates;
 
   return {
     found: !!(songSnap.exists || lyrics || bestTrack),
     songId,
+    canonicalized: !!canonicalMatch?.found,
+    canonicalMatch: canonicalMatch?.matchedBy || "",
     song: songSnap.exists ? { id: songSnap.id, ...songSnap.data() } : null,
     track: bestTrack ? {
       id: bestTrack.id,
@@ -7625,7 +8532,14 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
       backingOnly: !!bestTrack.backingOnly,
       audioOnly: !!bestTrack.audioOnly,
       updatedAt: bestTrack.updatedAt || null,
+      approvalState: normalizeTrackApprovalState(bestTrack.approvalState),
+      resolutionLayer: bestTrack.resolutionLayer || bestTrack.layer || "global_catalog",
+      qualityScore: Number(bestTrack.qualityScore || 0),
+      successCount: Number(bestTrack.successCount || 0),
+      usageCount: Number(bestTrack.usageCount || 0),
     } : null,
+    resolutionLayer: bestTrack?.resolutionLayer || bestTrack?.layer || "unresolved",
+    candidates,
     lyrics: lyrics ? {
       lyrics: lyrics.lyrics || "",
       timedLyrics: Array.isArray(lyrics.lyricsTimed) ? lyrics.lyricsTimed : null,
@@ -9461,6 +10375,9 @@ const upsertHostRoomDiscoveryListingInternal = async ({
   const resolvedRoomCode = normalizeRoomCode(access.roomCode || safeRoomCode);
 
   const hostUid = safeDirectoryString(roomData.hostUid || safeCallerUid, 180) || safeCallerUid;
+  const hostUids = Array.from(new Set((Array.isArray(roomData.hostUids) ? roomData.hostUids : [hostUid])
+    .map((entry) => safeDirectoryString(entry || "", 180))
+    .filter(Boolean)));
   const hostName = safeDirectoryString(roomData.hostName || "", 120) || "Host";
   const publicRoom = parseBooleanInput(
     nextListingInput.publicRoom ?? nextListingInput.isPublicRoom ?? nextListingInput.public ?? false,
@@ -9517,8 +10434,11 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     imageUrl: normalizeDirectoryOptionalUrl(nextListingInput.imageUrl || ""),
     roomCode: resolvedRoomCode,
     venueName: safeDirectoryString(nextListingInput.venueName || "", 120),
+    venueId: safeDirectoryString(nextListingInput.venueId || "", 180),
+    venueSource: safeDirectoryString(nextListingInput.venueSource || "", 40),
     sessionMode,
     hostUid,
+    hostUids,
     hostName,
     ownerUid: safeCallerUid,
     sourceType: "host_room",
@@ -9546,6 +10466,7 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     listingType: "room_session",
     roomCode: resolvedRoomCode,
     hostUid,
+    hostUids,
     hostName,
     ownerUid: safeCallerUid,
     sourceType: "host_room",
@@ -10776,6 +11697,54 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.searchHostVenueAutocomplete = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "search_host_venue_autocomplete", { perMinute: 80, perHour: 900 });
+  enforceAppCheckIfEnabled(request, "search_host_venue_autocomplete");
+  await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Venue lookup requires an active host subscription or approved host access.",
+  });
+  const search = normalizeDirectoryTextBlock(request.data?.query || request.data?.search || "", 120).toLowerCase();
+  const limit = clampNumber(request.data?.limit, 1, 8, 6);
+  if (search.length < 2) {
+    return { ok: true, items: [] };
+  }
+
+  const db = admin.firestore();
+  const venueSnap = await db.collection("venues")
+    .where("status", "==", "approved")
+    .limit(120)
+    .get();
+
+  const items = venueSnap.docs
+    .map((docSnap) => buildDirectoryPublicListing(docSnap, "venue"))
+    .filter((venue) => normalizeDirectoryVisibility(venue?.visibility || "public", "public") !== "private")
+    .map((venue) => ({
+      venueId: safeDirectoryString(venue?.id || "", 180),
+      title: safeDirectoryString(venue?.title || venue?.venueName || "", 180),
+      city: safeDirectoryString(venue?.city || "", 80),
+      state: safeDirectoryString(venue?.state || "", 40),
+      address1: safeDirectoryString(venue?.address1 || "", 160),
+      location: normalizeDirectoryLatLng(venue?.location || {}),
+      imageUrl: normalizeDirectoryOptionalUrl(venue?.imageUrl || ""),
+      reviewCount: Math.max(0, Number(venue?.reviewCount || 0) || 0),
+      checkinCount: Math.max(0, Number(venue?.checkinCount || 0) || 0),
+      lastActiveAtMs: Math.max(0, Number(venue?.lastActiveAtMs || 0) || 0),
+    }))
+    .map((venue) => ({
+      ...venue,
+      score: scoreHostVenueAutocompleteMatch(venue, search),
+    }))
+    .filter((venue) => venue.score >= 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return String(a.title || "").localeCompare(String(b.title || ""));
+    })
+    .slice(0, limit)
+    .map(({ score, ...venue }) => venue);
+
+  return { ok: true, items };
+});
+
 exports.recordMarketingTelemetry = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "record_marketing_telemetry", { perMinute: 220, perHour: 3000 });
   enforceAppCheckIfEnabled(request, "record_marketing_telemetry");
@@ -10971,6 +11940,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   const safeName = rawName.slice(0, 18) || "Guest";
   const rawAvatar = String(request.data?.avatar || "").trim();
   const safeAvatar = rawAvatar || String.fromCodePoint(0x1F600);
+  const callerEmail = normalizeEmailToken(request.auth?.token?.email || "");
 
   const db = admin.firestore();
   const rootRef = getRootRef();
@@ -10978,52 +11948,435 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
   const userRef = db.collection("users").doc(callerUid);
   const serverNow = admin.firestore.FieldValue.serverTimestamp();
-
-  const [roomSnap, userSnap] = await Promise.all([roomRef.get(), userRef.get()]);
+  const roomSnap = await roomRef.get();
   if (!roomSnap.exists) {
     throw new HttpsError("not-found", "Room code not found.");
   }
+  const roomData = roomSnap.data() || {};
+  const eventCredits = normalizeRoomEventCredits(roomData.eventCredits || {});
+  const eventConfigRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(roomCode);
+  const defaultJoinPoints = eventCredits.enabled
+    ? clampNumber(eventCredits.generalAdmissionPoints ?? 0, 0, 100000, 0)
+    : 100;
 
-  const userData = userSnap.exists ? (userSnap.data() || {}) : {};
-  const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
-  const totalFamePoints = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
-  const fameLevel = Math.max(
-    0,
-    Number(
-      userData.currentLevel ?? userData.fameLevel ?? 0
-    ) || 0
-  );
+  await db.runTransaction(async (tx) => {
+    const [roomUserSnap, userSnap, eventConfigSnap] = await Promise.all([
+      tx.get(roomUserRef),
+      tx.get(userRef),
+      tx.get(eventConfigRef),
+    ]);
+    const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
+    const totalFamePoints = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
+    const fameLevel = Math.max(
+      0,
+      Number(userData.currentLevel ?? userData.fameLevel ?? 0) || 0
+    );
+    const existingPoints = Math.max(0, Number(roomUserData.points || 0) || 0);
+    let seededPoints = roomUserSnap.exists ? 0 : defaultJoinPoints;
+    let matchedEntitlement = null;
+    if (eventCredits.enabled) {
+      const secureConfig = eventConfigSnap.exists
+        ? normalizeRoomEventCreditConfigRecord(eventConfigSnap.data() || {})
+        : normalizeRoomEventCreditConfigRecord(eventCredits);
+      const grant = resolveRoomEventCreditGrant(secureConfig, "general_admission");
+      const grantDocId = buildRoomEventCreditGrantDocId({
+        roomCode,
+        eventId: secureConfig.eventId || eventCredits.eventId,
+        uid: callerUid,
+        grantType: grant.grantType,
+      });
+      const grantRef = db.collection(ROOM_EVENT_CREDIT_GRANTS_COLLECTION).doc(grantDocId);
+      const grantSnap = await tx.get(grantRef);
+      let matchingEntitlement = null;
+      let entitlementGrantRef = null;
+      let entitlementGrantSnap = null;
+      if (callerEmail && secureConfig.sourceProvider === "givebutter") {
+        const entitlementQuery = await tx.get(
+          db.collection(EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION)
+            .where("normalizedEmail", "==", callerEmail)
+            .limit(12)
+        );
+        matchingEntitlement = entitlementQuery.docs
+          .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+          .find((entry) => matchGivebutterEntitlementToConfig({
+            entitlement: entry,
+            config: secureConfig,
+          }));
+        if (matchingEntitlement) {
+          const entitlementGrantDocId = buildEntitlementRoomGrantDocId({
+            roomCode,
+            eventId: secureConfig.eventId,
+            uid: callerUid,
+            entitlementId: matchingEntitlement.id,
+          });
+          entitlementGrantRef = db.collection(ROOM_EVENT_CREDIT_GRANTS_COLLECTION).doc(entitlementGrantDocId);
+          entitlementGrantSnap = await tx.get(entitlementGrantRef);
+        }
+      }
 
-  await roomUserRef.set({
-    roomCode,
-    uid: callerUid,
-    name: safeName,
-    avatar: safeAvatar,
-    isVip: vipLevel > 0,
-    vipLevel,
-    fameLevel,
-    totalFamePoints,
-    lastActiveAt: serverNow,
-    points: 100,
-    totalEmojis: 0,
-    lastSeen: serverNow,
-  }, { merge: true });
+      if (!grantSnap.exists && grant.points > 0) {
+        seededPoints = roomUserSnap.exists ? grant.points : Math.max(seededPoints, grant.points);
+        tx.set(grantRef, {
+          roomCode,
+          uid: callerUid,
+          eventId: secureConfig.eventId,
+          eventLabel: secureConfig.eventLabel,
+          grantType: grant.grantType,
+          pointsGranted: grant.points,
+          skipLineEntitled: false,
+          source: "join_room_audience",
+          createdAt: serverNow,
+          updatedAt: serverNow,
+        }, { merge: true });
+        tx.set(userRef, {
+          uid: callerUid,
+          pointsBalance: admin.firestore.FieldValue.increment(grant.points),
+          updatedAt: serverNow,
+        }, { merge: true });
+      }
 
-  try {
-    await roomUserRef.update({
-      visits: admin.firestore.FieldValue.increment(1),
-      lastSeen: serverNow,
+      if (matchingEntitlement && entitlementGrantRef && entitlementGrantSnap) {
+          const pointsFromEntitlement = clampNumber(matchingEntitlement.pointsGranted, 0, 100000, 0);
+          if (!entitlementGrantSnap.exists && pointsFromEntitlement > 0) {
+            seededPoints += pointsFromEntitlement;
+            matchedEntitlement = {
+              entitlementId: matchingEntitlement.id,
+              ticketTier: String(matchingEntitlement.ticketTier || "general_admission"),
+              pointsGranted: pointsFromEntitlement,
+              skipLineEntitled: !!matchingEntitlement.skipLineEntitled,
+            };
+            tx.set(entitlementGrantRef, {
+              roomCode,
+              uid: callerUid,
+              eventId: secureConfig.eventId,
+              eventLabel: secureConfig.eventLabel,
+              grantType: "ticket_entitlement",
+              entitlementId: matchingEntitlement.id,
+              pointsGranted: pointsFromEntitlement,
+              skipLineEntitled: !!matchingEntitlement.skipLineEntitled,
+              source: "givebutter_attendee_match",
+              createdAt: serverNow,
+              updatedAt: serverNow,
+            }, { merge: true });
+            tx.set(userRef, {
+              uid: callerUid,
+              pointsBalance: admin.firestore.FieldValue.increment(pointsFromEntitlement),
+              updatedAt: serverNow,
+            }, { merge: true });
+            tx.set(db.collection(EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION).doc(matchingEntitlement.id), {
+              matchedUid: callerUid,
+              matchedRoomCode: roomCode,
+              matchedAt: serverNow,
+              claimed: true,
+              updatedAt: serverNow,
+            }, { merge: true });
+          }
+      }
+    }
+
+    tx.set(roomUserRef, {
+      roomCode,
+      uid: callerUid,
+      name: safeName,
+      avatar: safeAvatar,
+      isVip: vipLevel > 0,
+      vipLevel,
+      fameLevel,
+      totalFamePoints,
       lastActiveAt: serverNow,
-    });
-  } catch {
-    // Ignore visit tracking failures so join is not blocked.
-  }
+      lastSeen: serverNow,
+      totalEmojis: Math.max(0, Number(roomUserData.totalEmojis || 0) || 0),
+      points: existingPoints + seededPoints,
+      visits: admin.firestore.FieldValue.increment(1),
+      ...(matchedEntitlement ? {
+        matchedEntitlementId: matchedEntitlement.entitlementId,
+        matchedTicketTier: matchedEntitlement.ticketTier,
+        ...(matchedEntitlement.skipLineEntitled ? { skipLineEntitled: true } : {}),
+      } : {}),
+    }, { merge: true });
+  });
 
   return {
     ok: true,
     roomCode,
     uid: callerUid,
   };
+});
+
+exports.claimAudienceEventGrant = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "claim_audience_event_grant", { perMinute: 20, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "claim_audience_event_grant");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  const requestedGrantType = normalizeDirectoryToken(request.data?.grantType || "", 40);
+  if (!requestedGrantType) {
+    throw new HttpsError("invalid-argument", "grantType is required.");
+  }
+  const claimCode = normalizeRoomEventCreditCode(request.data?.claimCode || "");
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const userRef = db.collection("users").doc(callerUid);
+  const configRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(roomCode);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const [roomSnap, configSnap] = await Promise.all([roomRef.get(), configRef.get()]);
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const roomEventCredits = normalizeRoomEventCredits(roomSnap.data()?.eventCredits || {});
+  const secureConfig = configSnap.exists
+    ? normalizeRoomEventCreditConfigRecord(configSnap.data() || {})
+    : normalizeRoomEventCreditConfigRecord(roomEventCredits);
+  if (!secureConfig.enabled) {
+    throw new HttpsError("failed-precondition", "Event credits are not enabled for this room.");
+  }
+
+  const grant = resolveRoomEventCreditGrant(secureConfig, requestedGrantType);
+  if (!grant.grantType || grant.points <= 0) {
+    throw new HttpsError("invalid-argument", "Unsupported or inactive event grant.");
+  }
+
+  const expectedCode = grant.grantType === "vip"
+    ? secureConfig.claimCodes?.vip
+    : grant.grantType === "skip_line"
+      ? secureConfig.claimCodes?.skipLine
+      : grant.grantType === "website_check_in"
+        ? secureConfig.claimCodes?.websiteCheckIn
+        : grant.grantType === "social_promo"
+          ? secureConfig.claimCodes?.socialPromo
+          : "";
+  if (grant.requiresCode && (!expectedCode || claimCode !== expectedCode)) {
+    throw new HttpsError("permission-denied", "That event code is invalid or expired.");
+  }
+
+  const grantDocId = buildRoomEventCreditGrantDocId({
+    roomCode,
+    eventId: secureConfig.eventId,
+    uid: callerUid,
+    grantType: grant.grantType,
+  });
+  const grantRef = db.collection(ROOM_EVENT_CREDIT_GRANTS_COLLECTION).doc(grantDocId);
+
+  const result = await db.runTransaction(async (tx) => {
+    const [grantSnap, roomUserSnap] = await Promise.all([
+      tx.get(grantRef),
+      tx.get(roomUserRef),
+    ]);
+    if (grantSnap.exists) {
+      return {
+        ok: true,
+        duplicate: true,
+        pointsGranted: Number(grantSnap.get("pointsGranted") || 0),
+        grantType: grant.grantType,
+        skipLineEntitled: !!grantSnap.get("skipLineEntitled"),
+      };
+    }
+
+    tx.set(grantRef, {
+      roomCode,
+      uid: callerUid,
+      eventId: secureConfig.eventId,
+      eventLabel: secureConfig.eventLabel,
+      grantType: grant.grantType,
+      pointsGranted: grant.points,
+      skipLineEntitled: !!grant.skipLineEntitled,
+      source: "claim_audience_event_grant",
+      createdAt: serverNow,
+      updatedAt: serverNow,
+    }, { merge: true });
+    tx.set(roomUserRef, {
+      roomCode,
+      uid: callerUid,
+      points: admin.firestore.FieldValue.increment(grant.points),
+      eventGrantUpdatedAt: serverNow,
+      ...(grant.skipLineEntitled ? { skipLineEntitled: true } : {}),
+    }, { merge: true });
+    tx.set(userRef, {
+      uid: callerUid,
+      pointsBalance: admin.firestore.FieldValue.increment(grant.points),
+      updatedAt: serverNow,
+    }, { merge: true });
+    return {
+      ok: true,
+      duplicate: false,
+      pointsGranted: grant.points,
+      grantType: grant.grantType,
+      skipLineEntitled: !!grant.skipLineEntitled,
+      roomUserExists: roomUserSnap.exists,
+    };
+  });
+
+  return result;
+});
+
+exports.redeemPromoCode = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "redeem_promo_code", { perMinute: 20, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "redeem_promo_code");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const claimCode = normalizeRoomEventCreditCode(request.data?.code || request.data?.promoCode || "");
+  const requestedCampaignId = normalizeRoomEventCreditCode(request.data?.campaignId || "");
+  if (!claimCode && !requestedCampaignId) {
+    throw new HttpsError("invalid-argument", "A promo code or campaignId is required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const userRef = db.collection("users").doc(callerUid);
+  const configRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(roomCode);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const [roomSnap, configSnap] = await Promise.all([roomRef.get(), configRef.get()]);
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const roomEventCredits = normalizeRoomEventCredits(roomSnap.data()?.eventCredits || {});
+  const secureConfig = configSnap.exists
+    ? normalizeRoomEventCreditConfigRecord(configSnap.data() || {})
+    : normalizeRoomEventCreditConfigRecord(roomEventCredits);
+  if (!secureConfig.enabled) {
+    throw new HttpsError("failed-precondition", "Credits & funds are not enabled for this room.");
+  }
+
+  const campaign = resolvePromoCampaignFromConfig({
+    config: secureConfig,
+    code: claimCode,
+    campaignId: requestedCampaignId,
+  });
+  if (!campaign) {
+    throw new HttpsError("not-found", "That promo is invalid or unavailable.");
+  }
+  if (!campaign.enabled) {
+    throw new HttpsError("failed-precondition", "That promo campaign is disabled.");
+  }
+  if (!campaign.pointsReward && !promoCampaignCanGrantSafePerk(campaign)) {
+    throw new HttpsError("failed-precondition", "That promo campaign has no active reward.");
+  }
+
+  const now = nowMs();
+  if (campaign.validFromMs > 0 && now < campaign.validFromMs) {
+    throw new HttpsError("failed-precondition", "That promo is not live yet.");
+  }
+  if (campaign.validUntilMs > 0 && now > campaign.validUntilMs) {
+    throw new HttpsError("failed-precondition", "That promo has expired.");
+  }
+
+  const redemptionRef = db.collection(ROOM_PROMO_REDEMPTIONS_COLLECTION).doc(
+    buildPromoRedemptionDocId({ roomCode, campaignId: campaign.id, uid: callerUid })
+  );
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomUserSnap, redemptionSnap, secureConfigSnap] = await Promise.all([
+      tx.get(roomUserRef),
+      tx.get(redemptionRef),
+      tx.get(configRef),
+    ]);
+    if (campaign.requiresRoomJoin && !roomUserSnap.exists) {
+      throw new HttpsError("failed-precondition", "Join the room before redeeming this promo.");
+    }
+
+    const latestConfig = secureConfigSnap.exists
+      ? normalizeRoomEventCreditConfigRecord(secureConfigSnap.data() || {})
+      : secureConfig;
+    const activeCampaign = resolvePromoCampaignFromConfig({
+      config: latestConfig,
+      code: claimCode,
+      campaignId: requestedCampaignId || campaign.id,
+    });
+    if (!activeCampaign) {
+      throw new HttpsError("not-found", "That promo is invalid or unavailable.");
+    }
+
+    const existingRedemption = redemptionSnap.exists ? (redemptionSnap.data() || {}) : {};
+    const currentCount = clampNumber(existingRedemption.redeemCount, 0, 100000, 0);
+    if (currentCount >= activeCampaign.perUserLimit) {
+      return {
+        ok: true,
+        duplicate: true,
+        rewardLabel: buildPromoRewardLabel(activeCampaign),
+        pointsGranted: 0,
+        safePerk: normalizeRoomEventSafePerk(activeCampaign.safePerk),
+      };
+    }
+
+    const stats = secureConfigSnap.exists && isPlainObject(secureConfigSnap.get("promoCampaignStats"))
+      ? secureConfigSnap.get("promoCampaignStats")
+      : {};
+    const currentCampaignStats = isPlainObject(stats?.[activeCampaign.id]) ? stats[activeCampaign.id] : {};
+    const redeemedCount = clampNumber(currentCampaignStats.redeemedCount, 0, 100000, 0);
+    if (redeemedCount >= activeCampaign.maxRedemptions) {
+      throw new HttpsError("resource-exhausted", "That promo has already been fully claimed.");
+    }
+
+    const pointsGranted = clampNumber(activeCampaign.pointsReward, 0, 100000, 0);
+    const safePerk = normalizeRoomEventSafePerk(activeCampaign.safePerk);
+    const nextRedeemCount = currentCount + 1;
+    tx.set(redemptionRef, {
+      roomCode,
+      uid: callerUid,
+      eventId: latestConfig.eventId,
+      campaignId: activeCampaign.id,
+      campaignLabel: activeCampaign.label,
+      code: activeCampaign.codeMode === "vanity" ? normalizeRoomEventCreditCode(activeCampaign.code || claimCode) : "",
+      redeemCount: nextRedeemCount,
+      lastRewardPoints: pointsGranted,
+      safePerk,
+      updatedAt: serverNow,
+      createdAt: existingRedemption.createdAt || serverNow,
+    }, { merge: true });
+    tx.set(configRef, {
+      promoCampaignStats: {
+        [activeCampaign.id]: {
+          redeemedCount: redeemedCount + 1,
+          updatedAt: serverNow,
+        },
+      },
+      updatedAt: serverNow,
+    }, { merge: true });
+    if (pointsGranted > 0) {
+      tx.set(roomUserRef, {
+        roomCode,
+        uid: callerUid,
+        points: admin.firestore.FieldValue.increment(pointsGranted),
+        promoUpdatedAt: serverNow,
+      }, { merge: true });
+      tx.set(userRef, {
+        uid: callerUid,
+        pointsBalance: admin.firestore.FieldValue.increment(pointsGranted),
+        updatedAt: serverNow,
+      }, { merge: true });
+    }
+    if (safePerk) {
+      tx.set(roomUserRef, {
+        roomCode,
+        uid: callerUid,
+        promoPerks: admin.firestore.FieldValue.arrayUnion(safePerk),
+        promoUpdatedAt: serverNow,
+      }, { merge: true });
+    }
+    return {
+      ok: true,
+      duplicate: false,
+      rewardLabel: buildPromoRewardLabel(activeCampaign),
+      pointsGranted,
+      safePerk,
+    };
+  });
+
+  return result;
 });
 
 exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
@@ -11076,6 +12429,7 @@ exports.mergeAnonymousAccountData = onCall({ cors: true }, async (request) => {
       tight15: mergeArray(targetUser.tight15, sourceUser.tight15, 30),
       unlockedEmojis: mergeArray(targetUser.unlockedEmojis, sourceUser.unlockedEmojis, 200),
       unlockedBadges: mergeArray(targetUser.unlockedBadges, sourceUser.unlockedBadges, 200),
+      pointsBalance: Math.max(0, Number(targetUser.pointsBalance || 0) || 0) + Math.max(0, Number(sourceUser.pointsBalance || 0) || 0),
       totalFamePoints: Math.max(Number(targetUser.totalFamePoints || 0), Number(sourceUser.totalFamePoints || 0)),
       currentLevel: Math.max(Number(targetUser.currentLevel || 0), Number(sourceUser.currentLevel || 0)),
       vipLevel: Math.max(Number(targetUser.vipLevel || 0), Number(sourceUser.vipLevel || 0)),
@@ -11522,14 +12876,21 @@ const buildEmailTemplatePayload = (templateName = "", data = {}) => {
       `Sign-in link: ${targetUrl}`,
       "",
       "For the smoothest handoff, open the link on the same device where you entered your email.",
+      "If the button does not open, copy and paste the full link into your browser.",
       "If you did not request this link, you can ignore this email.",
     ].filter(Boolean).join("\n");
     const html = `
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">We received a request to ${escapeAlertHtml(contextLabel)} to BeauRocks with this email address.</p>
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">Open the secure link below to finish signing in.</p>
-      ${roomCode ? `<p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7"><strong>Room code:</strong> ${escapeAlertHtml(roomCode)}</p>` : ""}
-      <p style="margin:0 0 14px;color:#d6d9e5;font-size:16px;line-height:1.7">For the smoothest handoff, open the link on the same device where you entered your email.</p>
-      <p style="margin:0;color:#d6d9e5;font-size:16px;line-height:1.7">If you did not request this link, you can ignore this email.</p>
+      <p style="margin:0 0 14px;color:#f2f7ff;font-size:17px;line-height:1.75">We received a request to ${escapeAlertHtml(contextLabel)} to BeauRocks with this email address.</p>
+      <div style="margin:0 0 16px;padding:16px 18px;border:1px solid #334155;border-radius:18px;background:#121a2c;background-image:linear-gradient(180deg,#121a2c 0%,#121a2c 100%)">
+        <p style="margin:0;color:#f8fbff;font-size:16px;line-height:1.75"><strong>Use the button below to finish signing in.</strong></p>
+        ${roomCode ? `<p style="margin:10px 0 0;color:#dce7f5;font-size:15px;line-height:1.7"><strong>Room code:</strong> ${escapeAlertHtml(roomCode)}</p>` : ""}
+      </div>
+      <div style="margin:0 0 16px;padding:16px 18px;border:1px solid #1f6f88;border-radius:18px;background:#082235;background-image:linear-gradient(180deg,#082235 0%,#082235 100%)">
+        <p style="margin:0 0 8px;color:#d7fbff;font-size:14px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase">Fallback link</p>
+        <p style="margin:0;color:#eaf4ff;font-size:14px;line-height:1.75;word-break:break-word">${escapeAlertHtml(targetUrl)}</p>
+      </div>
+      <p style="margin:0 0 14px;color:#e8eef9;font-size:16px;line-height:1.75">For the smoothest handoff, open the link on the same device where you entered your email.</p>
+      <p style="margin:0;color:#e8eef9;font-size:16px;line-height:1.75">If you did not request this link, you can ignore this email.</p>
     `;
     return {
       eventType: "auth_email_signin_link",
@@ -11749,6 +13110,15 @@ const convertEmailTextToHtml = (value = "") =>
     )
     .join("");
 
+const wrapEmailGmailBlend = (content = "", { inline = false } = {}) => {
+  const safeContent = String(content || "").trim();
+  if (!safeContent) return "";
+  if (inline) {
+    return `<span class="br-gmail-screen-inline"><span class="br-gmail-difference-inline">${safeContent}</span></span>`;
+  }
+  return `<div class="br-gmail-screen"><div class="br-gmail-difference">${safeContent}</div></div>`;
+};
+
 const buildBeauRocksEmailHtml = ({
   subject = "",
   eyebrow = "",
@@ -11776,13 +13146,45 @@ const buildBeauRocksEmailHtml = ({
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <meta name="supported-color-schemes" content="light dark" />
         <title>${escapeAlertHtml(safeSubject)}</title>
+        <style>
+          :root {
+            color-scheme: light dark;
+            supported-color-schemes: light dark;
+          }
+          u + .body .br-gmail-screen,
+          u + .body .br-gmail-screen-inline {
+            background: #000 !important;
+            color: #fff !important;
+            mix-blend-mode: screen;
+          }
+          u + .body .br-gmail-difference,
+          u + .body .br-gmail-difference-inline {
+            background: #000 !important;
+            color: #fff !important;
+            mix-blend-mode: difference;
+          }
+          u + .body .br-gmail-screen {
+            display: block !important;
+          }
+          u + .body .br-gmail-difference {
+            display: block !important;
+          }
+          u + .body .br-gmail-screen-inline {
+            display: inline-block !important;
+          }
+          u + .body .br-gmail-difference-inline {
+            display: inline !important;
+          }
+        </style>
       </head>
-      <body style="margin:0;padding:0;background:#070a14;font-family:${EMAIL_BRAND_FONT_UI};color:#f8fafc">
+      <body class="body" bgcolor="#080b16" style="margin:0;padding:0;background-color:#080b16;background-image:linear-gradient(180deg,#080b16 0%,#080b16 100%);font-family:${EMAIL_BRAND_FONT_UI};color:#f3f7ff">
         <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${escapeAlertHtml(preheaderText)}</div>
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:
-          radial-gradient(circle at top, rgba(236,72,153,0.22), transparent 36%),
-          radial-gradient(circle at 20% 20%, rgba(34,211,238,0.18), transparent 28%),
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#080b16" style="background-color:#080b16;background-image:
+          radial-gradient(circle at top, rgba(236,72,153,0.16), transparent 34%),
+          radial-gradient(circle at 20% 20%, rgba(34,211,238,0.14), transparent 24%),
           linear-gradient(180deg,#080b16 0%,#0b1020 55%,#060810 100%);
           padding:32px 14px;">
           <tr>
@@ -11796,30 +13198,30 @@ const buildBeauRocksEmailHtml = ({
                           <img src="${EMAIL_BRAND_LOGO_URL}" alt="${EMAIL_BRAND_WORDMARK}" width="76" style="display:block;width:76px;height:auto;border:0;outline:none;text-decoration:none" />
                         </td>
                         <td style="vertical-align:middle">
-                          <div style="color:#fff6e9;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:34px;line-height:0.92;letter-spacing:0.05em;text-transform:uppercase">${EMAIL_BRAND_WORDMARK}</div>
-                          <div style="color:#97a1c0;font-family:${EMAIL_BRAND_FONT_UI};font-size:13px;letter-spacing:0.14em;text-transform:uppercase;margin-top:7px">Modern karaoke for loud rooms and good nights</div>
+                          <div style="color:#fff4df;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:34px;line-height:0.92;letter-spacing:0.05em;text-transform:uppercase">${wrapEmailGmailBlend(escapeAlertHtml(EMAIL_BRAND_WORDMARK), { inline: true })}</div>
+                          <div style="color:#aeb9d1;font-family:${EMAIL_BRAND_FONT_UI};font-size:13px;letter-spacing:0.14em;text-transform:uppercase;margin-top:7px">${wrapEmailGmailBlend("Modern karaoke for loud rooms and good nights", { inline: true })}</div>
                         </td>
                       </tr>
                     </table>
                   </td>
                 </tr>
                 <tr>
-                  <td style="border:1px solid rgba(103,232,249,0.20);border-radius:24px;background:rgba(10,14,28,0.92);box-shadow:0 20px 60px rgba(0,0,0,0.35);overflow:hidden">
+                  <td bgcolor="#0b1220" style="border:1px solid #223248;border-radius:24px;background-color:#0b1220;background-image:linear-gradient(180deg,#0b1220 0%,#0d1426 100%);box-shadow:0 20px 60px rgba(0,0,0,0.35);overflow:hidden">
                     <div style="height:6px;background:linear-gradient(90deg,#22d3ee 0%,#f59e0b 40%,#ec4899 100%)"></div>
                     <div style="padding:28px 28px 24px">
-                      <div style="color:#67e8f9;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;font-weight:800;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:16px">${escapeAlertHtml(safeEyebrow)}</div>
-                      <h1 style="margin:0 0 12px 0;color:#ffffff;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:48px;line-height:0.94;font-weight:400;letter-spacing:0.03em;text-transform:uppercase">${escapeAlertHtml(safeTitle)}</h1>
-                      ${safePreheader ? `<p style="margin:0 0 22px 0;color:#c3c9da;font-family:${EMAIL_BRAND_FONT_UI};font-size:17px;line-height:1.65">${escapeAlertHtml(safePreheader)}</p>` : ""}
-                      <div style="color:#d6d9e5;font-family:${EMAIL_BRAND_FONT_UI};font-size:16px;line-height:1.7">${innerHtml}</div>
+                      <div style="color:#7aeaf6;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;font-weight:800;letter-spacing:0.28em;text-transform:uppercase;margin-bottom:16px">${wrapEmailGmailBlend(escapeAlertHtml(safeEyebrow), { inline: true })}</div>
+                      <h1 style="margin:0 0 12px 0;color:#fdfefe;font-family:${EMAIL_BRAND_FONT_DISPLAY};font-size:48px;line-height:0.94;font-weight:400;letter-spacing:0.03em;text-transform:uppercase">${wrapEmailGmailBlend(escapeAlertHtml(safeTitle))}</h1>
+                      ${safePreheader ? `<div style="margin:0 0 22px 0;color:#d7dfef;font-family:${EMAIL_BRAND_FONT_UI};font-size:17px;line-height:1.65">${wrapEmailGmailBlend(`<p style="margin:0">${escapeAlertHtml(safePreheader)}</p>`)}</div>` : ""}
+                      <div style="color:#e5ecf8;font-family:${EMAIL_BRAND_FONT_UI};font-size:16px;line-height:1.7">${wrapEmailGmailBlend(innerHtml)}</div>
                       ${safeCtaLabel && safeCtaUrl ? `
                         <div style="margin-top:24px">
                           <a href="${safeCtaUrl}" style="display:inline-block;padding:13px 20px;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#ec4899);color:#050816;text-decoration:none;font-family:${EMAIL_BRAND_FONT_UI};font-weight:800;letter-spacing:0.08em;text-transform:uppercase;font-size:12px">${escapeAlertHtml(safeCtaLabel)}</a>
                         </div>
                       ` : ""}
                     </div>
-                    <div style="border-top:1px solid rgba(151,161,192,0.16);padding:16px 28px 22px;color:#8f98b0;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;line-height:1.6">
-                      <div>${escapeAlertHtml(EMAIL_BRAND_WORDMARK)} notifications</div>
-                      <div style="margin-top:4px">${escapeAlertHtml(accentLabel)}</div>
+                    <div style="border-top:1px solid #223248;padding:16px 28px 22px;color:#9aa7c0;font-family:${EMAIL_BRAND_FONT_UI};font-size:12px;line-height:1.6">
+                      <div>${wrapEmailGmailBlend(`${escapeAlertHtml(EMAIL_BRAND_WORDMARK)} notifications`, { inline: true })}</div>
+                      <div style="margin-top:4px">${wrapEmailGmailBlend(escapeAlertHtml(accentLabel), { inline: true })}</div>
                       <div style="margin-top:10px"><a href="${EMAIL_BRAND_HOME_URL}" style="color:${EMAIL_BRAND_LINK_COLOR};text-decoration:none;border-bottom:1px solid rgba(125,211,252,0.45)">${EMAIL_BRAND_HOME_URL}</a></div>
                     </div>
                   </td>
@@ -12312,6 +13714,53 @@ exports.getMyEntitlements = onCall({ cors: true }, async (request) => {
   return entitlements;
 });
 
+exports.listHostWorkspaceOperators = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_host_workspace_operators", { perMinute: 40, perHour: 320 });
+  enforceAppCheckIfEnabled(request, "list_host_workspace_operators");
+  const { uid } = await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Operator lookup requires an active host subscription or approved host access.",
+  });
+  const db = admin.firestore();
+  const { orgId } = await ensureOrganizationForUser({ uid });
+  const limit = clampNumber(request.data?.limit, 1, 40, 20);
+  const memberSnap = await orgsCollection()
+    .doc(orgId)
+    .collection("members")
+    .limit(Math.max(limit, 10))
+    .get();
+  const members = memberSnap.docs
+    .map((docSnap) => ({ uid: normalizeUidToken(docSnap.id), ...(docSnap.data() || {}) }))
+    .filter((entry) => !!entry.uid);
+  const userRefs = members.map((entry) => db.collection("users").doc(entry.uid));
+  const userSnaps = userRefs.length ? await db.getAll(...userRefs) : [];
+  const items = members
+    .map((member, index) => {
+      const userData = userSnaps[index]?.exists ? (userSnaps[index].data() || {}) : {};
+      const name = normalizeOptionalName(
+        userData?.name
+        || userData?.displayName
+        || userData?.hostName
+        || member?.name
+        || "",
+        ""
+      );
+      const email = normalizeEmailToken(userData?.email || member?.email || "");
+      return {
+        uid: member.uid,
+        role: normalizeOrganizationMemberRole(member?.role || "member", "member"),
+        name: name || email || member.uid,
+        email,
+      };
+    })
+    .sort((a, b) => {
+      if (a.uid === uid && b.uid !== uid) return -1;
+      if (b.uid === uid && a.uid !== uid) return 1;
+      return String(a.name || a.uid).localeCompare(String(b.name || b.uid));
+    })
+    .slice(0, limit);
+  return { ok: true, orgId, items };
+});
+
 exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "get_my_usage_summary", { perMinute: 30, perHour: 300 });
   const uid = requireAuth(request);
@@ -12545,6 +13994,7 @@ exports.provisionHostRoom = onCall(
     const jobRef = jobDocId ? rootRef.collection("room_provisioning_jobs").doc(jobDocId) : null;
     const launchOrigin = resolveOrigin(request.rawRequest, payload.origin);
     const hostName = normalizeOptionalName(payload.hostName, "Host");
+    const roomName = String(payload.roomName || payload.roomLabel || "").trim().slice(0, 120);
     const orgNameInput = typeof payload.orgName === "string" ? payload.orgName : "";
     const orgName = normalizeOrgName(orgNameInput, callerUid);
     const logoUrl = typeof payload.logoUrl === "string"
@@ -12556,6 +14006,8 @@ exports.provisionHostRoom = onCall(
     const presetId = normalizeProvisionPresetId(
       payload.nightPresetId || payload.hostNightPreset || "custom"
     ) || "custom";
+    const coHostUids = normalizeProvisionCoHostUids(callerUid, payload.coHostUids || payload.coHosts || []);
+    const eventCreditsConfig = normalizeRoomEventCreditConfigRecord(payload.eventCredits || {});
     const listingInput = payload.discoveryListing && typeof payload.discoveryListing === "object"
       ? payload.discoveryListing
       : (payload.listing && typeof payload.listing === "object" ? payload.listing : {});
@@ -12595,7 +14047,10 @@ exports.provisionHostRoom = onCall(
       orgId: ensured.orgId,
       orgName,
       logoUrl,
+      roomName,
+      coHostUids,
       presetId,
+      eventCredits: eventCreditsConfig,
     });
     const provisioning = await db.runTransaction(async (tx) => {
       if (jobRef) {
@@ -12664,6 +14119,14 @@ exports.provisionHostRoom = onCall(
       roomCode,
     });
 
+    const secureEventCreditsConfig = normalizeRoomEventCreditConfigRecord(eventCreditsConfig);
+    await db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(roomCode).set({
+      roomCode,
+      ...secureEventCreditsConfig,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
     let discovery = null;
     const warnings = [];
     if (shouldSyncDiscovery) {
@@ -12676,7 +14139,7 @@ exports.provisionHostRoom = onCall(
             roomRef: rootRef.collection("rooms").doc(roomCode),
             roomData: {
               hostUid: callerUid,
-              hostUids: [callerUid],
+              hostUids: [callerUid, ...coHostUids],
               hostName,
             },
             roomCode,
@@ -12803,6 +14266,468 @@ exports.removeHostRoomDiscoveryListing = onCall({ cors: true }, async (request) 
   };
 });
 
+exports.submitRunOfShowSlotSong = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_run_of_show_slot_song", { perMinute: 20, perHour: 180 });
+  await checkDurableRateLimit(request.rawRequest, "submit_run_of_show_slot_song", { perMinute: 20, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "submit_run_of_show_slot_song");
+  const uid = requireAuth(request);
+  const rootRef = getRootRef();
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const itemId = normalizeRunOfShowText(request.data?.itemId || "", 160);
+  if (!roomCode || !itemId) {
+    throw new HttpsError("invalid-argument", "roomCode and itemId are required.");
+  }
+  const songTitle = normalizeRunOfShowText(request.data?.songTitle || "", 180);
+  const artistName = normalizeRunOfShowText(request.data?.artistName || "", 180);
+  const displayName = normalizeRunOfShowText(
+    request.data?.displayName || request.auth?.token?.name || request.auth?.token?.email || "Singer",
+    120
+  ) || "Singer";
+  if (!songTitle) {
+    throw new HttpsError("invalid-argument", "songTitle is required.");
+  }
+
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room not found.");
+  }
+  const roomData = roomSnap.data() || {};
+  if (normalizeRunOfShowProgramMode(roomData?.programMode || "") !== "run_of_show" || roomData?.runOfShowEnabled !== true) {
+    throw new HttpsError("failed-precondition", "This room is not accepting run-of-show submissions.");
+  }
+  const director = getNormalizedRoomRunOfShowDirector(roomData);
+  const targetItem = director.items.find((item) => item.id === itemId);
+  if (!targetItem) {
+    throw new HttpsError("not-found", "Run-of-show slot not found.");
+  }
+  if (targetItem.type !== "performance" || targetItem.performerMode !== "open_submission") {
+    throw new HttpsError("failed-precondition", "This slot is not open for submissions.");
+  }
+
+  const criteria = targetItem.slotCriteria && typeof targetItem.slotCriteria === "object"
+    ? targetItem.slotCriteria
+    : { requiresAccount: true, minTight15Count: 0, hostApprovalRequired: true };
+  if (Number(criteria.minTight15Count || 0) > 0) {
+    const roomUserSnap = await rootRef.collection("room_users").doc(`${roomCode}_${uid}`).get();
+    const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const tight15 = Array.isArray(roomUserData.tight15)
+      ? roomUserData.tight15
+      : (Array.isArray(roomUserData.tight15Temp) ? roomUserData.tight15Temp : []);
+    if (tight15.filter(Boolean).length < Number(criteria.minTight15Count || 0)) {
+      throw new HttpsError("failed-precondition", "You do not meet the slot criteria for this performance.");
+    }
+  }
+
+  const existingSnap = await rootRef.collection("run_of_show_slot_submissions")
+    .where("roomCode", "==", roomCode)
+    .where("itemId", "==", itemId)
+    .where("uid", "==", uid)
+    .where("submissionStatus", "==", "pending")
+    .limit(1)
+    .get();
+  if (!existingSnap.empty) {
+    const existingDoc = existingSnap.docs[0];
+    return {
+      ok: true,
+      duplicate: true,
+      submissionId: existingDoc.id,
+      submissionStatus: existingDoc.get("submissionStatus") || "pending",
+    };
+  }
+
+  const backingSuggestion = request.data?.backingSuggestion && typeof request.data.backingSuggestion === "object"
+    ? normalizeRunOfShowBackingSuggestion(request.data.backingSuggestion)
+    : null;
+  const docRef = await rootRef.collection("run_of_show_slot_submissions").add({
+    roomCode,
+    itemId,
+    linkedEventId: normalizeRunOfShowText(request.data?.linkedEventId || roomData?.discover?.linkedEventId || "", 180),
+    uid,
+    displayName,
+    songTitle,
+    artistName,
+    songId: normalizeRunOfShowText(request.data?.songId || "", 180),
+    backingSuggestion,
+    submissionStatus: "pending",
+    submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+    hostDecisionAt: null,
+    hostDecisionReason: "",
+  });
+
+  return {
+    ok: true,
+    submissionId: docRef.id,
+    submissionStatus: "pending",
+  };
+});
+
+exports.reviewRunOfShowSlotSubmission = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "review_run_of_show_slot_submission", { perMinute: 30, perHour: 240 });
+  await checkDurableRateLimit(request.rawRequest, "review_run_of_show_slot_submission", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "review_run_of_show_slot_submission");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const submissionId = normalizeRunOfShowText(request.data?.submissionId || "", 180);
+  const decision = normalizeRunOfShowSubmissionStatus(request.data?.decision || "");
+  if (!roomCode || !submissionId || decision === "pending" || decision === "withdrawn") {
+    throw new HttpsError("invalid-argument", "roomCode, submissionId, and an approval decision are required.");
+  }
+
+  const rootRef = getRootRef();
+  const superAdmin = await isSuperAdminUid(callerUid);
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room not found.");
+  }
+  const roomData = roomSnap.data() || {};
+  assertRunOfShowPermission({
+    roomData,
+    callerUid,
+    superAdmin,
+    action: "review_submission",
+    deniedMessage: "Only hosts or approved co-host operators can review run-of-show submissions.",
+  });
+  const submissionRef = rootRef.collection("run_of_show_slot_submissions").doc(submissionId);
+  const submissionSnap = await submissionRef.get();
+  if (!submissionSnap.exists) {
+    throw new HttpsError("not-found", "Submission not found.");
+  }
+  const submission = submissionSnap.data() || {};
+  if (normalizeRoomCode(submission.roomCode || "") !== roomCode) {
+    throw new HttpsError("failed-precondition", "Submission does not belong to this room.");
+  }
+  const itemId = normalizeRunOfShowText(submission.itemId || "", 160);
+  const director = getNormalizedRoomRunOfShowDirector(roomData);
+  const itemIndex = director.items.findIndex((item) => item.id === itemId);
+  if (itemIndex < 0) {
+    throw new HttpsError("not-found", "Target run-of-show item not found.");
+  }
+
+  let nextDirector = director;
+  if (decision === "approved") {
+    const item = director.items[itemIndex];
+    const backingReady = isApprovedRunOfShowBacking(item.backingPlan || {});
+    nextDirector = {
+      ...director,
+      items: director.items.map((entry, index) => {
+        if (index !== itemIndex) return entry;
+        return {
+          ...entry,
+          performerMode: "assigned",
+          assignedPerformerUid: normalizeRunOfShowText(submission.uid || "", 180),
+          assignedPerformerName: normalizeRunOfShowText(submission.displayName || "", 120) || "Singer",
+          approvedSubmissionId: submissionId,
+          songId: normalizeRunOfShowText(submission.songId || entry.songId || "", 180),
+          songTitle: normalizeRunOfShowText(submission.songTitle || entry.songTitle || "", 180),
+          artistName: normalizeRunOfShowText(submission.artistName || entry.artistName || "", 180),
+          status: backingReady ? "ready" : "blocked",
+          blockedReason: backingReady ? "" : "backing_required",
+        };
+      }),
+    };
+  }
+
+  await Promise.all([
+    submissionRef.set({
+      submissionStatus: decision,
+      hostDecisionAt: admin.firestore.FieldValue.serverTimestamp(),
+      hostDecisionReason: normalizeRunOfShowText(request.data?.reason || "", 240),
+      reviewedBy: callerUid,
+    }, { merge: true }),
+    decision === "approved"
+      ? roomRef.set({
+        runOfShowDirector: nextDirector,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true })
+      : Promise.resolve(),
+  ]);
+
+  return {
+    ok: true,
+    submissionId,
+    decision,
+    itemId,
+  };
+});
+
+exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "execute_run_of_show_action", { perMinute: 90, perHour: 900 });
+  enforceAppCheckIfEnabled(request, "execute_run_of_show_action");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const action = normalizeRunOfShowText(request.data?.action || "", 80).toLowerCase();
+  const itemId = normalizeRunOfShowText(request.data?.itemId || "", 180);
+  if (!roomCode || !action) {
+    throw new HttpsError("invalid-argument", "roomCode and action are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room not found.");
+  }
+  const roomData = roomSnap.data() || {};
+  const superAdmin = await isSuperAdminUid(callerUid);
+  if (normalizeRunOfShowProgramMode(roomData?.programMode || "") !== "run_of_show" || roomData?.runOfShowEnabled !== true) {
+    throw new HttpsError("failed-precondition", "This room is not in run-of-show mode.");
+  }
+  const policy = getNormalizedRoomRunOfShowPolicy(roomData);
+  const director = getNormalizedRoomRunOfShowDirector(roomData);
+  const targetIndex = itemId ? director.items.findIndex((entry) => entry.id === itemId) : -1;
+  const targetItem = targetIndex >= 0 ? director.items[targetIndex] : null;
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const nowMsValue = nowMs();
+
+  let permissionAction = "operate";
+  if (action === "pause_automation" || action === "resume_automation") permissionAction = action;
+  if (action === "assign_no_show" || action === "assign_late") permissionAction = "operate";
+  assertRunOfShowPermission({
+    roomData,
+    callerUid,
+    superAdmin,
+    action: permissionAction,
+    deniedMessage: "You do not have permission to control run-of-show execution for this room.",
+  });
+
+  if ((action === "prepare" || action === "start" || action === "complete" || action === "skip" || action === "assign_no_show" || action === "assign_late") && !targetItem) {
+    throw new HttpsError("not-found", "Run-of-show item not found.");
+  }
+
+  let nextDirector = director;
+  let roomPatch = { updatedAt: now };
+  if (action === "pause_automation" || action === "resume_automation") {
+    nextDirector = {
+      ...director,
+      automationPaused: action === "pause_automation",
+      automationStatus: action === "pause_automation" ? "paused" : "idle",
+      lastAutomationAtMs: nowMsValue,
+    };
+  } else if (action === "prepare") {
+    const targetType = String(targetItem?.type || "").trim().toLowerCase();
+    const performerAssigned = !!normalizeRunOfShowText(targetItem?.assignedPerformerName || targetItem?.assignedPerformerUid || "", 180);
+    const songAssigned = !!normalizeRunOfShowText(targetItem?.songTitle || targetItem?.songId || "", 180);
+    const ready = targetType === "performance"
+      ? performerAssigned && songAssigned && isApprovedRunOfShowBacking(targetItem?.backingPlan || {})
+      : (
+        targetType === "trivia_break" || targetType === "would_you_rather_break" || targetType === "game_break"
+          ? !!normalizeRunOfShowText(targetItem?.modeLaunchPlan?.modeKey || "", 120)
+          : true
+      );
+    nextDirector = {
+      ...director,
+      lastPreparedItemId: itemId,
+      lastAutomationAtMs: nowMsValue,
+      automationStatus: ready ? "staged" : "blocked",
+      items: director.items.map((entry) => entry.id === itemId
+        ? {
+          ...entry,
+          status: ready ? "staged" : "blocked",
+          blockedReason: ready ? "" : "item_not_ready",
+          stagedAtMs: ready ? nowMsValue : Number(entry.stagedAtMs || 0),
+        }
+        : entry.status === "staged"
+          ? { ...entry, status: "ready" }
+          : entry),
+    };
+  } else if (action === "start") {
+    if (String(targetItem?.status || "").trim().toLowerCase() !== "staged") {
+      throw new HttpsError("failed-precondition", "Only staged items can be started.");
+    }
+    nextDirector = {
+      ...director,
+      currentItemId: itemId,
+      automationStatus: "live",
+      lastAutomationAtMs: nowMsValue,
+      items: director.items.map((entry) => entry.id === itemId
+        ? { ...entry, status: "live", blockedReason: "", liveStartedAtMs: nowMsValue }
+        : entry.status === "live"
+          ? { ...entry, status: "complete", completedAtMs: nowMsValue }
+          : entry.status === "staged"
+            ? { ...entry, status: "ready" }
+            : entry),
+    };
+    if (targetItem?.presentationPlan?.publicTvTakeoverEnabled) {
+      roomPatch.announcement = {
+        active: true,
+        runOfShowItemId: itemId,
+        type: targetItem.type || "announcement",
+        headline: normalizeRunOfShowText(targetItem?.presentationPlan?.headline || targetItem?.title || "", 180),
+        subhead: normalizeRunOfShowText(targetItem?.presentationPlan?.subhead || targetItem?.notes || "", 280),
+        takeoverScene: normalizeRunOfShowText(targetItem?.presentationPlan?.takeoverScene || targetItem?.type || "announcement", 80),
+        accentTheme: normalizeRunOfShowText(targetItem?.presentationPlan?.accentTheme || "cyan", 40) || "cyan",
+        backgroundMedia: normalizeRunOfShowText(targetItem?.presentationPlan?.backgroundMedia || "", 2048),
+        startedAtMs: nowMsValue,
+      };
+    }
+    if (targetItem?.type === "trivia_break") {
+      roomPatch.activeMode = "trivia_pop";
+    } else if (targetItem?.type === "would_you_rather_break") {
+      roomPatch.activeMode = "wyr";
+    } else if (targetItem?.type === "game_break") {
+      roomPatch.activeMode = normalizeRunOfShowText(targetItem?.modeLaunchPlan?.modeKey || "karaoke", 80) || "karaoke";
+    } else {
+      roomPatch.activeMode = "karaoke";
+    }
+  } else if (action === "complete" || action === "skip") {
+    nextDirector = {
+      ...director,
+      currentItemId: director.currentItemId === itemId ? "" : director.currentItemId,
+      lastCompletedItemId: itemId,
+      automationStatus: "idle",
+      lastAutomationAtMs: nowMsValue,
+      items: director.items.map((entry) => entry.id === itemId
+        ? {
+          ...entry,
+          status: action === "skip" ? "skipped" : "complete",
+          blockedReason: "",
+          completedAtMs: nowMsValue,
+        }
+        : entry),
+    };
+    roomPatch.activeMode = "karaoke";
+    roomPatch.announcement = null;
+    roomPatch.triviaQuestion = null;
+    roomPatch.wyrData = null;
+    roomPatch.gameData = null;
+  } else if (action === "assign_no_show") {
+    const noShowPolicy = policy.noShowPolicy || "hold_for_host";
+    nextDirector = {
+      ...director,
+      lastAutomationAtMs: nowMsValue,
+      items: director.items.map((entry) => entry.id === itemId
+        ? {
+          ...entry,
+          status: noShowPolicy === "skip_to_next" ? "skipped" : "blocked",
+          blockedReason: noShowPolicy === "skip_to_next" ? "" : "performer_no_show",
+          notes: normalizeRunOfShowText([entry.notes, "Performer marked no-show."].filter(Boolean).join(" "), 2000),
+          completedAtMs: noShowPolicy === "skip_to_next" ? nowMsValue : Number(entry.completedAtMs || 0),
+        }
+        : entry),
+    };
+  } else if (action === "assign_late") {
+    const lateBlockPolicy = policy.lateBlockPolicy || "hold";
+    nextDirector = {
+      ...director,
+      lastAutomationAtMs: nowMsValue,
+      items: director.items.map((entry) => entry.id === itemId
+        ? {
+          ...entry,
+          status: lateBlockPolicy === "skip_optional" ? "skipped" : entry.status,
+          blockedReason: lateBlockPolicy === "hold" ? "running_late" : "",
+          plannedDurationSec: lateBlockPolicy === "compress"
+            ? Math.max(30, Math.round(Number(entry.plannedDurationSec || 0) * 0.7))
+            : Number(entry.plannedDurationSec || 0),
+          notes: normalizeRunOfShowText([entry.notes, "Block marked late by operator."].filter(Boolean).join(" "), 2000),
+          completedAtMs: lateBlockPolicy === "skip_optional" ? nowMsValue : Number(entry.completedAtMs || 0),
+        }
+        : entry),
+    };
+  } else {
+    throw new HttpsError("invalid-argument", `Unsupported run-of-show action: ${action}`);
+  }
+
+  await roomRef.set({
+    runOfShowDirector: nextDirector,
+    ...roomPatch,
+  }, { merge: true });
+
+  return {
+    ok: true,
+    action,
+    itemId,
+    runOfShowDirector: nextDirector,
+    runOfShowPolicy: policy,
+  };
+});
+
+exports.manageRunOfShowTemplate = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "manage_run_of_show_template", { perMinute: 40, perHour: 300 });
+  enforceAppCheckIfEnabled(request, "manage_run_of_show_template");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const action = normalizeRunOfShowText(request.data?.action || "", 80).toLowerCase();
+  const templateId = normalizeRunOfShowText(request.data?.templateId || "", 180) || `template_${nowMs().toString(36)}`;
+  const templateName = normalizeRunOfShowText(request.data?.templateName || "Run Of Show Template", 180) || "Run Of Show Template";
+  if (!roomCode || !action) {
+    throw new HttpsError("invalid-argument", "roomCode and action are required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room not found.");
+  }
+  const roomData = roomSnap.data() || {};
+  const superAdmin = await isSuperAdminUid(callerUid);
+  assertRunOfShowPermission({
+    roomData,
+    callerUid,
+    superAdmin,
+    action: "manage_templates",
+    deniedMessage: "Only hosts or approved co-host operators can manage run-of-show templates.",
+  });
+  const templateRef = rootRef.collection("run_of_show_templates").doc(`${roomCode}_${templateId}`);
+  const director = getNormalizedRoomRunOfShowDirector(roomData);
+  const policy = getNormalizedRoomRunOfShowPolicy(roomData);
+
+  if (action === "save" || action === "archive_current") {
+    const archiveId = action === "archive_current" ? `archive_${nowMs().toString(36)}` : "";
+    await Promise.all([
+      templateRef.set({
+        roomCode,
+        templateId,
+        templateName,
+        templateType: action === "archive_current" ? "archive" : "template",
+        runOfShowDirector: director,
+        runOfShowPolicy: policy,
+        archived: action === "archive_current",
+        updatedBy: callerUid,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }),
+      roomRef.set({
+        runOfShowTemplateMeta: normalizeRunOfShowTemplateMeta({
+          ...(roomData?.runOfShowTemplateMeta || {}),
+          currentTemplateId: action === "save" ? templateId : roomData?.runOfShowTemplateMeta?.currentTemplateId || "",
+          currentTemplateName: action === "save" ? templateName : roomData?.runOfShowTemplateMeta?.currentTemplateName || "",
+          lastArchiveId: archiveId || roomData?.runOfShowTemplateMeta?.lastArchiveId || "",
+          archivedAtMs: action === "archive_current" ? nowMsValue : Number(roomData?.runOfShowTemplateMeta?.archivedAtMs || 0),
+        }),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    ]);
+    return { ok: true, action, templateId, templateName };
+  }
+
+  if (action === "apply") {
+    const templateSnap = await templateRef.get();
+    if (!templateSnap.exists) {
+      throw new HttpsError("not-found", "Template not found.");
+    }
+    const templateData = templateSnap.data() || {};
+    await roomRef.set({
+      runOfShowDirector: getNormalizedRoomRunOfShowDirector({
+        runOfShowDirector: templateData?.runOfShowDirector || {},
+        runOfShowEnabled: true,
+      }),
+      runOfShowPolicy: normalizeRunOfShowPolicy(templateData?.runOfShowPolicy || {}),
+      runOfShowTemplateMeta: normalizeRunOfShowTemplateMeta({
+        ...(roomData?.runOfShowTemplateMeta || {}),
+        currentTemplateId: templateId,
+        currentTemplateName: normalizeRunOfShowText(templateData?.templateName || templateName, 180),
+      }),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, action, templateId, templateName: templateData?.templateName || templateName };
+  }
+
+  throw new HttpsError("invalid-argument", `Unsupported run-of-show template action: ${action}`);
+});
+
 exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "update_room_as_host", { perMinute: 90, perHour: 900 });
   enforceAppCheckIfEnabled(request, "update_room_as_host");
@@ -12824,6 +14749,24 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
     tx.update(roomRef, updates);
     return { roomCode: safeRoomCode };
   });
+
+  if (Object.prototype.hasOwnProperty.call(updates, "eventCredits")) {
+    const secureConfigRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(result.roomCode);
+    const secureConfigSnap = await secureConfigRef.get();
+    const existingConfig = secureConfigSnap.exists
+      ? normalizeRoomEventCreditConfigRecord(secureConfigSnap.data() || {})
+      : normalizeRoomEventCreditConfigRecord({});
+    const nextPublicConfig = normalizeRoomEventCreditConfigRecord(updates.eventCredits || {});
+    await secureConfigRef.set({
+      ...existingConfig,
+      ...nextPublicConfig,
+      roomCode: result.roomCode,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: secureConfigSnap.exists
+        ? (secureConfigSnap.get("createdAt") || admin.firestore.FieldValue.serverTimestamp())
+        : admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
 
   return {
     ok: true,
@@ -13735,6 +15678,14 @@ exports.stripeWebhook = onRequest(
           },
           { merge: true }
         );
+        await admin.firestore().collection("users").doc(buyerUid).set(
+          {
+            uid: buyerUid,
+            pointsBalance: admin.firestore.FieldValue.increment(points),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
       } else {
         const usersSnap = await rootRef
           .collection("room_users")
@@ -13816,6 +15767,188 @@ exports.stripeWebhook = onRequest(
     }
 
     res.json({ received: true });
+  }
+);
+
+const readGivebutterSignature = (req) =>
+  String(
+    req.get("x-givebutter-signature")
+    || req.get("givebutter-signature")
+    || req.get("x-webhook-signature")
+    || ""
+  ).trim();
+
+const verifyGivebutterWebhookSignature = ({
+  rawBody,
+  signature = "",
+  secret = "",
+} = {}) => {
+  const safeSecret = String(secret || "").trim();
+  const safeSignature = String(signature || "").trim();
+  if (!safeSecret || !safeSignature || !rawBody) return false;
+  const expected = crypto
+    .createHmac("sha256", safeSecret)
+    .update(Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || "")))
+    .digest("hex");
+  const normalizedSignature = safeSignature.includes("=")
+    ? safeSignature.split("=").pop().trim()
+    : safeSignature;
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expected, "utf8"),
+      Buffer.from(normalizedSignature, "utf8"),
+    );
+  } catch {
+    return false;
+  }
+};
+
+const normalizeGivebutterWebhookPayload = (payload = {}) => {
+  const source = extractGivebutterPayloadSubject(payload);
+  const purchaserEmail = normalizeEmailToken(
+    source.email
+    || source.purchaser_email
+    || source.supporter_email
+    || source.customer_email
+    || source.contact?.email
+    || source.supporter?.email
+    || source.purchaser?.email
+    || payload?.email
+    || ""
+  );
+  const attendeeName = safeDirectoryString(
+    source.name
+    || source.attendee_name
+    || source.supporter_name
+    || source.customer_name
+    || source.full_name
+    || `${source.first_name || ""} ${source.last_name || ""}`.trim()
+    || "",
+    180
+  );
+  const eventId = normalizeDirectoryToken(
+    source.event_id
+    || source.eventId
+    || source.campaign_code
+    || source.campaign?.slug
+    || source.campaign?.code
+    || payload?.event_id
+    || "",
+    80
+  );
+  const sourceCampaignCode = normalizeRoomEventCreditCode(
+    source.campaign_code
+    || source.campaign?.code
+    || source.campaign?.slug
+    || ""
+  );
+  const externalId = normalizeDirectoryToken(
+    source.ticket_id
+    || source.line_item_id
+    || source.order_id
+    || source.transaction_id
+    || payload?.id
+    || `${purchaserEmail}_${eventId}_${Date.now()}`
+    || "",
+    180
+  );
+  return {
+    purchaserEmail,
+    attendeeName,
+    eventId,
+    sourceCampaignCode,
+    externalId,
+    rawSubject: source,
+  };
+};
+
+exports.givebutterWebhook = onRequest(
+  { secrets: [GIVEBUTTER_WEBHOOK_SECRET] },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method not allowed");
+      return;
+    }
+
+    const signature = readGivebutterSignature(req);
+    const webhookSecret = GIVEBUTTER_WEBHOOK_SECRET.value();
+    if (!verifyGivebutterWebhookSignature({
+      rawBody: req.rawBody,
+      signature,
+      secret: webhookSecret,
+    })) {
+      console.error("Givebutter webhook signature failed.");
+      res.status(400).send("Webhook Error");
+      return;
+    }
+
+    const payload = isPlainObject(req.body) ? req.body : {};
+    const eventType = normalizeDirectoryToken(payload.type || payload.event || "", 80) || "unknown";
+    const normalized = normalizeGivebutterWebhookPayload(payload);
+    if (!normalized.purchaserEmail || !normalized.externalId) {
+      res.json({ received: true, ignored: true, reason: "missing_subject" });
+      return;
+    }
+
+    const db = admin.firestore();
+    const entitlementRef = db.collection(EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION).doc(
+      buildEventAttendeeEntitlementDocId({
+        sourceProvider: "givebutter",
+        externalId: normalized.externalId,
+      })
+    );
+    const eventConfigQuery = await db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION)
+      .where("sourceProvider", "==", "givebutter")
+      .limit(50)
+      .get();
+    const matchingConfig = eventConfigQuery.docs
+      .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+      .find((entry) => {
+        const config = normalizeRoomEventCreditConfigRecord(entry);
+        if (normalized.eventId && config.eventId === normalized.eventId) return true;
+        if (normalized.sourceCampaignCode && config.sourceCampaignCode && config.sourceCampaignCode === normalized.sourceCampaignCode) return true;
+        return false;
+      });
+    const resolvedConfig = matchingConfig
+      ? normalizeRoomEventCreditConfigRecord(matchingConfig)
+      : normalizeRoomEventCreditConfigRecord({
+        enabled: true,
+        eventId: normalized.eventId || "custom_event",
+        eventLabel: normalized.eventId || "Custom Event Credits",
+        sourceProvider: "givebutter",
+        sourceCampaignCode: normalized.sourceCampaignCode,
+      });
+    const reward = inferGivebutterEntitlementRewards({
+      payload,
+      eventId: normalized.eventId || resolvedConfig.eventId,
+      config: resolvedConfig,
+    });
+
+    await entitlementRef.set({
+      sourceProvider: "givebutter",
+      webhookEventType: eventType,
+      normalizedEmail: normalized.purchaserEmail,
+      attendeeName: normalized.attendeeName,
+      eventId: reward.eventId || resolvedConfig.eventId,
+      sourceCampaignCode: normalized.sourceCampaignCode || resolvedConfig.sourceCampaignCode,
+      ticketTier: reward.ticketTier,
+      pointsGranted: reward.pointsGranted,
+      vipEntitled: reward.vipEntitled,
+      skipLineEntitled: reward.skipLineEntitled,
+      matchedUid: null,
+      matchedRoomCode: null,
+      claimed: false,
+      externalId: normalized.externalId,
+      rawPayload: payload,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    res.json({
+      received: true,
+      entitlementId: entitlementRef.id,
+      eventId: reward.eventId || resolvedConfig.eventId,
+    });
   }
 );
 

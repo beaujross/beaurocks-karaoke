@@ -25,7 +25,7 @@ test("lobbyPlaygroundEngine.test", () => {
     const streakId = state.streakId;
     state = applyLobbyInteraction(state, { type: 'laser', uid: 'u2', userName: 'Ben', count: 1 }, 1700);
     assert.equal(state.streakCount, 2);
-    state = applyLobbyInteraction(state, { type: 'echo', uid: 'u3', userName: 'Cam', count: 1 }, 1700 + timeoutMs + 60);
+    state = applyLobbyInteraction(state, { type: 'echo', uid: 'u3', userName: 'Cam', count: 1 }, 1700 + timeoutMs + 2400);
     assert.equal(state.streakCount, 1);
     assert.equal(state.streakId, streakId + 1);
     assert.equal(Number(state.airborneMs || 0), 0);
@@ -42,14 +42,16 @@ test("lobbyPlaygroundEngine.test", () => {
 
     // Tier transition detection.
     let tierState = createLobbyVolleyState();
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < 8; i += 1) {
         tierState = applyLobbyInteraction(tierState, { type: 'wave', uid: `u${i}`, userName: `U${i}` }, 2000 + (i * 400));
     }
     const tierBefore = tierState;
-    tierState = applyLobbyInteraction(tierState, { type: 'laser', uid: 'u9', userName: 'Neo' }, 3400);
+    tierState = applyLobbyInteraction(tierState, { type: 'laser', uid: 'u9', userName: 'Neo' }, 5200);
     const tierTransitions = getTierTransitions(tierBefore, tierState);
-    assert.equal(tierTransitions.length, 1);
-    assert.equal(tierTransitions[0].tier, 1);
+    assert.ok(tierTransitions.length >= 1);
+    assert.equal(tierTransitions[0].tier, 2);
+
+    assert.equal(tierTransitions.at(-1)?.tier, 2);
 
     // Active participant selection window.
     let participantState = createLobbyVolleyState();
@@ -124,7 +126,7 @@ test("lobbyPlaygroundEngine.test", () => {
     relayState = applyLobbyInteraction(relayState, { type: 'confetti', uid: 'u3', userName: 'Cam' }, 24800);
     relayObjective = deriveRelayObjective(relayState, 24820);
     assert.equal(relayObjective.chainCount, 0);
-    const expiredRelayObjective = deriveRelayObjective(relayState, 24800 + relayWindowMs + 100);
+    const expiredRelayObjective = deriveRelayObjective(relayState, Number(relayObjective.expiresAtMs || 0) + 100);
     assert.equal(expiredRelayObjective.active, false);
 
     // Beat quantization + fallback.

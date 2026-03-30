@@ -85,6 +85,22 @@ These are useful, but they do not outrank the core-night gate:
   - unauthenticated `https://host.beaurocks.app/?mode=host...` redirects to `/host-access`
   - authenticated user can enter host control surface and see create-room UI
 
+## Surface-Specific Release Gate
+
+If a release touches Host, Audience, Show, Credits & Funds, or media/backing resolution paths, also smoke these flows:
+
+1. Audience join as guest with no account requirement.
+2. Existing BeauRocks user can find the explicit sign-in path from room join.
+3. Audience song request resolves cleanly:
+   - known backing auto-resolves
+   - unknown backing lands in host review
+4. Host can resolve an unresolved request with `Host Search` or `Edit Request`.
+5. Lyrics open during live performance without crashing the audience shell.
+6. Voting and ready-check flows work during live room activity without React crashes.
+7. Auto end on finish does not cut a performance early when the backing duration is longer than the original request metadata.
+8. `Show` tab opens and the host can see `Build / Run / Review` without falling back to buried settings.
+9. Co-host/operator access is still accurate for the intended room role model.
+
 ## Optional QA
 
 - `npm run qa:marketing:golden`
@@ -116,3 +132,19 @@ This script requires Firebase admin credentials and is also wired into the overn
 - Commit with release summary.
 - Push `main` after deploy verification.
 - Capture commit SHA + Hosting URL in release note.
+
+## Dirty Worktree Exception
+
+Avoid production deploys from a dirty worktree.
+
+If an urgent deploy must happen before changes are committed:
+
+- record the deploy date in a release note
+- record exactly which targets were deployed
+- record the Firebase project and live URL
+- record the verification commands that passed
+- record known follow-up debt or warnings
+
+Reason:
+
+- rollback is much harder when production state does not map cleanly to a committed SHA

@@ -34,15 +34,40 @@ As of 2026-02-08, this is a focused engineering assessment of current technical 
 - Many async operations are handled inline in UI components.
 - Risk: inconsistent failure UX and difficult post-incident debugging.
 
+8. Firebase Auth email-link flows are vulnerable to client retry loops if URL state is not consumed.
+- Audience email-link verification depends on browser URL auth params plus locally stored email state.
+- Risk: repeated `auth/invalid-action-code` or `auth/expired-action-code` loops if spent links are retried on every render or effect pass instead of being treated as terminal failures and cleared from the URL.
+
+9. Audience shell render ordering remains a high-regression surface.
+- `src/apps/Mobile/SingerApp.jsx` has repeatedly regressed when hooks or derived values were declared after early-return render branches.
+- Risk: hard production-only React crashes during join, voting, lyrics, or ready-check flows.
+- Guardrail: `tests/unit/singerAppHooks.test.mjs` must be extended whenever major audience-shell render structure changes.
+
+10. Run-of-show operator access is split across workspace access and role capabilities.
+- Room-level host access (`hostUids`) and run-of-show co-host capability (`runOfShowRoles.coHosts`) are separate systems.
+- Risk: a user can be described as a co-host in product copy but still lack a practical operator entry point or room-scoped host access.
+
+11. Song resolution and backing automation depend heavily on room-curated YouTube quality.
+- Audience song intent now resolves against layered catalog sources, including room YouTube curation.
+- Risk: hosts can still get stuck if unresolved requests do not have an obvious backing-selection path, and poor curation quality weakens automation confidence.
+
+12. Event credits and paid perks still carry abuse risk if they rely on shared secrets.
+- Guest-first points are correct for live-event UX, but VIP / skip-line style rewards should not depend on reusable shared codes.
+- Risk: code leakage converts paid/limited rewards into low-trust redemptions unless attendee entitlements or one-time promo records are used.
+
 ## Severity 3 - Low
 
-8. Inconsistent documentation source-of-truth.
+13. Inconsistent documentation source-of-truth.
 - Many roadmap/spec docs exist, but not all appear synchronized with current implementation.
 - Risk: onboarding confusion and duplicate planning effort.
 
-9. Legacy/duplicate files increase ambiguity.
+14. Legacy/duplicate files increase ambiguity.
 - Keep legacy scaffolds out of active `src/` paths (archive only).
 - Risk: accidental edits to non-active paths.
+
+15. Functions dependency drift is visible in production deploys.
+- `functions/package.json` still warns on deploy for outdated `firebase-functions`.
+- Risk: unnecessary deployment noise, delayed compatibility problems, and harder incident triage when warnings are normalized.
 
 ## Priority Plan
 
@@ -77,13 +102,16 @@ As of 2026-02-08, this is a focused engineering assessment of current technical 
 - Add uniform `try/catch` wrappers for function calls and writes.
 - Track structured failure events with context (mode, roomCode, operation).
 
+7. Upgrade `functions` runtime dependencies before they become blocking.
+- Bring `firebase-functions` to a current supported version and verify callable/onCall behavior, scheduled jobs, and document triggers in emulator plus production.
+
 ### P2 (Next 1-2 months)
 
-7. Align billing by platform capability.
+8. Align billing by platform capability.
 - Explicitly gate unavailable purchase actions with clear messaging.
 - Complete iOS verification path before exposing IAP purchase UX.
 
-8. Consolidate docs into one implementation truth set.
+9. Consolidate docs into one implementation truth set.
 - Keep architecture + operational runbooks current.
 - Archive or mark superseded planning docs.
 

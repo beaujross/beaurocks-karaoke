@@ -48,7 +48,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: false,
       relayActive: false,
     }),
-    "Tap any button to start the orb",
+    "Tap to launch",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -56,7 +56,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: false,
       relayActive: true,
     }),
-    "Different player tap TARGET",
+    "Hit target",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -64,7 +64,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: true,
       relayActive: true,
     }),
-    "Orb dropping. Tap now",
+    "Save it",
   );
   assert.equal(
     getVolleyOrbMobileMainLine({
@@ -72,7 +72,7 @@ test("volleyOrbUiState.test", () => {
       timedOut: true,
       relayActive: true,
     }),
-    "Paused by host",
+    "Paused",
   );
 
   assert.deepEqual(
@@ -82,8 +82,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Scan to join",
-      secondary: "Any player taps any button to launch",
+      headline: "Join In",
+      secondary: "Any tap launches",
     },
   );
   assert.deepEqual(
@@ -93,8 +93,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Pass the orb",
-      secondary: "Different player taps the glowing target",
+      headline: "Pass It",
+      secondary: "New player hits target",
     },
   );
   assert.deepEqual(
@@ -104,8 +104,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: false,
     }),
     {
-      headline: "Orb dropping",
-      secondary: "Tap now to save it",
+      headline: "Save It",
+      secondary: "Any tap now",
     },
   );
   assert.deepEqual(
@@ -115,8 +115,8 @@ test("volleyOrbUiState.test", () => {
       volleyExpired: true,
     }),
     {
-      headline: "Chain reset",
-      secondary: "Any player taps to restart",
+      headline: "Restart",
+      secondary: "Any tap relaunches",
     },
   );
 
@@ -151,6 +151,8 @@ test("volleyOrbUiState.test", () => {
       sceneHeight: 720,
     }),
     {
+      sceneWidthPx: 1280,
+      sceneHeightPx: 720,
       orbSizePx: 331,
       orbScale: 0.9194,
       orbContentScale: 1,
@@ -164,6 +166,8 @@ test("volleyOrbUiState.test", () => {
       sceneHeight: 260,
     }),
     {
+      sceneWidthPx: 1280,
+      sceneHeightPx: 260,
       orbSizePx: 120,
       orbScale: 0.34,
       orbContentScale: 0.52,
