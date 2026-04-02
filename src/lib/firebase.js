@@ -205,7 +205,7 @@ const getAppCheckSiteKey = () => {
 };
 
 const getAppCheckProviderMode = () => {
-  if (typeof window === "undefined") return "v3";
+  if (typeof window === "undefined") return "enterprise";
   const runtimeProvider = typeof window.__app_check_provider === "string"
     ? window.__app_check_provider.trim()
     : "";
@@ -213,7 +213,7 @@ const getAppCheckProviderMode = () => {
   return resolveAppCheckProviderMode({
     runtimeProvider,
     envProvider,
-    fallback: "v3",
+    fallback: "enterprise",
   });
 };
 

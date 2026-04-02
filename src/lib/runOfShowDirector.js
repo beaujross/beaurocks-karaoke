@@ -76,6 +76,12 @@ const clampInt = (value, min, max, fallback) => {
 };
 
 const cleanText = (value = '') => String(value || '').trim();
+const hasOwnField = (source = {}, key = '') => Object.prototype.hasOwnProperty.call(source || {}, key);
+const readEditableTextField = (source = {}, key = '', fallback = '') => (
+    hasOwnField(source, key)
+        ? String(source?.[key] ?? '')
+        : fallback
+);
 const normalizeUidList = (value = []) => [...new Set((Array.isArray(value) ? value : [])
     .map((entry) => cleanText(entry))
     .filter(Boolean)
@@ -193,7 +199,8 @@ export const createDefaultBackingPlan = (overrides = {}) => ({
     sourceType: ALLOWED_BACKING_SOURCES.has(cleanText(overrides.sourceType).toLowerCase())
         ? cleanText(overrides.sourceType).toLowerCase()
         : 'canonical_default',
-    label: cleanText(overrides.label),
+    label: readEditableTextField(overrides, 'label'),
+    durationSec: clampInt(overrides.durationSec, 0, 7200, 0),
     songId: cleanText(overrides.songId),
     trackId: cleanText(overrides.trackId),
     mediaUrl: cleanText(overrides.mediaUrl),
@@ -209,8 +216,8 @@ export const createDefaultBackingPlan = (overrides = {}) => ({
 const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     publicTvTakeoverEnabled: overrides.publicTvTakeoverEnabled === true || type === 'announcement' || type === 'intro',
     takeoverScene: cleanText(overrides.takeoverScene) || (type === 'announcement' ? 'announcement' : type),
-    headline: cleanText(overrides.headline),
-    subhead: cleanText(overrides.subhead),
+    headline: readEditableTextField(overrides, 'headline'),
+    subhead: readEditableTextField(overrides, 'subhead'),
     backgroundMedia: cleanText(overrides.backgroundMedia),
     accentTheme: cleanText(overrides.accentTheme) || 'cyan'
 });
@@ -248,7 +255,7 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
     return {
         id: cleanText(overrides.id) || createId(safeType, now),
         type: safeType,
-        title: cleanText(overrides.title) || safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+        title: readEditableTextField(overrides, 'title', safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())),
         sequence: clampInt(overrides.sequence, 1, 999, 1),
         startsAtMs: asTimestampMs(overrides.startsAtMs, 0),
         plannedDurationSec: clampInt(overrides.plannedDurationSec, 0, 3600, safeType === 'performance' ? 180 : 45),
@@ -256,17 +263,17 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
             ? cleanText(overrides.status).toLowerCase()
             : 'draft',
         visibility: cleanText(overrides.visibility).toLowerCase() === 'private' ? 'private' : 'public',
-        notes: cleanText(overrides.notes),
+        notes: readEditableTextField(overrides, 'notes'),
         automationMode: ALLOWED_AUTOMATION_MODES.has(cleanText(overrides.automationMode).toLowerCase())
             ? cleanText(overrides.automationMode).toLowerCase()
             : RUN_OF_SHOW_AUTOMATION_MODES.auto,
         performerMode,
         assignedPerformerUid: cleanText(overrides.assignedPerformerUid),
-        assignedPerformerName: cleanText(overrides.assignedPerformerName),
+        assignedPerformerName: readEditableTextField(overrides, 'assignedPerformerName'),
         approvedSubmissionId: cleanText(overrides.approvedSubmissionId),
         songId: cleanText(overrides.songId),
-        songTitle: cleanText(overrides.songTitle),
-        artistName: cleanText(overrides.artistName),
+        songTitle: readEditableTextField(overrides, 'songTitle'),
+        artistName: readEditableTextField(overrides, 'artistName'),
         slotCriteria: overrides.slotCriteria && typeof overrides.slotCriteria === 'object'
             ? {
                 requiresAccount: overrides.slotCriteria.requiresAccount !== false,
@@ -390,11 +397,13 @@ export const isApprovedAutomationSource = (backingPlan = {}) => {
     const safeSource = cleanText(backingPlan?.sourceType).toLowerCase();
     if (!ALLOWED_BACKING_SOURCES.has(safeSource)) return false;
     if (safeSource === 'manual_external') return false;
-    if (safeSource === 'user_submitted' && cleanText(backingPlan?.approvalStatus).toLowerCase() !== 'approved') {
-        return false;
-    }
     if (!hasRunOfShowBackingIdentity(backingPlan)) return false;
-    return cleanText(backingPlan?.approvalStatus).toLowerCase() === 'approved' && backingPlan?.playbackReady === true;
+    const approvalStatus = cleanText(backingPlan?.approvalStatus).toLowerCase();
+    if (approvalStatus === 'rejected') return false;
+    if (safeSource === 'user_submitted') {
+        return approvalStatus === 'approved' && backingPlan?.playbackReady === true;
+    }
+    return backingPlan?.playbackReady === true;
 };
 
 export const isRunOfShowItemReady = (item = {}) => {
@@ -460,8 +469,10 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
                 else if (sourceType === 'user_submitted') pushBlocker('backing_reference_missing', 'Link the approved submitted backing before this performance can run.');
                 else pushBlocker('backing_reference_missing', 'Choose a real backing reference before this block can auto-run.');
             }
-            if (approvalStatus !== 'approved') {
-                pushBlocker('backing_not_approved', 'Backing still needs approval before automation can trust it.');
+            if (approvalStatus === 'rejected') {
+                pushBlocker('backing_rejected', 'This backing was marked as a bad fit. Pick a different result or clear the rejection.');
+            } else if (sourceType === 'user_submitted' && approvalStatus !== 'approved') {
+                pushBlocker('backing_not_approved', 'Approve the submitted backing before this performance can run.');
             }
             if (backingPlan?.playbackReady !== true) {
                 pushBlocker('backing_not_playback_ready', 'Mark the backing source as playback-ready before staging this performance.');

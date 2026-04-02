@@ -179,13 +179,13 @@ const MARKETING_PUBLIC_CHANGELOG = [
     ],
   },
   {
-    title: "Homepage + Auto Demo Cleanup",
+    title: "Homepage + Demo Cleanup",
     date: "March 25, 2026",
     tag: "Marketing",
     bullets: [
       "The fan homepage hero now falls back to a stable static layout on many mobile and touch devices.",
       "Competing call-to-action clusters were reduced so the homepage reads like a clearer single journey.",
-      "The auto demo now uses lighter controls, cleaner scene navigation, and smaller surface framing for easier scanning.",
+      "The demo walkthrough now uses lighter controls, cleaner scene navigation, and smaller surface framing for easier scanning.",
     ],
   },
   {
@@ -1322,7 +1322,13 @@ const MarketingSite = () => {
                   href={buildHref(MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
                   onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
                 >
-                  Auto Demo
+                  Demo
+                </a>
+                <a
+                  href={buildHref(MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "footer_how_it_works" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "footer_how_it_works" }))}
+                >
+                  How It Works
                 </a>
               </div>
               <div className="mk3-site-footer-actions">

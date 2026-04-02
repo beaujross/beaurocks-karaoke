@@ -44,6 +44,16 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
         [safeSongs]
     );
+    const assigned = useMemo(
+        () => safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
+                return status === 'assigned' && resolutionStatus !== 'review_required';
+            })
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        [safeSongs]
+    );
     const pending = useMemo(
         () => safeSongs.filter((song) => {
             const status = String(song?.status || '').trim().toLowerCase();
@@ -87,6 +97,7 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
         hasLyrics,
         reviewRequired,
         queue,
+        assigned,
         pending,
         lobbyCount,
         queueCount,

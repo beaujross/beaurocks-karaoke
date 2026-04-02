@@ -46,6 +46,13 @@ import {
     getCrowdObjectiveModeById,
     getCrowdObjectiveModeFromLightMode
 } from '../../lib/crowdObjectiveModes';
+import {
+    getNextRunOfShowItem,
+    getRunOfShowItemLabel,
+    getRunOfShowLiveItem,
+    getRunOfShowStagedItem,
+    normalizeRunOfShowDirector
+} from '../../lib/runOfShowDirector';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
     getVolleyOrbTvInstructionCopy,
@@ -767,6 +774,13 @@ const RunOfShowTakeoverOverlay = ({
         ? clampPct((remainingMs / (durationSec * 1000)) * 100)
         : 0;
     const roomLabel = String(roomCode || '').trim() ? `Room ${roomCode}` : 'Room Live';
+    const detailModeLabel = preview ? 'TV only preview' : 'Live room takeover';
+    const isAnnouncementScene = ['announcement', 'intro', 'closing', 'default'].includes(sceneKey);
+    const metaChips = [
+        preview ? 'Preview mode' : scene.eyebrow,
+        roomLabel,
+        modeKey ? toTitleCaseWords(modeKey) : detailModeLabel,
+    ].filter(Boolean);
 
     return (
         <div
@@ -785,82 +799,113 @@ const RunOfShowTakeoverOverlay = ({
                 backgroundSize: '36px 36px'
             }}></div>
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent"></div>
-            <div className="relative z-10 grid h-full gap-8 px-6 py-8 md:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.75fr)] md:px-10 md:py-10">
-                <div className="flex flex-col justify-between gap-8">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.28em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
-                            {preview ? 'Preview Mode' : scene.eyebrow}
-                        </div>
-                        <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/75">
-                            {toTitleCaseWords(sceneKey || overlay?.type || 'run_of_show')}
-                        </div>
-                        {remainingMs > 0 ? (
-                            <div className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-white/75">
-                                {preview ? 'Preview ' : 'Remaining '} {formatRunOfShowCountdown(remainingMs)}
-                            </div>
-                        ) : null}
+            <div className="relative z-10 flex h-full flex-col justify-between gap-8 px-8 py-8 md:px-12 md:py-10">
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className={`rounded-full border px-5 py-3 text-sm font-black uppercase tracking-[0.28em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
+                        {preview ? 'Preview Mode' : scene.eyebrow}
                     </div>
-                    <div className="max-w-[1120px]">
-                        <div className={`mb-4 h-1.5 w-24 rounded-full bg-gradient-to-r ${theme.lineClass}`}></div>
-                        <div className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(3.2rem,8vw,8rem)] font-bebas leading-[0.9] text-transparent`}>
-                            {headline}
+                    {remainingMs > 0 ? (
+                        <div className="rounded-full border border-white/10 bg-black/25 px-5 py-3 text-sm font-black uppercase tracking-[0.22em] text-white/80">
+                            {preview ? 'Preview ' : 'Remaining '} {formatRunOfShowCountdown(remainingMs)}
                         </div>
-                        {subhead ? (
-                            <div className="mt-5 max-w-[960px] text-xl leading-snug text-zinc-100 md:text-3xl">
-                                {subhead}
+                    ) : null}
+                </div>
+                <div className={`relative flex min-h-0 flex-1 flex-col justify-center ${isAnnouncementScene ? 'max-w-[1500px]' : 'max-w-[1600px]'}`}>
+                    <div className={`relative ${isAnnouncementScene ? 'mb-8' : 'mb-10'} overflow-hidden rounded-[2.9rem] border border-white/12 bg-black/18 px-8 py-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur md:px-10 md:py-10`}>
+                        <div className="tv-takeover-ray-field" style={{ '--ray-inner': '185px' }}></div>
+                        <div className="tv-takeover-ray-field tv-takeover-ray-field-alt" style={{ '--ray-inner': '138px' }}></div>
+                        <div className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-[#050814] via-[#050814]/82 to-transparent"></div>
+                        <div className={`relative z-10 ${isAnnouncementScene ? 'flex items-center gap-10' : 'flex items-center gap-8'}`}>
+                            <div className="tv-takeover-brand-shell relative flex h-[260px] w-[260px] shrink-0 items-center justify-center rounded-[2.8rem] border border-white/16 bg-black/26 shadow-[0_30px_90px_rgba(0,0,0,0.32)]">
+                                <img
+                                    src={ASSETS.logo}
+                                    alt="BeauRocks Karaoke"
+                                    className="tv-takeover-logo h-auto w-[clamp(250px,22vw,390px)] object-contain drop-shadow-[0_0_34px_rgba(255,255,255,0.42)]"
+                                />
                             </div>
-                        ) : null}
-                        {summary ? (
-                            <div className="mt-6 inline-flex max-w-[920px] rounded-[1.75rem] border border-white/10 bg-black/28 px-5 py-3 text-left text-sm text-white/88 shadow-[0_18px_60px_rgba(0,0,0,0.32)] md:text-lg">
-                                {summary}
+                            <div className="min-w-0">
+                                <div className={`mb-4 h-2.5 w-52 rounded-full bg-gradient-to-r ${theme.lineClass}`}></div>
+                                <div className="text-[clamp(1.7rem,2.4vw,2.7rem)] font-black uppercase tracking-[0.22em] text-white/90">
+                                    BeauRocks Karaoke
+                                </div>
+                                <div className="mt-4 max-w-[860px] text-[clamp(2rem,3.6vw,4rem)] font-semibold leading-[1.02] text-white">
+                                    {subhead || 'Big-screen host moments built for the whole room.'}
+                                </div>
                             </div>
-                        ) : null}
+                        </div>
                     </div>
+                    <div className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(5.6rem,13vw,13rem)] font-bebas leading-[0.86] text-transparent drop-shadow-[0_12px_48px_rgba(0,0,0,0.28)]`}>
+                        {headline}
+                    </div>
+                    {summary ? (
+                        <div className="mt-5 max-w-[1200px] text-[clamp(1.6rem,2.6vw,2.55rem)] font-semibold leading-[1.12] text-zinc-100">
+                            {summary}
+                        </div>
+                    ) : null}
                     {options.length ? (
-                        <div className="grid max-w-[980px] gap-3 md:grid-cols-2">
+                        <div className="mt-8 grid max-w-[1380px] gap-4 md:grid-cols-2">
                             {options.map((option, index) => (
-                                <div key={`${option}-${index}`} className={`rounded-[1.5rem] border px-5 py-4 shadow-[0_18px_40px_rgba(0,0,0,0.28)] ${theme.panelClass}`}>
-                                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Option {index + 1}</div>
-                                    <div className="mt-2 text-lg font-semibold text-zinc-50 md:text-2xl">{option}</div>
+                                <div key={`${option}-${index}`} className="rounded-[1.7rem] border border-white/10 bg-black/24 px-6 py-5 shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
+                                    <div className="text-sm uppercase tracking-[0.24em] text-white/52">Option {index + 1}</div>
+                                    <div className="mt-3 text-[clamp(1.8rem,2.8vw,3rem)] font-semibold leading-tight text-zinc-50">{option}</div>
                                 </div>
                             ))}
                         </div>
-                    ) : <div />}
+                    ) : null}
                 </div>
-                <div className="flex flex-col justify-between gap-4">
-                    <div className={`rounded-[2rem] border p-5 backdrop-blur ${theme.panelClass}`}>
-                        <div className="text-[10px] uppercase tracking-[0.28em] text-white/45">{scene.detailLabel}</div>
-                        <div className="mt-3 space-y-3">
-                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">{preview ? 'Preview Scope' : 'Broadcast'}</div>
-                                <div className="mt-2 text-lg font-semibold text-white">{preview ? 'TV only preview' : 'Live room takeover'}</div>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Room</div>
-                                <div className="mt-2 text-lg font-semibold text-white">{roomLabel}</div>
-                            </div>
-                            {modeKey ? (
-                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.24em] text-white/45">Mode</div>
-                                    <div className="mt-2 text-lg font-semibold text-white">{toTitleCaseWords(modeKey)}</div>
-                                </div>
-                            ) : null}
-                        </div>
+                <div className="flex flex-wrap items-end justify-between gap-4 rounded-[2rem] border border-white/10 bg-black/18 px-6 py-5 backdrop-blur">
+                    <div className="flex flex-wrap gap-3">
+                        {metaChips.map((chip) => (
+                            <span key={chip} className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[clamp(0.95rem,1.2vw,1.15rem)] font-black uppercase tracking-[0.2em] text-white/76">
+                                {chip}
+                            </span>
+                        ))}
                     </div>
-                    <div className="rounded-[2rem] border border-white/10 bg-black/20 px-5 py-4 backdrop-blur">
-                        <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-[0.24em] text-white/45">
-                            <span>{preview ? 'Preview Window' : 'Room Channel'}</span>
-                            <span>{remainingMs > 0 ? formatRunOfShowCountdown(remainingMs) : roomLabel}</span>
-                        </div>
+                    <div className="min-w-[320px]">
                         {remainingMs > 0 ? (
-                            <div className="mt-3 h-2 overflow-hidden rounded-full border border-white/10 bg-white/8">
-                                <div className={`h-full rounded-full bg-gradient-to-r ${theme.accentClass}`} style={{ width: `${progressPct}%` }}></div>
+                            <>
+                                <div className="flex items-center justify-between gap-4 text-sm font-black uppercase tracking-[0.24em] text-white/58">
+                                    <span>{preview ? 'Preview Window' : 'Public TV Live'}</span>
+                                    <span className="text-white/88">{formatRunOfShowCountdown(remainingMs)}</span>
+                                </div>
+                                <div className="mt-3 h-3 overflow-hidden rounded-full border border-white/10 bg-white/8">
+                                    <div className={`h-full rounded-full bg-gradient-to-r ${theme.accentClass}`} style={{ width: `${progressPct}%` }}></div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="text-right text-[clamp(1.05rem,1.35vw,1.3rem)] font-semibold uppercase tracking-[0.18em] text-white/68">
+                                {preview ? 'TV-only preview | audience unaffected' : 'Show graphics live on Public TV'}
                             </div>
-                        ) : null}
-                        <div className="mt-3 text-sm uppercase tracking-[0.18em] text-white/60 md:text-base">
-                            {preview ? 'TV-only preview | audience unaffected' : 'Show graphics live on Public TV'}
-                        </div>
+                        )}
                     </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const RunOfShowStatusHud = ({ hud = null, fixed = true }) => {
+    if (!hud) return null;
+    return (
+        <div className={`pointer-events-none ${fixed ? 'fixed left-3 top-3 z-[185]' : 'absolute left-3 top-3 z-[88]'} max-w-[min(34rem,calc(100vw-1.5rem))]`}>
+            <div className="rounded-[1.6rem] border border-cyan-300/26 bg-[linear-gradient(135deg,rgba(6,10,22,0.9),rgba(10,16,34,0.88))] px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                <div className="flex items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/85">{hud.eyebrow || 'Run Of Show'}</div>
+                        <div className="mt-1 text-[1.05rem] font-black leading-tight text-white md:text-[1.2rem]">{hud.title}</div>
+                        {hud.subtitle ? (
+                            <div className="mt-1 text-[0.8rem] font-medium leading-snug text-zinc-200/82 md:text-[0.92rem]">{hud.subtitle}</div>
+                        ) : null}
+                        {hud.nextLabel ? (
+                            <div className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300/78">{hud.nextLabel}</div>
+                        ) : null}
+                    </div>
+                    {hud.remainingMs > 0 ? (
+                        <div className="shrink-0 rounded-[1.2rem] border border-white/10 bg-black/24 px-3 py-2 text-right">
+                            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white/58">{hud.countdownLabel || 'Remaining'}</div>
+                            <div className="mt-1 text-[1.15rem] font-black leading-none text-white md:text-[1.35rem]">{formatRunOfShowCountdown(hud.remainingMs)}</div>
+                        </div>
+                    ) : null}
                 </div>
             </div>
         </div>
@@ -1292,7 +1337,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
     );
 };
 
-const MiniVideoPane = ({ room, current }) => {
+const MiniVideoPane = ({ room, current, muted = false }) => {
     const mediaUrl = resolveStageMediaUrl(current, room);
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const stageBacking = normalizeBackingChoice({ mediaUrl });
@@ -1337,14 +1382,14 @@ const MiniVideoPane = ({ room, current }) => {
 
     useEffect(() => {
         if (!isYoutube || !youtubeId || !room?.videoPlaying || !youtubeIframeReady || room?.videoVolume === undefined) return;
-        const nextVolume = Math.max(0, Math.min(100, Math.round(Number(room.videoVolume) || 0)));
+        const nextVolume = muted ? 0 : Math.max(0, Math.min(100, Math.round(Number(room.videoVolume) || 0)));
         if (nextVolume <= 0) {
             postYoutubeCommand('mute');
             return;
         }
         postYoutubeCommand('unMute');
         postYoutubeCommand('setVolume', [nextVolume]);
-    }, [isYoutube, youtubeId, room?.videoPlaying, room?.videoVolume, youtubeIframeReady, postYoutubeCommand]);
+    }, [isYoutube, youtubeId, room?.videoPlaying, room?.videoVolume, youtubeIframeReady, postYoutubeCommand, muted]);
 
     useEffect(() => {
         if (!isYoutube || !youtubeId || !youtubeIframeReady || !room?.videoStartTimestamp) return undefined;
@@ -1358,9 +1403,9 @@ const MiniVideoPane = ({ room, current }) => {
 
     useEffect(() => {
         if (nativeVideoRef.current && room?.videoVolume !== undefined) {
-            nativeVideoRef.current.volume = room.videoVolume / 100;
+            nativeVideoRef.current.volume = muted ? 0 : room.videoVolume / 100;
         }
-    }, [room?.videoVolume]);
+    }, [room?.videoVolume, muted]);
 
     if (!mediaUrl || isBackingAudioOnly) return null;
 
@@ -1373,6 +1418,7 @@ const MiniVideoPane = ({ room, current }) => {
                     className="absolute inset-0 w-full h-full object-cover"
                     playsInline
                     preload="auto"
+                    muted={muted}
                 />
             ) : (isYoutube && youtubeId ? (
                 room?.videoPlaying ? (
@@ -1403,6 +1449,12 @@ const PublicTV = ({ roomCode }) => {
     const isMarketingDemoEmbed = useMemo(() => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
+    }, []);
+    const isHostPreviewEmbed = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        const params = new URLSearchParams(window.location.search || '');
+        const flag = String(params.get('hostPreview') || '').trim().toLowerCase();
+        return flag === '1' || flag === 'true' || flag === 'yes' || flag === 'on';
     }, []);
     const qaTvFixtureId = useMemo(() => {
         if (typeof window === 'undefined') return '';
@@ -1467,6 +1519,7 @@ const PublicTV = ({ roomCode }) => {
     const [readyTimer, setReadyTimer] = useState(0);
     const [chatMessages, setChatMessages] = useState([]);
     const [showChatFeed, setShowChatFeed] = useState(false);
+    const [sidebarFeatureView, setSidebarFeatureView] = useState('queue');
     const [, setLobbyLiveEvents] = useState([]);
     const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
@@ -1487,6 +1540,10 @@ const PublicTV = ({ roomCode }) => {
         if (!isMarketingDemoEmbed) return;
         setStarted(true);
     }, [isMarketingDemoEmbed]);
+    useEffect(() => {
+        if (!isHostPreviewEmbed) return;
+        setStarted(true);
+    }, [isHostPreviewEmbed]);
     useEffect(() => {
         if (!isMarketingDemoEmbed || !qaTvFixtureId) return;
         const fixture = buildQaTvFixture(qaTvFixtureId, { roomCode, nowMs: nowMs() });
@@ -1575,6 +1632,7 @@ const PublicTV = ({ roomCode }) => {
     const lastStrobeSessionRef = useRef(null);
     const doodleWinnerAwardRef = useRef(null);
     const chatRotateRef = useRef(null);
+    const sidebarRotateRef = useRef(null);
     const messageTimeoutsRef = useRef([]);
     const bgVisualizerAudioRef = useRef(null);
     const multiplierRef = useRef(1);
@@ -3587,6 +3645,93 @@ const PublicTV = ({ roomCode }) => {
     }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
 
     const current = songs.find(s => s.status === 'performing');
+    const runOfShowDirector = useMemo(
+        () => normalizeRunOfShowDirector(room?.runOfShowDirector || {}),
+        [room?.runOfShowDirector]
+    );
+    const runOfShowLiveItem = useMemo(
+        () => getRunOfShowLiveItem(runOfShowDirector),
+        [runOfShowDirector]
+    );
+    const runOfShowStagedItem = useMemo(
+        () => getRunOfShowStagedItem(runOfShowDirector),
+        [runOfShowDirector]
+    );
+    const runOfShowNextItem = useMemo(
+        () => getNextRunOfShowItem(runOfShowDirector),
+        [runOfShowDirector]
+    );
+    const runOfShowHud = useMemo(() => {
+        if (room?.runOfShowEnabled !== true) return null;
+        const liveItem = runOfShowLiveItem;
+        const stagedOrNextItem = runOfShowStagedItem || (runOfShowNextItem?.id !== liveItem?.id ? runOfShowNextItem : null);
+        if (!liveItem && !stagedOrNextItem) return null;
+        if (liveItem) {
+            const isPerformance = liveItem.type === 'performance';
+            const liveTitle = isPerformance
+                ? (String(liveItem?.assignedPerformerName || current?.singerName || 'Performance Live').trim() || 'Performance Live')
+                : (String(liveItem?.presentationPlan?.headline || liveItem?.title || getRunOfShowItemLabel(liveItem?.type || '')).trim() || 'Run Of Show');
+            const liveSubtitle = isPerformance
+                ? [liveItem?.songTitle || current?.songTitle, liveItem?.artistName || current?.artist].filter(Boolean).join(' · ')
+                : (String(
+                    liveItem?.presentationPlan?.subhead
+                    || liveItem?.notes
+                    || formatExperienceLabel(liveItem?.roomMomentPlan?.activeScreen || liveItem?.roomMomentPlan?.activeMode || liveItem?.type || '')
+                ).trim());
+            const durationSec = Math.max(
+                0,
+                Number(
+                    isPerformance
+                        ? (room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec || current?.duration || liveItem?.plannedDurationSec || 0)
+                        : (liveItem?.plannedDurationSec || 0)
+                ) || 0
+            );
+            const startedAtMs = Math.max(
+                0,
+                Number(
+                    isPerformance
+                        ? (room?.currentPerformanceMeta?.startedAtMs || getTimestampMs(current?.performingStartedAt) || liveItem?.liveStartedAtMs || 0)
+                        : (liveItem?.liveStartedAtMs || 0)
+                ) || 0
+            );
+            const remainingMs = durationSec > 0 && startedAtMs
+                ? Math.max(0, (startedAtMs + (durationSec * 1000)) - takeoverNowMs)
+                : 0;
+            const nextLabel = stagedOrNextItem
+                ? `Up next: ${String(stagedOrNextItem?.title || stagedOrNextItem?.songTitle || getRunOfShowItemLabel(stagedOrNextItem?.type || '')).trim() || 'Next block'}`
+                : '';
+            return {
+                eyebrow: isPerformance ? 'Run Of Show Live Performance' : 'Run Of Show Live',
+                title: liveTitle,
+                subtitle: liveSubtitle,
+                nextLabel,
+                remainingMs,
+                countdownLabel: isPerformance ? 'Song Ends In' : 'Screen Ends In'
+            };
+        }
+        return {
+            eyebrow: 'Run Of Show Staged',
+            title: String(stagedOrNextItem?.title || stagedOrNextItem?.songTitle || getRunOfShowItemLabel(stagedOrNextItem?.type || '')).trim() || 'Next block',
+            subtitle: String(
+                stagedOrNextItem?.assignedPerformerName
+                || stagedOrNextItem?.presentationPlan?.subhead
+                || stagedOrNextItem?.notes
+                || formatExperienceLabel(stagedOrNextItem?.roomMomentPlan?.activeScreen || stagedOrNextItem?.roomMomentPlan?.activeMode || stagedOrNextItem?.type || '')
+            ).trim(),
+            nextLabel: '',
+            remainingMs: 0,
+            countdownLabel: ''
+        };
+    }, [
+        current,
+        room?.currentPerformanceMeta?.durationSec,
+        room?.currentPerformanceMeta?.startedAtMs,
+        room?.runOfShowEnabled,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem,
+        takeoverNowMs
+    ]);
     currentPerformanceIdRef.current = current?.id || '';
     const applauseSubject = current || room?.lastPerformance || null;
     const applausePerformerName = String(
@@ -3824,6 +3969,8 @@ const PublicTV = ({ roomCode }) => {
         const duration = Number(song?.duration);
         return sum + (Number.isFinite(duration) && duration > 0 ? duration : 300);
     }, 0);
+    const socialSidebarTitle = showChatFeed ? 'CHAT' : 'ACTIVITY';
+    const hasSocialSidebarPane = !!room?.chatShowOnTv || activities.length > 0;
     const currentMarqueeItem = marqueeItems.length ? marqueeItems[(marqueeIndex + marqueeItems.length) % marqueeItems.length] : null;
     const marqueeText = currentMarqueeItem
         ? (typeof currentMarqueeItem === 'string' ? currentMarqueeItem : currentMarqueeItem.text)
@@ -3886,6 +4033,26 @@ const PublicTV = ({ roomCode }) => {
         lightMode: room?.lightMode
     });
     const lobbyCompactHudMode = lobbyVolleySceneActive;
+    useEffect(() => {
+        if (sidebarRotateRef.current) {
+            clearInterval(sidebarRotateRef.current);
+            sidebarRotateRef.current = null;
+        }
+        if (lobbyVolleySceneActive || !hasSocialSidebarPane) {
+            setSidebarFeatureView('queue');
+            return undefined;
+        }
+        setSidebarFeatureView('queue');
+        sidebarRotateRef.current = setInterval(() => {
+            setSidebarFeatureView((prev) => (prev === 'queue' ? 'social' : 'queue'));
+        }, 12000);
+        return () => {
+            if (sidebarRotateRef.current) {
+                clearInterval(sidebarRotateRef.current);
+                sidebarRotateRef.current = null;
+            }
+        };
+    }, [hasSocialSidebarPane, lobbyVolleySceneActive]);
     const activeAutoCrowdMoment = room?.missionControl?.autoMoment;
     const autoCrowdMomentActive = activeAutoCrowdMoment?.status === 'live' && activeAutoCrowdMoment?.source === 'autopilot';
     const autoCrowdMomentType = String(activeAutoCrowdMoment?.type || '').trim().toLowerCase();
@@ -4576,6 +4743,9 @@ const PublicTV = ({ roomCode }) => {
     const hasMarqueeContent = (marqueeItems.length > 0) || messages.length > 0;
     const isShortViewport = viewportSize.height <= 820;
     const isVeryShortViewport = viewportSize.height <= 700;
+    const isNarrowViewport = viewportSize.width <= 1180;
+    const isVeryNarrowViewport = viewportSize.width <= 760;
+    const isTinyHostPreviewMode = isHostPreviewEmbed && (viewportSize.width <= 520 || viewportSize.height <= 430);
     const tvOverflowClass = isShortViewport
         ? 'overflow-x-hidden overflow-y-auto'
         : 'overflow-x-hidden overflow-y-auto lg:overflow-hidden';
@@ -4607,40 +4777,52 @@ const PublicTV = ({ roomCode }) => {
     const effectiveStageMinHeightClass = lobbyCompactHudMode
         ? (isVeryShortViewport ? 'min-h-[48vh] md:min-h-[56vh]' : isShortViewport ? 'min-h-[52vh] md:min-h-[60vh]' : 'min-h-[58vh] md:min-h-[66vh]')
         : stageMinHeightClass;
-    const sidebarGapClass = isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
+    const sidebarGapClass = isTinyHostPreviewMode ? 'gap-1 pb-0.5' : isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
     const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
-    const compactJoinCardMode = lobbyCompactHudMode || isDistanceConstrained;
-    const joinQrSize = compactJoinCardMode
-        ? (isVeryShortViewport ? 104 : isShortViewport ? 116 : 128)
-        : (isVeryShortViewport ? 132 : isShortViewport ? 152 : 176);
-    const joinQrClass = compactJoinCardMode
-        ? (isVeryShortViewport
-            ? 'w-[92px] h-[92px] md:w-[104px] md:h-[104px] 2xl:w-[132px] 2xl:h-[132px]'
-            : isShortViewport
-                ? 'w-[100px] h-[100px] md:w-[116px] md:h-[116px] 2xl:w-[148px] 2xl:h-[148px]'
-                : 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[160px] 2xl:h-[160px]')
-        : (isVeryShortViewport
-            ? 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[168px] 2xl:h-[168px]'
-            : isShortViewport
-                ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
-                : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]');
+    const compactJoinCardMode = isTinyHostPreviewMode || lobbyCompactHudMode || isDistanceConstrained;
+    const joinQrSize = isTinyHostPreviewMode
+        ? 64
+        : compactJoinCardMode
+            ? (isVeryShortViewport ? 104 : isShortViewport ? 116 : 128)
+            : (isVeryShortViewport ? 132 : isShortViewport ? 152 : 176);
+    const joinQrClass = isTinyHostPreviewMode
+        ? 'w-[64px] h-[64px]'
+        : compactJoinCardMode
+            ? (isVeryShortViewport
+                ? 'w-[92px] h-[92px] md:w-[104px] md:h-[104px] 2xl:w-[132px] 2xl:h-[132px]'
+                : isShortViewport
+                    ? 'w-[100px] h-[100px] md:w-[116px] md:h-[116px] 2xl:w-[148px] 2xl:h-[148px]'
+                    : 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[160px] 2xl:h-[160px]')
+            : (isVeryShortViewport
+                ? 'w-[108px] h-[108px] md:w-[124px] md:h-[124px] 2xl:w-[168px] 2xl:h-[168px]'
+                : isShortViewport
+                    ? 'w-[120px] h-[120px] md:w-[140px] md:h-[140px] 2xl:w-[196px] 2xl:h-[196px]'
+                    : 'w-[132px] h-[132px] md:w-[160px] md:h-[160px] 2xl:w-[220px] 2xl:h-[220px]');
     const lobbyObjectiveHudRight = viewportSize.width >= 1024
         ? (lobbyCompactHudMode ? '26.8%' : '34.6%')
         : '3%';
     const lobbyObjectiveHudWidth = viewportSize.width >= 1024
         ? (lobbyCompactHudMode ? 'min(20vw,360px)' : 'min(23vw,410px)')
         : 'min(90vw,560px)';
-    const marqueeHeightClass = isVeryShortViewport ? 'h-14 md:h-16' : isShortViewport ? 'h-16 md:h-20' : 'h-20 md:h-28 2xl:h-36';
-    const marqueeTextSize = isVeryShortViewport
-        ? 'clamp(1.5rem, 2.8vw, 2.4rem)'
-        : isShortViewport
-            ? 'clamp(1.8rem, 3.2vw, 3.2rem)'
-            : 'clamp(2.5rem, 4vw, 5rem)';
-    const marqueeUserSize = isVeryShortViewport
-        ? 'clamp(0.95rem, 1.8vw, 1.9rem)'
-        : isShortViewport
-            ? 'clamp(1.05rem, 2vw, 2.3rem)'
-            : 'clamp(1.2rem, 2.4vw, 3rem)';
+    const marqueeHeightClass = isTinyHostPreviewMode
+        ? 'h-8'
+        : isVeryShortViewport ? 'h-14 md:h-16' : isShortViewport ? 'h-16 md:h-20' : 'h-20 md:h-28 2xl:h-36';
+    const marqueeTextSize = isTinyHostPreviewMode
+        ? 'clamp(0.85rem, 2vw, 1.1rem)'
+        : isVeryShortViewport
+            ? 'clamp(1.5rem, 2.8vw, 2.4rem)'
+            : isShortViewport
+                ? 'clamp(1.8rem, 3.2vw, 3.2rem)'
+                : 'clamp(2.5rem, 4vw, 5rem)';
+    const marqueeUserSize = isTinyHostPreviewMode
+        ? 'clamp(0.7rem, 1.4vw, 0.85rem)'
+        : isVeryShortViewport
+            ? 'clamp(0.95rem, 1.8vw, 1.9rem)'
+            : isShortViewport
+                ? 'clamp(1.05rem, 2vw, 2.3rem)'
+                : 'clamp(1.2rem, 2.4vw, 3rem)';
+    const marqueeGapClass = isTinyHostPreviewMode ? 'gap-6 px-3' : isVeryNarrowViewport ? 'gap-10 px-4' : 'gap-16 px-6';
+    const showTinyJoinHint = isTinyHostPreviewMode || (isVeryNarrowViewport && compactJoinCardMode);
     const showVerboseJoinUrl = viewportSize.width >= 2100 && !isShortViewport && !lobbyCompactHudMode;
     const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
     const chatTvFullscreenActive = !!room?.chatShowOnTv && room?.chatTvMode === 'fullscreen';
@@ -4731,8 +4913,22 @@ const PublicTV = ({ roomCode }) => {
             </div>
         );
     }
-    if (room?.activeScreen === 'leaderboard') return <LeaderboardOverlay users={roomUsers} songs={songs} />;
-    if (room?.activeScreen === 'tipping') return <TipOverlay room={room} />;
+    if (room?.activeScreen === 'leaderboard') {
+        return (
+            <>
+                <RunOfShowStatusHud hud={runOfShowHud} />
+                <LeaderboardOverlay users={roomUsers} songs={songs} />
+            </>
+        );
+    }
+    if (room?.activeScreen === 'tipping') {
+        return (
+            <>
+                <RunOfShowStatusHud hud={runOfShowHud} />
+                <TipOverlay room={room} />
+            </>
+        );
+    }
             if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} />;
     if (room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
@@ -5005,18 +5201,21 @@ const PublicTV = ({ roomCode }) => {
         }
 
         return (
-            <GameContainer
-                activeMode={room.activeMode}
-                roomCode={roomCode}
-                gameState={gamePayload}
-                playerData={room.gameData}
-                isPlayer={tvIsPlayer}
-                users={roomUsers}
-                room={room}
-                inputSource={inputSource}
-                rulesToken={room?.gameRulesId}
-                view="tv"
-            />
+            <>
+                <RunOfShowStatusHud hud={runOfShowHud} />
+                <GameContainer
+                    activeMode={room.activeMode}
+                    roomCode={roomCode}
+                    gameState={gamePayload}
+                    playerData={room.gameData}
+                    isPlayer={tvIsPlayer}
+                    users={roomUsers}
+                    room={room}
+                    inputSource={inputSource}
+                    rulesToken={room?.gameRulesId}
+                    view="tv"
+                />
+            </>
         );
     }
 
@@ -6215,6 +6414,7 @@ const PublicTV = ({ roomCode }) => {
                                     minimalUI={isMinimal || lobbyVolleySceneActive || guitarTakeoverMode}
                                     fitToWindow
                                     showVideo
+                                    runOfShowHud={runOfShowHud}
                                 />
                             </>
                         )}
@@ -6224,41 +6424,38 @@ const PublicTV = ({ roomCode }) => {
                 {/* SIDEBAR: Hidden in Cinema Mode */}
                 {!isCinema && !guitarTakeoverMode && (
                     <div className={`${sidebarAreaSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
-                        <div className={`${lobbyCompactHudMode ? 'p-2 md:p-3' : 'p-3 md:p-4'} rounded-2xl md:rounded-3xl text-center shadow-lg bg-gradient-to-br from-indigo-900 to-purple-900 border border-white/20`}>
-                            <div className={`${lobbyCompactHudMode ? 'text-lg md:text-xl 2xl:text-2xl' : 'text-xl md:text-2xl 2xl:text-3xl'} font-black text-cyan-100 mb-1 uppercase tracking-[0.14em] md:tracking-[0.18em]`}>JOIN</div>
-                            <div className={`bg-white ${lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-3'} rounded-2xl md:rounded-3xl inline-block shadow-[0_0_45px_rgba(255,255,255,0.2)]`}>
-                                <LocalQrImage
-                                    value={joinUrl}
-                                    size={joinQrSize}
-                                    alt="QR"
-                                    className={joinQrClass}
-                                />
-                            </div>
-                            <div className={`${lobbyCompactHudMode ? 'text-xl md:text-2xl 2xl:text-3xl mt-1.5' : 'text-2xl md:text-3xl 2xl:text-4xl mt-2'} font-bebas text-white tracking-[0.1em] md:tracking-[0.14em]`}>{roomCode}</div>
-                            <div className={`${lobbyCompactHudMode ? 'mt-0.5' : 'mt-1'}`}>
-                                {lobbyCompactHudMode ? (
-                                    <>
-                                        <div className="text-xs md:text-sm text-zinc-100 font-semibold uppercase tracking-[0.08em] leading-tight">
-                                            Scan to join on your phone
+                        {!room?.hideJoinOverlay && (
+                            <>
+                                <div className={`${isTinyHostPreviewMode ? 'p-2 rounded-xl' : lobbyCompactHudMode ? 'p-2 md:p-3 lg:-mt-1' : 'p-3 md:p-3.5 lg:-mt-2'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl shadow-lg border-[3px] border-fuchsia-400/45 bg-black/35 backdrop-blur-xl`}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0 flex-1 text-left">
+                                            <div className={`${isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
+                                                Join
+                                            </div>
+                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
+                                                {roomCode}
+                                            </div>
+                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
+                                                {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
+                                            </div>
+                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
+                                                {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
+                                            </div>
                                         </div>
-                                        <div className="text-[10px] md:text-xs text-cyan-100 tracking-[0.04em] break-all leading-tight mt-0.5">
-                                            {joinUrlBaseDisplay}
+                                        <div className={`shrink-0 bg-white ${isTinyHostPreviewMode ? 'p-1 rounded-xl' : lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-2.5'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl border-[3px] border-white/80 shadow-[0_0_28px_rgba(255,255,255,0.16)]`}>
+                                            <LocalQrImage
+                                                value={joinUrl}
+                                                size={joinQrSize}
+                                                alt="QR"
+                                                className={joinQrClass}
+                                            />
                                         </div>
-                                    </>
-                                ) : showVerboseJoinUrl ? (
-                                    <>
-                                        <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] md:tracking-[0.1em] break-all leading-tight">Go to {joinUrlBaseDisplay}</div>
-                                        <div className="text-base md:text-xl font-black text-cyan-100 tracking-[0.02em] md:tracking-[0.04em] break-all leading-tight">{joinUrlQueryDisplay}</div>
-                                    </>
-                                ) : (
-                                    <div className="text-sm md:text-base text-zinc-100 font-semibold uppercase tracking-[0.08em] md:tracking-[0.1em] leading-tight">
-                                        Scan QR to join this room
                                     </div>
-                                )}
-                            </div>
-                            {isMinimal && <div className="mt-4"><MiniVideoPane room={room} current={current} /></div>}
-                         </div>
-                         <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div>
+                                    {isMinimal && !isTinyHostPreviewMode && <div className="mt-3"><MiniVideoPane room={room} current={current} muted={isHostPreviewEmbed} /></div>}
+                                </div>
+                                <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div>
+                            </>
+                        )}
                          {room?.bouncerMode && (
                             <div className="px-3 py-2 rounded-2xl bg-black/70 border border-red-400/45 text-red-200 text-sm md:text-base font-bold tracking-[0.14em] uppercase flex items-center justify-center gap-2">
                                 <i className="fa-solid fa-lock"></i>
@@ -6399,101 +6596,113 @@ const PublicTV = ({ roomCode }) => {
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="flex items-center justify-between mb-2 border-b border-white/10 pb-2">
-                                            <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-cyan-400">UP NEXT</h3>
-                                        </div>
-                                        {!isDistanceConstrained && (
-                                            <div className="flex flex-wrap gap-2 mb-2">
-                                                {queueRules.map(rule => (
-                                                    <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-zinc-100">
-                                                        <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
-                                                        <span>{rule.shortLabel || rule.label}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        <div className="mb-2 text-base md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-100 font-semibold">
-                                            Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
-                                            {' '}
-                                            | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
-                                        </div>
-                                        <div className="space-y-2 mb-3 max-h-[22vh] md:max-h-[18vh] overflow-y-auto custom-scrollbar pr-1">
-                                            {nextUp.length === 0 && (
-                                                <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-3 text-zinc-100 text-base md:text-xl font-bebas tracking-wide">
-                                                    No singers yet - scan to join
+                                        <div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+                                            <h3 className={`text-xl md:text-2xl 2xl:text-3xl font-bebas ${sidebarFeatureView === 'queue' ? 'text-cyan-400' : 'text-green-400'}`}>
+                                                {sidebarFeatureView === 'queue' ? 'UP NEXT' : socialSidebarTitle}
+                                            </h3>
+                                            {hasSocialSidebarPane && (
+                                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-zinc-300">
+                                                    <span className={`h-2.5 w-2.5 rounded-full ${sidebarFeatureView === 'queue' ? 'bg-cyan-300' : 'bg-white/20'}`}></span>
+                                                    <span className={`h-2.5 w-2.5 rounded-full ${sidebarFeatureView === 'social' ? 'bg-green-300' : 'bg-white/20'}`}></span>
                                                 </div>
                                             )}
-                                            {nextUp.map((s, i) => {
-                                                const vip = isVipSong(s);
-                                                return (
-                                                    <div key={s.id} className="bg-zinc-700/50 p-2 rounded-xl flex items-center gap-3 border-l-4 border-pink-500">
-                                                        <div className="font-bebas text-2xl md:text-3xl text-zinc-400">#{i+1}</div>
-                                                        <div className="min-w-0">
-                                                            <div className="font-bold truncate text-base md:text-xl leading-none">{s.songTitle}</div>
-                                                            <div className="text-base md:text-lg text-zinc-400 truncate flex items-center gap-2">
-                                                                <span>{s.singerName}</span>
-                                                                {vip && (
-                                                                    <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
-                                                                )}
+                                        </div>
+                                        {sidebarFeatureView === 'queue' ? (
+                                            <>
+                                                {!isDistanceConstrained && (
+                                                    <div className="flex flex-wrap gap-2 mb-3">
+                                                        {queueRules.map(rule => (
+                                                            <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-zinc-100">
+                                                                <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
+                                                                <span>{rule.shortLabel || rule.label}</span>
                                                             </div>
-                                                        </div>
+                                                        ))}
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <h3 className="text-xl md:text-2xl 2xl:text-3xl font-bebas text-green-400 mb-2 border-b border-white/10 pb-2">
-                                            {showChatFeed ? 'CHAT' : 'ACTIVITY'}
-                                        </h3>
-                                        <div ref={chatSidebarScrollRef} className="flex-1 min-h-[120px] overflow-y-auto space-y-2 custom-scrollbar">
-                                            {showChatFeed ? (
-                                                <>
-                                                    {chatMessages.length === 0 && (
-                                                        <div className="text-zinc-500 text-base md:text-lg">
-                                                            {room?.chatEnabled === false
-                                                                ? 'Chat is paused by the host.'
-                                                                : room?.chatAudienceMode === 'vip'
-                                                                    ? 'Chat is VIP-only right now.'
-                                                                    : 'No chat yet.'}
+                                                )}
+                                                <div className="mb-3 text-base md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-100 font-semibold">
+                                                    Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
+                                                    {' '}
+                                                    | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
+                                                </div>
+                                                <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-3">
+                                                    {nextUp.length === 0 && (
+                                                        <div className="bg-black/35 border border-white/10 rounded-2xl px-4 py-4 text-zinc-100 text-lg md:text-2xl font-bebas tracking-wide">
+                                                            No singers yet. Scan the join code to get the queue moving.
                                                         </div>
                                                     )}
-                                                    {groupedChatMessages.map((group) => (
-                                                        <div key={group.id} className="flex gap-2 items-start text-zinc-200 text-lg">
-                                                            <span>{group.avatar || EMOJI.sparkle}</span>
-                                                            <div className="min-w-0">
-                                                                <div className="truncate">
-                                                                    <span className="font-bold text-white">{group.user || 'Guest'}</span>
-                                                                    {group.isVip && (
-                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
-                                                                    )}
-                                                                    {group.isHost && (
-                                                                        <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
-                                                                    )}
-                                                                </div>
-                                                                <div className="space-y-0.5">
-                                                                    {group.messages.map((message, idx) => (
-                                                                        <div key={message.id || `${group.id}-${idx}`} className="break-words">{message.text}</div>
-                                                                    ))}
+                                                    {nextUp.map((s, i) => {
+                                                        const vip = isVipSong(s);
+                                                        return (
+                                                            <div key={s.id} className="bg-zinc-700/45 p-3 md:p-4 rounded-2xl flex items-center gap-3 md:gap-4 border-l-4 border-pink-500">
+                                                                <div className="font-bebas text-3xl md:text-4xl text-zinc-400 leading-none">#{i+1}</div>
+                                                                <div className="min-w-0">
+                                                                    <div className="font-bold truncate text-lg md:text-2xl leading-tight text-white">{s.songTitle}</div>
+                                                                    <div className="mt-1 text-base md:text-xl text-zinc-300 truncate flex items-center gap-2">
+                                                                        <span>{s.singerName}</span>
+                                                                        {vip && (
+                                                                            <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {activities.length === 0 && (
-                                                        <div className="text-zinc-200 text-lg md:text-2xl font-bebas tracking-wide">
-                                                            Activity starts when first singer joins.
-                                                        </div>
-                                                    )}
-                                                    {activities.map((a, i) => (
-                                                        <div key={i} className="flex gap-2 items-center text-zinc-200 text-base md:text-xl">
-                                                            <span>{a.icon}</span>
-                                                            <span className="truncate"><span className="font-bold text-white">{a.user}</span> {a.text}</span>
-                                                        </div>
-                                                    ))}
-                                                </>
-                                            )}
-                                        </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div ref={chatSidebarScrollRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-3">
+                                                {showChatFeed ? (
+                                                    <>
+                                                        {chatMessages.length === 0 && (
+                                                            <div className="rounded-2xl border border-white/10 bg-black/28 px-4 py-4 text-zinc-300 text-lg md:text-xl leading-snug">
+                                                                {room?.chatEnabled === false
+                                                                    ? 'Chat is paused by the host.'
+                                                                    : room?.chatAudienceMode === 'vip'
+                                                                        ? 'Chat is VIP-only right now.'
+                                                                        : 'No chat yet.'}
+                                                            </div>
+                                                        )}
+                                                        {groupedChatMessages.map((group) => (
+                                                            <div key={group.id} className="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 text-zinc-200">
+                                                                <div className="flex gap-3 items-start">
+                                                                    <span className="text-xl">{group.avatar || EMOJI.sparkle}</span>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="truncate text-lg md:text-xl">
+                                                                            <span className="font-bold text-white">{group.user || 'Guest'}</span>
+                                                                            {group.isVip && (
+                                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                                            )}
+                                                                            {group.isHost && (
+                                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="mt-1.5 space-y-1 text-base md:text-lg leading-snug">
+                                                                            {group.messages.map((message, idx) => (
+                                                                                <div key={message.id || `${group.id}-${idx}`} className="break-words">{message.text}</div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {activities.length === 0 && (
+                                                            <div className="rounded-2xl border border-white/10 bg-black/28 px-4 py-4 text-zinc-200 text-lg md:text-2xl font-bebas tracking-wide">
+                                                                Activity starts when the first singer joins.
+                                                            </div>
+                                                        )}
+                                                        {activities.map((a, i) => (
+                                                            <div key={i} className="rounded-2xl border border-white/10 bg-black/30 px-4 py-4 flex gap-3 items-start text-zinc-200 text-base md:text-xl leading-snug">
+                                                                <span className="text-xl md:text-2xl">{a.icon}</span>
+                                                                <span className="min-w-0 break-words"><span className="font-bold text-white">{a.user}</span> {a.text}</span>
+                                                            </div>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
                                     </>
                                 )}
                              </div>
@@ -6677,8 +6886,8 @@ const PublicTV = ({ roomCode }) => {
 
             {/* Marquee */}
             {hasMarqueeContent && (
-                <div className={`marquee-shell absolute bottom-0 left-0 w-full ${marqueeHeightClass} bg-pink-600 overflow-hidden flex items-center z-40 border-t-4 border-white shadow-[0_-10px_30px_rgba(219,39,119,0.5)] ${showMarquee ? 'marquee-on' : 'marquee-off'}`}>
-                    <div className="whitespace-nowrap animate-marquee flex gap-16 px-6">
+                <div className={`marquee-shell absolute bottom-0 left-0 w-full ${marqueeHeightClass} bg-pink-600 overflow-hidden flex items-center z-40 ${isTinyHostPreviewMode ? 'border-t-2' : 'border-t-4'} border-white shadow-[0_-10px_30px_rgba(219,39,119,0.5)] ${showMarquee ? 'marquee-on' : 'marquee-off'}`}>
+                    <div className={`whitespace-nowrap animate-marquee flex ${marqueeGapClass}`}>
                         {marqueeText ? (
                             <span className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: marqueeTextSize }}>
                                 {marqueeText}
@@ -6686,7 +6895,7 @@ const PublicTV = ({ roomCode }) => {
                         ) : (
                             messages.map((m, i) => (
                                 <span key={i} className="font-bebas text-white flex items-center gap-3 leading-none" style={{ fontSize: marqueeTextSize }}>
-                                    <span className="bg-black/20 px-3 rounded" style={{ fontSize: marqueeUserSize }}>{m.user}:</span> {m.text}
+                                    {!isTinyHostPreviewMode && <span className="bg-black/20 px-3 rounded" style={{ fontSize: marqueeUserSize }}>{m.user}:</span>} {m.text}
                                 </span>
                             ))
                         )}
@@ -7589,6 +7798,9 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             <style>{`
+              @keyframes tv-takeover-ray-spin { 0% { transform: translate(-50%, -50%) rotate(0deg) scale(1); } 100% { transform: translate(-50%, -50%) rotate(360deg) scale(1); } }
+              @keyframes tv-takeover-ray-pulse { 0%, 100% { opacity: 0.48; filter: blur(5px); } 50% { opacity: 0.82; filter: blur(7px); } }
+              @keyframes tv-takeover-logo-float { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-5px) scale(1.012); } }
               @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } } 
               @keyframes marqueeFade { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
               @keyframes float-up { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-120px); } }
@@ -7625,6 +7837,54 @@ const PublicTV = ({ roomCode }) => {
               @keyframes lobby-orb-custom-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
               @keyframes lobby-orb-custom-badge-drift { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
               @keyframes lobby-combo-chip-pop { 0% { transform: translateY(8px) scale(0.92); opacity: 0; } 20% { transform: translateY(0) scale(1.02); opacity: 1; } 100% { transform: translateY(0) scale(1); opacity: 1; } }
+              .tv-takeover-ray-field {
+                position: absolute;
+                left: 210px;
+                top: 50%;
+                width: 900px;
+                height: 900px;
+                border-radius: 9999px;
+                transform: translate(-50%, -50%);
+                background:
+                  repeating-conic-gradient(
+                    from 0deg,
+                    rgba(255, 103, 182, 0.84) 0deg 10deg,
+                    rgba(255, 103, 182, 0.1) 10deg 16deg,
+                    rgba(0, 196, 217, 0.82) 16deg 28deg,
+                    rgba(0, 196, 217, 0.08) 28deg 36deg
+                  );
+                -webkit-mask:
+                  radial-gradient(circle, transparent 0 var(--ray-inner, 180px), rgba(0,0,0,1) calc(var(--ray-inner, 180px) + 26px) 100%);
+                mask:
+                  radial-gradient(circle, transparent 0 var(--ray-inner, 180px), rgba(0,0,0,1) calc(var(--ray-inner, 180px) + 26px) 100%);
+                mix-blend-mode: screen;
+                opacity: 0.6;
+                pointer-events: none;
+                animation: tv-takeover-ray-spin 56s linear infinite, tv-takeover-ray-pulse 8.4s ease-in-out infinite;
+                will-change: transform, opacity;
+              }
+              .tv-takeover-ray-field-alt {
+                width: 700px;
+                height: 700px;
+                opacity: 0.38;
+                filter: blur(4px);
+                animation-duration: 72s, 10.5s;
+                animation-direction: reverse, normal;
+              }
+              .tv-takeover-brand-shell::after {
+                content: '';
+                position: absolute;
+                inset: 18px;
+                border-radius: inherit;
+                border: 1px solid rgba(255,255,255,0.12);
+                box-shadow: inset 0 0 36px rgba(255,255,255,0.08);
+                pointer-events: none;
+              }
+              .tv-takeover-logo {
+                animation: tv-takeover-logo-float 5.5s ease-in-out infinite;
+                transform-origin: center;
+                will-change: transform;
+              }
               .bonus-drop-burst { 
                 min-width: min(80vw, 980px);
                 background: radial-gradient(circle at top, rgba(34,211,238,0.35), rgba(236,72,153,0.35) 45%, rgba(0,0,0,0.9) 70%);

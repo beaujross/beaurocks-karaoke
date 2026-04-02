@@ -1956,7 +1956,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [chatMsg, setChatMsg] = useState('');
     const [chatMessages, setChatMessages] = useState([]);
     const [chatUnread, setChatUnread] = useState(false);
-    const [chatTab, setChatTab] = useState('lounge');
     const chatLastSeenRef = useRef(0);
     const chatLastSentRef = useRef(0);
     const videoRef = useRef(null);
@@ -1965,16 +1964,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [cameraActive, setCameraActive] = useState(false);
     const [cameraError, setCameraError] = useState('');
 
-    useEffect(() => {
-        if (socialTab === 'host') {
-            setChatTab('host');
-            return;
-        }
-        if (socialTab === 'lounge') {
-            setChatTab('lounge');
-        }
-    }, [socialTab]);
-    
     // Vibe State (Guitar)
     const [strings, setStrings] = useState([0,0,0,0,0]);
     const [guitarNow, setGuitarNow] = useState(Date.now());
@@ -4148,7 +4137,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             toast('Slow down a sec');
             return;
         }
-        const isLounge = chatTab === 'lounge';
+        const isLounge = socialTab !== 'host';
         if (isLounge && room?.chatAudienceMode === 'vip' && !isVipAccount) {
             toast('VIP-only chat is live. Create or verify your BeauRocks account to unlock access.');
             return;
@@ -5486,7 +5475,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const finishEmailLinkSignIn = async () => {
             setAccountAuthLoading(true);
             try {
-                const sourceUid = String(auth.currentUser?.uid || storedState?.sourceUid || activeUid || '').trim();
+                const storedSourceUid = String(storedState?.sourceUid || '').trim();
+                const currentAuthUid = String(auth.currentUser?.uid || '').trim();
+                const sourceUid = String(storedSourceUid || activeUid || currentAuthUid || '').trim();
                 let roomUserSeed = null;
                 if (sourceUid) {
                     const previousRoomUserRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${sourceUid}`);
@@ -5503,7 +5494,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const credential = EmailAuthProvider.credentialWithLink(email, emailLinkHref);
                 let verifiedUser = auth.currentUser;
                 try {
-                    if (auth.currentUser?.isAnonymous) {
+                    const canLinkCurrentAnonymousSession = !!auth.currentUser?.isAnonymous
+                        && !!currentAuthUid
+                        && currentAuthUid === sourceUid;
+                    if (canLinkCurrentAnonymousSession) {
                         const linked = await linkWithCredential(auth.currentUser, credential);
                         verifiedUser = linked?.user || auth.currentUser;
                     } else {
@@ -8398,7 +8392,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         socialPrimaryTabs.push({ key: 'history', label: 'History', fullWidth: true });
     }
     const showChatPanel = ['lounge', 'host'].includes(socialTab);
-    const activeMessages = chatTab === 'host' ? dmMessages : loungeMessages;
+    const activeChatTab = socialTab === 'host' ? 'host' : 'lounge';
+    const activeMessages = activeChatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
@@ -8559,7 +8554,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 : 'Public lounge';
     const chatInputDisabled = room?.chatEnabled === false
         || isAnon
-        || (chatTab === 'lounge' && chatLocked)
+        || (activeChatTab === 'lounge' && chatLocked)
         || (socialTab === 'lounge' && room?.chatAudienceMode === 'vip' && !isVipAccount);
     const quickActionMessages = socialTab === 'host'
         ? ['Mic check?', 'Can we bump the volume?', 'Any updates for the queue?']
@@ -9567,7 +9562,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="text-base text-zinc-100">Create or log in to your BeauRocks account to start chatting.</div>
                                             <button onClick={() => setShowPhoneModal(true)} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Sign In / Create Account</button>
                                         </div>
-                                    ) : chatTab === 'lounge' && chatLocked ? (
+                                    ) : activeChatTab === 'lounge' && chatLocked ? (
                                         <div className="mb-3 bg-pink-500/10 border border-pink-400/40 rounded-xl p-4 text-left">
                                             <div className="text-xs uppercase tracking-widest text-pink-200 mb-1">VIP Lounge</div>
                                             <div className="text-base text-zinc-100">VIP-only chat is live. Create or verify your BeauRocks account to unlock lounge access.</div>

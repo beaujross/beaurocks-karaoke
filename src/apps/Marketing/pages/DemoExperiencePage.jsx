@@ -2348,15 +2348,15 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
   return (
     <section className={`mk3-page mk3-demo-page mk3-demo-sales-page${isAutoPage ? " is-auto" : " is-abstract"}`}>
       <article className="mk3-demo-sales-hero">
-        <div className="mk3-demo-sales-hero-copy">
-          <div className="mk3-chip">{isAutoPage ? "auto demo" : "abstract demo"}</div>
-          <h1>{isAutoPage ? "Watch the room run." : "See the room logic in four moves."}</h1>
-          <p>
-            {isAutoPage
-              ? "Chapter-driven proof across the real host, TV, and audience surfaces."
-              : "A shorter conceptual pass that explains what each surface does and why the room feels coherent."}
-          </p>
-        </div>
+          <div className="mk3-demo-sales-hero-copy">
+            <div className="mk3-chip">{isAutoPage ? "demo" : "how it works"}</div>
+            <h1>{isAutoPage ? "See BeauRocks in action." : "Understand how the room stays in sync."}</h1>
+            <p>
+              {isAutoPage
+                ? "A product-faithful walkthrough across the real host, TV, and audience surfaces."
+                : "A conceptual system tour that explains the room model without pretending to be the literal product UI."}
+            </p>
+          </div>
         <div className="mk3-demo-sales-hero-status">
           {isAutoPage ? (
             <>
@@ -2386,12 +2386,12 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
             </>
           )}
           <div className="mk3-demo-sales-hero-pills">
-            <span>{isAutoPage ? "Real room surfaces" : "Concept-first story"}</span>
-            <span>{isAutoPage ? "Chapter proof" : "Four system moves"}</span>
+            <span>{isAutoPage ? "Real room surfaces" : "Conceptual system tour"}</span>
+            <span>{isAutoPage ? "Product-faithful walkthrough" : "Not the literal UI"}</span>
           </div>
           {typeof navigate === "function" && (
             <button type="button" onClick={() => navigate(isAutoPage ? "demo" : "auto-demo")}>
-              {isAutoPage ? "Compare Abstract View" : "Open Auto Demo"}
+              {isAutoPage ? "Open How It Works" : "Open Demo"}
             </button>
           )}
         </div>
@@ -2401,10 +2401,10 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
         <article className="mk3-demo-concept-rail">
           <div className="mk3-demo-concept-rail-head">
             <div>
-              <span>System chapters</span>
-              <strong>Shorter, clearer story beats</strong>
+              <span>How it works chapters</span>
+              <strong>Conceptual system tour</strong>
             </div>
-            <p>Each chapter isolates one room promise before the page drops into the animated system map.</p>
+            <p>Each chapter isolates one room promise before the page drops into the animated system map. This page explains the model; it is not the literal product interface.</p>
           </div>
           <div className="mk3-demo-concept-grid">
             {ABSTRACT_BEATS.map((beat) => (

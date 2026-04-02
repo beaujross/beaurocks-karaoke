@@ -48,7 +48,7 @@ const EVENT_TYPE_CARDS = [
 
 const FINAL_PATHS = [
   { title: "Open Discover", route: "discover" },
-  { title: "Watch Auto Demo", route: "demo_auto" },
+  { title: "Watch Demo", route: "demo_auto" },
 ];
 
 const FAN_SYSTEM_STEPS = [
@@ -399,7 +399,7 @@ const ForFansPage = ({ navigate, heroStats }) => {
                 navigate("demo_auto");
               }}
             >
-              Watch Auto Demo
+              Watch Demo
             </button>
           </div>
           <div className="mk3-fans-cinematic-pill-row" aria-label="Core features">

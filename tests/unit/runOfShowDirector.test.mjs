@@ -95,6 +95,42 @@ test("runOfShowDirector updates item state and blocks unapproved user-submitted 
   assert.equal(buildRunOfShowQueueDocId("br12", nextItem.id).startsWith("ros_BR12_"), true);
 });
 
+test("runOfShowDirector preserves in-progress spacing for editable text fields", () => {
+  const director = createDefaultRunOfShowDirector({
+    items: [
+      createRunOfShowItem("performance", {
+        title: "Performance Slot 1",
+        assignedPerformerName: "Jordan",
+        songTitle: "Dreams",
+        artistName: "Fleetwood Mac",
+        notes: "Warm up the room",
+      }),
+    ],
+  });
+
+  const item = normalizeRunOfShowDirector(director).items[0];
+  const updated = updateRunOfShowItem(director, item.id, () => ({
+    title: "Performance Slot 1 ",
+    assignedPerformerName: "Jordan ",
+    songTitle: "Dreams ",
+    artistName: "Fleetwood Mac ",
+    notes: "Warm up the room ",
+    presentationPlan: {
+      headline: "Sing along ",
+      subhead: "Big chorus ",
+    },
+  }));
+
+  const nextItem = normalizeRunOfShowDirector(updated).items[0];
+  assert.equal(nextItem.title, "Performance Slot 1 ");
+  assert.equal(nextItem.assignedPerformerName, "Jordan ");
+  assert.equal(nextItem.songTitle, "Dreams ");
+  assert.equal(nextItem.artistName, "Fleetwood Mac ");
+  assert.equal(nextItem.notes, "Warm up the room ");
+  assert.equal(nextItem.presentationPlan.headline, "Sing along ");
+  assert.equal(nextItem.presentationPlan.subhead, "Big chorus ");
+});
+
 test("runOfShowDirector reports actionable readiness blockers for host UI", () => {
   const item = createRunOfShowItem("performance", {
     performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,

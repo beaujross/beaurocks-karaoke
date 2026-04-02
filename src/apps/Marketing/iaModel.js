@@ -49,13 +49,13 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
     zone: MARKETING_IA_ZONES.market,
     owner: "Marketing/Product",
     audience: "public",
-    intent: "Conceptual product proof",
+    intent: "Conceptual system tour",
   },
   [MARKETING_ROUTE_PAGES.demoAuto]: {
     zone: MARKETING_IA_ZONES.market,
     owner: "Marketing/Product",
     audience: "public",
-    intent: "Auto-play product walkthrough",
+    intent: "Primary product demo",
   },
   [MARKETING_ROUTE_PAGES.changelog]: {
     zone: MARKETING_IA_ZONES.market,
@@ -158,20 +158,22 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
 export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+    navItem(MARKETING_ROUTE_PAGES.demoAuto, "Demo"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   publicSecondary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.demo, "How It Works"),
     navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
     navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
     navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
   ]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.demo, "Demo"),
+    navItem(MARKETING_ROUTE_PAGES.demoAuto, "Demo"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
   homeSecondary: Object.freeze([
+    navItem(MARKETING_ROUTE_PAGES.demo, "How It Works"),
     navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
     navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
     navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),

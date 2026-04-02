@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { doc, deleteDoc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
@@ -19,8 +19,11 @@ const QueueSongCard = ({
     startEdit,
     statusPill,
     styles,
-    compactViewport = false
+    compactViewport = false,
+    runOfShowAssignableSlots = [],
+    onAssignQueueSongToRunOfShowItem
 }) => {
+    const [selectedRunOfShowSlotId, setSelectedRunOfShowSlotId] = useState('');
     const queueBacking = normalizeBackingChoice({
         mediaUrl: song.mediaUrl,
         appleMusicId: song.appleMusicId
@@ -29,10 +32,16 @@ const QueueSongCard = ({
     const queueUsesAppleBacking = queueBacking.usesAppleBacking;
     const queueIsYouTube = queueBacking.isYouTube;
     const queuePlaybackReady = isQueueEntryPlayable(song);
+    const songStatus = String(song?.status || '').trim().toLowerCase();
+    const isAssignedToRunOfShow = songStatus === 'assigned';
+    const assignedRunOfShowSlot = runOfShowAssignableSlots.find((slot) => slot.id === String(song?.runOfShowItemId || '').trim()) || null;
     const hasTimedLyrics = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
     const hasLyrics = !!String(song?.lyrics || '').trim();
     const lyricsStatus = String(song?.lyricsGenerationStatus || '').trim().toLowerCase();
     const lyricsResolution = String(song?.lyricsGenerationResolution || '').trim();
+    const nextRunOfShowSlotId = runOfShowAssignableSlots.some((slot) => slot.id === selectedRunOfShowSlotId)
+        ? selectedRunOfShowSlotId
+        : String(song?.runOfShowItemId || runOfShowAssignableSlots?.[0]?.id || '').trim();
     let lyricsChipLabel = 'No Lyrics';
     let lyricsChipTone = '';
     let lyricsSupportText = '';
@@ -131,10 +140,42 @@ const QueueSongCard = ({
                                 } mr-1`}></i>
                                 {lyricsChipLabel}
                             </span>
+                            {isAssignedToRunOfShow ? (
+                                <span className={`${statusPill} border-violet-300/40 text-violet-100 bg-violet-500/10`}>
+                                    <i className="fa-solid fa-link mr-1"></i>
+                                    Assigned
+                                </span>
+                            ) : null}
                         </div>
                         <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[11px]'}`}>
-                            {lyricsSupportText}
+                            {isAssignedToRunOfShow
+                                ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
+                                : lyricsSupportText}
                         </div>
+                        {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
+                            <div className={`mt-2 flex flex-wrap items-center gap-1.5 ${compactViewport ? 'text-[10px]' : 'text-[11px]'}`}>
+                                <span className="uppercase tracking-[0.16em] text-zinc-500">Run of show</span>
+                                <select
+                                    value={nextRunOfShowSlotId}
+                                    onChange={(event) => setSelectedRunOfShowSlotId(event.target.value)}
+                                    className={`min-w-[170px] rounded-lg border border-white/10 bg-black/35 text-white outline-none ${compactViewport ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-[11px]'}`}
+                                >
+                                    {runOfShowAssignableSlots.map((slot) => (
+                                        <option key={slot.id} value={slot.id}>
+                                            {slot.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    disabled={!nextRunOfShowSlotId}
+                                    onClick={() => onAssignQueueSongToRunOfShowItem(song.id, nextRunOfShowSlotId)}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'}`}
+                                >
+                                    <i className="fa-solid fa-link mr-1"></i>{isAssignedToRunOfShow ? 'Reassign Slot' : 'Assign Slot'}
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
                 </div>
                 <div className={`shrink-0 ${compactViewport ? 'flex items-center gap-1' : 'flex flex-col items-end gap-1'}`}>

@@ -4,7 +4,7 @@ import { EMOJI } from '../lib/emoji';
 
 const nowMs = () => Date.now();
 
-const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true }) => {
+const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
@@ -66,8 +66,8 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         ? (minimalUI ? 'text-[clamp(1rem,2.7vw,2.25rem)]' : 'text-[clamp(1.25rem,3.6vw,3.2rem)]')
         : (minimalUI ? 'text-[3vw]' : 'text-[5vw]');
     const cornerWrapClass = fitToWindow
-        ? 'absolute bottom-4 left-4 md:bottom-6 md:left-6 z-50 bg-black/65 p-4 md:p-5 rounded-2xl border border-white/20 flex gap-4 md:gap-5 items-center animate-slide-in-from-bottom max-w-[min(88vw,44rem)] pointer-events-none'
-        : 'absolute bottom-8 left-8 z-50 bg-black/65 p-6 rounded-2xl border border-white/20 flex gap-6 items-center animate-slide-in-from-bottom max-w-[86vw] pointer-events-none';
+        ? 'absolute bottom-4 left-4 md:bottom-6 md:left-6 z-50 bg-black/65 p-4 md:p-5 rounded-2xl border border-white/20 flex gap-4 md:gap-5 items-start animate-slide-in-from-bottom max-w-[min(92vw,46rem)] pointer-events-none'
+        : 'absolute bottom-8 left-8 z-50 bg-black/65 p-6 rounded-2xl border border-white/20 flex gap-6 items-start animate-slide-in-from-bottom max-w-[86vw] pointer-events-none';
     const cornerArtClass = fitToWindow
         ? 'w-20 h-20 md:w-24 md:h-24 rounded-xl shadow-lg object-cover'
         : 'w-24 h-24 sm:w-32 sm:h-32 rounded-xl shadow-lg';
@@ -295,7 +295,14 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                 <div className={cornerWrapClass}>
                     {current.albumArtUrl && <img src={current.albumArtUrl} className={cornerArtClass} alt="Corner Art"/>}
                     <div className="min-w-0">
-                        <div className="text-xl sm:text-2xl text-zinc-300 uppercase tracking-[0.14em] font-bold mb-1">On Stage</div>
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="text-xl sm:text-2xl text-zinc-300 uppercase tracking-[0.14em] font-bold mb-1">On Stage</div>
+                            {runOfShowHud && (
+                                <div className="shrink-0 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">
+                                    Run Of Show
+                                </div>
+                            )}
+                        </div>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                             {room?.showLyricsTv && (
                                 <div className="text-sm text-cyan-200 bg-black/60 border border-cyan-400/30 inline-flex px-2.5 py-1 rounded-full">
@@ -316,6 +323,32 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                         </div>
                         <div className={`${cornerSingerSizeClass} font-black text-white leading-none mb-1 truncate`}>{current.singerName}</div>
                         <div className={`${cornerSongSizeClass} text-fuchsia-400 leading-none truncate`}>{current.songTitle}</div>
+                        {runOfShowHud && (
+                            <div className="mt-3 border-t border-white/12 pt-3">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-200/85">
+                                            {runOfShowHud.eyebrow || 'Run Of Show'}
+                                        </div>
+                                        {runOfShowHud.nextLabel ? (
+                                            <div className="mt-1 text-[0.8rem] font-semibold leading-snug text-zinc-200/78">
+                                                {runOfShowHud.nextLabel}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    {runOfShowHud.remainingMs > 0 ? (
+                                        <div className="shrink-0 rounded-[1rem] border border-white/10 bg-black/35 px-3 py-2 text-right">
+                                            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-white/58">
+                                                {runOfShowHud.countdownLabel || 'Remaining'}
+                                            </div>
+                                            <div className="mt-1 text-[1.05rem] font-black leading-none text-white">
+                                                {Math.max(0, Math.floor(runOfShowHud.remainingMs / 1000 / 60))}:{String(Math.max(0, Math.floor(runOfShowHud.remainingMs / 1000) % 60)).padStart(2, '0')}
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

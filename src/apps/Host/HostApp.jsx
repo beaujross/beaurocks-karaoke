@@ -192,6 +192,8 @@ const YOUTUBE_PLAYLIST_MAX_TOTAL = 1000;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
 const hostLogger = createLogger('HostApp');
+const RUN_OF_SHOW_AUTOMATION_RETRY_MS = 4000;
+const RUN_OF_SHOW_AUTOMATION_RATE_LIMIT_RETRY_MS = 15000;
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
@@ -223,6 +225,20 @@ const decodeUriComponentSafe = (value = '') => {
         return String(value || '');
     }
 };
+const isRateLimitedHostError = (error) => {
+    const message = String(error?.message || '').toLowerCase();
+    const code = String(error?.code || '').toLowerCase();
+    return message.includes('rate limit')
+        || message.includes('resource-exhausted')
+        || message.includes('too many requests')
+        || message.includes('429')
+        || code.includes('resource-exhausted');
+};
+const getRunOfShowAutomationRetryDelayMs = (error) => (
+    isRateLimitedHostError(error)
+        ? RUN_OF_SHOW_AUTOMATION_RATE_LIMIT_RETRY_MS
+        : RUN_OF_SHOW_AUTOMATION_RETRY_MS
+);
 
 const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
     let current = String(value || '');
@@ -434,6 +450,73 @@ const parseYouTubeVideoId = (input = '') => {
         // noop
     }
     return input.trim().length >= 6 ? input.trim() : '';
+};
+
+const buildQueueReviewSearchQuery = (song = {}) => (
+    [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' ')
+);
+
+const isStrongQueueReviewCandidate = (candidate = null) => {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const score = Number(candidate.score || 0);
+    const titleScore = Number(candidate.titleScore || 0);
+    const artistScore = Number(candidate.artistScore || 0);
+    const layer = String(candidate.layer || '').trim().toLowerCase();
+    const approvalState = String(candidate.approvalState || '').trim().toLowerCase();
+    if (score >= 300) return true;
+    if (score >= 240 && titleScore >= 80 && (artistScore >= 24 || approvalState === 'approved')) return true;
+    if ((layer === 'host_favorite' || layer === 'room_recent') && score >= 220 && titleScore >= 80) return true;
+    return false;
+};
+
+const normalizeHostWorkspaceTab = (value = '') => {
+    const safeValue = String(value || '').trim().toLowerCase();
+    if (safeValue === 'show') return 'run_of_show';
+    if (['stage', 'run_of_show', 'games', 'lobby', 'browse', 'admin'].includes(safeValue)) return safeValue;
+    return 'stage';
+};
+
+const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
+    const queuePlaybackReady = isQueueEntryPlayable(song);
+    const mediaUrl = String(song?.mediaUrl || '').trim();
+    const appleMusicId = String(song?.appleMusicId || '').trim();
+    const trackId = String(song?.trackId || '').trim();
+    const youtubeId = mediaUrl ? parseYouTubeVideoId(mediaUrl) : '';
+    const sourceType = appleMusicId
+        ? 'apple_music'
+        : youtubeId
+            ? 'youtube'
+            : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
+    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' · ') || 'Queued performance';
+    const durationSec = Math.max(0, Math.round(Number(song?.duration || 0)));
+    return {
+        performerMode: 'assigned',
+        assignedPerformerUid: String(song?.singerUid || '').trim(),
+        assignedPerformerName: String(song?.singerName || '').trim() || String(item?.assignedPerformerName || '').trim(),
+        approvedSubmissionId: '',
+        songId: String(song?.songId || '').trim(),
+        songTitle: String(song?.songTitle || '').trim(),
+        artistName: String(song?.artist || '').trim(),
+        plannedDurationSec: durationSec > 0 ? durationSec : Number(item?.plannedDurationSec || 0),
+        preparedQueueSongId: String(song?.id || '').trim(),
+        queueLinkState: 'linked',
+        backingPlan: {
+            ...(item?.backingPlan || {}),
+            sourceType,
+            label,
+            durationSec,
+            songId: String(song?.songId || '').trim(),
+            trackId: sourceType === 'youtube' ? '' : trackId,
+            mediaUrl,
+            youtubeId: sourceType === 'youtube' ? youtubeId : '',
+            appleMusicId: sourceType === 'apple_music' ? (appleMusicId || trackId) : '',
+            localAssetId: '',
+            submittedBackingId: '',
+            approvalStatus: 'approved',
+            playbackReady: queuePlaybackReady,
+            resolutionStatus: queuePlaybackReady ? 'ready' : 'needs_selection'
+        }
+    };
 };
 
 const SELFIE_PROMPTS = [
@@ -2916,6 +2999,11 @@ const AudienceMiniPreview = ({
     currentSong,
     queueCount,
     collapsed = false,
+    previewMode = 'thumbnail',
+    previewSize = 'md',
+    onSetPreviewMode,
+    onSetPreviewSize,
+    allowLiveViewport = false,
     onToggleCollapsed,
     onHide
 }) => {
@@ -2941,15 +3029,69 @@ const AudienceMiniPreview = ({
     const modeLabel = modeLabelMap[room?.activeMode] || (room?.activeMode || 'Karaoke');
     const layoutLabel = room?.layoutMode || 'standard';
     const viewHref = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${roomCode}&mode=tv`;
+    const liveViewportHref = useMemo(() => {
+        const separator = viewHref.includes('?') ? '&' : '?';
+        return `${viewHref}${separator}hostPreview=1&previewMuted=1`;
+    }, [viewHref]);
+    const liveViewportEnabled = allowLiveViewport && previewMode === 'live_tv';
+    const resolvedPreviewSize = liveViewportEnabled && previewSize === 'sm' ? 'md' : previewSize;
+    const previewWidthClass = ({
+        sm: 'w-[340px]',
+        md: 'w-[420px]',
+        lg: 'w-[520px]'
+    })[resolvedPreviewSize] || 'w-[420px]';
     return (
-        <div className="fixed right-3 bottom-3 z-[35] w-[320px] max-w-[calc(100vw-24px)]">
+        <div className={`fixed right-3 bottom-3 z-[35] max-w-[calc(100vw-24px)] ${previewWidthClass}`}>
             <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 bg-black/40">
-                    <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Audience View</div>
-                        <div className="text-xs text-cyan-200 truncate">{modeLabel}</div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 border-b border-white/10 bg-black/45">
+                    <div className="min-w-0 flex items-center gap-2">
+                        <div className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100">
+                            TV
+                        </div>
+                        <div className="min-w-0">
+                            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-zinc-500">Preview</div>
+                            <div className="truncate text-[11px] font-semibold text-cyan-200">{modeLabel}</div>
+                        </div>
+                        {allowLiveViewport ? (
+                            <div className="flex shrink-0 items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => onSetPreviewMode?.('thumbnail')}
+                                    className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${previewMode !== 'live_tv' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
+                                    title="Use the light state-synced preview"
+                                >
+                                    Thumb
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onSetPreviewMode?.('live_tv')}
+                                    className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${previewMode === 'live_tv' ? 'bg-violet-500/18 text-violet-100' : 'text-zinc-400'}`}
+                                    title="Mount a live, muted Public TV viewport"
+                                >
+                                    Live TV
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                            {[
+                                ['sm', 'S'],
+                                ['md', 'M'],
+                                ['lg', 'L']
+                            ].map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => onSetPreviewSize?.(key)}
+                                    disabled={liveViewportEnabled && key === 'sm'}
+                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'} ${(liveViewportEnabled && key === 'sm') ? 'cursor-not-allowed opacity-35' : ''}`}
+                                    title={liveViewportEnabled && key === 'sm' ? 'Small is disabled in live TV mode' : `Set preview size ${label}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                         <button
                             onClick={onToggleCollapsed}
                             className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
@@ -2977,8 +3119,20 @@ const AudienceMiniPreview = ({
                 </div>
                 {!collapsed && (
                     <div className="p-2">
-                        <div className="relative rounded-xl border border-white/10 overflow-hidden aspect-video bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]">
-                            {room?.activeMode && room.activeMode !== 'karaoke' ? (
+                        <div className={`relative overflow-hidden aspect-video ${liveViewportEnabled ? 'rounded-[1.1rem] border border-cyan-400/18 bg-black p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'rounded-xl border border-white/10 bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]'}`}>
+                            {liveViewportEnabled ? (
+                                <div className="absolute inset-0 pointer-events-none rounded-[0.95rem] border border-white/8" />
+                            ) : null}
+                            {liveViewportEnabled ? (
+                                <iframe
+                                    src={liveViewportHref}
+                                    title="Public TV live preview"
+                                    className={`absolute bg-black pointer-events-none ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[0.9rem]' : 'inset-0 h-full w-full'}`}
+                                    loading="lazy"
+                                    referrerPolicy="strict-origin-when-cross-origin"
+                                    allow="autoplay; fullscreen"
+                                />
+                            ) : room?.activeMode && room.activeMode !== 'karaoke' ? (
                                 <div className="absolute inset-0 p-3 flex flex-col justify-between">
                                     <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Experience</div>
                                     <div className="text-lg font-bebas text-cyan-300 leading-none">{modeLabel}</div>
@@ -3019,8 +3173,9 @@ const AudienceMiniPreview = ({
                                 </div>
                             )}
                         </div>
-                        <div className="mt-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500 px-1">
-                            State-synced thumbnail • Queue {queueCount} • Chat {room?.chatShowOnTv ? 'TV on' : 'TV off'}
+                        <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                            <span>{liveViewportEnabled ? 'Read-only preview' : 'Thumbnail preview'}</span>
+                            <span>{liveViewportEnabled ? `Muted • ${resolvedPreviewSize.toUpperCase()}` : `Queue ${queueCount}`}</span>
                         </div>
                     </div>
                 )}
@@ -3029,7 +3184,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, holdAutoBgDuringStageActivation, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0 }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, holdAutoBgDuringStageActivation, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3122,6 +3277,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const commandInputRef = useRef(null);
     const autoDjObservedSongRef = useRef('');
     const autoDjObservedPerfTsRef = useRef(0);
+    const reviewAutoSuggestingIdsRef = useRef(new Set());
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
     const [autoDjSequenceState, setAutoDjSequenceState] = useState(() => createAutoDjSequenceState());
@@ -3137,6 +3293,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         hasLyrics,
         reviewRequired,
         queue,
+        assigned,
         pending,
         lobbyCount,
         queueCount,
@@ -3427,6 +3584,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     });
     const persistTrustedCatalogChoiceRef = useRef(null);
     const upsertYtIndexEntriesRef = useRef(null);
+    useEffect(() => {
+        upsertYtIndexEntriesRef.current = typeof onUpsertYtIndexEntries === 'function' ? onUpsertYtIndexEntries : null;
+    }, [onUpsertYtIndexEntries]);
     const {
         addSong,
         addSongFromResult,
@@ -3671,6 +3831,124 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         }, { merge: true });
     }, [roomCode, trustedCatalog]);
     persistTrustedCatalogChoiceRef.current = persistTrustedCatalogChoice;
+
+    useEffect(() => {
+        if (!roomCode || typeof onUpsertYtIndexEntries !== 'function') return;
+        const nextSong = reviewRequired.find((song) => {
+            if (!song?.id || song.playbackReady) return false;
+            const suggestionState = String(song?.reviewAutoSuggestionState || '').trim().toLowerCase();
+            if (['processing', 'review_ready', 'auto_resolved', 'host_reviewed'].includes(suggestionState)) return false;
+            return !reviewAutoSuggestingIdsRef.current.has(song.id);
+        });
+        if (!nextSong) return;
+
+        let cancelled = false;
+        reviewAutoSuggestingIdsRef.current.add(nextSong.id);
+
+        const resolveReviewCandidates = (song, extraYtMatches = []) => rankSongRequestCandidates({
+            request: song,
+            trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
+            catalogCandidates: [],
+            ytIndex: [...(ytIndex || []), ...(Array.isArray(extraYtMatches) ? extraYtMatches : [])]
+        });
+
+        const applyAutoSuggestion = async () => {
+            const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', nextSong.id);
+            const searchQuery = buildQueueReviewSearchQuery(nextSong);
+            try {
+                await updateDoc(songRef, {
+                    reviewAutoSuggestionState: 'processing',
+                    reviewAutoSuggestionQuery: searchQuery,
+                    reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                });
+            } catch (stateError) {
+                hostLogger.debug('Queue review auto-suggest state write skipped', stateError);
+            }
+
+            try {
+                let rankedCandidates = resolveReviewCandidates(nextSong);
+                let bestCandidate = rankedCandidates[0] || null;
+                let liveMatches = [];
+
+                if (!isStrongQueueReviewCandidate(bestCandidate) && searchQuery) {
+                    try {
+                        const ytData = await callFunction('youtubeSearch', {
+                            query: `${searchQuery} karaoke`,
+                            maxResults: 5,
+                            playableOnly: true
+                        });
+                        liveMatches = normalizeYouTubeSearchItems(ytData?.items || [], {
+                            reason: 'queue_review_auto'
+                        });
+                        if (liveMatches.length && !cancelled) {
+                            await onUpsertYtIndexEntries(liveMatches.map((match) => ({
+                                videoId: match.videoId,
+                                trackName: match.trackName,
+                                artistName: match.artistName,
+                                artworkUrl100: match.artworkUrl100,
+                                url: match.url,
+                                playable: true,
+                                sourceDetail: 'Auto-suggested from singer queue review.'
+                            })));
+                            rankedCandidates = resolveReviewCandidates(nextSong, liveMatches);
+                            bestCandidate = rankedCandidates[0] || null;
+                        }
+                    } catch (youtubeError) {
+                        hostLogger.debug('Queue review auto-suggest YouTube search failed', youtubeError);
+                    }
+                }
+
+                if (cancelled) return;
+
+                if (isStrongQueueReviewCandidate(bestCandidate)) {
+                    const candidateSource = String(bestCandidate?.source || '').trim().toLowerCase();
+                    const candidateMediaUrl = String(bestCandidate?.mediaUrl || '').trim();
+                    const candidateAppleMusicId = String(bestCandidate?.appleMusicId || '').trim();
+                    const candidateTrackId = String(bestCandidate?.trackId || '').trim();
+                    await updateDoc(songRef, {
+                        trackId: candidateTrackId || null,
+                        trackSource: candidateSource || null,
+                        mediaUrl: candidateMediaUrl,
+                        appleMusicId: candidateAppleMusicId,
+                        playbackReady: !!(candidateMediaUrl || candidateAppleMusicId || candidateTrackId),
+                        mediaResolutionStatus: 'host_auto_selected',
+                        resolutionStatus: 'resolved',
+                        resolutionLayer: String(bestCandidate?.layer || candidateSource || 'host_auto').trim() || 'host_auto',
+                        reviewRequestedAt: null,
+                        reviewAutoSuggestionState: 'auto_resolved',
+                        reviewAutoSuggestionTopScore: Number(bestCandidate?.score || 0),
+                        reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                    });
+                } else {
+                    await updateDoc(songRef, {
+                        reviewAutoSuggestionState: 'review_ready',
+                        reviewAutoSuggestionTopScore: Number(bestCandidate?.score || 0),
+                        reviewAutoSuggestionCandidateCount: Math.max(0, Number(rankedCandidates.length || 0)),
+                        reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                    });
+                }
+            } catch (error) {
+                if (!cancelled) {
+                    hostLogger.debug('Queue review auto-suggest failed', error);
+                    try {
+                        await updateDoc(songRef, {
+                            reviewAutoSuggestionState: 'review_ready',
+                            reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                        });
+                    } catch (stateError) {
+                        hostLogger.debug('Queue review auto-suggest fallback state write skipped', stateError);
+                    }
+                }
+            } finally {
+                reviewAutoSuggestingIdsRef.current.delete(nextSong.id);
+            }
+        };
+
+        void applyAutoSuggestion();
+        return () => {
+            cancelled = true;
+        };
+    }, [reviewRequired, roomCode, trustedCatalog, ytIndex, onUpsertYtIndexEntries]);
 
     const resolveReviewRequest = useCallback(async (song, candidate, options = {}) => {
         if (!song?.id || !candidate) return;
@@ -4826,6 +5104,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 showQueueList={showQueueList}
                 pending={pending}
                 queue={queue}
+                assigned={assigned}
                 onApprovePending={(songId) => updateStatus(songId, 'requested')}
                 onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
                 dragQueueId={dragQueueId}
@@ -4844,6 +5123,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 statusPill={statusPill}
                 styles={STYLES}
                 compactViewport={compactViewport}
+                runOfShowAssignableSlots={runOfShowAssignableSlots}
+                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
             />
         </div>
     );
@@ -5565,6 +5846,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAudioPanelOpen(false);
     }, [hostStageLayoutMode]);
     useEffect(() => {
+        if (tab !== 'run_of_show') return;
+        setAudioPanelOpen(false);
+    }, [tab]);
+    useEffect(() => {
         if (!showYtIndex) {
             setYtCurateQuery('');
             setYtCurateResults([]);
@@ -5694,6 +5979,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [programMode, setProgramMode] = useState(RUN_OF_SHOW_PROGRAM_MODES.standard);
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
+    const [runOfShowFocusRequest, setRunOfShowFocusRequest] = useState(null);
     const [runOfShowPolicy, setRunOfShowPolicy] = useState(() => normalizeRunOfShowPolicy({}));
     const [runOfShowRoles, setRunOfShowRoles] = useState(() => normalizeRunOfShowRoles({}));
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
@@ -5720,6 +6006,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return localStorage.getItem('bross_host_audience_preview_collapsed') === '1';
         } catch {
             return false;
+        }
+    });
+    const [audiencePreviewMode, setAudiencePreviewMode] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return 'thumbnail';
+            const saved = String(localStorage.getItem('bross_host_audience_preview_mode') || '').trim().toLowerCase();
+            return saved === 'live_tv' ? 'live_tv' : 'thumbnail';
+        } catch {
+            return 'thumbnail';
+        }
+    });
+    const [audiencePreviewSize, setAudiencePreviewSize] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return 'md';
+            const saved = String(localStorage.getItem('bross_host_audience_preview_size') || '').trim().toLowerCase();
+            return saved === 'sm' || saved === 'lg' ? saved : 'md';
+        } catch {
+            return 'md';
         }
     });
     const [autoBgFadeOutMs, setAutoBgFadeOutMs] = useState(900);
@@ -6227,8 +6531,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const roomRef = useRef(room);
     const songsRef = useRef(songs);
     const runOfShowAutomationBusyRef = useRef(false);
+    const runOfShowAutomationTaskRef = useRef('');
+    const runOfShowAutoPrepareCooldownUntilRef = useRef(0);
+    const runOfShowAutoStartCooldownUntilRef = useRef(0);
     const runOfShowAutoCompleteKeyRef = useRef('');
     const runOfShowPerformanceHandledRef = useRef('');
+    const [runOfShowAutomationRetryTick, setRunOfShowAutomationRetryTick] = useState(0);
     const runOfShowDirector = useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirectorState || {}),
         [runOfShowDirectorState]
@@ -6255,12 +6563,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const stormTimersRef = useRef([]);
     const sfxPulseRef = useRef(null);
     const seededMarqueeRef = useRef(false);
+    const runOfShowRemoteSyncRef = useRef({
+        director: '',
+        policy: '',
+        roles: '',
+        templateMeta: '',
+        programMode: '',
+        enabled: null,
+    });
+    const runOfShowLocalEditAtRef = useRef(0);
     const toast = useToast();
     const moderationNudgeAtRef = useRef(0);
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
     const getCurrentRunOfShowDirector = useCallback(
-        () => normalizeRunOfShowDirector(roomRef.current?.runOfShowDirector || runOfShowDirectorState || {}),
+        () => normalizeRunOfShowDirector(runOfShowDirectorState || roomRef.current?.runOfShowDirector || {}),
         [runOfShowDirectorState]
     );
     const deriveRunOfShowEditableStatus = useCallback((item = {}) => {
@@ -6283,7 +6600,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         setProgramMode(normalizedMode);
         setRunOfShowEnabled(nextEnabled);
+        runOfShowLocalEditAtRef.current = Date.now();
         setRunOfShowDirectorState(normalizedDirector);
+        runOfShowRemoteSyncRef.current.director = JSON.stringify(normalizedDirector);
+        runOfShowRemoteSyncRef.current.programMode = normalizedMode;
+        runOfShowRemoteSyncRef.current.enabled = nextEnabled;
         await updateRoom({
             programMode: normalizedMode,
             runOfShowEnabled: nextEnabled,
@@ -6300,6 +6621,235 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .split(',')
             .map((entry) => entry.trim())
             .filter(Boolean);
+    }, []);
+    const buildRunOfShowStartRoomUpdates = useCallback((item = {}, startedAtMs = nowMs()) => {
+        const roomUpdates = { tvPreviewOverlay: null };
+        if (item?.presentationPlan?.publicTvTakeoverEnabled) {
+            roomUpdates.announcement = {
+                active: true,
+                runOfShowItemId: item.id,
+                type: item.type,
+                headline: item.presentationPlan?.headline || item.title || getRunOfShowItemLabel(item.type),
+                subhead: item.presentationPlan?.subhead || item.notes || '',
+                takeoverScene: item.presentationPlan?.takeoverScene || item.type,
+                backgroundMedia: item.presentationPlan?.backgroundMedia || '',
+                accentTheme: item.presentationPlan?.accentTheme || 'cyan',
+                startedAtMs
+            };
+        } else {
+            roomUpdates.announcement = null;
+        }
+        if (item.type === 'trivia_break') {
+            const options = parseRunOfShowOptions(item.modeLaunchPlan?.launchConfig || {});
+            const durationSec = Math.max(5, Number(item.modeLaunchPlan?.launchConfig?.durationSec || item.plannedDurationSec || 20));
+            const autoReveal = item.modeLaunchPlan?.launchConfig?.autoReveal !== false;
+            roomUpdates.activeMode = 'trivia_pop';
+            roomUpdates.triviaQuestion = {
+                id: `${item.id}_${startedAtMs}`,
+                q: item.modeLaunchPlan?.launchConfig?.question || item.title || 'Trivia Time',
+                options,
+                correct: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.correctIndex || 0)),
+                status: 'asking',
+                startedAt: startedAtMs,
+                durationSec,
+                autoReveal,
+                revealAt: autoReveal ? startedAtMs + (durationSec * 1000) : null
+            };
+            roomUpdates.gameData = null;
+            roomUpdates.wyrData = null;
+        } else if (item.type === 'would_you_rather_break') {
+            const options = parseRunOfShowOptions(item.modeLaunchPlan?.launchConfig || {});
+            const durationSec = Math.max(5, Number(item.modeLaunchPlan?.launchConfig?.durationSec || item.plannedDurationSec || 20));
+            const autoReveal = item.modeLaunchPlan?.launchConfig?.autoReveal !== false;
+            roomUpdates.activeMode = 'wyr';
+            roomUpdates.wyrData = {
+                id: `${item.id}_${startedAtMs}`,
+                question: item.modeLaunchPlan?.launchConfig?.question || item.title || 'Would You Rather',
+                optionA: options[0] || 'Option A',
+                optionB: options[1] || 'Option B',
+                status: 'live',
+                startedAt: startedAtMs,
+                durationSec,
+                autoReveal,
+                revealAt: autoReveal ? startedAtMs + (durationSec * 1000) : null
+            };
+            roomUpdates.gameData = null;
+            roomUpdates.triviaQuestion = null;
+        } else if (item.type === 'game_break') {
+            roomUpdates.activeMode = item.modeLaunchPlan?.modeKey || 'karaoke';
+            roomUpdates.gameData = {
+                ...(item.modeLaunchPlan?.launchConfig || {}),
+                id: `${item.id}_${startedAtMs}`,
+                runOfShowItemId: item.id
+            };
+            roomUpdates.triviaQuestion = null;
+            roomUpdates.wyrData = null;
+        } else {
+            roomUpdates.activeMode = 'karaoke';
+            roomUpdates.gameData = null;
+            roomUpdates.triviaQuestion = null;
+            roomUpdates.wyrData = null;
+        }
+        if (item?.roomMomentPlan?.activeMode && !['trivia_break', 'would_you_rather_break', 'game_break'].includes(item.type)) {
+            roomUpdates.activeMode = item.roomMomentPlan.activeMode;
+        }
+        roomUpdates.activeScreen = item?.roomMomentPlan?.activeScreen || 'stage';
+        roomUpdates.howToPlay = item?.roomMomentPlan?.showHowToPlay === true
+            ? { active: true, id: startedAtMs }
+            : { active: false, id: startedAtMs };
+        roomUpdates.lightMode = item?.roomMomentPlan?.lightMode && item.roomMomentPlan.lightMode !== 'off'
+            ? item.roomMomentPlan.lightMode
+            : 'off';
+        return roomUpdates;
+    }, [parseRunOfShowOptions]);
+    const activateRunOfShowPerformanceItem = useCallback(async (item = {}, startedAtMs = nowMs()) => {
+        if (item?.type !== 'performance' || !roomCode) return null;
+        const queueDocId = String(item?.preparedQueueSongId || buildRunOfShowQueueDocId(roomCode, item?.id)).trim();
+        if (!queueDocId) return null;
+        const backingPlan = item?.backingPlan || {};
+        const youtubeId = String(backingPlan?.youtubeId || '').trim();
+        const rawMediaUrl = String(backingPlan?.mediaUrl || '').trim();
+        const mediaUrl = rawMediaUrl || (youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : '');
+        const appleMusicId = String(backingPlan?.appleMusicId || backingPlan?.trackId || '').trim();
+        const queueDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', queueDocId);
+        const fallbackDurationSec = Math.max(
+            30,
+            Math.round(Number(item?.plannedDurationSec || backingPlan?.durationSec || 180) || 180)
+        );
+        const queueSong = {
+            id: queueDocId,
+            roomCode,
+            songId: String(item?.songId || '').trim(),
+            trackId: String(backingPlan?.trackId || '').trim(),
+            songTitle: String(item?.songTitle || '').trim() || 'Performance Slot',
+            artist: String(item?.artistName || '').trim(),
+            singerUid: String(item?.assignedPerformerUid || '').trim(),
+            singerName: String(item?.assignedPerformerName || '').trim() || 'Performer',
+            mediaUrl,
+            appleMusicId,
+            youtubeId: youtubeId || parseYouTubeVideoId(mediaUrl),
+            approvedSubmissionId: String(item?.approvedSubmissionId || '').trim(),
+            duration: fallbackDurationSec,
+            performanceStartedDurationSec: fallbackDurationSec
+        };
+        await setDoc(queueDocRef, {
+            roomCode,
+            songId: queueSong.songId,
+            trackId: queueSong.trackId,
+            songTitle: queueSong.songTitle,
+            artist: queueSong.artist,
+            singerUid: queueSong.singerUid,
+            singerName: queueSong.singerName,
+            mediaUrl: queueSong.mediaUrl,
+            appleMusicId: queueSong.appleMusicId,
+            youtubeId: queueSong.youtubeId,
+            approvedSubmissionId: queueSong.approvedSubmissionId,
+            duration: queueSong.duration,
+            performanceStartedDurationSec: queueSong.performanceStartedDurationSec,
+            status: 'requested',
+            timestamp: serverTimestamp(),
+            priorityScore: startedAtMs,
+            queuedFromRunOfShow: true,
+            runOfShowItemId: String(item?.id || '').trim()
+        }, { merge: true });
+        const queuePlayback = resolveQueuePlayback(queueSong, roomRef.current?.autoPlayMedia !== false);
+        const nextMediaUrl = String(queuePlayback?.mediaUrl || queueSong.mediaUrl || '').trim();
+        const useAppleBacking = queuePlayback?.usesAppleBacking === true;
+        const autoStartMedia = queuePlayback?.autoStartMedia !== false;
+        const measuredDuration = useAppleBacking
+            ? Math.max(0, Number(queueSong.duration || roomRef.current?.appleMusicPlayback?.durationSec || 0))
+            : Math.max(0, Number(queueSong.duration || fallbackDurationSec || 0));
+        const performanceDurationSec = Math.max(
+            30,
+            Math.round(Number(measuredDuration || queueSong.duration || fallbackDurationSec || 180) || 180)
+        );
+        await updateDoc(queueDocRef, {
+            status: 'performing',
+            performingStartedAt: serverTimestamp(),
+            performanceStartedDurationSec: performanceDurationSec,
+            duration: performanceDurationSec,
+            mediaUrl: nextMediaUrl || queueSong.mediaUrl
+        });
+        const roomSnapshot = roomRef.current || {};
+        const stageDisplayFlags = {
+            showLyricsTv: !!roomSnapshot?.showLyricsTv,
+            showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
+            showLyricsSinger: !!roomSnapshot?.showLyricsSinger
+        };
+        if (useAppleBacking && autoStartMedia && appleMusicId) {
+            await playAppleMusicTrack(appleMusicId, {
+                title: queueSong.songTitle,
+                artist: queueSong.artist,
+                duration: performanceDurationSec
+            });
+            await updateRoom({
+                activeMode: 'karaoke',
+                activeScreen: 'stage',
+                announcement: null,
+                mediaUrl: '',
+                singAlongMode: false,
+                videoPlaying: false,
+                videoStartTimestamp: null,
+                currentPerformanceMeta: {
+                    songId: queueDocId,
+                    startedAtMs,
+                    durationSec: performanceDurationSec,
+                    source: 'apple_music',
+                    appleMusicId,
+                    runOfShowItemId: String(item?.id || '').trim()
+                },
+                videoVolume: 100,
+                tvPreviewOverlay: null,
+                gameData: null,
+                triviaQuestion: null,
+                wyrData: null,
+                howToPlay: { active: false, id: startedAtMs },
+                lightMode: 'off',
+                ...stageDisplayFlags
+            });
+            return { queueDocId, durationSec: performanceDurationSec };
+        }
+        await stopAppleMusic?.();
+        await updateRoom({
+            activeMode: 'karaoke',
+            activeScreen: 'stage',
+            announcement: null,
+            mediaUrl: nextMediaUrl,
+            singAlongMode: false,
+            videoPlaying: autoStartMedia && !!nextMediaUrl,
+            videoStartTimestamp: autoStartMedia ? startedAtMs : null,
+            currentPerformanceMeta: {
+                songId: queueDocId,
+                startedAtMs,
+                durationSec: performanceDurationSec,
+                source: nextMediaUrl ? 'backing_media' : 'none',
+                mediaUrl: nextMediaUrl || '',
+                runOfShowItemId: String(item?.id || '').trim()
+            },
+            videoVolume: 100,
+            tvPreviewOverlay: null,
+            gameData: null,
+            triviaQuestion: null,
+            wyrData: null,
+            howToPlay: { active: false, id: startedAtMs },
+            lightMode: 'off',
+            ...stageDisplayFlags,
+            appleMusicPlayback: null
+        });
+        return { queueDocId, durationSec: performanceDurationSec };
+    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
+    const buildRunOfShowCompletionRoomUpdates = useCallback((item = {}, completedAtMs = nowMs()) => {
+        if (item?.type === 'performance') return null;
+        return {
+            activeMode: 'karaoke',
+            activeScreen: 'stage',
+            announcement: null,
+            gameData: null,
+            triviaQuestion: null,
+            wyrData: null,
+            howToPlay: { active: false, id: completedAtMs },
+            lightMode: 'off'
+        };
     }, []);
     const buildRunOfShowPreviewPayload = useCallback((item = {}) => ({
         active: true,
@@ -6358,18 +6908,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return persistRunOfShowDirector(nextDirector);
     }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState]);
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        const currentDirector = getCurrentRunOfShowDirector();
+        const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
+            const nextDirector = normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
             if (result?.runOfShowDirector) {
-                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
+                setRunOfShowDirectorState(nextDirector);
             }
             if (result?.runOfShowPolicy) {
                 setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
             }
+            const startedItem = nextDirector.items.find((item) => item.id === itemId) || requestedItem;
+            const startedAtMs = Number(startedItem?.liveStartedAtMs || nowMs());
+            if (startedItem?.type === 'performance') {
+                await activateRunOfShowPerformanceItem(startedItem, startedAtMs);
+            } else if (startedItem) {
+                await updateRoom(buildRunOfShowStartRoomUpdates(startedItem, startedAtMs));
+            }
             trackEvent('run_of_show_item_started', { roomCode, itemId, automated: options?.automation === true });
-            return normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+            return nextDirector;
         }
-        let director = getCurrentRunOfShowDirector();
+        let director = currentDirector;
         let targetItem = director.items.find((item) => item.id === itemId);
         if (!targetItem) return director;
         if (targetItem.status !== 'staged') {
@@ -6391,71 +6951,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         : item
             ))
         });
-        const roomUpdates = { tvPreviewOverlay: null };
-        if (targetItem?.presentationPlan?.publicTvTakeoverEnabled) {
-            roomUpdates.announcement = {
-                active: true,
-                runOfShowItemId: targetItem.id,
-                type: targetItem.type,
-                headline: targetItem.presentationPlan?.headline || targetItem.title || getRunOfShowItemLabel(targetItem.type),
-                subhead: targetItem.presentationPlan?.subhead || targetItem.notes || '',
-                takeoverScene: targetItem.presentationPlan?.takeoverScene || targetItem.type,
-                backgroundMedia: targetItem.presentationPlan?.backgroundMedia || '',
-                accentTheme: targetItem.presentationPlan?.accentTheme || 'cyan',
-                startedAtMs
-            };
-        }
-        if (targetItem.type === 'trivia_break') {
-            roomUpdates.activeMode = 'trivia_pop';
-            roomUpdates.triviaQuestion = {
-                id: `${targetItem.id}_${startedAtMs}`,
-                q: targetItem.modeLaunchPlan?.launchConfig?.question || targetItem.title || 'Trivia Time',
-                options: parseRunOfShowOptions(targetItem.modeLaunchPlan?.launchConfig || {}),
-                correctIndex: Math.max(0, Number(targetItem.modeLaunchPlan?.launchConfig?.correctIndex || 0)),
-                status: 'active',
-                launchedAt: startedAtMs
-            };
-        } else if (targetItem.type === 'would_you_rather_break') {
-            roomUpdates.activeMode = 'wyr';
-            roomUpdates.wyrData = {
-                id: `${targetItem.id}_${startedAtMs}`,
-                question: targetItem.modeLaunchPlan?.launchConfig?.question || targetItem.title || 'Would You Rather',
-                options: parseRunOfShowOptions(targetItem.modeLaunchPlan?.launchConfig || {}),
-                status: 'live',
-                launchedAt: startedAtMs
-            };
-        } else if (targetItem.type === 'game_break') {
-            roomUpdates.activeMode = targetItem.modeLaunchPlan?.modeKey || 'karaoke';
-            roomUpdates.gameData = {
-                ...(targetItem.modeLaunchPlan?.launchConfig || {}),
-                id: `${targetItem.id}_${startedAtMs}`,
-                runOfShowItemId: targetItem.id
-            };
-        } else {
-            roomUpdates.activeMode = 'karaoke';
-        }
-        if (targetItem?.roomMomentPlan?.activeMode && !['trivia_break', 'would_you_rather_break', 'game_break'].includes(targetItem.type)) {
-            roomUpdates.activeMode = targetItem.roomMomentPlan.activeMode;
-        }
-        if (targetItem?.roomMomentPlan?.activeScreen) {
-            roomUpdates.activeScreen = targetItem.roomMomentPlan.activeScreen;
-        } else {
-            roomUpdates.activeScreen = 'stage';
-        }
-        if (targetItem?.roomMomentPlan?.showHowToPlay === true) {
-            roomUpdates.howToPlay = { active: true, id: startedAtMs };
-        } else {
-            roomUpdates.howToPlay = { active: false, id: startedAtMs };
-        }
-        if (targetItem?.roomMomentPlan?.lightMode && targetItem.roomMomentPlan.lightMode !== 'off') {
-            roomUpdates.lightMode = targetItem.roomMomentPlan.lightMode;
-        } else {
-            roomUpdates.lightMode = 'off';
-        }
         trackEvent('run_of_show_item_started', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
-        return persistRunOfShowDirector(nextDirector, { roomUpdates });
-    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, parseRunOfShowOptions, persistRunOfShowDirector, prepareRunOfShowItem, roomCode, runOfShowDirectorState]);
+        if (targetItem.type === 'performance') {
+            const persistedDirector = await persistRunOfShowDirector(nextDirector, { roomUpdates: { tvPreviewOverlay: null } });
+            await activateRunOfShowPerformanceItem(
+                nextDirector.items.find((item) => item.id === itemId) || targetItem,
+                startedAtMs
+            );
+            return persistedDirector;
+        }
+        return persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowStartRoomUpdates(targetItem, startedAtMs) });
+    }, [activateRunOfShowPerformanceItem, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, roomCode, runOfShowDirectorState, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
+        const currentDirector = getCurrentRunOfShowDirector();
+        const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: options?.skip === true ? 'skip' : 'complete', itemId });
             if (result?.runOfShowDirector) {
@@ -6464,11 +6973,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (result?.runOfShowPolicy) {
                 setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
             }
+            const roomUpdates = buildRunOfShowCompletionRoomUpdates(targetItem, nowMs());
+            if (roomUpdates) {
+                await updateRoom(roomUpdates);
+            }
             trackEvent(options?.skip === true ? 'run_of_show_item_skipped' : 'run_of_show_item_completed', { roomCode, itemId, automated: options?.automation === true });
             return normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
         }
-        const director = getCurrentRunOfShowDirector();
-        const targetItem = director.items.find((item) => item.id === itemId);
+        const director = currentDirector;
         if (!targetItem) return director;
         const completedAtMs = nowMs();
         const nextDirector = normalizeRunOfShowDirector({
@@ -6483,19 +6995,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     : item
             ))
         });
-        const roomUpdates = {
-            activeMode: 'karaoke',
-            activeScreen: 'stage',
-            announcement: null,
-            gameData: null,
-            triviaQuestion: null,
-            wyrData: null,
-            howToPlay: { active: false, id: completedAtMs },
-            lightMode: 'off'
-        };
         trackEvent('run_of_show_item_completed', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
-        return persistRunOfShowDirector(nextDirector, { roomUpdates });
-    }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState]);
+        return persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowCompletionRoomUpdates(targetItem, completedAtMs) || undefined });
+    }, [buildRunOfShowCompletionRoomUpdates, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -6594,6 +7096,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return persistRunOfShowDirector(nextDirector);
     }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const runOfShowAssignableSlots = useMemo(
+        () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+            .filter((item) => item?.type === 'performance')
+            .filter((item) => !['complete', 'skipped', 'live'].includes(String(item?.status || '').toLowerCase()))
+            .map((item) => {
+                const safeSequence = Number(item?.sequence || 0);
+                const parts = [
+                    safeSequence > 0 ? `#${safeSequence}` : '',
+                    String(item?.title || '').trim() || 'Performance Slot',
+                    String(item?.assignedPerformerName || item?.songTitle || '').trim()
+                ].filter(Boolean);
+                return {
+                    id: item.id,
+                    label: parts.join(' · '),
+                    status: String(item?.status || '').trim().toLowerCase(),
+                    queueLinkState: String(item?.queueLinkState || '').trim().toLowerCase(),
+                    assignedPerformerName: String(item?.assignedPerformerName || '').trim(),
+                    songTitle: String(item?.songTitle || '').trim()
+                };
+            }),
+        [runOfShowDirector?.items]
+    );
+    const runOfShowQueueCandidates = useMemo(
+        () => (Array.isArray(songs) ? songs : []).filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested'),
+        [songs]
+    );
+    const assignQueueSongToRunOfShowItem = useCallback(async (songId, itemId) => {
+        const safeSongId = String(songId || '').trim();
+        const safeItemId = String(itemId || '').trim();
+        if (!safeSongId || !safeItemId) return;
+        const queueSong = (Array.isArray(songs) ? songs : []).find((song) => song.id === safeSongId);
+        const targetItem = (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : []).find((item) => item.id === safeItemId);
+        if (!queueSong || !targetItem || targetItem.type !== 'performance') return;
+        await patchRunOfShowItem(safeItemId, buildRunOfShowQueueAssignmentPatch(queueSong, targetItem));
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
+            status: 'assigned',
+            runOfShowItemId: safeItemId,
+            runOfShowAssignedAt: serverTimestamp()
+        });
+        toast(`Assigned ${queueSong.songTitle || 'queue song'} to slot ${targetItem.sequence || '?'}.`);
+    }, [patchRunOfShowItem, runOfShowDirector?.items, songs, toast]);
     const toggleRunOfShowAutomationPause = useCallback(async (paused) => {
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: paused === true ? 'pause_automation' : 'resume_automation' });
@@ -6612,6 +7155,189 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             automationStatus: paused === true ? 'paused' : 'idle'
         });
     }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
+    const startRunOfShowNow = useCallback(async () => {
+        if (!roomCode) return getCurrentRunOfShowDirector();
+        const activeMode = normalizeRunOfShowProgramMode(programMode);
+        if (activeMode !== RUN_OF_SHOW_PROGRAM_MODES.runOfShow || !runOfShowEnabled) {
+            await persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
+                programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                runOfShowEnabled: true,
+                roomUpdates: { tvPreviewOverlay: null }
+            });
+        }
+        const currentDirector = getCurrentRunOfShowDirector();
+        const liveItem = getRunOfShowLiveItem(currentDirector);
+        if (liveItem) return currentDirector;
+        const stagedItem = getRunOfShowStagedItem(currentDirector);
+        if (stagedItem) return startRunOfShowItem(stagedItem.id, { manualLaunch: true });
+        const nextItem = getNextRunOfShowItem(currentDirector);
+        if (!nextItem?.id) return currentDirector;
+        const preparedDirector = await prepareRunOfShowItem(nextItem.id, { manualLaunch: true, silent: true });
+        const preparedItem = getRunOfShowStagedItem(preparedDirector)
+            || preparedDirector.items.find((item) => item.id === nextItem.id)
+            || nextItem;
+        if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
+            toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" still needs setup before it can start.`);
+            return preparedDirector;
+        }
+        return startRunOfShowItem(preparedItem.id, { manualLaunch: true });
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, prepareRunOfShowItem, programMode, roomCode, runOfShowEnabled, startRunOfShowItem, toast]);
+    const stopRunOfShowNow = useCallback(async () => persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
+        programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
+        runOfShowEnabled: false,
+        roomUpdates: {
+            tvPreviewOverlay: null,
+            announcement: null
+        }
+    }), [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const advanceRunOfShowNext = useCallback(async () => {
+        const currentDirector = getCurrentRunOfShowDirector();
+        const liveItem = getRunOfShowLiveItem(currentDirector);
+        if (liveItem?.id) return completeRunOfShowItem(liveItem.id, { manualAdvance: true });
+        const stagedItem = getRunOfShowStagedItem(currentDirector);
+        if (stagedItem?.id) return startRunOfShowItem(stagedItem.id, { manualAdvance: true });
+        const nextItem = getNextRunOfShowItem(currentDirector);
+        if (!nextItem?.id) return currentDirector;
+        const preparedDirector = await prepareRunOfShowItem(nextItem.id, { manualAdvance: true, silent: true });
+        const preparedItem = getRunOfShowStagedItem(preparedDirector)
+            || preparedDirector.items.find((item) => item.id === nextItem.id)
+            || nextItem;
+        if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
+            toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" is not ready to go live yet.`);
+            return preparedDirector;
+        }
+        return startRunOfShowItem(preparedItem.id, { manualAdvance: true });
+    }, [completeRunOfShowItem, getCurrentRunOfShowDirector, prepareRunOfShowItem, startRunOfShowItem, toast]);
+    const rewindRunOfShowPrevious = useCallback(async () => {
+        const currentDirector = getCurrentRunOfShowDirector();
+        const items = Array.isArray(currentDirector?.items) ? currentDirector.items : [];
+        if (!items.length) return currentDirector;
+        const liveItem = getRunOfShowLiveItem(currentDirector);
+        const stagedItem = getRunOfShowStagedItem(currentDirector);
+        const nextItem = getNextRunOfShowItem(currentDirector);
+        const referenceId = liveItem?.id || stagedItem?.id || nextItem?.id || currentDirector?.lastCompletedItemId || '';
+        let referenceIndex = items.findIndex((item) => item.id === referenceId);
+        if (referenceIndex < 0) referenceIndex = 0;
+        const targetIndex = Math.max(0, referenceIndex - 1);
+        const targetItem = items[targetIndex] || items[0] || null;
+        if (!targetItem?.id) return currentDirector;
+        const rewoundAtMs = nowMs();
+        const rewoundItems = items.map((item, index) => {
+            const baseItem = {
+                ...item,
+                stagedAtMs: 0,
+                liveStartedAtMs: 0,
+                completedAtMs: 0,
+                blockedReason: '',
+            };
+            if (index < targetIndex) {
+                return {
+                    ...baseItem,
+                    status: 'complete',
+                    completedAtMs: rewoundAtMs
+                };
+            }
+            if (index === targetIndex) {
+                const rewoundStatus = deriveRunOfShowEditableStatus({ ...baseItem, status: 'draft' });
+                return {
+                    ...baseItem,
+                    status: rewoundStatus === 'blocked' ? 'blocked' : 'staged',
+                    stagedAtMs: rewoundStatus === 'blocked' ? 0 : rewoundAtMs,
+                    blockedReason: rewoundStatus === 'blocked'
+                        ? (baseItem.type === 'performance' ? 'performance_not_ready' : 'item_not_ready')
+                        : ''
+                };
+            }
+            const resetStatus = deriveRunOfShowEditableStatus({ ...baseItem, status: 'draft' });
+            return {
+                ...baseItem,
+                status: resetStatus,
+                blockedReason: resetStatus === 'blocked'
+                    ? (baseItem.type === 'performance' ? 'performance_not_ready' : 'item_not_ready')
+                    : ''
+            };
+        });
+        const previousItemId = targetIndex > 0 ? items[targetIndex - 1]?.id || '' : '';
+        const rewoundDirector = normalizeRunOfShowDirector({
+            ...currentDirector,
+            enabled: true,
+            automationPaused: false,
+            automationStatus: 'staged',
+            currentItemId: '',
+            lastCompletedItemId: previousItemId,
+            lastPreparedItemId: targetItem.id,
+            lastAutomationAtMs: rewoundAtMs,
+            items: rewoundItems
+        });
+        const persistedDirector = await persistRunOfShowDirector(rewoundDirector, {
+            programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+            runOfShowEnabled: true,
+            roomUpdates: {
+                activeMode: 'karaoke',
+                activeScreen: 'stage',
+                announcement: null,
+                gameData: null,
+                triviaQuestion: null,
+                wyrData: null,
+                tvPreviewOverlay: null,
+                currentPerformanceMeta: null,
+                mediaUrl: '',
+                videoPlaying: false,
+                videoStartTimestamp: null,
+                appleMusicPlayback: null
+            }
+        });
+        const persistedTarget = getRunOfShowStagedItem(persistedDirector)
+            || persistedDirector.items.find((item) => item.id === targetItem.id)
+            || targetItem;
+        if (String(persistedTarget?.status || '').trim().toLowerCase() !== 'staged') {
+            toast(`"${persistedTarget?.title || getRunOfShowItemLabel(persistedTarget?.type || '') || 'Previous block'}" still needs setup before it can restart.`);
+            return persistedDirector;
+        }
+        return startRunOfShowItem(persistedTarget.id, { manualAdvance: true, rewind: true });
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector, startRunOfShowItem, toast]);
+    const restartRunOfShowFromTop = useCallback(async () => {
+        const director = getCurrentRunOfShowDirector();
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            enabled: true,
+            automationPaused: false,
+            automationStatus: 'idle',
+            currentItemId: '',
+            lastPreparedItemId: '',
+            items: (director.items || []).map((item) => {
+                const baseItem = {
+                    ...item,
+                    stagedAtMs: 0,
+                    liveStartedAtMs: 0,
+                    completedAtMs: 0,
+                    preparedQueueSongId: '',
+                    queueLinkState: 'unlinked',
+                    blockedReason: '',
+                };
+                const resetStatus = deriveRunOfShowEditableStatus({ ...baseItem, status: 'draft' });
+                return {
+                    ...baseItem,
+                    status: resetStatus,
+                };
+            }),
+        });
+        return persistRunOfShowDirector(nextDirector, {
+            programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+            runOfShowEnabled: true,
+            roomUpdates: {
+                activeMode: 'karaoke',
+                activeScreen: 'stage',
+                announcement: null,
+                gameData: null,
+                triviaQuestion: null,
+                wyrData: null,
+                tvPreviewOverlay: null,
+                howToPlay: { active: false, id: nowMs() },
+                lightMode: 'off',
+            },
+        });
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const reviewRunOfShowSubmission = useCallback(async (submissionId, decision) => {
         await reviewRunOfShowSlotSubmission({
             roomCode,
@@ -6624,6 +7350,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...(roomRef.current?.runOfShowPolicy || runOfShowPolicy || {}),
             ...(patch || {}),
         });
+        runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
         setRunOfShowPolicy(nextPolicy);
         if (isMarketingDemoFixture) return nextPolicy;
         await updateRoom({ runOfShowPolicy: nextPolicy });
@@ -6634,6 +7361,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...(roomRef.current?.runOfShowRoles || runOfShowRoles || {}),
             ...(patch || {}),
         });
+        runOfShowRemoteSyncRef.current.roles = JSON.stringify(nextRoles);
         setRunOfShowRoles(nextRoles);
         if (isMarketingDemoFixture) return nextRoles;
         await updateRoom({ runOfShowRoles: nextRoles });
@@ -6683,15 +7411,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 currentTemplateId: templateId,
                 currentTemplateName: safeName,
             });
+            runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
             setRunOfShowTemplateMeta(nextMeta);
             return template;
         }
         const result = await manageRunOfShowTemplate({ roomCode, action: 'save', templateName: safeName });
-        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+        setRunOfShowTemplateMeta((prev) => {
+            const nextMeta = normalizeRunOfShowTemplateMeta({
             ...(prev || {}),
             currentTemplateId: result?.templateId || '',
             currentTemplateName: result?.templateName || safeName,
-        }));
+            });
+            runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
+            return nextMeta;
+        });
         return result;
     }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy, runOfShowTemplateMeta]);
     const applyRunOfShowTemplate = useCallback(async (templateId = '') => {
@@ -6700,21 +7433,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (isMarketingDemoFixture) {
             const template = (runOfShowTemplates || []).find((entry) => (entry.templateId || entry.id) === safeTemplateId);
             if (!template) return null;
-            setRunOfShowDirectorState(normalizeRunOfShowDirector(template.runOfShowDirector || {}));
-            setRunOfShowPolicy(normalizeRunOfShowPolicy(template.runOfShowPolicy || {}));
-            setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+            const nextDirector = normalizeRunOfShowDirector(template.runOfShowDirector || {});
+            const nextPolicy = normalizeRunOfShowPolicy(template.runOfShowPolicy || {});
+            runOfShowRemoteSyncRef.current.director = JSON.stringify(nextDirector);
+            runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
+            setRunOfShowDirectorState(nextDirector);
+            setRunOfShowPolicy(nextPolicy);
+            setRunOfShowTemplateMeta((prev) => {
+                const nextMeta = normalizeRunOfShowTemplateMeta({
                 ...(prev || {}),
                 currentTemplateId: safeTemplateId,
                 currentTemplateName: template.templateName || safeTemplateId,
-            }));
+                });
+                runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
+                return nextMeta;
+            });
             return template;
         }
         const result = await manageRunOfShowTemplate({ roomCode, action: 'apply', templateId: safeTemplateId });
-        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+        setRunOfShowTemplateMeta((prev) => {
+            const nextMeta = normalizeRunOfShowTemplateMeta({
             ...(prev || {}),
             currentTemplateId: safeTemplateId,
             currentTemplateName: result?.templateName || safeTemplateId,
-        }));
+            });
+            runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
+            return nextMeta;
+        });
         return result;
     }, [isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowTemplates]);
     const archiveCurrentRunOfShow = useCallback(async (templateName = '') => {
@@ -6732,19 +7477,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 archived: true,
             };
             setRunOfShowTemplates((prev) => [template, ...(prev || [])]);
-            setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+            setRunOfShowTemplateMeta((prev) => {
+                const nextMeta = normalizeRunOfShowTemplateMeta({
                 ...(prev || {}),
                 lastArchiveId: archiveId,
                 archivedAtMs: nowMs(),
-            }));
+                });
+                runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
+                return nextMeta;
+            });
             return template;
         }
         const result = await manageRunOfShowTemplate({ roomCode, action: 'archive_current', templateName: safeName, templateId: `archive_${Date.now().toString(36)}` });
-        setRunOfShowTemplateMeta((prev) => normalizeRunOfShowTemplateMeta({
+        setRunOfShowTemplateMeta((prev) => {
+            const nextMeta = normalizeRunOfShowTemplateMeta({
             ...(prev || {}),
             lastArchiveId: result?.templateId || prev?.lastArchiveId || '',
             archivedAtMs: nowMs(),
-        }));
+            });
+            runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextMeta);
+            return nextMeta;
+        });
         return result;
     }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy]);
     const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
@@ -7277,12 +8030,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAllowSingerTrackSelect(!!room.allowSingerTrackSelect);
         }
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
-        setProgramMode(normalizeRunOfShowProgramMode(room?.programMode));
-        setRunOfShowEnabled(room?.runOfShowEnabled === true || normalizeRunOfShowProgramMode(room?.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow);
-        setRunOfShowDirectorState(normalizeRunOfShowDirector(room?.runOfShowDirector || {}));
-        setRunOfShowPolicy(normalizeRunOfShowPolicy(room?.runOfShowPolicy || {}));
-        setRunOfShowRoles(normalizeRunOfShowRoles(room?.runOfShowRoles || {}));
-        setRunOfShowTemplateMeta(normalizeRunOfShowTemplateMeta(room?.runOfShowTemplateMeta || {}));
+        const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
+        const normalizedRunOfShowEnabled = room?.runOfShowEnabled === true || normalizedProgramMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
+        const normalizedDirector = normalizeRunOfShowDirector(room?.runOfShowDirector || {});
+        const normalizedPolicy = normalizeRunOfShowPolicy(room?.runOfShowPolicy || {});
+        const normalizedRoles = normalizeRunOfShowRoles(room?.runOfShowRoles || {});
+        const normalizedTemplateMeta = normalizeRunOfShowTemplateMeta(room?.runOfShowTemplateMeta || {});
+        const nextDirectorKey = JSON.stringify(normalizedDirector);
+        const nextPolicyKey = JSON.stringify(normalizedPolicy);
+        const nextRolesKey = JSON.stringify(normalizedRoles);
+        const nextTemplateKey = JSON.stringify(normalizedTemplateMeta);
+        if (runOfShowRemoteSyncRef.current.programMode !== normalizedProgramMode) {
+            runOfShowRemoteSyncRef.current.programMode = normalizedProgramMode;
+            setProgramMode(normalizedProgramMode);
+        }
+        if (runOfShowRemoteSyncRef.current.enabled !== normalizedRunOfShowEnabled) {
+            runOfShowRemoteSyncRef.current.enabled = normalizedRunOfShowEnabled;
+            setRunOfShowEnabled(normalizedRunOfShowEnabled);
+        }
+        if (
+            runOfShowRemoteSyncRef.current.director !== nextDirectorKey
+            && Date.now() - runOfShowLocalEditAtRef.current > 1500
+        ) {
+            runOfShowRemoteSyncRef.current.director = nextDirectorKey;
+            setRunOfShowDirectorState(normalizedDirector);
+        }
+        if (runOfShowRemoteSyncRef.current.policy !== nextPolicyKey) {
+            runOfShowRemoteSyncRef.current.policy = nextPolicyKey;
+            setRunOfShowPolicy(normalizedPolicy);
+        }
+        if (runOfShowRemoteSyncRef.current.roles !== nextRolesKey) {
+            runOfShowRemoteSyncRef.current.roles = nextRolesKey;
+            setRunOfShowRoles(normalizedRoles);
+        }
+        if (runOfShowRemoteSyncRef.current.templateMeta !== nextTemplateKey) {
+            runOfShowRemoteSyncRef.current.templateMeta = nextTemplateKey;
+            setRunOfShowTemplateMeta(normalizedTemplateMeta);
+        }
         setHostNightPreset(room?.hostNightPreset || 'custom');
         if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
@@ -7346,54 +8130,95 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (runOfShowNextItem.automationMode !== 'auto') return;
         const nextStatus = String(runOfShowNextItem.status || '').toLowerCase();
         if (['complete', 'skipped', 'live', 'staged'].includes(nextStatus)) return;
+        const cooldownRemainingMs = runOfShowAutoPrepareCooldownUntilRef.current - nowMs();
+        if (cooldownRemainingMs > 0) {
+            const cooldownTimer = setTimeout(() => {
+                setRunOfShowAutomationRetryTick((tick) => tick + 1);
+            }, cooldownRemainingMs);
+            return () => clearTimeout(cooldownTimer);
+        }
+        const taskKey = `prepare:${runOfShowNextItem.id}`;
         runOfShowAutomationBusyRef.current = true;
+        runOfShowAutomationTaskRef.current = taskKey;
+        let launched = false;
         const timer = setTimeout(() => {
+            launched = true;
             prepareRunOfShowItem(runOfShowNextItem.id, { automation: true, silent: true })
                 .catch((error) => {
+                    runOfShowAutoPrepareCooldownUntilRef.current = nowMs() + getRunOfShowAutomationRetryDelayMs(error);
                     hostLogger.warn('Run-of-show auto-prepare failed', error);
                 })
                 .finally(() => {
-                    runOfShowAutomationBusyRef.current = false;
+                    if (runOfShowAutomationTaskRef.current === taskKey) {
+                        runOfShowAutomationTaskRef.current = '';
+                        runOfShowAutomationBusyRef.current = false;
+                    }
                 });
         }, 250);
         return () => {
             clearTimeout(timer);
-            runOfShowAutomationBusyRef.current = false;
+            if (!launched && runOfShowAutomationTaskRef.current === taskKey) {
+                runOfShowAutomationTaskRef.current = '';
+                runOfShowAutomationBusyRef.current = false;
+            }
         };
     }, [
         isRunOfShowRoom,
         prepareRunOfShowItem,
         roomCode,
+        runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
-        runOfShowLiveItem,
-        runOfShowNextItem,
-        runOfShowStagedItem
+        runOfShowLiveItem?.id,
+        runOfShowNextItem?.automationMode,
+        runOfShowNextItem?.id,
+        runOfShowNextItem?.status,
+        runOfShowStagedItem?.id
     ]);
     useEffect(() => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
         if (runOfShowStagedItem.automationMode !== 'auto') return;
+        const cooldownRemainingMs = runOfShowAutoStartCooldownUntilRef.current - nowMs();
+        if (cooldownRemainingMs > 0) {
+            const cooldownTimer = setTimeout(() => {
+                setRunOfShowAutomationRetryTick((tick) => tick + 1);
+            }, cooldownRemainingMs);
+            return () => clearTimeout(cooldownTimer);
+        }
+        const taskKey = `start:${runOfShowStagedItem.id}`;
         runOfShowAutomationBusyRef.current = true;
+        runOfShowAutomationTaskRef.current = taskKey;
+        let launched = false;
         const timer = setTimeout(() => {
+            launched = true;
             startRunOfShowItem(runOfShowStagedItem.id, { automation: true })
                 .catch((error) => {
+                    runOfShowAutoStartCooldownUntilRef.current = nowMs() + getRunOfShowAutomationRetryDelayMs(error);
                     hostLogger.warn('Run-of-show auto-start failed', error);
                 })
                 .finally(() => {
-                    runOfShowAutomationBusyRef.current = false;
+                    if (runOfShowAutomationTaskRef.current === taskKey) {
+                        runOfShowAutomationTaskRef.current = '';
+                        runOfShowAutomationBusyRef.current = false;
+                    }
                 });
         }, 300);
         return () => {
             clearTimeout(timer);
-            runOfShowAutomationBusyRef.current = false;
+            if (!launched && runOfShowAutomationTaskRef.current === taskKey) {
+                runOfShowAutomationTaskRef.current = '';
+                runOfShowAutomationBusyRef.current = false;
+            }
         };
     }, [
         isRunOfShowRoom,
         roomCode,
+        runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
-        runOfShowLiveItem,
-        runOfShowStagedItem,
+        runOfShowLiveItem?.id,
+        runOfShowStagedItem?.automationMode,
+        runOfShowStagedItem?.id,
         startRunOfShowItem
     ]);
     useEffect(() => {
@@ -7494,10 +8319,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
             localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
+            localStorage.setItem('bross_host_audience_preview_mode', audiencePreviewMode === 'live_tv' ? 'live_tv' : 'thumbnail');
+            localStorage.setItem(
+                'bross_host_audience_preview_size',
+                audiencePreviewSize === 'sm' || audiencePreviewSize === 'lg' ? audiencePreviewSize : 'md'
+            );
         } catch {
             // Ignore storage failures.
         }
-    }, [audiencePreviewVisible, audiencePreviewCollapsed]);
+    }, [audiencePreviewVisible, audiencePreviewCollapsed, audiencePreviewMode, audiencePreviewSize]);
     useEffect(() => {
         if (!room || layoutDefaultedRef.current) return;
         if (!room.layoutMode) {
@@ -10993,24 +11823,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setActiveWorkspaceSection('audience.chat');
         handleSettingsNavSelect('chat');
     };
-    const openAdminWorkspace = useCallback((sectionId = 'ops.room_setup') => {
+    const routeToWorkspaceSection = useCallback((sectionId = 'ops.room_setup', { forceAdmin = false } = {}) => {
         const targetSection = sectionId || 'ops.room_setup';
         const sectionMeta = getSectionMeta(targetSection);
         const viewId = sectionMeta?.view || 'ops';
         const mappedTab = SECTION_TO_SETTINGS_TAB[targetSection] || 'general';
         setActiveWorkspaceView(viewId);
         setActiveWorkspaceSection(targetSection);
+        if (!forceAdmin && sectionMeta?.hostTab) {
+            setSettingsNavOpen(false);
+            setShowSettings(false);
+            setTab(sectionMeta.hostTab);
+            return;
+        }
         setSettingsTab(mappedTab);
         setTab('admin');
         setShowSettings(true);
     }, []);
+    const openAdminWorkspace = useCallback((sectionId = 'ops.room_setup') => {
+        routeToWorkspaceSection(sectionId, { forceAdmin: true });
+    }, [routeToWorkspaceSection]);
     const openExistingRoomWorkspace = useCallback(async (targetRoomCode = '', sectionId = 'queue.live_run') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         const joined = await joinRoom(normalizedCode || roomCodeInput);
         if (!joined) return false;
-        if (sectionId) openAdminWorkspace(sectionId);
+        if (sectionId) routeToWorkspaceSection(sectionId);
         return true;
-    }, [joinRoom, openAdminWorkspace, roomCodeInput]);
+    }, [joinRoom, roomCodeInput, routeToWorkspaceSection]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openAdminWorkspace('ops.room_setup');
@@ -11088,7 +11927,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setSettingsNavOpen(false);
     };
     const handleTopChromeTabChange = (nextTab) => {
-        setTab(nextTab);
+        setTab(normalizeHostWorkspaceTab(nextTab));
     };
     const runMissionDeckAction = async (actionId = '') => {
         const action = String(actionId || '').trim();
@@ -13617,7 +14456,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     : [...prev, safeUid]
             ));
         };
-        const handleStartLauncherRoom = async ({ openNightSetup = false } = {}) => {
+        const handleStartLauncherRoom = async ({ openNightSetup = false, launchTarget = 'stage' } = {}) => {
             if (primaryLaunchDisabled) return;
             if (!launchRoomNameValue) {
                 toast('Add a room name before starting.');
@@ -13634,12 +14473,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 return;
             }
             setEntryError('');
-            await createRoom({
+            const result = await createRoom({
                 roomName: launchRoomNameValue,
                 coHostUids: launchCoHostUids,
                 nightPresetId: resolvedLaunchPresetId,
                 openNightSetup,
             });
+            if (!result?.roomCode || openNightSetup) return;
+            if (launchTarget === 'show') {
+                routeToWorkspaceSection('show.timeline');
+                return;
+            }
+            if (launchTarget === 'settings') {
+                routeToWorkspaceSection('ops.room_setup', { forceAdmin: true });
+                return;
+            }
+            routeToWorkspaceSection('queue.live_run');
         };
         const portalMetrics = [
             {
@@ -14520,7 +15369,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         commandPaletteRequestToken,
         showLegacyLiveEffects: false,
         compactViewport: compactHostViewport,
-        layoutMode: hostStageLayoutMode
+        layoutMode: hostStageLayoutMode,
+        onUpsertYtIndexEntries: upsertYtIndexEntries,
+        runOfShowAssignableSlots,
+        onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem
     };
     const inAdminWorkspace = tab === 'admin';
 
@@ -14703,13 +15555,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onDismissStageQuickStart={dismissStageQuickStartChecklist}
                     audiencePreviewVisible={audiencePreviewVisible}
                     setAudiencePreviewVisible={setAudiencePreviewVisible}
+                    audiencePreviewMode={audiencePreviewMode}
+                    setAudiencePreviewMode={setAudiencePreviewMode}
                     tabletTouchViewport={tabletTouchViewport}
                     runOfShowEnabled={isRunOfShowRoom}
                     runOfShowDirector={runOfShowDirector}
                     runOfShowLiveItem={runOfShowLiveItem}
                     runOfShowStagedItem={runOfShowStagedItem}
                     runOfShowNextItem={runOfShowNextItem}
-                    onOpenShowWorkspace={() => handleTopChromeTabChange('show')}
+                    onOpenShowWorkspace={() => handleTopChromeTabChange('run_of_show')}
+                    onFocusRunOfShowItem={(itemId) => {
+                        handleTopChromeTabChange('run_of_show');
+                        setRunOfShowFocusRequest({
+                            itemId: String(itemId || '').trim(),
+                            token: Date.now()
+                        });
+                    }}
+                    onStartRunOfShow={startRunOfShowNow}
+                    onStopRunOfShow={stopRunOfShowNow}
+                    onAdvanceRunOfShow={advanceRunOfShowNext}
+                    onRewindRunOfShow={rewindRunOfShowPrevious}
+                    runOfShowFocusMode={tab === 'run_of_show'}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -14735,7 +15601,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`flex-1 min-h-0 p-3 sm:p-4 md:p-5 lg:p-6 overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : 'md:overflow-hidden'}`}
+                className={`flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-2 sm:p-3 md:p-4 lg:p-4' : 'p-3 sm:p-4 md:p-5 lg:p-6'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
@@ -14753,33 +15619,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </>
                 )}
                 {tab === 'run_of_show' && (
-                    <div className="flex h-full min-h-0 flex-col gap-4">
-                        <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 px-4 py-4">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Show Workspace</div>
-                                    <div className="mt-1 text-xl font-black text-white">Run of show is a first-class host surface now.</div>
-                                    <div className="mt-1 text-sm text-zinc-300">Build the timeline, review approvals, and run the night without opening admin settings first.</div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => openAdminWorkspace('ops.room_setup')}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
-                                    >
-                                        Admin Utilities
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setTab('stage')}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
-                                    >
-                                        Back To Queue
-                                    </button>
-                                </div>
+                    <div className="flex min-h-0 flex-col gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-cyan-500/18 bg-gradient-to-r from-cyan-500/6 via-zinc-950/80 to-fuchsia-500/6 px-3 py-2">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Workspace</div>
+                                <div className="mt-1 text-xs text-zinc-400">Timeline-first planning and live control.</div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setTab('stage')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                >
+                                    Back To Queue
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => openAdminWorkspace('ops.room_setup')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                >
+                                    Admin Utilities
+                                </button>
                             </div>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                        <div className="min-h-0">
                             {roomCode ? (
                                 <RunOfShowDirectorPanel
                                     enabled={runOfShowEnabled}
@@ -14794,10 +15657,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     localLibrary={localLibrary}
                                     ytIndex={ytIndex}
                                     appleMusicAuthorized={appleMusicAuthorized}
+                                    queueSongs={runOfShowQueueCandidates}
                                     previewActiveId={String(room?.tvPreviewOverlay?.active ? room?.tvPreviewOverlay?.itemId || '' : '')}
+                                    focusRequest={runOfShowFocusRequest}
                                     operatorRole={runOfShowOperatorRole}
                                     operatorCapabilities={runOfShowOperatorCapabilities}
                                     operatingHint={runOfShowOperatingHint}
+                                    compactViewport={compactHostViewport}
                                     onSetEnabled={setRunOfShowEnabledState}
                                     onSetProgramMode={setRunOfShowProgramModeState}
                                     onAddItem={addRunOfShowItem}
@@ -14806,6 +15672,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onMoveItem={moveRunOfShowItem}
                                     onUpdateItem={patchRunOfShowItem}
                                     onToggleAutomationPause={toggleRunOfShowAutomationPause}
+                                    onStartRunOfShow={startRunOfShowNow}
+                                    onStopRunOfShow={stopRunOfShowNow}
+                                    onRestartRunOfShow={restartRunOfShowFromTop}
                                     onPrepareItem={prepareRunOfShowItem}
                                     onPreviewItem={previewRunOfShowItem}
                                     onClearPreview={clearRunOfShowPreview}
@@ -14813,6 +15682,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onCompleteItem={completeRunOfShowItem}
                                     onSkipItem={skipRunOfShowItem}
                                     onReviewSubmission={reviewRunOfShowSubmission}
+                                    onAssignQueueSongToItem={assignQueueSongToRunOfShowItem}
                                     onUpdatePolicy={updateRunOfShowPolicyState}
                                     onUpdateRoles={updateRunOfShowRolesState}
                                     onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
@@ -15311,6 +16181,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         currentSong={currentSong}
                         queueCount={queuedSongs.length}
                         collapsed={audiencePreviewCollapsed}
+                        previewMode={audiencePreviewMode}
+                        previewSize={audiencePreviewSize}
+                        onSetPreviewMode={setAudiencePreviewMode}
+                        onSetPreviewSize={setAudiencePreviewSize}
+                        allowLiveViewport={isRunOfShowRoom || tab === 'run_of_show' || tab === 'show'}
                         onToggleCollapsed={() => setAudiencePreviewCollapsed(prev => !prev)}
                         onHide={() => setAudiencePreviewVisible(false)}
                     />

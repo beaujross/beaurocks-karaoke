@@ -153,6 +153,27 @@ const QUICK_ADD_SCENE_OPTIONS = Object.freeze([
     { value: 'intermission', label: 'Intermission', icon: 'fa-martini-glass-citrus', detail: 'Reset the room' },
     { value: 'closing', label: 'Closing', icon: 'fa-flag-checkered', detail: 'End the night cleanly' },
 ]);
+const SPOTLIGHT_TIMELINE_OPTIONS = Object.freeze([
+    { id: 'bingo', label: 'Bingo', detail: 'Crowd board play between performances.', icon: 'fa-table-cells-large', tone: 'emerald' },
+    { id: 'team_pong', label: 'Team Pong', detail: 'Left-vs-right rally moment.', icon: 'fa-table-tennis-paddle-ball', tone: 'cyan' },
+    { id: 'trivia_pop', label: 'Trivia', detail: 'Quick room quiz.', icon: 'fa-circle-question', tone: 'amber' },
+    { id: 'wyr', label: 'Would You Rather', detail: 'Fast audience vote.', icon: 'fa-scale-balanced', tone: 'amber' },
+    { id: 'doodle_oke', label: 'Doodle-oke', detail: 'Draw and guess break.', icon: 'fa-pen', tone: 'violet' },
+    { id: 'selfie_challenge', label: 'Selfie Challenge', detail: 'Photo prompt and voting.', icon: 'fa-camera-retro', tone: 'rose' },
+    { id: 'karaoke_bracket', label: 'Bracket', detail: 'Tournament progression.', icon: 'fa-trophy', tone: 'rose' },
+    { id: 'vocal_challenge', label: 'Vocal Challenge', detail: 'Pitch target game.', icon: 'fa-wave-square', tone: 'sky' },
+    { id: 'riding_scales', label: 'Riding Scales', detail: 'Scale memory challenge.', icon: 'fa-music', tone: 'violet' },
+    { id: 'flappy_bird', label: 'Flappy Bird', detail: 'Voice-volume obstacle spike.', icon: 'fa-feather-pointed', tone: 'emerald' },
+    { id: 'applause_countdown', label: 'Applause Meter', detail: 'Crowd-volume payoff.', icon: 'fa-hands-clapping', tone: 'amber' },
+    { id: 'selfie_cam', label: 'Selfie Cam', detail: 'Roaming spotlight camera.', icon: 'fa-camera', tone: 'cyan' },
+]);
+const VIBE_TIMELINE_OPTIONS = Object.freeze([
+    { id: 'ballad', label: 'Ballad Wash', detail: 'Softer handoff lighting.', icon: 'fa-moon-stars', tone: 'violet' },
+    { id: 'banger', label: 'Banger Drop', detail: 'High-energy light pulse.', icon: 'fa-bolt-lightning', tone: 'rose' },
+    { id: 'storm', label: 'Storm', detail: 'Lightning/storm room effect.', icon: 'fa-cloud-bolt', tone: 'cyan' },
+    { id: 'strobe', label: 'Strobe', detail: 'Short strobe burst.', icon: 'fa-burst', tone: 'amber' },
+    { id: 'volley', label: 'Volley', detail: 'Back-and-forth crowd volley.', icon: 'fa-arrows-left-right', tone: 'emerald' },
+]);
 const MOMENT_PACKS = Object.freeze([
     {
         id: 'hype_intro',
@@ -375,9 +396,9 @@ const TIMELINE_LANE_META = Object.freeze({
     audience: { label: 'Audience Beats', detail: 'Trivia, games, buffers, breaks', tone: 'emerald' },
 });
 
-const textInputClass = 'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none';
+const textInputClass = 'w-full rounded-xl border border-white/10 bg-black/30 px-2.5 py-1.5 text-[13px] text-white outline-none';
 const selectInputClass = `${textInputClass} appearance-none pr-10`;
-const surfaceClass = 'rounded-3xl border border-white/10 bg-black/25';
+const surfaceClass = 'rounded-[28px] border border-white/10 bg-black/25';
 const miniSurfaceClass = 'rounded-2xl border border-white/10 bg-black/20';
 const launchConfigToCsv = (cfg = {}) => Array.isArray(cfg?.options) ? cfg.options.join(', ') : String(cfg?.optionsCsv || '').trim();
 const FieldLabel = ({ children }) => <label className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{children}</label>;
@@ -430,10 +451,43 @@ const statusTone = (status = '') => {
 const sourceTone = (tone = 'zinc', active = false) => {
     if (tone === 'emerald') return active ? 'border-emerald-300/45 bg-emerald-500/15 text-emerald-50' : 'border-emerald-300/18 bg-emerald-500/8 text-emerald-100';
     if (tone === 'cyan') return active ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-50' : 'border-cyan-300/18 bg-cyan-500/8 text-cyan-100';
+    if (tone === 'sky') return active ? 'border-sky-300/45 bg-sky-500/15 text-sky-50' : 'border-sky-300/18 bg-sky-500/8 text-sky-100';
     if (tone === 'rose') return active ? 'border-rose-300/45 bg-rose-500/15 text-rose-50' : 'border-rose-300/18 bg-rose-500/8 text-rose-100';
     if (tone === 'amber') return active ? 'border-amber-300/45 bg-amber-500/15 text-amber-50' : 'border-amber-300/18 bg-amber-500/8 text-amber-100';
     if (tone === 'violet') return active ? 'border-violet-300/45 bg-violet-500/15 text-violet-50' : 'border-violet-300/18 bg-violet-500/8 text-violet-100';
     return active ? 'border-zinc-300/45 bg-zinc-500/15 text-zinc-50' : 'border-white/10 bg-white/5 text-zinc-200';
+};
+
+const backingApprovalMeta = (approvalStatus = '') => {
+    const safe = String(approvalStatus || '').trim().toLowerCase();
+    if (safe === 'approved') {
+        return {
+            label: 'Good for room',
+            tone: 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'
+        };
+    }
+    if (safe === 'rejected') {
+        return {
+            label: 'Bad fit',
+            tone: 'border-rose-300/30 bg-rose-500/10 text-rose-100'
+        };
+    }
+    if (safe === 'host_selected') {
+        return {
+            label: 'Host picked',
+            tone: 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100'
+        };
+    }
+    if (safe === 'pending') {
+        return {
+            label: 'Needs review',
+            tone: 'border-amber-300/30 bg-amber-500/10 text-amber-100'
+        };
+    }
+    return {
+        label: 'Unrated',
+        tone: 'border-white/10 bg-white/5 text-zinc-200'
+    };
 };
 
 const formatStart = (ms = 0) => {
@@ -658,6 +712,45 @@ const itemSummary = (item = {}) => {
     }
     return item?.notes || 'General show block';
 };
+const getEffectiveSuggestionSourceType = (sourceType = '') => {
+    const safe = String(sourceType || '').trim().toLowerCase();
+    if (safe === 'canonical_default' || safe === 'manual_external' || !safe) return 'youtube';
+    return safe;
+};
+const getPerformerFieldLabel = (performerMode = '') => (
+    performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? 'Performer Display Name' : 'Performer Display Name'
+);
+const getPerformerFieldPlaceholder = (performerMode = '') => {
+    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Approved singer fills this in';
+    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.placeholder) return 'Singer TBD, VIP Guest, Auction Winner';
+    return 'Singer name for the room';
+};
+const getPerformerModeHint = (performerMode = '') => {
+    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Leave this open and approve a singer into the slot later.';
+    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.placeholder) return 'Use one placeholder name now, then bind a real attendee when the lobby fills.';
+    return 'Lock this slot to a specific attendee or type the stage name directly.';
+};
+
+const getPerformanceIdentityFields = (item = {}) => ([
+    {
+        key: 'performer',
+        label: 'Performer',
+        value: String(item?.assignedPerformerName || '').trim(),
+        fallback: 'Missing performer',
+    },
+    {
+        key: 'song',
+        label: 'Song',
+        value: String(item?.songTitle || '').trim(),
+        fallback: 'Missing song',
+    },
+    {
+        key: 'artist',
+        label: 'Artist',
+        value: String(item?.artistName || '').trim(),
+        fallback: 'Missing artist',
+    },
+]);
 
 const getSourceMeta = (sourceType = '') => (
     BACKING_SOURCE_OPTIONS.find((option) => option.value === sourceType) || BACKING_SOURCE_OPTIONS[0]
@@ -731,7 +824,7 @@ const CollapsiblePanel = ({ label, title, summary = '', open = false, onToggle, 
 };
 
 const BoardCard = ({ label, item, readiness, emptyLabel, actionLabel, actionTone, onAction }) => (
-    <article className={`${surfaceClass} p-4`}>
+    <article className={`${surfaceClass} p-3`}>
         <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">{label}</div>
         {item ? (
             <div className="mt-3 space-y-3">
@@ -756,6 +849,131 @@ const OperationsStat = ({ label, value, tone = 'zinc', detail = '' }) => (
         {detail ? <div className="mt-1 text-xs text-current/80">{detail}</div> : null}
     </div>
 );
+
+const IssueJumpRail = ({ issues = [], onJump }) => {
+    const activeIssues = issues.filter((entry) => Number(entry?.count || 0) > 0);
+    if (!activeIssues.length) return null;
+    return (
+        <div className="rounded-[22px] border border-amber-300/16 bg-[linear-gradient(135deg,rgba(41,26,12,0.92),rgba(19,20,34,0.96))] px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/80">Issue Rail</div>
+                    <div className="mt-1 text-xs text-zinc-300">Jump straight to the first slot that still needs attention.</div>
+                </div>
+                <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-100">
+                    {activeIssues.reduce((sum, entry) => sum + Number(entry.count || 0), 0)} open
+                </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+                {activeIssues.map((issue) => (
+                    <button
+                        key={issue.key}
+                        type="button"
+                        onClick={() => onJump?.(issue)}
+                        className="rounded-full border border-amber-300/25 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50 transition hover:border-amber-200/45 hover:bg-amber-500/12"
+                    >
+                        {issue.count} {issue.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+const CompactTimelineOverview = ({
+    items = [],
+    currentItemId = '',
+    liveItemId = '',
+    stagedItemId = '',
+    nextItemId = '',
+    readinessById = {},
+    pendingCountsById = {},
+    onFocus,
+    showHeader = true,
+}) => {
+    const segments = buildTimelineSegments(items);
+    const activeSegment = segments.find((entry) => entry.item.id === (liveItemId || stagedItemId || currentItemId || nextItemId)) || segments[0] || null;
+    const activePlayheadPct = activeSegment ? Math.min(98, Math.max(1, activeSegment.startPct)) : 0;
+
+    if (!segments.length) {
+        return (
+            <div className="rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-400">
+                Add scenes to block out the night.
+            </div>
+        );
+    }
+
+    return (
+        <div className="rounded-[22px] border border-white/10 bg-black/25 px-3 py-3">
+            {showHeader ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Show Map</div>
+                        <div className="mt-1 text-xs text-zinc-400">Current block, next block, and the rest of the timeline stay visible while you work.</div>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                        {items.length} scene{items.length === 1 ? '' : 's'}
+                    </div>
+                </div>
+            ) : null}
+            <div className={`relative overflow-x-auto pb-1 ${showHeader ? 'mt-3' : ''}`}>
+                <div className="relative min-w-[960px] rounded-[20px] border border-white/10 bg-zinc-950/80 p-2">
+                    <div className="absolute inset-y-2 left-2 right-2 rounded-[16px] bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:12.5%_100%]"></div>
+                    {activePlayheadPct ? <div className="absolute top-2 bottom-2 z-[1] w-[2px] bg-cyan-300/90 shadow-[0_0_0_6px_rgba(34,211,238,0.12)]" style={{ left: `${activePlayheadPct}%` }}></div> : null}
+                    <div className="relative h-[74px]">
+                        {segments.map((segment) => {
+                            const item = segment.item;
+                            const readiness = readinessById[item.id] || null;
+                            const pendingCount = Number(pendingCountsById[item.id] || 0);
+                            const visual = getItemVisual(item.type);
+                            const label = item.id === liveItemId ? 'Live' : item.id === stagedItemId ? 'Staged' : item.id === nextItemId ? 'Next' : `#${segment.index + 1}`;
+                            const blocked = Array.isArray(readiness?.blockers) && readiness.blockers.length > 0;
+                            const needsAttention = blocked || pendingCount > 0;
+                            return (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => onFocus?.(item.id)}
+                                    className={`absolute top-0 bottom-0 rounded-[18px] border p-2 text-left transition ${
+                                        item.id === currentItemId || item.id === liveItemId
+                                            ? 'border-cyan-300/45 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]'
+                                            : needsAttention
+                                                ? 'border-amber-300/40 shadow-[0_0_0_1px_rgba(251,191,36,0.18)]'
+                                                : 'border-white/10'
+                                    }`}
+                                    style={{
+                                        left: `${segment.startPct}%`,
+                                        width: `${segment.widthPct}%`,
+                                        minWidth: 118,
+                                        background: needsAttention ? 'rgba(58,26,8,0.42)' : 'rgba(9,11,18,0.82)'
+                                    }}
+                                >
+                                    <div className={`relative flex h-full flex-col justify-between rounded-[14px] border ${needsAttention ? 'border-amber-300/22' : 'border-white/10'} bg-gradient-to-br ${visual.tone} px-2 py-1.5`}>
+                                        {needsAttention ? <div className="absolute inset-y-2 left-1 w-1 rounded-full bg-gradient-to-b from-amber-300 via-amber-400 to-rose-400"></div> : null}
+                                        <div className="flex items-start justify-between gap-2">
+                                            <span className={`inline-flex h-7 w-7 items-center justify-center rounded-xl border ${visual.chip}`}>
+                                                <i className={`fa-solid ${visual.icon}`}></i>
+                                            </span>
+                                            <div className="flex flex-wrap justify-end gap-1">
+                                                <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${statusTone(item.status)}`}>{label}</span>
+                                                {blocked ? <span className="rounded-full border border-amber-300/40 bg-amber-500/16 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-50"><i className="fa-solid fa-triangle-exclamation"></i></span> : null}
+                                                {pendingCount > 0 ? <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-100">{pendingCount}</span> : null}
+                                            </div>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="truncate text-xs font-black uppercase tracking-[0.04em] text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
+                                            <div className="mt-0.5 truncate text-[11px] text-zinc-100/70">{itemSummary(item)}</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const OpsBoardCard = ({ label, item, readiness, emptyLabel, children, actionLabel, actionTone, onAction, onFocus }) => (
     <article className={`${surfaceClass} p-4`} aria-label={`${label} run of show card`}>
@@ -791,19 +1009,18 @@ const OpsBoardCard = ({ label, item, readiness, emptyLabel, children, actionLabe
 );
 
 const UtilityDrawer = ({ eyebrow, title, summary, open = false, onToggle, children, badge = '' }) => (
-    <article className={`${surfaceClass} p-4`}>
-        <CollapsiblePanel
-            label={eyebrow}
-            title={title}
-            summary={summary}
-            open={open}
-            onToggle={onToggle}
-            badge={badge}
-            tone="cyan"
-        >
-            {children}
-        </CollapsiblePanel>
-    </article>
+    <CollapsiblePanel
+        label={eyebrow}
+        title={title}
+        summary={summary}
+        open={open}
+        onToggle={onToggle}
+        badge={badge}
+        tone="cyan"
+        compact
+    >
+        {children}
+    </CollapsiblePanel>
 );
 
 const StoryboardTimeline = ({
@@ -825,7 +1042,7 @@ const StoryboardTimeline = ({
     onDragTarget,
     onDropItem,
 }) => (
-    <article className={`${surfaceClass} p-4`}>
+    <article className={`${surfaceClass} p-3`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Sequence Composer</div>
@@ -985,6 +1202,8 @@ const TimelineStudio = ({
     onAddScenePack,
     onToggleGenerator,
     generatorOpen = false,
+    momentPacksOpen = false,
+    onToggleMomentPacks,
     getPrimaryAction,
     dragState = null,
     onDragStart,
@@ -996,12 +1215,63 @@ const TimelineStudio = ({
     const activeSegment = segments.find((entry) => entry.item.id === (liveItemId || stagedItemId || currentItemId || nextItemId)) || segments[0] || null;
     const activePlayheadPct = activeSegment ? Math.min(98, Math.max(1, activeSegment.startPct)) : 0;
     const tickMarks = [0, 25, 50, 75, 100];
+    const addSpotlightMoment = (modeId = '', option = null) => {
+        const safeModeId = String(modeId || '').trim();
+        if (!safeModeId) return;
+        const baseTitle = String(option?.label || safeModeId).trim();
+        if (safeModeId === 'selfie_cam') {
+            onAddItem?.('announcement', {
+                title: baseTitle,
+                plannedDurationSec: 45,
+                roomMomentPlan: { activeMode: 'selfie_cam' },
+                presentationPlan: {
+                    publicTvTakeoverEnabled: true,
+                    takeoverScene: 'selfie_cam',
+                    headline: baseTitle,
+                    subhead: option?.detail || 'Camera moment for the whole room.',
+                    accentTheme: option?.tone || 'cyan'
+                }
+            });
+            return;
+        }
+        onAddItem?.('game_break', {
+            title: baseTitle,
+            plannedDurationSec: safeModeId === 'applause_countdown' ? 35 : 60,
+            modeLaunchPlan: {
+                modeKey: safeModeId,
+                launchConfig: {},
+                requiresAudienceTakeover: safeModeId !== 'applause_countdown'
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: safeModeId,
+                headline: baseTitle,
+                subhead: option?.detail || 'Live room mode moment.',
+                accentTheme: option?.tone || 'cyan'
+            }
+        });
+    };
+    const addVibeMoment = (modeId = '', option = null) => {
+        const safeModeId = String(modeId || '').trim();
+        if (!safeModeId) return;
+        onAddItem?.('buffer', {
+            title: String(option?.label || safeModeId).trim(),
+            plannedDurationSec: safeModeId === 'storm' || safeModeId === 'strobe' ? 20 : 30,
+            roomMomentPlan: { lightMode: safeModeId },
+            presentationPlan: {
+                publicTvTakeoverEnabled: false,
+                headline: String(option?.label || safeModeId).trim(),
+                subhead: option?.detail || 'Room vibe reset.',
+                accentTheme: option?.tone || 'violet'
+            }
+        });
+    };
     return (
-        <article className={`${surfaceClass} p-4`}>
+        <article className={`${surfaceClass} p-3`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Timeline Studio</div>
-                    <div className="mt-1 text-sm text-zinc-300">Add scenes from the clip bin, drag clips across the night, then open the inspector only for the scene you want to refine.</div>
+                    <div className="mt-1 text-xs text-zinc-400">Add scenes, drag them into place, then open only the inspector you need.</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <button
@@ -1015,59 +1285,139 @@ const TimelineStudio = ({
                     </button>
                 </div>
             </div>
-            <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
-                {QUICK_ADD_SCENE_OPTIONS.map((option) => (
-                    <button
-                        key={option.value}
-                        type="button"
-                        disabled={!canEditFlow}
-                        onClick={() => onAddItem?.(option.value)}
-                        className="rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 text-left transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:opacity-40"
-                    >
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-cyan-100">
-                                <i className={`fa-solid ${option.icon}`}></i>
-                            </div>
-                            <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-300">Add</span>
-                        </div>
-                        <div className="mt-3 text-sm font-bold text-white">{option.label}</div>
-                        <div className="mt-1 text-xs text-zinc-400">{option.detail}</div>
-                    </button>
-                ))}
-            </div>
-            <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
-                New clips land at the end of the sequence. Drag them into place like a video timeline once they appear.
-            </div>
             <div className="mt-4">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Moment Packs</div>
-                <div className="mt-1 text-sm text-zinc-300">Use the tech the room already has. Drop in TV takeovers, trivia, onboarding beats, selfie cam, tip bursts, leaderboard flashes, and vibe-light moments without building them from scratch.</div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {MOMENT_PACKS.map((pack) => (
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Core Scene Blocks</div>
+                        <div className="mt-1 text-sm text-zinc-300">Start with the normal rhythm of the night: singer slots, host beats, breaks, and closers.</div>
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{QUICK_ADD_SCENE_OPTIONS.length} primary blocks</div>
+                </div>
+                <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                    {QUICK_ADD_SCENE_OPTIONS.map((option) => (
                         <button
-                            key={pack.id}
+                            key={option.value}
                             type="button"
                             disabled={!canEditFlow}
-                            onClick={() => onAddScenePack?.(pack)}
-                            className={`rounded-[26px] border p-4 text-left transition hover:brightness-110 disabled:opacity-40 ${sourceTone(pack.tone, false)}`}
+                            onClick={() => onAddItem?.(option.value)}
+                            className="rounded-[22px] border border-cyan-300/18 bg-[linear-gradient(180deg,rgba(8,17,30,0.92),rgba(18,11,31,0.82))] p-3 text-left transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:opacity-40"
                         >
                             <div className="flex items-start justify-between gap-3">
-                                <div className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl border ${sourceTone(pack.tone, true)}`}>
-                                    <i className={`fa-solid ${pack.icon}`}></i>
+                                <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/18 bg-cyan-500/10 text-cyan-100">
+                                    <i className={`fa-solid ${option.icon}`}></i>
                                 </div>
-                                <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-100">Drop In</span>
+                                <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-100">Add</span>
                             </div>
-                            <div className="mt-3 text-lg font-black text-white">{pack.label}</div>
-                            <div className="mt-1 text-sm text-current/80">{pack.subtitle}</div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                {pack.chips.map((chip) => (
-                                    <span key={chip} className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-zinc-100/90">
-                                        {chip}
-                                    </span>
-                                ))}
-                            </div>
+                            <div className="mt-3 text-sm font-black uppercase tracking-[0.12em] text-white">{option.label}</div>
+                            <div className="mt-1 text-xs text-zinc-300">{option.detail}</div>
                         </button>
                     ))}
                 </div>
+            </div>
+            <div className="mt-3 rounded-2xl border border-cyan-300/14 bg-cyan-500/6 px-3 py-2 text-xs text-cyan-100/90">
+                New scenes open in the builder right away. Drag them into place after you fill in the basics.
+            </div>
+            <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
+                <div className="rounded-2xl border border-white/10 bg-black/18 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Game + Spotlight Modes</div>
+                            <div className="mt-1 text-sm text-zinc-300">Every live mode that can act as a planned show beat should be droppable from here.</div>
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{SPOTLIGHT_TIMELINE_OPTIONS.length} insertable modes</div>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+                        {SPOTLIGHT_TIMELINE_OPTIONS.map((option) => (
+                            <button
+                                key={option.id}
+                                type="button"
+                                disabled={!canEditFlow}
+                                onClick={() => addSpotlightMoment(option.id, option)}
+                                className={`rounded-2xl border px-3 py-2.5 text-left transition hover:brightness-110 disabled:opacity-40 ${sourceTone(option.tone, false)}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border ${sourceTone(option.tone, true)}`}>
+                                        <i className={`fa-solid ${option.icon}`}></i>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="truncate text-xs font-black uppercase tracking-[0.14em] text-white">{option.label}</div>
+                                        <div className="mt-0.5 text-[11px] text-current/78">{option.detail}</div>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/18 p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Vibe Moments</div>
+                            <div className="mt-1 text-sm text-zinc-300">Use light and crowd-energy shifts as real planned transitions.</div>
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{VIBE_TIMELINE_OPTIONS.length} room vibes</div>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                        {VIBE_TIMELINE_OPTIONS.map((option) => (
+                            <button
+                                key={option.id}
+                                type="button"
+                                disabled={!canEditFlow}
+                                onClick={() => addVibeMoment(option.id, option)}
+                                className={`rounded-2xl border px-3 py-2.5 text-left transition hover:brightness-110 disabled:opacity-40 ${sourceTone(option.tone, false)}`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border ${sourceTone(option.tone, true)}`}>
+                                        <i className={`fa-solid ${option.icon}`}></i>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="truncate text-xs font-black uppercase tracking-[0.14em] text-white">{option.label}</div>
+                                        <div className="mt-0.5 text-[11px] text-current/78">{option.detail}</div>
+                                    </div>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+            <div className="mt-4">
+                <CollapsiblePanel
+                    label="Curated Packs"
+                    title="Reusable specialist moments"
+                    summary="Optional prebuilt beats like TV takeovers, onboarding, selfie cam, leaderboard flashes, and light cues."
+                    open={momentPacksOpen}
+                    onToggle={onToggleMomentPacks}
+                    badge={`${MOMENT_PACKS.length} presets`}
+                    tone="violet"
+                    compact
+                >
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                        {MOMENT_PACKS.map((pack) => (
+                            <button
+                                key={pack.id}
+                                type="button"
+                                disabled={!canEditFlow}
+                                onClick={() => onAddScenePack?.(pack)}
+                                className={`rounded-[22px] border p-3 text-left transition hover:brightness-110 disabled:opacity-40 ${sourceTone(pack.tone, false)}`}
+                            >
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl border ${sourceTone(pack.tone, true)}`}>
+                                        <i className={`fa-solid ${pack.icon}`}></i>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-100">Drop In</span>
+                                </div>
+                                <div className="mt-2 text-base font-black text-white">{pack.label}</div>
+                                <div className="mt-1 text-xs text-current/80">{pack.subtitle}</div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {pack.chips.map((chip) => (
+                                        <span key={chip} className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-zinc-100/90">
+                                            {chip}
+                                        </span>
+                                    ))}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </CollapsiblePanel>
             </div>
             {items.length ? (
                 <div className="mt-4 overflow-x-auto pb-2">
@@ -1102,7 +1452,7 @@ const TimelineStudio = ({
                                             {laneSegments.length} clip{laneSegments.length === 1 ? '' : 's'}
                                         </div>
                                     </div>
-                                    <div className="relative mt-3 h-[108px] overflow-hidden rounded-[24px] border border-white/10 bg-zinc-950/75">
+                                    <div className="relative mt-3 h-[92px] overflow-hidden rounded-[24px] border border-white/10 bg-zinc-950/75">
                                         <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[length:12.5%_100%]"></div>
                                         {activePlayheadPct ? <div className="absolute top-0 bottom-0 z-[1] w-[2px] bg-cyan-300/90 shadow-[0_0_0_6px_rgba(34,211,238,0.12)]" style={{ left: `${activePlayheadPct}%` }}></div> : null}
                                         {laneSegments.length ? laneSegments.map((segment) => {
@@ -1141,19 +1491,19 @@ const TimelineStudio = ({
                                                         event.preventDefault();
                                                         onDropItem?.(item.id, dragState?.position || 'after');
                                                     }}
-                                                    className={`absolute top-3 bottom-3 rounded-[22px] border p-3 text-left transition ${item.id === currentItemId || item.id === liveItemId ? 'border-cyan-300/45 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]' : 'border-white/10'} ${isDragging ? 'opacity-45' : ''}`}
+                                                    className={`absolute top-2 bottom-2 rounded-[20px] border p-2.5 text-left transition ${item.id === currentItemId || item.id === liveItemId ? 'border-cyan-300/45 shadow-[0_0_0_1px_rgba(34,211,238,0.25)]' : 'border-white/10'} ${isDragging ? 'opacity-45' : ''}`}
                                                     style={{
                                                         left: `${segment.startPct}%`,
                                                         width: `${segment.widthPct}%`,
-                                                        minWidth: laneKey === 'master' ? 150 : 124,
+                                                        minWidth: laneKey === 'master' ? 138 : 116,
                                                         background: 'rgba(9,11,18,0.82)'
                                                     }}
                                                 >
                                                     {targetBefore ? <div className="absolute -left-1 top-3 bottom-3 w-1 rounded-full bg-cyan-300"></div> : null}
                                                     {targetAfter ? <div className="absolute -right-1 top-3 bottom-3 w-1 rounded-full bg-cyan-300"></div> : null}
-                                                    <div className={`flex h-full flex-col justify-between rounded-[18px] border border-white/10 bg-gradient-to-br ${visual.tone} px-3 py-2`}>
+                                                    <div className={`flex h-full flex-col justify-between rounded-[16px] border border-white/10 bg-gradient-to-br ${visual.tone} px-2.5 py-2`}>
                                                         <div className="flex items-start justify-between gap-2">
-                                                            <div className={`inline-flex h-9 w-9 items-center justify-center rounded-2xl border ${visual.chip}`}>
+                                                            <div className={`inline-flex h-8 w-8 items-center justify-center rounded-2xl border ${visual.chip}`}>
                                                                 <i className={`fa-solid ${visual.icon}`}></i>
                                                             </div>
                                                             <div className="flex flex-wrap justify-end gap-1">
@@ -1202,77 +1552,115 @@ const QuickDraftPanel = ({
     onToggleGenerator,
     generatedDraftItems = [],
     itemsCount = 0,
-}) => (
-    <article className={`${surfaceClass} p-4`}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Quick Draft</div>
-                <div className="mt-1 text-sm text-zinc-300">Build tonight&apos;s outline from a few decisions, then refine only the scenes that matter.</div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
-                    {generatedDraftItems.length} planned block{generatedDraftItems.length === 1 ? '' : 's'}
-                </span>
-                <ControlButton onClick={onToggleGenerator}>
-                    {generatorOpen ? 'Hide Advanced Builder' : 'Open Advanced Builder'}
-                </ControlButton>
-            </div>
-        </div>
-        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_150px_150px_190px_220px]">
-            <div>
-                <FieldLabel>Format</FieldLabel>
-                <SelectControl value={generatorConfig.format || 'karaoke_heavy'} onChange={(e) => updateGeneratorConfig({ format: e.target.value })} disabled={!canEditFlow}>
-                    {EVENT_FORMAT_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                </SelectControl>
-            </div>
-            <div>
-                <FieldLabel>Minutes</FieldLabel>
-                <input type="number" value={generatorConfig.durationMin || 0} onChange={(e) => updateGeneratorConfig({ durationMin: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
-            </div>
-            <div>
-                <FieldLabel>Singer Slots</FieldLabel>
-                <input type="number" value={generatorConfig.performanceCount || 0} onChange={(e) => updateGeneratorConfig({ performanceCount: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
-            </div>
-            <div>
-                <FieldLabel>Automation Style</FieldLabel>
-                <SelectControl value={generatorConfig.automationPresetId || 'balanced'} onChange={(e) => updateGeneratorConfig({ automationPresetId: e.target.value })} disabled={!canEditFlow}>
-                    {POLICY_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>{preset.label}</option>
-                    ))}
-                </SelectControl>
-            </div>
-            <div className="space-y-2">
-                <FieldLabel>Apply Mode</FieldLabel>
-                <div className="flex flex-wrap gap-2">
-                    {[
-                        ['replace', 'Replace'],
-                        ['append', 'Append'],
-                    ].map(([value, label]) => (
-                        <button
-                            key={value}
-                            type="button"
-                            disabled={!canEditFlow}
-                            onClick={() => updateGeneratorConfig({ applyMode: value })}
-                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] disabled:opacity-40 ${generatorConfig.applyMode === value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300'}`}
-                        >
-                            {label}
-                        </button>
-                    ))}
+    collapsed = false,
+    onToggleCollapsed,
+}) => {
+    const formatLabel = EVENT_FORMAT_OPTIONS.find((option) => option.value === (generatorConfig.format || 'karaoke_heavy'))?.label || 'Custom';
+    const automationLabel = POLICY_PRESETS.find((preset) => preset.id === (generatorConfig.automationPresetId || 'balanced'))?.label || 'Custom';
+
+    return (
+        <article className={`${surfaceClass} p-4`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Quick Draft</div>
+                    <div className="mt-1 text-xs text-zinc-400">Keep draft controls at the top, then collapse them and work in the actual show below.</div>
                 </div>
-                <ControlButton tone="primary" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                    {generatorBusy ? 'Applying…' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
-                </ControlButton>
+                <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                        {generatedDraftItems.length} planned block{generatedDraftItems.length === 1 ? '' : 's'}
+                    </span>
+                    {typeof onToggleCollapsed === 'function' ? (
+                        <ControlButton onClick={onToggleCollapsed}>
+                            {collapsed ? 'Expand Draft' : 'Collapse Draft'}
+                        </ControlButton>
+                    ) : null}
+                    {!collapsed ? (
+                        <ControlButton onClick={onToggleGenerator}>
+                            {generatorOpen ? 'Hide Advanced Builder' : 'Open Advanced Builder'}
+                        </ControlButton>
+                    ) : null}
+                </div>
             </div>
-        </div>
-        <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
-            {itemsCount
-                ? `You already have ${itemsCount} block${itemsCount === 1 ? '' : 's'} in this night. Use Replace to rebuild the lineup or Append to tack this draft onto the end.`
-                : 'Start with a fast draft, then fine-tune the scenes one at a time below.'}
-        </div>
-    </article>
-);
+            {collapsed ? (
+                <>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{formatLabel}</span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.durationMin || 0} min</span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.performanceCount || 0} singer slots</span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{automationLabel}</span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.applyMode === 'append' ? 'Append mode' : 'Replace mode'}</span>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/14 bg-cyan-500/6 px-3 py-2 text-xs text-cyan-100/90">
+                        <span>
+                            {itemsCount
+                                ? `You already have ${itemsCount} block${itemsCount === 1 ? '' : 's'} in this night. Expand this tray only when you want to rebuild or append a new outline.`
+                                : 'Start with a fast draft, then fine-tune the scenes one at a time below.'}
+                        </span>
+                        <ControlButton tone="primary" className="shrink-0 justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
+                            {generatorBusy ? 'Applying…' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                        </ControlButton>
+                    </div>
+                </>
+            ) : (
+                <>
+                    <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1.1fr)_120px_120px_170px_auto]">
+                        <div>
+                            <FieldLabel>Format</FieldLabel>
+                            <SelectControl value={generatorConfig.format || 'karaoke_heavy'} onChange={(e) => updateGeneratorConfig({ format: e.target.value })} disabled={!canEditFlow}>
+                                {EVENT_FORMAT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </SelectControl>
+                        </div>
+                        <div>
+                            <FieldLabel>Minutes</FieldLabel>
+                            <input type="number" value={generatorConfig.durationMin || 0} onChange={(e) => updateGeneratorConfig({ durationMin: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
+                        </div>
+                        <div>
+                            <FieldLabel>Singer Slots</FieldLabel>
+                            <input type="number" value={generatorConfig.performanceCount || 0} onChange={(e) => updateGeneratorConfig({ performanceCount: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
+                        </div>
+                        <div>
+                            <FieldLabel>Automation</FieldLabel>
+                            <SelectControl value={generatorConfig.automationPresetId || 'balanced'} onChange={(e) => updateGeneratorConfig({ automationPresetId: e.target.value })} disabled={!canEditFlow}>
+                                {POLICY_PRESETS.map((preset) => (
+                                    <option key={preset.id} value={preset.id}>{preset.label}</option>
+                                ))}
+                            </SelectControl>
+                        </div>
+                        <div className="space-y-2 xl:pl-1">
+                            <FieldLabel>Apply Mode</FieldLabel>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    ['replace', 'Replace'],
+                                    ['append', 'Append'],
+                                ].map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!canEditFlow}
+                                        onClick={() => updateGeneratorConfig({ applyMode: value })}
+                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] disabled:opacity-40 ${generatorConfig.applyMode === value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300'}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                            <ControlButton tone="primary" className="w-full justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
+                                {generatorBusy ? 'Applying…' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                            </ControlButton>
+                        </div>
+                    </div>
+                    <div className="mt-2 rounded-2xl border border-cyan-300/14 bg-cyan-500/6 px-3 py-2 text-xs text-cyan-100/90">
+                        {itemsCount
+                            ? `You already have ${itemsCount} block${itemsCount === 1 ? '' : 's'} in this night. Use Replace to rebuild the lineup or Append to tack this draft onto the end.`
+                            : 'Start with a fast draft, then fine-tune the scenes one at a time below.'}
+                    </div>
+                </>
+            )}
+        </article>
+    );
+};
 
 const ShowMapCard = ({
     items = [],
@@ -1284,14 +1672,23 @@ const ShowMapCard = ({
     pendingCountsById = {},
     getPrimaryAction,
     onFocus,
+    canEditFlow = false,
+    roomUserCandidates = [],
+    onAssignLobbyPerformer,
+    onClearLobbyPerformer,
+    onUpdateItem,
+    onLoadSuggestedBacking,
+    mediaPicker = {},
+    getSuggestedOptionsForItem,
+    onApplyMediaSelection,
 }) => {
     const blockedCount = items.filter((item) => Array.isArray(readinessById[item.id]?.blockers) && readinessById[item.id].blockers.length).length;
     return (
-        <article className={`${surfaceClass} p-4`}>
+        <article className={`${surfaceClass} p-3`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Show Map</div>
-                    <div className="mt-1 text-sm text-zinc-300">See the whole night in one stacked view, then open only the scene you want to edit.</div>
+                    <div className="mt-1 text-xs text-zinc-400">Scan the whole night in one list, then jump straight into the scene you want.</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                     <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
@@ -1302,49 +1699,247 @@ const ShowMapCard = ({
                     </span>
                 </div>
             </div>
-            <div className="mt-4 grid gap-2">
+            <div className="mt-3 grid gap-1.5">
                 {items.map((item, index) => {
                     const readiness = readinessById[item.id] || null;
                     const blockers = Array.isArray(readiness?.blockers) ? readiness.blockers.length : 0;
                     const pendingCount = Number(pendingCountsById[item.id] || 0);
+                    const hasIssues = blockers > 0 || pendingCount > 0;
                     const action = typeof getPrimaryAction === 'function' ? getPrimaryAction(item, readiness, { pendingCount }) : null;
                     const isFocused = expandedItemId === item.id;
                     const railLabel = item.id === liveItemId ? 'Now' : item.id === stagedItemId ? 'Staged' : item.id === nextItemId ? 'Up next' : `Scene ${index + 1}`;
                     const readinessLabel = blockers ? `${blockers} blocker${blockers === 1 ? '' : 's'}` : pendingCount ? `${pendingCount} pending` : 'Ready';
+                    const performanceFields = item.type === 'performance' ? getPerformanceIdentityFields(item) : [];
+                    const sourceMeta = getSourceMeta(item?.backingPlan?.sourceType || 'canonical_default');
+                    const inlineSuggestedOptions = isFocused && item.type === 'performance' && typeof getSuggestedOptionsForItem === 'function'
+                        ? getSuggestedOptionsForItem(item).slice(0, 5)
+                        : [];
+                    const showingInlinePicker = mediaPicker.itemId === item.id;
+                    const inlinePickerError = showingInlinePicker ? String(mediaPicker.error || '').trim() : '';
+                    const inlinePickerLoading = showingInlinePicker && mediaPicker.loading === true;
                     return (
-                        <button
+                        <div
                             key={item.id}
-                            type="button"
-                            onClick={() => onFocus?.(item.id)}
-                            className={`w-full rounded-[24px] border px-4 py-3 text-left transition ${isFocused ? 'border-cyan-300/35 bg-cyan-500/10' : 'border-white/10 bg-black/20 hover:border-cyan-300/25'}`}
+                            className={`relative w-full rounded-[22px] border pl-4 pr-3 py-2.5 transition ${
+                                isFocused
+                                    ? 'border-cyan-300/35 bg-cyan-500/10'
+                                    : hasIssues
+                                        ? 'border-amber-300/35 bg-amber-500/[0.08] hover:border-amber-200/45'
+                                        : 'border-white/10 bg-black/20 hover:border-cyan-300/25'
+                            }`}
                         >
-                            <div className="grid gap-3 xl:grid-cols-[92px_minmax(0,1.7fr)_130px_120px_140px_auto] xl:items-center">
-                                <div className="flex flex-wrap gap-2">
-                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{railLabel}</span>
-                                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{getRunOfShowItemLabel(item.type)}</span>
+                            {hasIssues ? <div className="absolute inset-y-3 left-1.5 w-1 rounded-full bg-gradient-to-b from-amber-300 via-amber-400 to-rose-400 shadow-[0_0_16px_rgba(251,191,36,0.28)]"></div> : null}
+                            <button
+                                type="button"
+                                onClick={() => onFocus?.(item.id)}
+                                className="w-full text-left"
+                            >
+                                <div className="grid gap-2 xl:grid-cols-[84px_minmax(0,1.8fr)_108px_88px_112px_auto] xl:items-center">
+                                    <div className="flex flex-wrap gap-1.5">
+                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{railLabel}</span>
+                                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{getRunOfShowItemLabel(item.type)}</span>
+                                        {hasIssues ? (
+                                            <span className="rounded-full border border-amber-300/40 bg-amber-500/16 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50">
+                                                <i className="fa-solid fa-triangle-exclamation mr-1"></i>
+                                                Needs prep
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="truncate text-sm font-bold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
+                                        <div className="mt-0.5 truncate text-xs text-zinc-400">{itemSummary(item)}</div>
+                                        {performanceFields.length ? (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {performanceFields.map((field) => {
+                                                    const hasValue = !!field.value;
+                                                    return (
+                                                        <span
+                                                            key={field.key}
+                                                            className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${hasValue ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/40 bg-amber-500/18 text-amber-50 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]'}`}
+                                                        >
+                                                            {hasValue ? `${field.label}: ${field.value}` : field.fallback}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">
+                                        <div className="text-[9px] text-zinc-500">Start</div>
+                                        <div className="mt-0.5 text-xs font-semibold text-white normal-case tracking-normal">{formatStart(item.startsAtMs)}</div>
+                                    </div>
+                                    <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">
+                                        <div className="text-[9px] text-zinc-500">Length</div>
+                                        <div className="mt-0.5 text-xs font-semibold text-white normal-case tracking-normal">{formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}</div>
+                                    </div>
+                                    <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-400">
+                                        <div className="text-[9px] text-zinc-500">State</div>
+                                        <div className={`mt-0.5 flex items-center gap-1 text-xs font-semibold normal-case tracking-normal ${hasIssues ? 'text-amber-50' : 'text-emerald-100'}`}>
+                                            {hasIssues ? <i className="fa-solid fa-circle-exclamation text-[11px]"></i> : <i className="fa-solid fa-circle-check text-[11px]"></i>}
+                                            <span>{readinessLabel}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap justify-start gap-1.5 xl:justify-end">
+                                        {action ? <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{action.label}</span> : null}
+                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${isFocused ? 'border-violet-300/25 bg-violet-500/12 text-violet-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}>{isFocused ? 'Editing' : 'Open'}</span>
+                                    </div>
                                 </div>
-                                <div className="min-w-0">
-                                    <div className="truncate text-sm font-bold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
-                                    <div className="mt-1 truncate text-xs text-zinc-400">{itemSummary(item)}</div>
+                            </button>
+                            {isFocused && item.type === 'performance' ? (
+                                <div data-performance-setup-for={item.id} className="mt-3 rounded-[20px] border border-cyan-300/16 bg-black/25 p-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Inline Slot Setup</div>
+                                            <div className="mt-1 text-sm text-zinc-300">Start with song search and backing here, then add the performer display name if you already know it.</div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${sourceTone(sourceMeta.tone, false)}`}>{sourceMeta.label}</span>
+                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${item.backingPlan?.playbackReady === true ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>
+                                                {item.backingPlan?.playbackReady === true ? 'Playback ready' : 'Needs backing'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {PERFORMER_MODE_OPTIONS.map((option) => (
+                                            <button
+                                                key={`${item.id}-${option.value}`}
+                                                type="button"
+                                                disabled={!canEditFlow}
+                                                onClick={() => onUpdateItem?.(item.id, { performerMode: option.value })}
+                                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${item.performerMode === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
+                                        <div className="order-2 space-y-3 lg:order-2">
+                                            <div>
+                                                <FieldLabel>{getPerformerFieldLabel(item.performerMode)}</FieldLabel>
+                                                <input
+                                                    value={item.assignedPerformerName || ''}
+                                                    onChange={(e) => onUpdateItem?.(item.id, { assignedPerformerName: e.target.value })}
+                                                    disabled={!canEditFlow}
+                                                    className={textInputClass}
+                                                    placeholder={getPerformerFieldPlaceholder(item.performerMode)}
+                                                />
+                                            </div>
+                                            {item.performerMode !== RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <FieldLabel>Bind Live Lobby Performer</FieldLabel>
+                                                        <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{roomUserCandidates.length ? `${roomUserCandidates.length} in lobby` : 'No one joined yet'}</span>
+                                                    </div>
+                                                    <SelectControl
+                                                        value={item.assignedPerformerUid || ''}
+                                                        onChange={(e) => {
+                                                            const candidate = roomUserCandidates.find((entry) => entry.uid === e.target.value);
+                                                            if (candidate) {
+                                                                onAssignLobbyPerformer?.(item, candidate);
+                                                            } else {
+                                                                onClearLobbyPerformer?.(item);
+                                                            }
+                                                        }}
+                                                        disabled={!canEditFlow || roomUserCandidates.length === 0}
+                                                    >
+                                                        <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
+                                                        {roomUserCandidates.map((candidate) => (
+                                                            <option key={candidate.uid} value={candidate.uid}>{candidate.label}</option>
+                                                        ))}
+                                                    </SelectControl>
+                                                </div>
+                                            ) : null}
+                                            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-zinc-400">
+                                                {getPerformerModeHint(item.performerMode)}
+                                            </div>
+                                        </div>
+                                        <div className="order-1 space-y-3 lg:order-1">
+                                            <div>
+                                                <FieldLabel>Song Title</FieldLabel>
+                                                <input
+                                                    value={item.songTitle || ''}
+                                                    onChange={(e) => onUpdateItem?.(item.id, { songTitle: e.target.value })}
+                                                    disabled={!canEditFlow}
+                                                    className={textInputClass}
+                                                    placeholder="Song title"
+                                                />
+                                            </div>
+                                            <div>
+                                                <FieldLabel>Artist</FieldLabel>
+                                                <input
+                                                    value={item.artistName || ''}
+                                                    onChange={(e) => onUpdateItem?.(item.id, { artistName: e.target.value })}
+                                                    disabled={!canEditFlow}
+                                                    className={textInputClass}
+                                                    placeholder="Artist"
+                                                />
+                                            </div>
+                                            <div className="rounded-[24px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(8,18,30,0.96),rgba(18,26,44,0.94))] px-4 py-4 shadow-[0_12px_28px_rgba(0,0,0,0.2)]">
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">YouTube Backing Search</div>
+                                                        <div className="mt-1 text-sm text-white">{buildMediaQuery(item) || 'Enter song and artist, then search for a playable backing.'}</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">Host-picked YouTube results count as playable now. Mark them good or bad after you hear them.</div>
+                                                    </div>
+                                                    <ControlButton
+                                                        tone={item.songTitle ? 'primary' : 'warning'}
+                                                        disabled={!canEditFlow}
+                                                        onClick={() => onLoadSuggestedBacking?.(item)}
+                                                    >
+                                                        Search YouTube
+                                                    </ControlButton>
+                                                </div>
+                                                {item.backingPlan?.label || item.backingPlan?.youtubeId || item.backingPlan?.mediaUrl ? (
+                                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Current backing</div>
+                                                                <div className="mt-1 text-sm font-semibold text-white">{item.backingPlan?.label || item.backingPlan?.youtubeId || item.backingPlan?.mediaUrl}</div>
+                                                            </div>
+                                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${backingApprovalMeta(item.backingPlan?.approvalStatus).tone}`}>
+                                                                {backingApprovalMeta(item.backingPlan?.approvalStatus).label}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            <ControlButton tone="success" onClick={() => onUpdateItem?.(item.id, { backingPlan: { ...(item.backingPlan || {}), approvalStatus: 'approved', playbackReady: true, resolutionStatus: 'ready' } })}>
+                                                                Good for room
+                                                            </ControlButton>
+                                                            <ControlButton tone="danger" onClick={() => onUpdateItem?.(item.id, { backingPlan: { ...(item.backingPlan || {}), approvalStatus: 'rejected', playbackReady: false, resolutionStatus: 'needs_replacement' } })}>
+                                                                Bad fit
+                                                            </ControlButton>
+                                                            <ControlButton onClick={() => onUpdateItem?.(item.id, { backingPlan: { ...(item.backingPlan || {}), label: '', mediaUrl: '', youtubeId: '', appleMusicId: '', trackId: '', localAssetId: '', submittedBackingId: '', playbackReady: false, approvalStatus: 'pending', resolutionStatus: 'needs_selection' } })}>
+                                                                Clear
+                                                            </ControlButton>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+                                                {inlinePickerError ? <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{inlinePickerError}</div> : null}
+                                                {inlinePickerLoading ? <div className="mt-3 text-sm text-cyan-100/80">Loading YouTube matches here…</div> : null}
+                                                {inlineSuggestedOptions.length ? (
+                                                    <div className="mt-3 grid gap-2">
+                                                        {inlineSuggestedOptions.map((option) => (
+                                                            <MediaPickerOption
+                                                                key={option.id}
+                                                                option={{ ...option, statusLabel: option.statusLabel || 'Suggested', statusTone: option.statusTone || option.tone || 'zinc' }}
+                                                                onSelect={() => onApplyMediaSelection?.(item, option)}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                ) : buildMediaQuery(item) ? (
+                                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-400">
+                                                        Click <span className="font-semibold text-white">Search YouTube</span> and the best backing matches will appear right here.
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-400">
+                                                        Start with song title and artist, then choose the backing without leaving this slot.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-                                    <div className="text-[9px] text-zinc-500">Start</div>
-                                    <div className="mt-1 text-sm font-semibold text-white normal-case tracking-normal">{formatStart(item.startsAtMs)}</div>
-                                </div>
-                                <div className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-                                    <div className="text-[9px] text-zinc-500">Length</div>
-                                    <div className="mt-1 text-sm font-semibold text-white normal-case tracking-normal">{formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}</div>
-                                </div>
-                                <div className="text-xs uppercase tracking-[0.16em] text-zinc-400">
-                                    <div className="text-[9px] text-zinc-500">State</div>
-                                    <div className={`mt-1 text-sm font-semibold normal-case tracking-normal ${blockers || pendingCount ? 'text-amber-100' : 'text-emerald-100'}`}>{readinessLabel}</div>
-                                </div>
-                                <div className="flex flex-wrap justify-start gap-2 xl:justify-end">
-                                    {action ? <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{action.label}</span> : null}
-                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${isFocused ? 'border-violet-300/25 bg-violet-500/12 text-violet-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}>{isFocused ? 'Editing' : 'Open'}</span>
-                                </div>
-                            </div>
-                        </button>
+                            ) : null}
+                        </div>
                     );
                 })}
             </div>
@@ -1410,14 +2005,17 @@ export default function RunOfShowDirectorPanel({
     runOfShowTemplateMeta = null,
     runOfShowTemplates = [],
     submissions = [],
+    queueSongs = [],
     roomUsers = [],
     localLibrary = [],
     ytIndex = [],
     appleMusicAuthorized = false,
     previewActiveId = '',
+    focusRequest = null,
     operatorRole = RUN_OF_SHOW_OPERATOR_ROLES.viewer,
     operatorCapabilities = null,
     operatingHint = '',
+    compactViewport = false,
     onSetEnabled,
     onSetProgramMode,
     onAddItem,
@@ -1426,6 +2024,9 @@ export default function RunOfShowDirectorPanel({
     onMoveItem,
     onUpdateItem,
     onToggleAutomationPause,
+    onStartRunOfShow,
+    onStopRunOfShow,
+    onRestartRunOfShow,
     onPrepareItem,
     onPreviewItem,
     onClearPreview,
@@ -1433,6 +2034,7 @@ export default function RunOfShowDirectorPanel({
     onCompleteItem,
     onSkipItem,
     onReviewSubmission,
+    onAssignQueueSongToItem,
     onUpdatePolicy,
     onUpdateRoles,
     onApplyGeneratedDraft,
@@ -1490,14 +2092,20 @@ export default function RunOfShowDirectorPanel({
     const [generatorOpen, setGeneratorOpen] = useState(items.length === 0);
     const [generatorConfig, setGeneratorConfig] = useState({ ...GENERATOR_DEFAULTS });
     const [generatorBusy, setGeneratorBusy] = useState(false);
+    const [quickDraftCollapsed, setQuickDraftCollapsed] = useState(items.length > 0);
+    const [momentPacksOpen, setMomentPacksOpen] = useState(false);
     const [approvalInboxOpen, setApprovalInboxOpen] = useState(true);
     const [planningControlsOpen, setPlanningControlsOpen] = useState(items.length === 0);
     const [coHostToolsOpen, setCoHostToolsOpen] = useState(false);
     const [templateToolsOpen, setTemplateToolsOpen] = useState(false);
+    const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
+    const [topBoardCollapsed, setTopBoardCollapsed] = useState(false);
+    const [pendingSetupScrollItemId, setPendingSetupScrollItemId] = useState('');
     const [sectionOpenState, setSectionOpenState] = useState({});
     const [dragState, setDragState] = useState({ itemId: '', targetId: '', position: 'after' });
     const [mediaPicker, setMediaPicker] = useState({
         itemId: '',
+        sourceType: '',
         query: '',
         remoteResults: [],
         loading: false,
@@ -1536,10 +2144,38 @@ export default function RunOfShowDirectorPanel({
             submissions: entries
         }));
     }, [items, pendingApprovals]);
-    const openItem = (itemId = '') => {
+    const openItem = (itemId = '', options = {}) => {
         if (!itemId) return;
         setExpandedItemId(itemId);
+        setStudioMode('build');
+        setPendingSetupScrollItemId(options.scrollToSetup === true ? itemId : '');
     };
+    useEffect(() => {
+        if (items.length === 0) {
+            setQuickDraftCollapsed(false);
+        }
+    }, [items.length]);
+    useEffect(() => {
+        const targetId = String(focusRequest?.itemId || '').trim();
+        if (!targetId) return;
+        const targetItem = items.find((entry) => entry.id === targetId);
+        if (!targetItem) return;
+        openItem(targetId, { scrollToSetup: targetItem.type === 'performance' });
+    }, [focusRequest?.itemId, focusRequest?.token, items]);
+    useEffect(() => {
+        if (!pendingSetupScrollItemId || studioMode !== 'build') return;
+        const targetId = pendingSetupScrollItemId;
+        const frameId = window.requestAnimationFrame(() => {
+            const setupNode = document.querySelector(`[data-performance-setup-for="${targetId}"]`);
+            const fallbackNode = document.querySelector(`[data-run-of-show-item-id="${targetId}"]`);
+            const node = setupNode || fallbackNode;
+            if (node instanceof HTMLElement) {
+                node.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+            setPendingSetupScrollItemId('');
+        });
+        return () => window.cancelAnimationFrame(frameId);
+    }, [pendingSetupScrollItemId, studioMode]);
     const sectionKey = (itemId = '', section = '') => `${String(itemId || '').trim()}::${String(section || '').trim()}`;
     const toggleSection = (itemId = '', section = '', defaultOpen = false) => {
         const key = sectionKey(itemId, section);
@@ -1587,7 +2223,11 @@ export default function RunOfShowDirectorPanel({
         () => ITEM_TYPE_OPTIONS.filter((option) => !QUICK_ADD_SCENE_OPTIONS.some((entry) => entry.value === option.value)),
         []
     );
-    const pickerSourceType = String(currentPickerItem?.backingPlan?.sourceType || 'canonical_default').toLowerCase();
+    const pickerSourceType = String(
+        mediaPicker.sourceType
+        || currentPickerItem?.backingPlan?.sourceType
+        || 'canonical_default'
+    ).toLowerCase();
     const pickerQuery = String(mediaPicker.query || '').trim();
     const pickerLocalResults = useMemo(() => {
         if (pickerSourceType !== 'local_file') return [];
@@ -1616,6 +2256,7 @@ export default function RunOfShowDirectorPanel({
                     actionHint: 'Use',
                     sourceType: 'local_file',
                     assetId,
+                    durationSec: Math.max(0, Math.round(Number(entry?.durationSec || entry?.duration || 0) || 0)),
                     mediaUrl,
                     artworkUrl: String(entry?.artworkUrl100 || entry?.artworkUrl || '').trim()
                 };
@@ -1643,6 +2284,7 @@ export default function RunOfShowDirectorPanel({
                     actionHint: 'Use',
                     sourceType: 'youtube',
                     youtubeId: videoId,
+                    durationSec: Math.max(0, Math.round(Number(entry?.durationSec || 0) || 0)),
                     mediaUrl: String(entry?.url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '')).trim(),
                     artworkUrl: String(entry?.artworkUrl100 || entry?.artworkUrl || '').trim()
                 };
@@ -1692,9 +2334,49 @@ export default function RunOfShowDirectorPanel({
         }),
         [items, pendingCountsById, readinessById]
     );
+    const performerIssueItems = useMemo(
+        () => items.filter((item) => item.type === 'performance')
+            .filter((item) => (readinessById[item.id]?.blockers || []).some((entry) => String(entry?.key || '').startsWith('performer_'))),
+        [items, readinessById]
+    );
+    const backingIssueItems = useMemo(
+        () => items.filter((item) => item.type === 'performance')
+            .filter((item) => (readinessById[item.id]?.blockers || []).some((entry) => String(entry?.key || '').startsWith('backing_'))),
+        [items, readinessById]
+    );
+    const issueJumpTargets = useMemo(
+        () => ([
+            {
+                key: 'performer',
+                label: 'need performer',
+                count: performerIssueItems.length,
+                itemId: performerIssueItems[0]?.id || '',
+                action: 'setup'
+            },
+            {
+                key: 'backing',
+                label: 'need backing',
+                count: backingIssueItems.length,
+                itemId: backingIssueItems[0]?.id || '',
+                action: 'backing'
+            },
+            {
+                key: 'approval',
+                label: 'pending approvals',
+                count: pendingApprovalGroups.length,
+                itemId: pendingApprovalGroups[0]?.itemId || '',
+                action: 'approval'
+            }
+        ]),
+        [backingIssueItems, pendingApprovalGroups, performerIssueItems]
+    );
     const autoReadyCount = useMemo(
         () => items.filter((item) => isRunOfShowItemReady(item)).length,
         [items]
+    );
+    const totalOpenIssues = useMemo(
+        () => issueJumpTargets.reduce((sum, issue) => sum + Number(issue?.count || 0), 0),
+        [issueJumpTargets]
     );
     const filteredOperatorCandidates = useMemo(() => {
         const query = normalizeSearch(coHostSearch);
@@ -1722,6 +2404,22 @@ export default function RunOfShowDirectorPanel({
         () => focusedBuildItem ? items.findIndex((item) => item.id === focusedBuildItem.id) : -1,
         [focusedBuildItem, items]
     );
+    const topBoardTarget = liveItem || stagedItem || nextItem || focusedBuildItem || items[0] || null;
+    const compactBoardSummary = useMemo(() => {
+        const parts = [];
+        if (items.length) parts.push(`${items.length} scene${items.length === 1 ? '' : 's'}`);
+        if (totalOpenIssues) {
+            parts.push(`${totalOpenIssues} open issue${totalOpenIssues === 1 ? '' : 's'}`);
+        } else if (items.length) {
+            parts.push('no open issues');
+        }
+        if (isRunOfShowActive) {
+            parts.push(automationPaused ? 'automation paused' : 'run is live');
+        } else if (items.length) {
+            parts.push('timeline prep');
+        }
+        return parts.join(' · ');
+    }, [automationPaused, isRunOfShowActive, items.length, totalOpenIssues]);
 
     useEffect(() => {
         const preferred = currentItemId || liveItem?.id || stagedItem?.id || nextItem?.id || items[0]?.id || '';
@@ -1778,6 +2476,7 @@ export default function RunOfShowDirectorPanel({
                         sourceType: 'apple_music',
                         trackId: String(entry?.trackId || '').trim(),
                         appleMusicId: String(entry?.trackId || '').trim(),
+                        durationSec: Math.max(0, Math.round(Number(entry?.trackTimeMillis || 0) / 1000) || 0),
                         mediaUrl: String(entry?.previewUrl || '').trim(),
                         titleValue: String(entry?.trackName || '').trim(),
                         artistValue: String(entry?.artistName || '').trim(),
@@ -1802,6 +2501,7 @@ export default function RunOfShowDirectorPanel({
                         actionHint: 'Use',
                         sourceType: 'youtube',
                         youtubeId: videoId,
+                        durationSec: Math.max(0, Math.round(Number(entry?.durationSec || 0) || 0)),
                         mediaUrl: videoId ? `https://www.youtube.com/watch?v=${videoId}` : '',
                         artworkUrl: String(entry?.thumbnails?.medium?.url || entry?.thumbnails?.default?.url || '').trim()
                     };
@@ -1824,10 +2524,20 @@ export default function RunOfShowDirectorPanel({
     }, [appleMusicAuthorized, currentPickerItem, pickerQuery, pickerSourceType]);
 
     const handleRunOfShowModeToggle = async () => {
-        if (!isHostOperator || typeof onSetProgramMode !== 'function' || modeActionBusy) return;
+        if (!isHostOperator || modeActionBusy) return;
         setModeActionBusy(true);
         try {
-            await onSetProgramMode(isRunOfShowActive ? 'standard_karaoke' : 'run_of_show');
+            if (isRunOfShowActive) {
+                if (typeof onStopRunOfShow === 'function') {
+                    await onStopRunOfShow();
+                } else if (typeof onSetProgramMode === 'function') {
+                    await onSetProgramMode('standard_karaoke');
+                }
+            } else if (typeof onStartRunOfShow === 'function') {
+                await onStartRunOfShow();
+            } else if (typeof onSetProgramMode === 'function') {
+                await onSetProgramMode('run_of_show');
+            }
         } finally {
             setModeActionBusy(false);
         }
@@ -1843,6 +2553,36 @@ export default function RunOfShowDirectorPanel({
         if (!firstPending?.itemId) return;
         setApprovalInboxOpen(true);
         openItem(firstPending.itemId);
+    };
+    const jumpToIssue = (issue = null) => {
+        const itemId = String(issue?.itemId || '').trim();
+        if (!itemId) return;
+        if (issue?.action === 'approval') {
+            setApprovalInboxOpen(true);
+            openItem(itemId);
+            return;
+        }
+        if (issue?.action === 'backing') {
+            const targetItem = items.find((entry) => entry.id === itemId);
+            if (targetItem) {
+                loadSuggestedBacking(targetItem);
+                return;
+            }
+        }
+        openItem(itemId, { scrollToSetup: issue?.action === 'setup' });
+    };
+    const focusNewestItemFromDirector = (nextDirector = null, fallbackType = '') => {
+        const nextItems = Array.isArray(nextDirector?.items) ? nextDirector.items : [];
+        if (!nextItems.length) return;
+        const existingIds = new Set(items.map((entry) => entry.id));
+        const newItems = nextItems.filter((entry) => !existingIds.has(entry.id));
+        const target = [...newItems].reverse().find((entry) => !fallbackType || entry.type === fallbackType) || nextItems[nextItems.length - 1];
+        if (target?.id) openItem(target.id, { scrollToSetup: target.type === 'performance' });
+    };
+    const handleAddItemAndFocus = async (type = 'buffer', overrides = {}) => {
+        const nextDirector = await onAddItem?.(type, overrides);
+        focusNewestItemFromDirector(nextDirector, type);
+        return nextDirector;
     };
     const toggleCoHost = (uid = '') => {
         if (!safeOperatorCapabilities.canManageRoles) return;
@@ -1876,23 +2616,50 @@ export default function RunOfShowDirectorPanel({
         if (generatorBusy || typeof onApplyGeneratedDraft !== 'function') return;
         setGeneratorBusy(true);
         try {
-            await onApplyGeneratedDraft({
+            const nextDirector = await onApplyGeneratedDraft({
                 items: generatedDraftItems,
                 mode: generatorConfig.applyMode || 'replace'
             });
             if (generatedPolicyPreset?.policy) {
                 await onUpdatePolicy?.(generatedPolicyPreset.policy);
             }
+            focusNewestItemFromDirector(nextDirector);
             setGeneratorOpen(false);
         } finally {
             setGeneratorBusy(false);
         }
     };
+    const assignLobbyPerformer = (item = {}, candidate = null) => {
+        const itemId = String(item?.id || '').trim();
+        const uid = String(candidate?.uid || '').trim();
+        if (!itemId || !uid) return;
+        const label = String(candidate?.label || '').trim() || uid;
+        onUpdateItem?.(itemId, {
+            performerMode: RUN_OF_SHOW_PERFORMER_MODES.assigned,
+            assignedPerformerUid: uid,
+            assignedPerformerName: label
+        });
+    };
+    const clearLobbyPerformer = (item = {}) => {
+        const itemId = String(item?.id || '').trim();
+        if (!itemId) return;
+        onUpdateItem?.(itemId, { assignedPerformerUid: '' });
+    };
     const loadSuggestedBacking = (item = {}) => {
         if (!item?.id) return;
+        const nextSourceType = getEffectiveSuggestionSourceType(item?.backingPlan?.sourceType || 'youtube');
+        if (nextSourceType !== String(item?.backingPlan?.sourceType || '').trim().toLowerCase()) {
+            onUpdateItem?.(item.id, {
+                backingPlan: {
+                    ...(item?.backingPlan || {}),
+                    sourceType: nextSourceType
+                }
+            });
+        }
         setExpandedItemId(item.id);
         setMediaPicker({
             itemId: item.id,
+            sourceType: nextSourceType,
             query: buildMediaQuery(item),
             remoteResults: [],
             loading: false,
@@ -1900,7 +2667,7 @@ export default function RunOfShowDirectorPanel({
         });
     };
     const getSuggestedOptionsForItem = (item = {}) => {
-        const sourceType = String(item?.backingPlan?.sourceType || 'canonical_default').toLowerCase();
+        const sourceType = getEffectiveSuggestionSourceType(item?.backingPlan?.sourceType || 'canonical_default');
         const queryText = buildMediaQuery(item);
         if (!queryText) return [];
         const localMatches = uniqueById((Array.isArray(localLibrary) ? localLibrary : [])
@@ -1916,6 +2683,7 @@ export default function RunOfShowDirectorPanel({
                 sourceType: 'local_file',
                 assetId: String(entry?.id || '').trim(),
                 mediaUrl: String(entry?.url || '').trim(),
+                artworkUrl: String(entry?.artworkUrl100 || entry?.artworkUrl || '').trim(),
                 actionHint: 'Use'
             })));
         const youtubeMatches = sourceType === 'apple_music'
@@ -1934,6 +2702,7 @@ export default function RunOfShowDirectorPanel({
                     sourceType: 'youtube',
                     youtubeId: String(entry?.videoId || '').trim(),
                     mediaUrl: String(entry?.url || '').trim(),
+                    artworkUrl: String(entry?.artworkUrl100 || entry?.artworkUrl || '').trim(),
                     actionHint: 'Use'
                 })));
         const approvedSubmissionMatches = uniqueById((Array.isArray(submissions) ? submissions : [])
@@ -1951,6 +2720,7 @@ export default function RunOfShowDirectorPanel({
                 submissionId: String(entry?.id || '').trim(),
                 mediaUrl: String(entry?.backingUrl || entry?.mediaUrl || '').trim(),
                 youtubeId: String(entry?.youtubeId || '').trim(),
+                artworkUrl: String(entry?.albumArtUrl || '').trim(),
                 actionHint: 'Attach'
             })));
         const remoteMatches = mediaPicker.itemId === item.id ? (mediaPicker.remoteResults || []) : [];
@@ -1997,17 +2767,18 @@ export default function RunOfShowDirectorPanel({
     };
     const applyScenePack = (pack = null) => {
         if (!safeOperatorCapabilities.canEditFlow || !pack?.type) return;
-        onAddItem?.(pack.type, pack.overrides || {});
+        handleAddItemAndFocus(pack.type, pack.overrides || {});
     };
 
     const toggleMediaPicker = (item = {}) => {
         if (!safeOperatorCapabilities.canCurateMedia) return;
         const itemId = String(item?.id || '').trim();
+        const sourceType = String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase();
         if (!itemId) return;
         setMediaPicker((prev) => (
             prev.itemId === itemId
-                ? { itemId: '', query: '', remoteResults: [], loading: false, error: '' }
-                : { itemId, query: buildMediaQuery(item), remoteResults: [], loading: false, error: '' }
+                ? { itemId: '', sourceType: '', query: '', remoteResults: [], loading: false, error: '' }
+                : { itemId, sourceType, query: buildMediaQuery(item), remoteResults: [], loading: false, error: '' }
         ));
     };
 
@@ -2018,9 +2789,11 @@ export default function RunOfShowDirectorPanel({
         const optionTitle = String(option?.titleValue || option?.title || '').trim();
         const optionArtist = String(option?.artistValue || option?.subtitle || '').trim();
         const sourceType = String(option?.sourceType || item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase();
+        const optionDurationSec = Math.max(0, Math.round(Number(option?.durationSec || 0) || 0));
         const baseItemPatch = {
             ...(item?.songTitle ? {} : { songTitle: optionTitle }),
-            ...(item?.artistName ? {} : { artistName: optionArtist })
+            ...(item?.artistName ? {} : { artistName: optionArtist }),
+            ...(optionDurationSec > 0 ? { plannedDurationSec: optionDurationSec } : {})
         };
         if (sourceType === 'local_file') {
             onUpdateItem?.(itemId, {
@@ -2029,9 +2802,10 @@ export default function RunOfShowDirectorPanel({
                     ...(item?.backingPlan || {}),
                     sourceType,
                     label: formatMediaLabel(optionTitle, optionArtist) || item?.backingPlan?.label || 'Local backing',
+                    durationSec: optionDurationSec > 0 ? optionDurationSec : Number(item?.backingPlan?.durationSec || 0),
                     localAssetId: String(option?.assetId || '').trim(),
                     mediaUrl: String(option?.mediaUrl || '').trim(),
-                    approvalStatus: 'approved',
+                    approvalStatus: 'host_selected',
                     playbackReady: !!String(option?.assetId || option?.mediaUrl || '').trim(),
                     resolutionStatus: 'ready'
                 }
@@ -2043,9 +2817,10 @@ export default function RunOfShowDirectorPanel({
                     ...(item?.backingPlan || {}),
                     sourceType,
                     label: formatMediaLabel(optionTitle, optionArtist) || item?.backingPlan?.label || 'YouTube backing',
+                    durationSec: optionDurationSec > 0 ? optionDurationSec : Number(item?.backingPlan?.durationSec || 0),
                     youtubeId: String(option?.youtubeId || '').trim(),
                     mediaUrl: String(option?.mediaUrl || '').trim(),
-                    approvalStatus: 'approved',
+                    approvalStatus: 'host_selected',
                     playbackReady: !!String(option?.youtubeId || option?.mediaUrl || '').trim(),
                     resolutionStatus: 'ready'
                 }
@@ -2058,10 +2833,11 @@ export default function RunOfShowDirectorPanel({
                     ...(item?.backingPlan || {}),
                     sourceType,
                     label: formatMediaLabel(optionTitle, optionArtist) || item?.backingPlan?.label || 'Apple backing',
+                    durationSec: optionDurationSec > 0 ? optionDurationSec : Number(item?.backingPlan?.durationSec || 0),
                     appleMusicId,
                     trackId: String(option?.trackId || appleMusicId).trim(),
                     mediaUrl: String(option?.mediaUrl || '').trim(),
-                    approvalStatus: 'approved',
+                    approvalStatus: 'host_selected',
                     playbackReady: !!String(option?.trackId || appleMusicId || option?.mediaUrl || '').trim(),
                     resolutionStatus: 'ready'
                 }
@@ -2075,6 +2851,7 @@ export default function RunOfShowDirectorPanel({
                     ...(item?.backingPlan || {}),
                     sourceType,
                     label: formatMediaLabel(optionTitle, optionArtist) || item?.backingPlan?.label || 'Approved submission',
+                    durationSec: optionDurationSec > 0 ? optionDurationSec : Number(item?.backingPlan?.durationSec || 0),
                     submittedBackingId: String(option?.submissionId || '').trim(),
                     youtubeId: String(option?.youtubeId || '').trim(),
                     mediaUrl: String(option?.mediaUrl || '').trim(),
@@ -2084,246 +2861,313 @@ export default function RunOfShowDirectorPanel({
                 }
             });
         }
-        setMediaPicker({ itemId: '', query: '', remoteResults: [], loading: false, error: '' });
+        setMediaPicker({ itemId: '', sourceType: '', query: '', remoteResults: [], loading: false, error: '' });
     };
 
     return (
-        <section className="rounded-3xl border border-cyan-500/20 bg-zinc-950/70 p-4 space-y-4" aria-label="Run of Show Director">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="text-sm uppercase tracking-[0.3em] text-cyan-300">Run Of Show Director</div>
-                    <div className="mt-1 text-sm text-zinc-400">Run the night from one control rail: what is live, what is next, and what is still blocking automation.</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isRunOfShowActive ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-zinc-700 bg-zinc-900 text-zinc-300'}`}>
-                            {isRunOfShowActive ? 'Run-of-show active' : 'Standard karaoke mode'}
-                        </span>
-                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${automationPaused ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
-                            {automationPaused ? 'Automation paused' : 'Automation ready'}
-                        </span>
-                        {activePolicyPreset ? (
-                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
-                                {activePolicyPreset.label} preset
-                            </span>
-                        ) : null}
-                    </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    <button
-                        type="button"
-                        onClick={handleRunOfShowModeToggle}
-                        disabled={!isHostOperator || modeActionBusy}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] disabled:opacity-40 ${isRunOfShowActive ? 'border-rose-300/35 bg-rose-500/12 text-rose-100' : 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'}`}
-                    >
-                        {modeActionBusy ? 'Updating…' : isRunOfShowActive ? 'Exit Run Of Show' : 'Start Run Of Show'}
-                    </button>
-                    <button type="button" onClick={() => onToggleAutomationPause?.(!automationPaused)} disabled={!isRunOfShowActive || !safeOperatorCapabilities.canPauseAutomation} className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white disabled:opacity-40">{automationPaused ? 'Resume Automation' : 'Pause Automation'}</button>
-                    {previewActiveId ? <button type="button" onClick={() => onClearPreview?.()} className="rounded-full border border-violet-300/35 bg-violet-500/12 px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-violet-100">Clear Preview</button> : null}
-                </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[28px] border border-white/10 bg-black/20 px-4 py-3">
-                <div>
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Studio View</div>
-                    <div className="mt-1 text-sm text-zinc-300">
-                        {studioMode === 'build'
-                            ? 'Build the sequence visually from clips, packs, and inline insertions.'
-                            : studioMode === 'run'
-                                ? 'Run the night from now, next, and later without the builder noise.'
-                                : 'Review approvals, blockers, and readiness warnings before they stall the room.'}
-                    </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                    {[
-                        ['build', 'Build'],
-                        ['run', 'Run'],
-                        ['review', 'Review'],
-                    ].map(([modeId, label]) => (
-                        <button
-                            key={modeId}
-                            type="button"
-                            onClick={() => setStudioMode(modeId)}
-                            className={`rounded-full border px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] transition ${studioMode === modeId ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-3">
-                <UtilityDrawer
-                    eyebrow="Planning Controls"
-                    title="Automation + pressure rules"
-                    summary="Keep the setup logic available, but out of the way while you build and run the show."
-                    open={planningControlsOpen}
-                    onToggle={() => setPlanningControlsOpen((prev) => !prev)}
-                    badge={activePolicyPreset ? activePolicyPreset.label : 'Custom'}
-                >
-                    <div className="space-y-3">
-                        <div className="grid gap-2 sm:grid-cols-3">
-                            {POLICY_PRESETS.map((preset) => (
-                                <button
-                                    key={preset.id}
-                                    type="button"
-                                    onClick={() => handleApplyPolicyPreset(preset)}
-                                    disabled={!safeOperatorCapabilities.canEditFlow}
-                                    className={`rounded-2xl border p-3 text-left transition disabled:opacity-40 ${activePolicyPreset?.id === preset.id ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-50' : 'border-white/10 bg-black/20 text-zinc-100 hover:border-cyan-300/30'}`}
-                                >
-                                    <div className="text-sm font-bold text-white">{preset.label}</div>
-                                    <div className="mt-1 text-xs text-current/80">{preset.description}</div>
-                                </button>
-                            ))}
-                        </div>
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                            <div>
-                                <FieldLabel>Default Automation</FieldLabel>
-                                <SelectControl value={safePolicy.defaultAutomationMode || 'auto'} onChange={(e) => onUpdatePolicy?.({ defaultAutomationMode: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
-                                    {RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
-                                </SelectControl>
+        <section className={`rounded-3xl border border-cyan-500/20 bg-zinc-950/70 ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'}`} aria-label="Run of Show Director">
+            <div className="sticky top-0 z-20 space-y-2 rounded-[28px] bg-zinc-950/96 pb-2 backdrop-blur-md">
+                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(11,17,32,0.98),rgba(17,24,39,0.96))] px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.28)]">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Run Of Show Board</div>
+                            <div className="mt-1 text-sm text-white">
+                                {isRunOfShowActive
+                                    ? automationPaused
+                                        ? 'Run is paused. Resume, stop, or restart from the top.'
+                                        : 'Run is live. Use the board to advance the timeline or jump into issues.'
+                                    : 'Shape the timeline here, then start the run when the room is ready.'}
                             </div>
-                            <div>
-                                <FieldLabel>Late Blocks</FieldLabel>
-                                <SelectControl value={safePolicy.lateBlockPolicy || 'hold'} onChange={(e) => onUpdatePolicy?.({ lateBlockPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
-                                    {RUN_OF_SHOW_LATE_BLOCK_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
-                                </SelectControl>
-                            </div>
-                            <div>
-                                <FieldLabel>No-Show</FieldLabel>
-                                <SelectControl value={safePolicy.noShowPolicy || 'hold_for_host'} onChange={(e) => onUpdatePolicy?.({ noShowPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
-                                    {RUN_OF_SHOW_NO_SHOW_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
-                                </SelectControl>
-                            </div>
-                            <div>
-                                <FieldLabel>Queue Divergence</FieldLabel>
-                                <SelectControl value={safePolicy.queueDivergencePolicy || 'host_override_only'} onChange={(e) => onUpdatePolicy?.({ queueDivergencePolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
-                                    {RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
-                                </SelectControl>
-                            </div>
-                            <div>
-                                <FieldLabel>Blocked Action</FieldLabel>
-                                <SelectControl value={safePolicy.blockedActionPolicy || 'focus_next_fix'} onChange={(e) => onUpdatePolicy?.({ blockedActionPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
-                                    {RUN_OF_SHOW_BLOCKED_ACTION_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
-                                </SelectControl>
+                            <div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">
+                                {compactBoardSummary || 'No scenes yet'}
                             </div>
                         </div>
-                        <div className="rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
-                            {liveOperatingHint}
-                        </div>
-                    </div>
-                </UtilityDrawer>
-
-                <UtilityDrawer
-                    eyebrow="Co-Hosts"
-                    title="People who keep the next slots ready"
-                    summary="Assign support operators without taking focus away from the actual timeline."
-                    open={coHostToolsOpen}
-                    onToggle={() => setCoHostToolsOpen((prev) => !prev)}
-                    badge={`${safeRoles.coHosts?.length || 0} assigned`}
-                >
-                    <div className="space-y-3">
                         <div className="flex flex-wrap gap-2">
-                            {[
-                                ['Operate', safeOperatorCapabilities.canOperate],
-                                ['Pause Auto', safeOperatorCapabilities.canPauseAutomation],
-                                ['Review Slots', safeOperatorCapabilities.canReviewSubmissions],
-                                ['Curate Media', safeOperatorCapabilities.canCurateMedia],
-                                ['Edit Flow', safeOperatorCapabilities.canEditFlow],
-                                ['Templates', safeOperatorCapabilities.canManageTemplates],
-                            ].map(([label, active]) => (
-                                <span key={label} className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${active ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-500'}`}>{label}</span>
-                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setStudioMode('build')}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'build' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
+                            >
+                                Timeline
+                            </button>
+                            {isRunOfShowActive ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setStudioMode('run')}
+                                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'run' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
+                                >
+                                    Live Console
+                                </button>
+                            ) : null}
+                            {(totalOpenIssues || studioMode === 'review') ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setStudioMode('review')}
+                                    className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'review' ? 'border-amber-300/45 bg-amber-500/15 text-amber-50' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-amber-300/25'}`}
+                                >
+                                    Issues {totalOpenIssues ? totalOpenIssues : ''}
+                                </button>
+                            ) : null}
+                            <ControlButton onClick={() => setWorkspaceToolsOpen((prev) => !prev)}>
+                                {workspaceToolsOpen ? 'Hide Tools' : 'Tools'}
+                            </ControlButton>
+                            <button
+                                type="button"
+                                onClick={handleRunOfShowModeToggle}
+                                disabled={!isHostOperator || modeActionBusy}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] disabled:opacity-40 ${isRunOfShowActive ? 'border-rose-300/35 bg-rose-500/12 text-rose-100' : 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'}`}
+                            >
+                                {modeActionBusy ? 'Updating…' : isRunOfShowActive ? 'Stop Run Of Show' : 'Start Run Of Show'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onToggleAutomationPause?.(!automationPaused)}
+                                disabled={!isRunOfShowActive || !safeOperatorCapabilities.canPauseAutomation}
+                                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-40"
+                            >
+                                {automationPaused ? 'Resume' : 'Pause'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onRestartRunOfShow?.()}
+                                disabled={!safeOperatorCapabilities.canEditFlow || !items.length}
+                                className="rounded-full border border-violet-300/35 bg-violet-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-violet-100 disabled:opacity-40"
+                            >
+                                Restart From Top
+                            </button>
+                            {previewActiveId ? <button type="button" onClick={() => onClearPreview?.()} className="rounded-full border border-violet-300/35 bg-violet-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-violet-100">Clear Preview</button> : null}
+                            <button type="button" onClick={() => setTopBoardCollapsed((prev) => !prev)} className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25">
+                                {topBoardCollapsed ? 'Open Board' : 'Collapse Board'}
+                            </button>
                         </div>
-                        <input
-                            value={coHostSearch}
-                            onChange={(e) => setCoHostSearch(e.target.value)}
-                            disabled={!safeOperatorCapabilities.canManageRoles}
-                            className={textInputClass}
-                            placeholder="Search room people"
+                    </div>
+                </div>
+                {topBoardCollapsed ? (
+                    <div className="rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
+                        <span className="font-semibold text-white">{topBoardTarget ? (topBoardTarget.title || getRunOfShowItemLabel(topBoardTarget.type)) : 'No scenes yet'}</span>
+                        {topBoardTarget ? ` is the current focus. ${totalOpenIssues ? `${totalOpenIssues} open issue${totalOpenIssues === 1 ? '' : 's'} still need prep.` : 'Everything in view is clear.'}` : ' Add scenes to start building the night.'}
+                    </div>
+                ) : (
+                    <>
+                        <CompactTimelineOverview
+                            items={items}
+                            currentItemId={currentItemId}
+                            liveItemId={liveItem?.id || ''}
+                            stagedItemId={stagedItem?.id || ''}
+                            nextItemId={nextItem?.id || ''}
+                            readinessById={readinessById}
+                            pendingCountsById={pendingCountsById}
+                            onFocus={openItem}
+                            showHeader={false}
                         />
-                        <div className="grid max-h-52 gap-2 overflow-auto pr-1">
-                            {filteredOperatorCandidates.length ? filteredOperatorCandidates.map((candidate) => {
-                                const active = safeRoles.coHosts?.includes(candidate.uid);
-                                return (
-                                    <button
-                                        key={candidate.uid}
-                                        type="button"
-                                        disabled={!safeOperatorCapabilities.canManageRoles}
-                                        onClick={() => toggleCoHost(candidate.uid)}
-                                        className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-left transition disabled:opacity-40 ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-50' : 'border-white/10 bg-black/20 text-zinc-100 hover:border-cyan-300/25'}`}
-                                    >
-                                        <div>
-                                            <div className="text-sm font-semibold text-white">{candidate.label}</div>
-                                            <div className="text-xs text-zinc-400">{candidate.meta || candidate.uid}</div>
-                                        </div>
-                                        <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${active ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-400'}`}>{active ? 'Co-Host' : 'Add'}</span>
-                                    </button>
-                                );
-                            }) : (
-                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400">No room users found yet. Co-host assignment appears here once people join the room.</div>
-                            )}
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
-                            Co-hosts can operate live, review submissions, curate media, edit the flow, and manage templates. Only the host can change room mode, pause automation, and assign roles.
-                        </div>
-                    </div>
-                </UtilityDrawer>
-
-                <UtilityDrawer
-                    eyebrow="Templates"
-                    title="Reuse a proven show format"
-                    summary="Keep template operations available without taking over the main planning view."
-                    open={templateToolsOpen}
-                    onToggle={() => setTemplateToolsOpen((prev) => !prev)}
-                    badge={safeTemplateMeta.currentTemplateName || 'Unsaved'}
-                >
-                    <div className="space-y-3">
-                        <div>
-                            <FieldLabel>Template Name</FieldLabel>
-                            <input value={templateDraftName} onChange={(e) => setTemplateDraftName(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates} className={textInputClass} placeholder="AAHF Kick-Off Format" />
-                        </div>
-                        <div>
-                            <FieldLabel>Saved Templates</FieldLabel>
-                            <SelectControl value={safeTemplateMeta.currentTemplateId || ''} onChange={(e) => onApplyTemplate?.(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates}>
-                                <option value="">Select a saved template</option>
-                                {(Array.isArray(runOfShowTemplates) ? runOfShowTemplates : []).map((entry) => (
-                                    <option key={entry.id || entry.templateId} value={entry.templateId || entry.id}>{entry.templateName || entry.templateId || entry.id}</option>
-                                ))}
-                            </SelectControl>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                            <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onSaveTemplate?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Run Of Show Template')}>Save Template</ControlButton>
-                            <ControlButton disabled={!safeOperatorCapabilities.canManageTemplates || !(safeTemplateMeta.currentTemplateId || '').trim()} onClick={() => onApplyTemplate?.(safeTemplateMeta.currentTemplateId)}>Reapply Current</ControlButton>
-                            <ControlButton tone="warning" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onArchiveCurrent?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Archived Run Of Show')}>Archive Night</ControlButton>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
-                            Current template: <span className="text-white">{safeTemplateMeta.currentTemplateName || 'Unsaved working copy'}</span>{safeTemplateMeta.lastArchiveId ? ` | Last archive ${safeTemplateMeta.lastArchiveId}` : ''}
-                        </div>
-                    </div>
-                </UtilityDrawer>
+                        <IssueJumpRail
+                            issues={issueJumpTargets}
+                            onJump={jumpToIssue}
+                        />
+                    </>
+                )}
             </div>
+
+            {workspaceToolsOpen ? (
+                <div className="grid gap-3 xl:grid-cols-3">
+                    <UtilityDrawer
+                        eyebrow="Planning Controls"
+                        title="Automation + pressure rules"
+                        summary="Keep the setup logic available, but out of the way while you build and run the show."
+                        open={planningControlsOpen}
+                        onToggle={() => setPlanningControlsOpen((prev) => !prev)}
+                        badge={activePolicyPreset ? activePolicyPreset.label : 'Custom'}
+                    >
+                        <div className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-3">
+                                {POLICY_PRESETS.map((preset) => (
+                                    <button
+                                        key={preset.id}
+                                        type="button"
+                                        onClick={() => handleApplyPolicyPreset(preset)}
+                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                        className={`rounded-2xl border p-3 text-left transition disabled:opacity-40 ${activePolicyPreset?.id === preset.id ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-50' : 'border-white/10 bg-black/20 text-zinc-100 hover:border-cyan-300/30'}`}
+                                    >
+                                        <div className="text-sm font-bold text-white">{preset.label}</div>
+                                        <div className="mt-1 text-xs text-current/80">{preset.description}</div>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                <div>
+                                    <FieldLabel>Default Automation</FieldLabel>
+                                    <SelectControl value={safePolicy.defaultAutomationMode || 'auto'} onChange={(e) => onUpdatePolicy?.({ defaultAutomationMode: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
+                                        {RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
+                                    </SelectControl>
+                                </div>
+                                <div>
+                                    <FieldLabel>Late Blocks</FieldLabel>
+                                    <SelectControl value={safePolicy.lateBlockPolicy || 'hold'} onChange={(e) => onUpdatePolicy?.({ lateBlockPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
+                                        {RUN_OF_SHOW_LATE_BLOCK_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
+                                    </SelectControl>
+                                </div>
+                                <div>
+                                    <FieldLabel>No-Show</FieldLabel>
+                                    <SelectControl value={safePolicy.noShowPolicy || 'hold_for_host'} onChange={(e) => onUpdatePolicy?.({ noShowPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
+                                        {RUN_OF_SHOW_NO_SHOW_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
+                                    </SelectControl>
+                                </div>
+                                <div>
+                                    <FieldLabel>Queue Divergence</FieldLabel>
+                                    <SelectControl value={safePolicy.queueDivergencePolicy || 'host_override_only'} onChange={(e) => onUpdatePolicy?.({ queueDivergencePolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
+                                        {RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
+                                    </SelectControl>
+                                </div>
+                                <div>
+                                    <FieldLabel>Blocked Action</FieldLabel>
+                                    <SelectControl value={safePolicy.blockedActionPolicy || 'focus_next_fix'} onChange={(e) => onUpdatePolicy?.({ blockedActionPolicy: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow}>
+                                        {RUN_OF_SHOW_BLOCKED_ACTION_POLICIES.map((value) => <option key={value} value={value}>{POLICY_LABELS[value] || value}</option>)}
+                                    </SelectControl>
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-3 py-3 text-sm text-cyan-100">
+                                {liveOperatingHint}
+                            </div>
+                        </div>
+                    </UtilityDrawer>
+
+                    <UtilityDrawer
+                        eyebrow="Co-Hosts"
+                        title="People who keep the next slots ready"
+                        summary="Assign support operators without taking focus away from the actual timeline."
+                        open={coHostToolsOpen}
+                        onToggle={() => setCoHostToolsOpen((prev) => !prev)}
+                        badge={`${safeRoles.coHosts?.length || 0} assigned`}
+                    >
+                        <div className="space-y-3">
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    ['Operate', safeOperatorCapabilities.canOperate],
+                                    ['Pause Auto', safeOperatorCapabilities.canPauseAutomation],
+                                    ['Review Slots', safeOperatorCapabilities.canReviewSubmissions],
+                                    ['Curate Media', safeOperatorCapabilities.canCurateMedia],
+                                    ['Edit Flow', safeOperatorCapabilities.canEditFlow],
+                                    ['Templates', safeOperatorCapabilities.canManageTemplates],
+                                ].map(([label, active]) => (
+                                    <span key={label} className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${active ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-500'}`}>{label}</span>
+                                ))}
+                            </div>
+                            <input
+                                value={coHostSearch}
+                                onChange={(e) => setCoHostSearch(e.target.value)}
+                                disabled={!safeOperatorCapabilities.canManageRoles}
+                                className={textInputClass}
+                                placeholder="Search room people"
+                            />
+                            <div className="grid max-h-52 gap-2 overflow-auto pr-1">
+                                {filteredOperatorCandidates.length ? filteredOperatorCandidates.map((candidate) => {
+                                    const active = safeRoles.coHosts?.includes(candidate.uid);
+                                    return (
+                                        <button
+                                            key={candidate.uid}
+                                            type="button"
+                                            disabled={!safeOperatorCapabilities.canManageRoles}
+                                            onClick={() => toggleCoHost(candidate.uid)}
+                                            className={`flex items-center justify-between rounded-2xl border px-3 py-2 text-left transition disabled:opacity-40 ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-50' : 'border-white/10 bg-black/20 text-zinc-100 hover:border-cyan-300/25'}`}
+                                        >
+                                            <div>
+                                                <div className="text-sm font-semibold text-white">{candidate.label}</div>
+                                                <div className="text-xs text-zinc-400">{candidate.meta || candidate.uid}</div>
+                                            </div>
+                                            <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${active ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-400'}`}>{active ? 'Co-Host' : 'Add'}</span>
+                                        </button>
+                                    );
+                                }) : (
+                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400">No room users found yet. Co-host assignment appears here once people join the room.</div>
+                                )}
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
+                                Co-hosts can operate live, review submissions, curate media, edit the flow, and manage templates. Only the host can change room mode, pause automation, and assign roles.
+                            </div>
+                        </div>
+                    </UtilityDrawer>
+
+                    <UtilityDrawer
+                        eyebrow="Templates"
+                        title="Reuse a proven show format"
+                        summary="Keep template operations available without taking over the main planning view."
+                        open={templateToolsOpen}
+                        onToggle={() => setTemplateToolsOpen((prev) => !prev)}
+                        badge={safeTemplateMeta.currentTemplateName || 'Unsaved'}
+                    >
+                        <div className="space-y-3">
+                            <div>
+                                <FieldLabel>Template Name</FieldLabel>
+                                <input value={templateDraftName} onChange={(e) => setTemplateDraftName(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates} className={textInputClass} placeholder="AAHF Kick-Off Format" />
+                            </div>
+                            <div>
+                                <FieldLabel>Saved Templates</FieldLabel>
+                                <SelectControl value={safeTemplateMeta.currentTemplateId || ''} onChange={(e) => onApplyTemplate?.(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates}>
+                                    <option value="">Select a saved template</option>
+                                    {(Array.isArray(runOfShowTemplates) ? runOfShowTemplates : []).map((entry) => (
+                                        <option key={entry.id || entry.templateId} value={entry.templateId || entry.id}>{entry.templateName || entry.templateId || entry.id}</option>
+                                    ))}
+                                </SelectControl>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                                <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onSaveTemplate?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Run Of Show Template')}>Save Template</ControlButton>
+                                <ControlButton disabled={!safeOperatorCapabilities.canManageTemplates || !(safeTemplateMeta.currentTemplateId || '').trim()} onClick={() => onApplyTemplate?.(safeTemplateMeta.currentTemplateId)}>Reapply Current</ControlButton>
+                                <ControlButton tone="warning" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onArchiveCurrent?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Archived Run Of Show')}>Archive Night</ControlButton>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
+                                Current template: <span className="text-white">{safeTemplateMeta.currentTemplateName || 'Unsaved working copy'}</span>{safeTemplateMeta.lastArchiveId ? ` | Last archive ${safeTemplateMeta.lastArchiveId}` : ''}
+                            </div>
+                        </div>
+                    </UtilityDrawer>
+                </div>
+            ) : null}
 
             {studioMode === 'build' ? (
             <>
-                <QuickDraftPanel
-                    canEditFlow={safeOperatorCapabilities.canEditFlow}
-                    generatorConfig={generatorConfig}
-                    updateGeneratorConfig={updateGeneratorConfig}
-                    applyGeneratorDraft={applyGeneratorDraft}
-                    generatorBusy={generatorBusy}
-                    generatorOpen={generatorOpen}
-                    onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
-                    generatedDraftItems={generatedDraftItems}
-                    itemsCount={items.length}
-                />
-                {generatorOpen ? (
-                <article className={`${surfaceClass} p-4`}>
+                <div className="space-y-3">
+                    <ShowMapCard
+                        items={items}
+                        liveItemId={liveItem?.id || ''}
+                        stagedItemId={stagedItem?.id || ''}
+                        nextItemId={nextItem?.id || ''}
+                        expandedItemId={focusedBuildItemId}
+                        readinessById={readinessById}
+                        pendingCountsById={pendingCountsById}
+                        getPrimaryAction={getPrimaryActionForItem}
+                        onFocus={openItem}
+                        canEditFlow={safeOperatorCapabilities.canEditFlow}
+                        roomUserCandidates={roomUserCandidates}
+                        onAssignLobbyPerformer={assignLobbyPerformer}
+                        onClearLobbyPerformer={clearLobbyPerformer}
+                        onUpdateItem={onUpdateItem}
+                        onLoadSuggestedBacking={loadSuggestedBacking}
+                        mediaPicker={mediaPicker}
+                        getSuggestedOptionsForItem={getSuggestedOptionsForItem}
+                        onApplyMediaSelection={applyMediaSelection}
+                    />
+                    <QuickDraftPanel
+                        canEditFlow={safeOperatorCapabilities.canEditFlow}
+                        generatorConfig={generatorConfig}
+                        updateGeneratorConfig={updateGeneratorConfig}
+                        applyGeneratorDraft={applyGeneratorDraft}
+                        generatorBusy={generatorBusy}
+                        generatorOpen={generatorOpen}
+                        onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
+                        generatedDraftItems={generatedDraftItems}
+                        itemsCount={items.length}
+                        collapsed={quickDraftCollapsed}
+                        onToggleCollapsed={() => setQuickDraftCollapsed((prev) => !prev)}
+                    />
+                </div>
+                {!quickDraftCollapsed && generatorOpen ? (
+                <article className={`${surfaceClass} p-3`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Advanced Draft Builder</div>
                             <div className="mt-1 text-sm text-zinc-300">Tune the generated outline in more detail when the quick draft needs a custom block mix or pacing change.</div>
                         </div>
                     </div>
-                    <div className="mt-4 space-y-4">
+                    <div className="mt-3 space-y-3">
                         <div className="flex flex-wrap gap-2">
                             {[1, 2, 3, 4, 5].map((step) => (
                                 <button
@@ -2479,20 +3323,6 @@ export default function RunOfShowDirectorPanel({
             ) : null}
 
             {studioMode === 'build' ? (
-            <ShowMapCard
-                items={items}
-                liveItemId={liveItem?.id || ''}
-                stagedItemId={stagedItem?.id || ''}
-                nextItemId={nextItem?.id || ''}
-                expandedItemId={focusedBuildItemId}
-                readinessById={readinessById}
-                pendingCountsById={pendingCountsById}
-                getPrimaryAction={getPrimaryActionForItem}
-                onFocus={openItem}
-            />
-            ) : null}
-
-            {studioMode === 'build' ? (
             <TimelineStudio
                 items={items}
                 liveItemId={liveItem?.id || ''}
@@ -2504,10 +3334,12 @@ export default function RunOfShowDirectorPanel({
                 expandedItemId={expandedItemId}
                 canEditFlow={safeOperatorCapabilities.canEditFlow}
                 onMoveItem={onMoveItem}
-                onAddItem={onAddItem}
+                onAddItem={handleAddItemAndFocus}
                 onAddScenePack={applyScenePack}
                 onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
                 generatorOpen={generatorOpen}
+                momentPacksOpen={momentPacksOpen}
+                onToggleMomentPacks={() => setMomentPacksOpen((prev) => !prev)}
                 getPrimaryAction={getPrimaryActionForItem}
                 onFocus={openItem}
                 dragState={dragState}
@@ -2522,21 +3354,12 @@ export default function RunOfShowDirectorPanel({
             />
             ) : null}
 
-            {studioMode !== 'build' ? (
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <OperationsStat label="Automation" value={automationPaused ? 'Paused' : enabled ? 'Armed' : 'Off'} tone={automationPaused ? 'amber' : enabled ? 'cyan' : 'zinc'} detail={enabled ? 'Host can still override every block.' : 'Enable for designated run-of-show rooms.'} />
-                <OperationsStat label="Auto-Ready Blocks" value={`${autoReadyCount}/${items.length || 0}`} tone="emerald" detail="Approved media and performer data resolved." />
-                <OperationsStat label="Needs Attention" value={String(blockedCount)} tone={blockedCount ? 'amber' : 'emerald'} detail={blockedCount ? 'Blocked items will halt auto-advance.' : 'No current blockers surfaced.'} />
-                <OperationsStat label="Pending Approvals" value={String(pendingApprovals.length)} tone={pendingApprovals.length ? 'amber' : 'zinc'} detail={pendingApprovals.length ? 'Review open slot submissions before staging.' : 'No performer approvals waiting.'} />
-            </div>
-            ) : null}
-
             {studioMode === 'review' ? (
-            <article className={`${surfaceClass} p-4`}>
+            <article className={`${surfaceClass} p-3`}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Approval Inbox</div>
-                        <div className="mt-1 text-sm text-zinc-300">Review pending singer submissions in one place, then jump back into the affected slot only if deeper edits are needed.</div>
+                        <div className="mt-1 text-sm text-zinc-300">Handle pending singer submissions and blockers here, then jump into Build only when a scene needs deeper edits.</div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <ControlButton tone="warning" disabled={!safeOperatorCapabilities.canReviewSubmissions || !pendingApprovals.length} onClick={focusFirstPendingApproval}>Review First Pending</ControlButton>
@@ -2544,9 +3367,9 @@ export default function RunOfShowDirectorPanel({
                     </div>
                 </div>
                 {approvalInboxOpen ? (
-                    <div className="mt-4 grid gap-3">
+                    <div className="mt-3 grid gap-2">
                         {pendingApprovalGroups.length ? pendingApprovalGroups.map((group) => (
-                            <div key={group.itemId} className="rounded-2xl border border-amber-300/18 bg-amber-500/10 px-3 py-3">
+                            <div key={group.itemId} className="rounded-2xl border border-amber-300/18 bg-amber-500/10 px-3 py-2.5">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div>
                                         <div className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">{group.item?.title || 'Open performance slot'}</div>
@@ -2555,7 +3378,7 @@ export default function RunOfShowDirectorPanel({
                                     </div>
                                     <ControlButton onClick={() => openItem(group.itemId)}>Open Slot</ControlButton>
                                 </div>
-                                <div className="mt-3 grid gap-2">
+                                <div className="mt-2 grid gap-2">
                                     {group.submissions.map((submission) => (
                                         <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
                                             <div>
@@ -2579,7 +3402,7 @@ export default function RunOfShowDirectorPanel({
             ) : null}
 
             {studioMode === 'run' ? (
-            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1.1fr)_340px]">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
                 {(() => {
                     const action = getPrimaryActionForItem(
                         liveItem,
@@ -2629,12 +3452,12 @@ export default function RunOfShowDirectorPanel({
                         </OpsBoardCard>
                     );
                 })()}
-                <article className={`${surfaceClass} p-4`} aria-label="Later run of show queue">
+                <article className={`${surfaceClass} p-4 xl:col-span-2`} aria-label="Later run of show queue">
                     <div className="flex items-center justify-between gap-3">
                         <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Later</div>
                         <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{laterItems.length} upcoming</div>
                     </div>
-                    <div className="mt-3 space-y-2">
+                    <div className="mt-3 grid gap-2 lg:grid-cols-2 2xl:grid-cols-4">
                         {laterItems.length ? laterItems.map((item, index) => (
                             <button key={item.id} type="button" onClick={() => openItem(item.id)} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-cyan-300/30">
                                 <div className="flex items-start justify-between gap-3">
@@ -2646,8 +3469,8 @@ export default function RunOfShowDirectorPanel({
                                     <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{item.status}</span>
                                 </div>
                             </button>
-                        )) : <div className="text-sm text-zinc-400">No queued later blocks yet.</div>}
-                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                        )) : <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400 lg:col-span-2 2xl:col-span-4">No queued later blocks yet.</div>}
+                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 lg:col-span-2 2xl:col-span-4">
                             <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">Live operator notes</div>
                             <div className="mt-2 text-sm text-zinc-200">
                                 {automationPaused
@@ -2665,7 +3488,7 @@ export default function RunOfShowDirectorPanel({
             ) : null}
 
             {studioMode === 'build' ? (
-            <div className={`${surfaceClass} p-4`}>
+            <div className={`${surfaceClass} p-3`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Clip Bin</div>
@@ -2675,7 +3498,7 @@ export default function RunOfShowDirectorPanel({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                     {extraBlockOptions.map((option) => (
-                        <button key={option.value} type="button" disabled={!enabled || !safeOperatorCapabilities.canEditFlow} onClick={() => onAddItem?.(option.value)} className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-zinc-200 disabled:opacity-40">+ {option.label}</button>
+                        <button key={option.value} type="button" disabled={!enabled || !safeOperatorCapabilities.canEditFlow} onClick={() => handleAddItemAndFocus(option.value)} className="rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-xs font-black uppercase tracking-[0.16em] text-zinc-200 disabled:opacity-40">+ {option.label}</button>
                     ))}
                 </div>
             </div>
@@ -2686,7 +3509,7 @@ export default function RunOfShowDirectorPanel({
                     No run-of-show items yet. Add blocks to build the order of the night.
                 </div>
             ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-3">
                     {[focusedBuildItem].filter(Boolean).map((item) => {
                         const index = focusedBuildItemIndex;
                         const itemSubmissions = (Array.isArray(submissions) ? submissions : []).filter((entry) => entry.itemId === item.id);
@@ -2699,8 +3522,12 @@ export default function RunOfShowDirectorPanel({
                         const sourceMeta = getSourceMeta(sourceType);
                         const primaryAction = getPrimaryActionForItem(item, readiness, { pendingCount });
                         const suggestedOptions = item.type === 'performance' ? getSuggestedOptionsForItem(item) : [];
+                        const roomMomentOpen = isSectionOpen(item.id, 'room_moment');
                         const performerAdvancedOpen = isSectionOpen(item.id, 'performer_advanced');
                         const backingAdvancedOpen = isSectionOpen(item.id, 'backing_advanced');
+                        const pendingSubmissionsOpen = isSectionOpen(item.id, 'pending_submissions', pendingCount > 0);
+                        const presentationOpen = isSectionOpen(item.id, 'presentation_scene');
+                        const interactiveOpen = isSectionOpen(item.id, 'interactive_scene');
                         const targetBefore = dragState?.targetId === item.id && dragState?.position === 'before';
                         const targetAfter = dragState?.targetId === item.id && dragState?.position === 'after';
                         const isDragging = dragState?.itemId === item.id;
@@ -2709,9 +3536,24 @@ export default function RunOfShowDirectorPanel({
                             onUpdateItem?.(item.id, { backingPlan: { ...(item.backingPlan || {}), ...(patch || {}) } });
                         };
                         const visual = getItemVisual(item.type);
+                        const performanceFields = item.type === 'performance' ? getPerformanceIdentityFields(item) : [];
                         const summaryLine = item.type === 'performance'
                             ? formatSummaryLine(item.assignedPerformerName || 'Singer TBD', item.songTitle || 'Song TBD', item.artistName || '')
                             : (item.modeLaunchPlan?.modeKey ? String(item.modeLaunchPlan.modeKey).replaceAll('_', ' ') : item.notes || getRunOfShowItemLabel(item.type));
+                        const queueCandidatesForItem = item.type === 'performance'
+                            ? (Array.isArray(queueSongs) ? queueSongs : [])
+                                .filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested')
+                                .map((song) => {
+                                    const songTitle = String(song?.songTitle || '').trim().toLowerCase();
+                                    const songArtist = String(song?.artist || '').trim().toLowerCase();
+                                    const titleMatch = item.songTitle && songTitle === String(item.songTitle || '').trim().toLowerCase() ? 3 : (item.songTitle && songTitle.includes(String(item.songTitle || '').trim().toLowerCase()) ? 2 : 0);
+                                    const artistMatch = item.artistName && songArtist === String(item.artistName || '').trim().toLowerCase() ? 2 : (item.artistName && songArtist.includes(String(item.artistName || '').trim().toLowerCase()) ? 1 : 0);
+                                    const singerMatch = item.assignedPerformerName && String(song?.singerName || '').trim().toLowerCase() === String(item.assignedPerformerName || '').trim().toLowerCase() ? 1 : 0;
+                                    return { ...song, _queueFitScore: titleMatch + artistMatch + singerMatch };
+                                })
+                                .sort((left, right) => right._queueFitScore - left._queueFitScore)
+                                .slice(0, 6)
+                            : [];
                         return (
                             <article
                                 key={item.id}
@@ -2743,33 +3585,50 @@ export default function RunOfShowDirectorPanel({
                             >
                                 {targetBefore ? <div className="absolute inset-x-8 top-0 h-1 rounded-full bg-cyan-300 shadow-[0_0_0_8px_rgba(34,211,238,0.12)]"></div> : null}
                                 {targetAfter ? <div className="absolute inset-x-8 bottom-0 h-1 rounded-full bg-cyan-300 shadow-[0_0_0_8px_rgba(34,211,238,0.12)]"></div> : null}
-                                <div className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-                                    <button type="button" onClick={() => openItem(item.id)} className="min-w-0 text-left">
-                                        <div className={`rounded-[24px] border border-white/10 bg-gradient-to-br ${visual.tone} p-4`}>
-                                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                                <div className="flex flex-wrap items-center gap-2">
-                                                    <div className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border ${visual.chip}`}>
-                                                        <i className={`fa-solid ${visual.icon}`}></i>
+                                <div className={`grid ${compactViewport ? 'gap-2.5 p-2.5 xl:grid-cols-[252px_minmax(0,1fr)] 2xl:grid-cols-[272px_minmax(0,1fr)]' : 'gap-3 p-3 xl:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[284px_minmax(0,1fr)]'} xl:items-start`}>
+                                    <div className={`${compactViewport ? 'space-y-2.5' : 'space-y-3'} xl:sticky xl:top-[8.75rem]`}>
+                                        <button type="button" onClick={() => openItem(item.id)} className="block min-w-0 text-left">
+                                            <div className={`rounded-[22px] border border-white/10 bg-gradient-to-br ${visual.tone} p-3`}>
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <div className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border ${visual.chip}`}>
+                                                            <i className={`fa-solid ${visual.icon}`}></i>
+                                                        </div>
+                                                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-zinc-200">
+                                                            <i className="fa-solid fa-grip-lines"></i>
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200/80">Scene {index + 1}</div>
+                                                            <div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-100/75">{getRunOfShowItemLabel(item.type)}</div>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-black/20 text-zinc-200">
-                                                        <i className="fa-solid fa-grip-lines"></i>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200/80">Scene {index + 1}</div>
-                                                        <div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-100/75">{getRunOfShowItemLabel(item.type)}</div>
+                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                        <div className="rounded-full border border-cyan-300/18 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                                            {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Staged' : item.id === nextItem?.id ? 'Up next' : 'Timeline'}
+                                                        </div>
+                                                        <div className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusTone(item.status)}`}>{item.status}</div>
                                                     </div>
                                                 </div>
-                                                <div className="flex flex-wrap justify-end gap-2">
-                                                    <div className="rounded-full border border-cyan-300/18 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                        {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Staged' : item.id === nextItem?.id ? 'Up next' : 'Timeline'}
+                                                <div className="mt-4 text-2xl font-black leading-tight text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
+                                                <div className="mt-2 text-sm text-zinc-100/80">{summaryLine}</div>
+                                                {performanceFields.length ? (
+                                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                                        {performanceFields.map((field) => {
+                                                            const hasValue = !!field.value;
+                                                            return (
+                                                                <span
+                                                                    key={field.key}
+                                                                    className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${hasValue ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}
+                                                                >
+                                                                    {hasValue ? `${field.label}: ${field.value}` : field.fallback}
+                                                                </span>
+                                                            );
+                                                        })}
                                                     </div>
-                                                    <div className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusTone(item.status)}`}>{item.status}</div>
-                                                </div>
+                                                ) : null}
                                             </div>
-                                            <div className="mt-4 text-2xl font-black leading-tight text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
-                                            <div className="mt-2 text-sm text-zinc-100/80">{summaryLine}</div>
-                                        </div>
-                                        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                                        </button>
+                                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                                             <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
                                                 <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Starts</div>
                                                 <div className="mt-1 text-sm font-semibold text-white">{formatStart(item.startsAtMs)}</div>
@@ -2787,7 +3646,8 @@ export default function RunOfShowDirectorPanel({
                                                 <div className={`mt-1 text-sm font-semibold ${Array.isArray(readiness?.blockers) && readiness.blockers.length ? 'text-amber-100' : 'text-emerald-100'}`}>{readiness.summary}</div>
                                             </div>
                                         </div>
-                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                        <ReadinessPanel readiness={readiness} compact />
+                                        <div className="flex flex-wrap items-center gap-2">
                                             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
                                                 <i className="fa-solid fa-grip-lines mr-1"></i>
                                                 Drag scene
@@ -2804,38 +3664,34 @@ export default function RunOfShowDirectorPanel({
                                                 Focused scene
                                             </span>
                                         </div>
-                                    </button>
-                                    <div className="flex flex-wrap justify-end gap-2 lg:w-[320px] lg:self-start">
-                                        <ControlButton disabled={index <= 0} onClick={() => index > 0 && openItem(items[index - 1]?.id)}>
-                                            <i className="fa-solid fa-arrow-left mr-1"></i>
-                                            Previous Scene
-                                        </ControlButton>
-                                        <ControlButton disabled={index >= items.length - 1} onClick={() => index < items.length - 1 && openItem(items[index + 1]?.id)}>
-                                            Next Scene
-                                            <i className="fa-solid fa-arrow-right ml-1"></i>
-                                        </ControlButton>
-                                        {primaryAction ? (
-                                            <ControlButton tone={primaryAction.tone} onClick={primaryAction.onClick}>{primaryAction.label}</ControlButton>
-                                        ) : null}
-                                        <ControlButton className={previewActiveId === item.id ? 'ring-1 ring-violet-300/45' : ''} onClick={() => onPreviewItem?.(item.id)}>Preview TV</ControlButton>
-                                        <ControlButton tone="primary" onClick={() => openItem(item.id)}>
-                                            Focused Scene
-                                        </ControlButton>
+                                        <div className="flex flex-wrap gap-2">
+                                            <ControlButton disabled={index <= 0} onClick={() => index > 0 && openItem(items[index - 1]?.id)}>
+                                                <i className="fa-solid fa-arrow-left mr-1"></i>
+                                                Previous Scene
+                                            </ControlButton>
+                                            <ControlButton disabled={index >= items.length - 1} onClick={() => index < items.length - 1 && openItem(items[index + 1]?.id)}>
+                                                Next Scene
+                                                <i className="fa-solid fa-arrow-right ml-1"></i>
+                                            </ControlButton>
+                                            {primaryAction ? (
+                                                <ControlButton tone={primaryAction.tone} onClick={primaryAction.onClick}>{primaryAction.label}</ControlButton>
+                                            ) : null}
+                                            <ControlButton className={previewActiveId === item.id ? 'ring-1 ring-violet-300/45' : ''} onClick={() => onPreviewItem?.(item.id)}>Preview TV</ControlButton>
+                                        </div>
                                     </div>
-                                </div>
 
                                 {isExpanded ? (
-                                    <div className="border-t border-white/10 bg-black/20 p-4 space-y-4" aria-label={`Run of show details for ${item.title || getRunOfShowItemLabel(item.type)}`}>
+                                    <div className={`min-w-0 rounded-[24px] border border-white/10 bg-black/20 ${compactViewport ? 'p-3 space-y-3' : 'p-3.5 space-y-3.5'}`} aria-label={`Run of show details for ${item.title || getRunOfShowItemLabel(item.type)}`}>
                                         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/16 bg-violet-500/8 px-3 py-3">
                                             <div>
                                                 <div className="text-[10px] uppercase tracking-[0.18em] text-violet-100/80">Scene Inspector</div>
                                                 <div className="mt-1 text-sm text-zinc-200">Tune this scene without losing sight of the overall sequence.</div>
+                                                <div className="mt-2 text-xs text-zinc-400">This editor controls what the host sees, what the audience phone gets, and what the Public TV takes over with when this scene goes live.</div>
                                             </div>
                                             <div className="rounded-full border border-violet-300/25 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-violet-100">
                                                 {getRunOfShowItemLabel(item.type)}
                                             </div>
                                         </div>
-                                        <ReadinessPanel readiness={readiness} />
                                         <div className="grid gap-3 md:grid-cols-4">
                                             <div className="md:col-span-2">
                                                 <FieldLabel>Title</FieldLabel>
@@ -2856,16 +3712,33 @@ export default function RunOfShowDirectorPanel({
                                             <div><FieldLabel>Planned Start</FieldLabel><input type="datetime-local" value={item.startsAtMs ? new Date(item.startsAtMs).toISOString().slice(0, 16) : ''} onChange={(e) => onUpdateItem?.(item.id, { startsAtMs: e.target.value ? new Date(e.target.value).getTime() : 0 })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
                                             <div><FieldLabel>Notes</FieldLabel><input value={item.notes || ''} onChange={(e) => onUpdateItem?.(item.id, { notes: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
                                         </div>
+                                        <div className="grid gap-3 lg:grid-cols-3">
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Visibility</div>
+                                                <div className="mt-1 text-sm text-zinc-200">Public scenes can take over TV and audience surfaces. Private scenes stay as host-side planning blocks.</div>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Automation</div>
+                                                <div className="mt-1 text-sm text-zinc-200">Auto lets the run advance when the scene is ready. Manual keeps the host in charge of staging and start timing.</div>
+                                            </div>
+                                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Duration</div>
+                                                <div className="mt-1 text-sm text-zinc-200">This is how long the run expects the scene to occupy before the next one can take over.</div>
+                                            </div>
+                                        </div>
 
-                                        <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
-                                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                                <div>
-                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Room Moment Layer</div>
-                                                    <div className="mt-1 text-sm text-zinc-300">Turn this scene into a real BeauRocks moment with built-in overlays, modes, and vibe changes instead of extra setup text.</div>
-                                                </div>
-                                                <div className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
-                                                    {compactMomentSummary(item.roomMomentPlan || {}) || 'Stage default'}
-                                                </div>
+                                        <CollapsiblePanel
+                                            label="Room Moment"
+                                            title="TV, phone, and vibe polish"
+                                            summary="Optional staging layers for overlays, room modes, and light cues."
+                                            open={roomMomentOpen}
+                                            onToggle={() => toggleSection(item.id, 'room_moment')}
+                                            badge={compactMomentSummary(item.roomMomentPlan || {}) || 'Stage default'}
+                                            tone="violet"
+                                            compact
+                                        >
+                                            <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
+                                                <span className="font-semibold text-white">What this changes:</span> TV Overlay changes the big-screen layer, Phone / Room Mode changes what guests see or interact with on their phones, Vibe Lighting changes the room mood, and How To Play adds a short instruction beat before the crowd needs to act.
                                             </div>
                                             <div className="grid gap-3 lg:grid-cols-4">
                                                 <div className="space-y-2">
@@ -2949,18 +3822,19 @@ export default function RunOfShowDirectorPanel({
                                                     </label>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </CollapsiblePanel>
 
                                         {item.type === 'performance' ? (
                                             <div className="space-y-4">
-                                                <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
-                                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                                        <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Quick Performance Setup</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Pick how this slot gets a singer, fill in the public-facing song info, then lock the backing source below.</div>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{item.status}</span>
+                                                <div data-performance-setup-for={item.id} className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Quick Performance Setup</div>
+                                                        <div className="mt-1 text-sm text-zinc-300">Lead with song search and backing first, then add the performer display name or bind a live attendee.</div>
+                                                        <div className="mt-2 text-xs text-zinc-400">This controls who appears in the show, what song is announced, and which backing actually plays when the slot goes live.</div>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{item.status}</span>
                                                             <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${sourceTone(sourceMeta.tone, false)}`}>{sourceMeta.label}</span>
                                                         </div>
                                                     </div>
@@ -2969,44 +3843,126 @@ export default function RunOfShowDirectorPanel({
                                                             <button key={option.value} type="button" disabled={!safeOperatorCapabilities.canEditFlow} onClick={() => onUpdateItem?.(item.id, { performerMode: option.value })} className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${item.performerMode === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}>{option.label}</button>
                                                         ))}
                                                     </div>
-                                                    <div className="grid gap-3 md:grid-cols-3">
-                                                        <div><FieldLabel>Performer</FieldLabel><input value={item.assignedPerformerName || ''} onChange={(e) => onUpdateItem?.(item.id, { assignedPerformerName: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} placeholder={item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? 'Approved singer fills this in' : 'Singer name'} /></div>
-                                                        <div><FieldLabel>Song Title</FieldLabel><input value={item.songTitle || ''} onChange={(e) => onUpdateItem?.(item.id, { songTitle: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
-                                                        <div><FieldLabel>Artist</FieldLabel><input value={item.artistName || ''} onChange={(e) => onUpdateItem?.(item.id, { artistName: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
+                                                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                                                        <div className="order-2 space-y-3 rounded-2xl border border-white/10 bg-black/25 p-3 xl:order-2">
+                                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                <FieldLabel>{getPerformerFieldLabel(item.performerMode)}</FieldLabel>
+                                                                {item.assignedPerformerUid ? (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => clearLobbyPerformer(item)}
+                                                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                                                        className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400 disabled:opacity-40"
+                                                                    >
+                                                                        Clear lobby link
+                                                                    </button>
+                                                                ) : null}
+                                                            </div>
+                                                            <input
+                                                                value={item.assignedPerformerName || ''}
+                                                                onChange={(e) => onUpdateItem?.(item.id, { assignedPerformerName: e.target.value })}
+                                                                disabled={!safeOperatorCapabilities.canEditFlow}
+                                                                className={textInputClass}
+                                                                placeholder={getPerformerFieldPlaceholder(item.performerMode)}
+                                                            />
+                                                            {item.performerMode !== RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
+                                                                <div className="space-y-2">
+                                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                        <FieldLabel>Bind Live Lobby Performer</FieldLabel>
+                                                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                                                            {roomUserCandidates.length ? `${roomUserCandidates.length} in lobby` : 'No one joined yet'}
+                                                                        </div>
+                                                                    </div>
+                                                                    <SelectControl
+                                                                        value={item.assignedPerformerUid || ''}
+                                                                        onChange={(e) => {
+                                                                            const candidate = roomUserCandidates.find((entry) => entry.uid === e.target.value);
+                                                                            if (candidate) assignLobbyPerformer(item, candidate);
+                                                                            else clearLobbyPerformer(item);
+                                                                        }}
+                                                                        disabled={!safeOperatorCapabilities.canEditFlow || roomUserCandidates.length === 0}
+                                                                    >
+                                                                        <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
+                                                                        {roomUserCandidates.map((candidate) => (
+                                                                            <option key={candidate.uid} value={candidate.uid}>
+                                                                                {candidate.label}{candidate.meta ? ` · ${candidate.meta}` : ''}
+                                                                            </option>
+                                                                        ))}
+                                                                    </SelectControl>
+                                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-zinc-400">
+                                                                        Build ahead of time with one placeholder name like Singer TBD, then bind a real attendee once the lobby fills.
+                                                                    </div>
+                                                                </div>
+                                                            ) : null}
+                                                            <div className="text-xs text-zinc-400">
+                                                                {getPerformerModeHint(item.performerMode)}
+                                                            </div>
+                                                        </div>
+                                                        <div className="order-1 space-y-3 rounded-2xl border border-white/10 bg-black/25 p-3 xl:order-1">
+                                                            <div className="grid gap-3">
+                                                                <div><FieldLabel>Song Title</FieldLabel><input value={item.songTitle || ''} onChange={(e) => onUpdateItem?.(item.id, { songTitle: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} placeholder="Song title" /></div>
+                                                                <div><FieldLabel>Artist</FieldLabel><input value={item.artistName || ''} onChange={(e) => onUpdateItem?.(item.id, { artistName: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} placeholder="Artist" /></div>
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                <ControlButton
+                                                                    tone="primary"
+                                                                    onClick={() => loadSuggestedBacking(item)}
+                                                                    disabled={!safeOperatorCapabilities.canCurateMedia || !buildMediaQuery(item)}
+                                                                >
+                                                                    Search YouTube Backing
+                                                                </ControlButton>
+                                                            </div>
+                                                            <div className="text-xs text-zinc-400">
+                                                                Song and artist drive the YouTube auto-search. Pick a playable result and the slot is ready to run.
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="grid gap-3 md:grid-cols-3">
-                                                        <div className={`${miniSurfaceClass} px-3 py-3`}>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Slot Mode</div>
-                                                            <div className="mt-1 text-sm font-semibold text-white">
-                                                                {PERFORMER_MODE_OPTIONS.find((option) => option.value === item.performerMode)?.label || 'Placeholder'}
-                                                            </div>
-                                                            <div className="mt-1 text-xs text-zinc-400">
-                                                                {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
-                                                                    ? 'Guests can compete for this slot and the host approves the winner.'
-                                                                    : item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.assigned
-                                                                        ? 'This slot is locked to a specific singer.'
-                                                                        : 'Use this as a flexible placeholder until the room settles.'}
-                                                            </div>
-                                                        </div>
-                                                        <div className={`${miniSurfaceClass} px-3 py-3`}>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Backing Readiness</div>
-                                                            <div className="mt-1 text-sm font-semibold text-white">
-                                                                {item.backingPlan?.playbackReady === true ? 'Playback ready' : 'Needs media'}
-                                                            </div>
-                                                            <div className="mt-1 text-xs text-zinc-400">
-                                                                {item.backingPlan?.label || 'Choose a backing source and approved track below.'}
-                                                            </div>
-                                                        </div>
-                                                        <div className={`${miniSurfaceClass} px-3 py-3`}>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Approval Queue</div>
-                                                            <div className="mt-1 text-sm font-semibold text-white">{pendingCount} pending</div>
-                                                            <div className="mt-1 text-xs text-zinc-400">
-                                                                {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
-                                                                    ? 'Review and approve one singer to snap them into the slot.'
-                                                                    : 'Only open-submission slots use the approval queue.'}
-                                                            </div>
-                                                        </div>
+                                                    <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                                                        <span className={`rounded-full border px-2 py-1 ${sourceTone(sourceMeta.tone, false)}`}>{PERFORMER_MODE_OPTIONS.find((option) => option.value === item.performerMode)?.label || 'Placeholder'}</span>
+                                                        <span className={`rounded-full border px-2 py-1 ${item.backingPlan?.playbackReady === true ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{item.backingPlan?.playbackReady === true ? 'Playback ready' : 'Needs media'}</span>
+                                                        <span className={`rounded-full border px-2 py-1 ${pendingCount ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}>{pendingCount} pending approvals</span>
                                                     </div>
+                                                    {typeof onAssignQueueSongToItem === 'function' ? (
+                                                        <div className={`rounded-2xl border border-white/10 bg-black/25 ${compactViewport ? 'px-2.5 py-2.5' : 'px-3 py-3'} space-y-2.5`}>
+                                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                                <div>
+                                                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Pull From Live Queue</div>
+                                                                    <div className="mt-1 text-sm text-zinc-300">Assign a queued request straight into this performance slot without leaving the builder.</div>
+                                                                </div>
+                                                                <div className="text-xs text-zinc-500">{queueCandidatesForItem.length} queue match{queueCandidatesForItem.length === 1 ? '' : 'es'}</div>
+                                                            </div>
+                                                            {queueCandidatesForItem.length ? (
+                                                                <div className="grid gap-2">
+                                                                    {queueCandidatesForItem.map((queueSong) => (
+                                                                        <div key={`${item.id}:${queueSong.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                                                                            <div className="min-w-0">
+                                                                                <div className="truncate text-sm font-semibold text-white">{queueSong.songTitle || 'Queued Song'}</div>
+                                                                                <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` · ${queueSong.artist}` : ''}</div>
+                                                                            </div>
+                                                                            <div className="flex items-center gap-2">
+                                                                                {queueSong._queueFitScore > 0 ? (
+                                                                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                                                                        Best match
+                                                                                    </span>
+                                                                                ) : null}
+                                                                                <ControlButton
+                                                                                    tone="primary"
+                                                                                    disabled={!safeOperatorCapabilities.canEditFlow}
+                                                                                    onClick={() => onAssignQueueSongToItem?.(queueSong.id, item.id)}
+                                                                                >
+                                                                                    Assign Slot
+                                                                                </ControlButton>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400">
+                                                                    No ready queue songs yet. Once requests are in the live queue, you can bind them here with one click.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : null}
                                                     {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
                                                         <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
                                                             <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Submission Rules</div>
@@ -3038,12 +3994,9 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Suggested Backing</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Start with likely matches for this song, then open the full picker only if you need more options.</div>
+                                                            <div className="mt-1 text-sm text-zinc-300">This is the main backing lane for run of show. Search once, pick a result, then rate it good or bad after playback.</div>
                                                         </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <ControlButton onClick={() => loadSuggestedBacking(item)}>Load Live Suggestions</ControlButton>
-                                                            {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading…</span> : null}
-                                                        </div>
+                                                        {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading…</span> : null}
                                                     </div>
                                                     {suggestedOptions.length ? (
                                                         <div className="grid gap-2">
@@ -3057,7 +4010,7 @@ export default function RunOfShowDirectorPanel({
                                                         </div>
                                                     ) : (
                                                         <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-400">
-                                                            Add a song title and artist to surface stronger backing suggestions. Remote Apple and YouTube suggestions load on demand.
+                                                            Add a song title and artist to surface stronger backing suggestions. The builder now defaults to YouTube auto-search for performance planning.
                                                         </div>
                                                     )}
                                                 </div>
@@ -3065,23 +4018,69 @@ export default function RunOfShowDirectorPanel({
                                                 <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Backing Source</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Pick the trusted playback lane first, then browse approved media instead of typing ids by hand.</div>
+                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Playback Plan</div>
+                                                            <div className="mt-1 text-sm text-zinc-300">Keep one selected backing here. Open source details only when you need overrides or a different media lane.</div>
                                                         </div>
-                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${sourceTone(sourceMeta.tone, false)}`}>{isRunOfShowItemReady(item) ? 'automation trusted' : sourceMeta.trustLabel}</span>
+                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${backingApprovalMeta(item.backingPlan?.approvalStatus).tone}`}>{backingApprovalMeta(item.backingPlan?.approvalStatus).label}</span>
                                                     </div>
-                                                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                                        {BACKING_SOURCE_OPTIONS.map((option) => (
-                                                            <BackingSourceCard
-                                                                key={option.value}
-                                                                option={option}
-                                                                selected={sourceType === option.value}
-                                                                trusted={sourceType === option.value && isRunOfShowItemReady(item)}
-                                                                onSelect={() => updateBackingPlan({ sourceType: option.value })}
-                                                            />
-                                                        ))}
+                                                    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Selected source</div>
+                                                                <div className="mt-1 text-sm font-semibold text-white">{sourceMeta.label}</div>
+                                                                <div className="mt-1 text-sm text-zinc-300">{item.backingPlan?.label || item.backingPlan?.mediaUrl || item.backingPlan?.youtubeId || 'No backing chosen yet.'}</div>
+                                                            </div>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {item.backingPlan?.label || item.backingPlan?.mediaUrl || item.backingPlan?.youtubeId ? (
+                                                                    <>
+                                                                        <ControlButton tone="success" onClick={() => updateBackingPlan({ approvalStatus: 'approved', playbackReady: true, resolutionStatus: 'ready' })}>Good for room</ControlButton>
+                                                                        <ControlButton tone="danger" onClick={() => updateBackingPlan({ approvalStatus: 'rejected', playbackReady: false, resolutionStatus: 'needs_replacement' })}>Bad fit</ControlButton>
+                                                                    </>
+                                                                ) : null}
+                                                                <ControlButton onClick={() => toggleSection(item.id, 'backing_advanced')}>
+                                                                    {backingAdvancedOpen ? 'Hide Source Details' : 'Open Source Details'}
+                                                                </ControlButton>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap gap-4">
+                                                            <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={item.backingPlan?.playbackReady === true} onChange={(e) => updateBackingPlan({ playbackReady: e.target.checked })} disabled={!safeOperatorCapabilities.canCurateMedia} />Playback ready</label>
+                                                            <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">Resolution: {item.backingPlan?.resolutionStatus || 'ready'}</div>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                                    <CollapsiblePanel
+                                                        label="Source Details"
+                                                        title="Switch source or apply overrides"
+                                                        summary="Use this only when the main YouTube search is not enough."
+                                                        open={backingAdvancedOpen}
+                                                        onToggle={() => toggleSection(item.id, 'backing_advanced')}
+                                                        badge={sourceMeta.label}
+                                                        tone="amber"
+                                                        compact
+                                                    >
+                                                        <div className="mt-3 space-y-3">
+                                                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                                                {BACKING_SOURCE_OPTIONS.map((option) => (
+                                                                    <BackingSourceCard
+                                                                        key={option.value}
+                                                                        option={option}
+                                                                        selected={sourceType === option.value}
+                                                                        trusted={sourceType === option.value && isRunOfShowItemReady(item)}
+                                                                        onSelect={() => {
+                                                                            updateBackingPlan({ sourceType: option.value });
+                                                                            if (mediaPicker.itemId === item.id) {
+                                                                                setMediaPicker((prev) => ({
+                                                                                    ...prev,
+                                                                                    sourceType: option.value,
+                                                                                    remoteResults: [],
+                                                                                    loading: false,
+                                                                                    error: ''
+                                                                                }));
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
                                                         <div>
                                                             <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Media picker</div>
                                                             <div className="mt-1 text-sm text-zinc-300">
@@ -3102,7 +4101,7 @@ export default function RunOfShowDirectorPanel({
                                                                 {mediaPicker.itemId === item.id ? 'Hide Picker' : `Browse ${sourceMeta.label}`}
                                                             </ControlButton>
                                                         ) : null}
-                                                    </div>
+                                                            </div>
                                                     {mediaPicker.itemId === item.id ? (
                                                         <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/6 p-3 space-y-3">
                                                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -3155,21 +4154,17 @@ export default function RunOfShowDirectorPanel({
                                                             )}
                                                         </div>
                                                     ) : null}
-                                                    <div className="grid gap-3 md:grid-cols-3">
-                                                        <div className="md:col-span-2"><FieldLabel>Display Label</FieldLabel><input value={item.backingPlan?.label || ''} onChange={(e) => updateBackingPlan({ label: e.target.value })} disabled={!safeOperatorCapabilities.canCurateMedia} className={textInputClass} placeholder="What the host should see during the show" /></div>
-                                                        <div><FieldLabel>Approval</FieldLabel><SelectControl value={item.backingPlan?.approvalStatus || 'approved'} onChange={(e) => updateBackingPlan({ approvalStatus: e.target.value })} disabled={!safeOperatorCapabilities.canCurateMedia}><option value="approved">Approved</option><option value="pending">Pending</option><option value="rejected">Rejected</option></SelectControl></div>
-                                                    </div>
-                                                    <CollapsiblePanel
-                                                        label="Playback Overrides"
-                                                        title="Advanced override fields"
-                                                        summary="Direct IDs and fallback media only when the visual picker is not enough."
-                                                        open={backingAdvancedOpen}
-                                                        onToggle={() => toggleSection(item.id, 'backing_advanced')}
-                                                        badge={(item.backingPlan?.trackId || item.backingPlan?.appleMusicId || item.backingPlan?.youtubeId || item.backingPlan?.localAssetId || item.backingPlan?.submittedBackingId) ? 'Overrides set' : 'Optional'}
-                                                        tone="amber"
-                                                        compact
-                                                    >
-                                                        <div className="mt-3 space-y-3">
+                                                            <div className="grid gap-3 md:grid-cols-2">
+                                                                <div><FieldLabel>Display Label</FieldLabel><input value={item.backingPlan?.label || ''} onChange={(e) => updateBackingPlan({ label: e.target.value })} disabled={!safeOperatorCapabilities.canCurateMedia} className={textInputClass} placeholder="What the host should see during the show" /></div>
+                                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
+                                                                    {sourceType === 'youtube'
+                                                                        ? 'YouTube is the normal run-of-show lane. If the host picked it and it plays, the slot can run.'
+                                                                        : sourceType === 'user_submitted'
+                                                                            ? 'Submitted backing still needs explicit approval before automation will trust it.'
+                                                                            : 'Use source details only for exceptions, imports, or fallback media.'}
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-3">
                                                             {(sourceType === 'canonical_default' || sourceType === 'apple_music') ? (
                                                                 <div className="grid gap-3 md:grid-cols-2">
                                                                     <div><FieldLabel>{sourceType === 'canonical_default' ? 'Canonical Track ID' : 'Apple Music ID'}</FieldLabel><input value={sourceType === 'canonical_default' ? (item.backingPlan?.trackId || '') : (item.backingPlan?.appleMusicId || '')} onChange={(e) => updateBackingPlan(sourceType === 'canonical_default' ? { trackId: e.target.value } : { appleMusicId: e.target.value })} className={textInputClass} /></div>
@@ -3188,24 +4183,23 @@ export default function RunOfShowDirectorPanel({
                                                                     <div><FieldLabel>Fallback Media URL</FieldLabel><input value={item.backingPlan?.mediaUrl || ''} onChange={(e) => updateBackingPlan({ mediaUrl: e.target.value })} className={textInputClass} /></div>
                                                                 </div>
                                                             ) : null}
+                                                            </div>
                                                         </div>
                                                     </CollapsiblePanel>
                                                     {sourceType === 'manual_external' ? <div className="rounded-2xl border border-zinc-300/15 bg-zinc-500/10 px-3 py-2 text-sm text-zinc-300">Manual external sources are planning-only in v1 and will not auto-run.</div> : null}
-                                                    <div className="flex flex-wrap gap-4">
-                                                        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={item.backingPlan?.playbackReady === true} onChange={(e) => updateBackingPlan({ playbackReady: e.target.checked })} disabled={!safeOperatorCapabilities.canCurateMedia} />Playback ready</label>
-                                                        <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">Resolution: {item.backingPlan?.resolutionStatus || 'ready'}</div>
-                                                    </div>
                                                 </div>
 
                                                 {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
-                                                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-2">
-                                                        <div className="flex items-center justify-between gap-3">
-                                                            <div>
-                                                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Pending Submissions</div>
-                                                                <div className="text-sm text-zinc-400 mt-1">Approve a song to snap it directly into this slot.</div>
-                                                            </div>
-                                                            <SubmissionStatusBadge count={pendingCount} />
-                                                        </div>
+                                                    <CollapsiblePanel
+                                                        label="Approvals"
+                                                        title="Pending singer submissions"
+                                                        summary="Approve a singer only when this slot is ready to be locked in."
+                                                        open={pendingSubmissionsOpen}
+                                                        onToggle={() => toggleSection(item.id, 'pending_submissions', pendingCount > 0)}
+                                                        badge={`${pendingCount} pending`}
+                                                        tone="amber"
+                                                        compact
+                                                    >
                                                         {itemSubmissions.length === 0 ? <div className="text-sm text-zinc-400">No submissions for this slot yet.</div> : itemSubmissions.map((submission) => (
                                                             <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
                                                                 <div>
@@ -3218,13 +4212,25 @@ export default function RunOfShowDirectorPanel({
                                                                 </div>
                                                             </div>
                                                         ))}
-                                                    </div>
+                                                    </CollapsiblePanel>
                                                 ) : null}
                                             </div>
                                         ) : null}
 
                                         {(item.type === 'announcement' || item.type === 'intro' || item.type === 'closing' || item.type === 'intermission' || item.type === 'buffer') ? (
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
+                                            <CollapsiblePanel
+                                                label="Presentation Scene"
+                                                title="Headline and takeover settings"
+                                                summary="Secondary presentation controls for intros, announcements, and buffers."
+                                                open={presentationOpen}
+                                                onToggle={() => toggleSection(item.id, 'presentation_scene')}
+                                                badge={item.presentationPlan?.headline || 'Optional'}
+                                                tone="violet"
+                                                compact
+                                            >
+                                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
+                                                    <span className="font-semibold text-white">What this changes:</span> Headline and subhead become the main Public TV message, takeover scene sets the visual treatment, and duck backing lowers music so the room can hear the host moment clearly.
+                                                </div>
                                                 <div className="grid gap-3 md:grid-cols-2">
                                                     <div><FieldLabel>Headline</FieldLabel><input value={item.presentationPlan?.headline || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), headline: e.target.value } })} className={textInputClass} /></div>
                                                     <div><FieldLabel>Subhead</FieldLabel><input value={item.presentationPlan?.subhead || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), subhead: e.target.value } })} className={textInputClass} /></div>
@@ -3239,11 +4245,23 @@ export default function RunOfShowDirectorPanel({
                                                     <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={item.audioPlan?.duckBackingEnabled === true} onChange={(e) => onUpdateItem?.(item.id, { audioPlan: { ...(item.audioPlan || {}), duckBackingEnabled: e.target.checked } })} />Duck backing</label>
                                                     <div><FieldLabel>Duck Level %</FieldLabel><input type="number" value={item.audioPlan?.duckLevelPct ?? 35} onChange={(e) => onUpdateItem?.(item.id, { audioPlan: { ...(item.audioPlan || {}), duckLevelPct: Number(e.target.value || 0) } })} className={textInputClass} /></div>
                                                 </div>
-                                            </div>
+                                            </CollapsiblePanel>
                                         ) : null}
 
                                         {(item.type === 'trivia_break' || item.type === 'would_you_rather_break' || item.type === 'game_break') ? (
-                                            <div className="rounded-2xl border border-white/10 bg-black/20 p-3 space-y-3">
+                                            <CollapsiblePanel
+                                                label="Interactive Scene"
+                                                title="Prompt and answer settings"
+                                                summary="Only open this when you are tuning the actual question or game payload."
+                                                open={interactiveOpen}
+                                                onToggle={() => toggleSection(item.id, 'interactive_scene')}
+                                                badge={item.modeLaunchPlan?.modeKey || 'Optional'}
+                                                tone="violet"
+                                                compact
+                                            >
+                                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
+                                                    <span className="font-semibold text-white">What this changes:</span> Mode Key decides which quick-play experience launches, Prompt is what the crowd sees on TV and phone, and the options/correct answer control how the audience round resolves.
+                                                </div>
                                                 <div className="grid gap-3 md:grid-cols-3">
                                                     <div><FieldLabel>Mode Key</FieldLabel><input value={item.modeLaunchPlan?.modeKey || ''} onChange={(e) => onUpdateItem?.(item.id, { modeLaunchPlan: { ...(item.modeLaunchPlan || {}), modeKey: e.target.value } })} className={textInputClass} /></div>
                                                     <div className="md:col-span-2"><FieldLabel>Prompt</FieldLabel><input value={item.modeLaunchPlan?.launchConfig?.question || ''} onChange={(e) => onUpdateItem?.(item.id, { modeLaunchPlan: { ...(item.modeLaunchPlan || {}), launchConfig: { ...(item.modeLaunchPlan?.launchConfig || {}), question: e.target.value } } })} className={textInputClass} /></div>
@@ -3252,7 +4270,7 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="md:col-span-2"><FieldLabel>Options (comma separated)</FieldLabel><input value={optionsCsv} onChange={(e) => onUpdateItem?.(item.id, { modeLaunchPlan: { ...(item.modeLaunchPlan || {}), launchConfig: { ...(item.modeLaunchPlan?.launchConfig || {}), optionsCsv: e.target.value } } })} className={textInputClass} /></div>
                                                     <div><FieldLabel>Correct Index</FieldLabel><input type="number" value={item.modeLaunchPlan?.launchConfig?.correctIndex ?? 0} onChange={(e) => onUpdateItem?.(item.id, { modeLaunchPlan: { ...(item.modeLaunchPlan || {}), launchConfig: { ...(item.modeLaunchPlan?.launchConfig || {}), correctIndex: Number(e.target.value || 0) } } })} className={textInputClass} /></div>
                                                 </div>
-                                            </div>
+                                            </CollapsiblePanel>
                                         ) : null}
 
                                         <div className="flex flex-wrap justify-between gap-3">
@@ -3266,6 +4284,7 @@ export default function RunOfShowDirectorPanel({
                                         </div>
                                     </div>
                                 ) : null}
+                                </div>
                             </article>
                         );
                     })}
@@ -3275,7 +4294,7 @@ export default function RunOfShowDirectorPanel({
             {studioMode === 'review' ? (
                 <div className="grid gap-3 lg:grid-cols-2">
                     {reviewItems.length ? reviewItems.map((item) => {
-                        const blockers = readinessById[item.id]?.blockers || [];
+                        const blockers = formatChecklist(readinessById[item.id]?.blockers);
                         const pendingCount = pendingCountsById[item.id] || 0;
                         return (
                             <article key={`review-${item.id}`} className={`${surfaceClass} p-4`}>
@@ -3284,9 +4303,10 @@ export default function RunOfShowDirectorPanel({
                                         <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{getRunOfShowItemLabel(item.type)}</div>
                                         <div className="mt-1 text-lg font-black text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
                                         <div className="mt-1 text-sm text-zinc-400">{itemSummary(item)}</div>
+                                        <div className="mt-2 text-xs text-zinc-500">Performer, song, and backing edits live in the build inspector.</div>
                                     </div>
                                     <button type="button" onClick={() => openItem(item.id)} className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                        Open Inspector
+                                        Open In Builder
                                     </button>
                                 </div>
                                 <div className="mt-4 flex flex-wrap gap-2">
@@ -3296,8 +4316,8 @@ export default function RunOfShowDirectorPanel({
                                         </span>
                                     ) : null}
                                     {blockers.length ? blockers.map((blocker) => (
-                                        <span key={`${item.id}-${blocker}`} className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">
-                                            {String(blocker || '').replaceAll('_', ' ')}
+                                        <span key={`${item.id}-${blocker.key || blocker.label}`} className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">
+                                            {blocker.label || 'Needs attention'}
                                         </span>
                                     )) : (
                                         <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">

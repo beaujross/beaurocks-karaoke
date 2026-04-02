@@ -5,6 +5,7 @@ const QueueListPanel = ({
     showQueueList,
     pending,
     queue,
+    assigned = [],
     onApprovePending,
     onDeletePending,
     dragQueueId,
@@ -22,7 +23,9 @@ const QueueListPanel = ({
     onFetchTimedLyrics,
     statusPill,
     styles,
-    compactViewport = false
+    compactViewport = false,
+    runOfShowAssignableSlots = [],
+    onAssignQueueSongToRunOfShowItem
 }) => {
     if (!showQueueList) return null;
 
@@ -34,6 +37,9 @@ const QueueListPanel = ({
                     <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
                         <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
                         <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {queue.length}</span>
+                        {assigned.length ? (
+                            <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Assigned {assigned.length}</span>
+                        ) : null}
                     </div>
                 </div>
             </div>
@@ -59,7 +65,7 @@ const QueueListPanel = ({
                     No pending songs
                 </div>
             )}
-            {queue.length === 0 && (
+            {queue.length === 0 && assigned.length === 0 && (
                 <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-3 mb-2">
                     <div className="text-sm font-semibold text-white">Queue is empty</div>
                     <div className="text-xs text-zinc-400 mt-1">Add songs in Add to Queue to keep karaoke moving.</div>
@@ -86,8 +92,40 @@ const QueueListPanel = ({
                     statusPill={statusPill}
                     styles={styles}
                     compactViewport={compactViewport}
+                    runOfShowAssignableSlots={runOfShowAssignableSlots}
+                    onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
                 />
             ))}
+            {assigned.length > 0 && (
+                <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
+                    <div className="text-sm text-violet-300 font-bold mb-2 uppercase">Assigned To Show Slots ({assigned.length})</div>
+                    {assigned.map((s, i) => (
+                        <QueueSongCard
+                            key={s.id}
+                            song={s}
+                            index={queue.length + i}
+                            dragQueueId={dragQueueId}
+                            dragOverId={dragOverId}
+                            setDragQueueId={setDragQueueId}
+                            setDragOverId={setDragOverId}
+                            reorderQueue={reorderQueue}
+                            touchReorderEnabled={touchReorderEnabled}
+                            handleTouchStart={handleTouchStart}
+                            handleTouchMove={handleTouchMove}
+                            handleTouchEnd={handleTouchEnd}
+                            updateStatus={updateStatus}
+                            startEdit={startEdit}
+                            onRetryLyrics={onRetryLyrics}
+                            onFetchTimedLyrics={onFetchTimedLyrics}
+                            statusPill={statusPill}
+                            styles={styles}
+                            compactViewport={compactViewport}
+                            runOfShowAssignableSlots={runOfShowAssignableSlots}
+                            onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                        />
+                    ))}
+                </div>
+            )}
         </>
     );
 };

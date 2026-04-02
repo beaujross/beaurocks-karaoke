@@ -310,7 +310,7 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
               navigate("demo_auto");
             }}
           >
-            Open Auto Demo
+            Open Demo
           </button>
           <button
             type="button"

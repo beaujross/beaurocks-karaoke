@@ -18,6 +18,35 @@ const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onCl
     );
 };
 
+const getRunOfShowDurationSec = (item = {}) => Math.max(
+    0,
+    Math.round(Number(item?.plannedDurationSec || item?.backingPlan?.durationSec || 0) || 0)
+);
+
+const formatRunOfShowDuration = (value = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(value || 0) || 0));
+    if (!totalSec) return 'TBD';
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    if (mins >= 60) {
+        const hours = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+    }
+    if (mins > 0) return `${mins}:${String(secs).padStart(2, '0')}`;
+    return `${secs}s`;
+};
+
+const formatRunOfShowTotalDuration = (value = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(value || 0) || 0));
+    if (!totalSec) return '0m';
+    const mins = Math.ceil(totalSec / 60);
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours > 0) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+    return `${mins}m`;
+};
+
 const HostTopChrome = ({
     room,
     appBase,
@@ -116,13 +145,21 @@ const HostTopChrome = ({
     onDismissStageQuickStart,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
+    audiencePreviewMode = 'thumbnail',
+    setAudiencePreviewMode,
     tabletTouchViewport = false,
     runOfShowEnabled = false,
     runOfShowDirector = null,
     runOfShowLiveItem = null,
     runOfShowStagedItem = null,
     runOfShowNextItem = null,
-    onOpenShowWorkspace
+    onOpenShowWorkspace,
+    onStartRunOfShow,
+    onStopRunOfShow,
+    onAdvanceRunOfShow,
+    onRewindRunOfShow,
+    onFocusRunOfShowItem,
+    runOfShowFocusMode = false
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -141,6 +178,14 @@ const HostTopChrome = ({
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
+    const [compactRunOfShowCollapsed, setCompactRunOfShowCollapsed] = React.useState(() => {
+        try {
+            if (typeof window === 'undefined') return false;
+            return window.localStorage.getItem('bross_host_compact_run_of_show_collapsed') === '1';
+        } catch {
+            return false;
+        }
+    });
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
     const quickStartMenuRef = React.useRef(null);
@@ -243,7 +288,7 @@ const HostTopChrome = ({
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-8 px-2.5 py-1 text-[11px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
         || showTvQuickMenu
@@ -255,20 +300,34 @@ const HostTopChrome = ({
     const compactRunOfShowItems = React.useMemo(() => {
         if (!runOfShowEnabled) return [];
         const items = normalizeRunOfShowDirector(runOfShowDirector || {}).items || [];
-        return items.slice(0, 10).map((item, index) => {
+        return items.map((item, index) => {
             const status = String(item?.status || '').trim().toLowerCase();
             const type = String(item?.type || '').trim().toLowerCase();
             const isLive = item?.id && item.id === runOfShowLiveItem?.id;
             const isStaged = item?.id && item.id === runOfShowStagedItem?.id;
             const isNext = item?.id && item.id === runOfShowNextItem?.id;
-            const badgeLabel = isLive ? 'Live' : isStaged ? 'Staged' : isNext ? 'Next' : `#${index + 1}`;
-            const typeToneClass = type === 'performance'
-                ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
-                : type.includes('trivia') || type.includes('game') || type.includes('would_you_rather')
-                    ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
-                    : type === 'announcement' || type === 'intro' || type === 'closing'
-                        ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
-                        : 'border-white/10 bg-white/5 text-zinc-100';
+            const isComplete = ['complete', 'skipped'].includes(status);
+            const durationSec = getRunOfShowDurationSec(item);
+            const badgeLabel = isLive
+                ? 'Live'
+                : isStaged
+                    ? 'Staged'
+                    : isNext
+                        ? 'Next'
+                        : status === 'complete'
+                            ? 'Done'
+                            : status === 'skipped'
+                                ? 'Skipped'
+                                : `#${Number(item?.sequence || index + 1)}`;
+            const cardToneClass = isComplete
+                ? 'border-zinc-700/80 bg-zinc-900/88 text-zinc-400 opacity-60 saturate-0'
+                : type === 'performance'
+                    ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
+                    : type.includes('trivia') || type.includes('game') || type.includes('would_you_rather')
+                        ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
+                        : type === 'announcement' || type === 'intro' || type === 'closing'
+                            ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
+                            : 'border-white/10 bg-white/5 text-zinc-100';
             const statusToneClass = isLive
                 ? 'border-emerald-300/40 bg-emerald-500/15 text-emerald-100'
                 : isStaged
@@ -282,13 +341,74 @@ const HostTopChrome = ({
                 id: item?.id || `run-of-show-${index}`,
                 title: String(item?.title || '').trim() || getRunOfShowItemLabel(item?.type),
                 detail: type.replace(/_/g, ' '),
+                summary: type === 'performance'
+                    ? [item?.assignedPerformerName || '', item?.songTitle || '', item?.artistName || ''].filter(Boolean).join(' · ')
+                    : String(item?.presentationPlan?.headline || item?.modeLaunchPlan?.modeKey || '').trim(),
                 status,
                 badgeLabel,
-                typeToneClass,
-                statusToneClass
+                cardToneClass,
+                statusToneClass,
+                durationSec,
+                durationLabel: formatRunOfShowDuration(durationSec),
+                isComplete,
+                isLive,
+                isStaged,
+                isNext,
+                artworkUrl: String(
+                    item?.albumArtUrl
+                    || item?.artworkUrl
+                    || item?.backingPlan?.artworkUrl
+                    || item?.presentationPlan?.backgroundMedia
+                    || ''
+                ).trim(),
+                iconClass: type === 'performance'
+                    ? 'fa-microphone-lines'
+                    : type.includes('trivia') || type.includes('game') || type.includes('would_you_rather')
+                        ? 'fa-lightbulb'
+                        : type === 'announcement' || type === 'intro' || type === 'closing'
+                            ? 'fa-bullhorn'
+                            : 'fa-wave-square'
             };
         });
     }, [runOfShowDirector, runOfShowEnabled, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id]);
+    const compactRunOfShowTotalDurationSec = React.useMemo(
+        () => compactRunOfShowItems.reduce((sum, item) => sum + Math.max(0, Number(item?.durationSec || 0) || 0), 0),
+        [compactRunOfShowItems]
+    );
+    const compactRunOfShowCurrentIndex = React.useMemo(
+        () => compactRunOfShowItems.findIndex((item) => item.isLive || item.isStaged || item.isNext),
+        [compactRunOfShowItems]
+    );
+    const runOfShowTransportStatus = runOfShowLiveItem?.id
+        ? 'live'
+        : runOfShowStagedItem?.id
+            ? 'staged'
+            : runOfShowNextItem?.id
+                ? 'ready'
+                : 'idle';
+    const showTimeClockEnabled = runOfShowEnabled || tab === 'run_of_show' || tab === 'show';
+    const [showTimeNow, setShowTimeNow] = React.useState(() => Date.now());
+    const showTimeLabel = React.useMemo(() => (
+        new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit'
+        }).format(showTimeNow)
+    ), [showTimeNow]);
+    const showTimeDateLabel = React.useMemo(() => (
+        new Intl.DateTimeFormat(undefined, {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric'
+        }).format(showTimeNow)
+    ), [showTimeNow]);
+    React.useEffect(() => {
+        try {
+            window.localStorage.setItem('bross_host_compact_run_of_show_collapsed', compactRunOfShowCollapsed ? '1' : '0');
+        } catch {
+            // Ignore storage failures for host chrome preferences.
+        }
+    }, [compactRunOfShowCollapsed]);
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -510,6 +630,12 @@ const HostTopChrome = ({
     ]);
 
     React.useEffect(() => {
+        if (!showTimeClockEnabled) return undefined;
+        const timer = window.setInterval(() => setShowTimeNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [showTimeClockEnabled]);
+
+    React.useEffect(() => {
         if (!anyTopMenuOpen) return undefined;
         const handlePointerDown = (event) => {
             const target = event.target;
@@ -726,12 +852,12 @@ const HostTopChrome = ({
         closeAllTopMenus();
     };
     return (
-    <div data-host-top-chrome="true" className="bg-zinc-900 px-4 py-2 flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800">
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3 py-1.5' : 'px-4 py-2'} flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800`}>
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className="h-11 lg:h-14 object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5"
+                    className={`${runOfShowFocusMode ? 'h-9 lg:h-10' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className="text-[14px] sm:text-[16px] lg:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
@@ -801,6 +927,18 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
+                {showTimeClockEnabled && (
+                    <div className={`ml-1 flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${runOfShowFocusMode ? 'px-2.5 py-1' : 'px-3 py-1.5'}`}>
+                        <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-8 w-8' : 'h-9 w-9'}`}>
+                            <i className="fa-solid fa-clock"></i>
+                        </div>
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Show Time</div>
+                            <div className={`${runOfShowFocusMode ? 'mt-0 text-base' : 'mt-0.5 text-lg'} font-black leading-none text-white tabular-nums`}>{showTimeLabel}</div>
+                            <div className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-400">{showTimeDateLabel}</div>
+                        </div>
+                    </div>
+                )}
             </div>
             <div className="flex items-center gap-2 lg:gap-3 justify-between lg:justify-end">
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
@@ -939,7 +1077,7 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className="w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 px-3 py-2">
+        <div data-host-quick-strip-wrap="true" className={`w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
             <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
                 {shouldShowQuickStartButton && (
                     <div className="relative" ref={quickStartMenuRef}>
@@ -1291,6 +1429,17 @@ const HostTopChrome = ({
                                         <span className="text-[11px] uppercase tracking-widest">{room?.hideCornerOverlay ? 'Off' : 'On'}</span>
                                     </button>
                                     <button
+                                        onClick={() => updateRoom({ hideJoinOverlay: !room?.hideJoinOverlay })}
+                                        className={`${styles.btnStd} ${room?.hideJoinOverlay ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        title="Show or hide the audience join QR and URL module on Public TV"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-qrcode"></i>
+                                            Join QR
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">{room?.hideJoinOverlay ? 'Off' : 'On'}</span>
+                                    </button>
+                                    <button
                                         onClick={() => updateRoom({ showScoring: room?.showScoring === false })}
                                         className={`${styles.btnStd} ${room?.showScoring === false ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
                                         title="Show or hide the score HUD and room scoring surfaces"
@@ -1573,11 +1722,26 @@ const HostTopChrome = ({
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-mobile-screen-button"></i>
                                         <span className="flex flex-col">
-                                            <span>Audience View</span>
-                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Host-side preview of the audience app</span>
+                                            <span>Public TV Preview</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Host-side view of the live TV output</span>
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setAudiencePreviewMode?.((prev) => prev === 'live_tv' ? 'thumbnail' : 'live_tv')}
+                                    disabled={!audiencePreviewVisible || !showTimeClockEnabled}
+                                    className={`${styles.btnStd} ${audiencePreviewMode === 'live_tv' ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em] ${(!audiencePreviewVisible || !showTimeClockEnabled) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    title="Switch between the light thumbnail and a muted live TV viewport"
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-tv"></i>
+                                        <span className="flex flex-col">
+                                            <span>Viewport Mode</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Thumbnail stays light. Live TV mounts a muted TV client.</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{audiencePreviewMode === 'live_tv' ? 'Live TV' : 'Thumb'}</span>
                                 </button>
                             </div>
                         </div>
@@ -1730,7 +1894,7 @@ const HostTopChrome = ({
                     {missionStatusDetail || missionRecommendation?.reason || 'Action needed in room flow.'}
                 </div>
             )}
-            {liveModeHostGuide && (
+            {liveModeHostGuide && !runOfShowFocusMode && (
                 <div className={`mt-2 rounded-xl border px-3 py-2 ${liveModeHostGuide.toneClass}`}>
                     <div className="text-[11px] uppercase tracking-[0.22em] font-bold">{liveModeHostGuide.title}</div>
                     <div className="text-xs mt-1">{liveModeHostGuide.summary}</div>
@@ -1738,45 +1902,128 @@ const HostTopChrome = ({
                 </div>
             )}
         </div>
-        {runOfShowEnabled && compactRunOfShowItems.length > 0 && (
+        {runOfShowEnabled && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
             <div className="w-full">
                 <div className="rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Run Of Show</div>
-                            <div className="mt-1 text-sm text-zinc-300">Compressed sequence strip for the current room plan.</div>
+                            <div className="mt-1 text-sm text-zinc-300">
+                                Compressed sequence strip for the current room plan.
+                                {compactRunOfShowCurrentIndex >= 0 ? ` Now at ${compactRunOfShowCurrentIndex + 1} of ${compactRunOfShowItems.length}.` : ''}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                <span>Total show {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
+                                <span>{compactRunOfShowItems.length} sequence{compactRunOfShowItems.length === 1 ? '' : 's'}</span>
+                            </div>
                         </div>
-                        {typeof onOpenShowWorkspace === 'function' && (
+                        <div className="flex items-center gap-2">
+                            {typeof onRewindRunOfShow === 'function' && (
+                                <button
+                                    type="button"
+                                    onClick={onRewindRunOfShow}
+                                    disabled={!runOfShowEnabled || compactRunOfShowItems.length < 2}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                                >
+                                    Previous
+                                </button>
+                            )}
+                            {typeof onAdvanceRunOfShow === 'function' && (
+                                <button
+                                    type="button"
+                                    onClick={onAdvanceRunOfShow}
+                                    disabled={!runOfShowEnabled || runOfShowTransportStatus === 'idle'}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                                >
+                                    {runOfShowLiveItem?.id ? 'Next' : runOfShowStagedItem?.id ? 'Go Live' : 'Start Next'}
+                                </button>
+                            )}
+                            {(typeof onStartRunOfShow === 'function' || typeof onStopRunOfShow === 'function') && (
+                                <button
+                                    type="button"
+                                    onClick={runOfShowEnabled ? onStopRunOfShow : onStartRunOfShow}
+                                    className={`${styles.btnStd} ${runOfShowEnabled ? styles.btnDanger : styles.btnHighlight} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                                >
+                                    {runOfShowEnabled ? 'Stop Run' : 'Start Run'}
+                                </button>
+                            )}
                             <button
                                 type="button"
-                                onClick={onOpenShowWorkspace}
+                                onClick={() => setCompactRunOfShowCollapsed((prev) => !prev)}
                                 className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
                             >
-                                Open Show
+                                {compactRunOfShowCollapsed ? 'Expand Timeline' : 'Collapse Timeline'}
                             </button>
-                        )}
+                            {typeof onOpenShowWorkspace === 'function' && (
+                                <button
+                                    type="button"
+                                    onClick={onOpenShowWorkspace}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                                >
+                                    Show Board
+                                </button>
+                            )}
+                        </div>
                     </div>
-                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
-                        {compactRunOfShowItems.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => onOpenShowWorkspace?.()}
-                                className={`min-w-[168px] max-w-[220px] shrink-0 rounded-2xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-cyan-300/45 ${item.typeToneClass}`}
-                            >
-                                <div className="flex items-center justify-between gap-2">
-                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${item.statusToneClass}`}>
-                                        {item.badgeLabel}
-                                    </span>
-                                    <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">{item.detail}</span>
-                                </div>
-                                <div className="mt-2 line-clamp-2 text-sm font-black text-white">{item.title}</div>
-                            </button>
-                        ))}
-                    </div>
+                    {!compactRunOfShowCollapsed ? (
+                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                            {compactRunOfShowItems.map((item) => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => {
+                                        if (typeof onFocusRunOfShowItem === 'function') {
+                                            onFocusRunOfShowItem(item.id);
+                                            return;
+                                        }
+                                        onOpenShowWorkspace?.();
+                                    }}
+                                    className={`min-w-[180px] max-w-[244px] shrink-0 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_24px_rgba(16,185,129,0.16)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.32),0_0_20px_rgba(14,165,233,0.12)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.28)]' : ''}`}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        {item.artworkUrl ? (
+                                            <div className={`h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
+                                                <img src={item.artworkUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                            </div>
+                                        ) : (
+                                            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
+                                                <i className={`fa-solid ${item.iconClass}`}></i>
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${item.statusToneClass}`}>
+                                                    {item.badgeLabel}
+                                                </span>
+                                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                                    {item.durationLabel}
+                                                </span>
+                                            </div>
+                                            <div className={`mt-2 line-clamp-2 text-sm font-black ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
+                                            {item.summary ? <div className={`mt-1 line-clamp-2 text-xs ${item.isComplete ? 'text-zinc-500' : 'text-zinc-300'}`}>{item.summary}</div> : null}
+                                            <div className={`mt-2 text-[10px] uppercase tracking-[0.16em] ${item.isComplete ? 'text-zinc-600' : 'text-zinc-400'}`}>{item.detail}</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-cyan-300/22 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                {compactRunOfShowItems.length} slots
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}
+                            </span>
+                            <span className="text-xs text-zinc-400">
+                                {compactRunOfShowItems[0]?.title ? `Starts with ${compactRunOfShowItems[0].title}` : 'Timeline ready'}
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
         )}
+        {!runOfShowFocusMode ? (
         <div className="w-full">
             <button
                 onClick={() => setAudioPanelOpen(v => !v)}
@@ -1897,6 +2144,7 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
+        ) : null}
     </div>
     );
 };

@@ -40,8 +40,8 @@ const STATIC_SOCIAL_CARD_PATHS = Object.freeze({
 
 const PAGE_TITLE_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Setlist Karaoke Finder | BeauRocks Karaoke",
-  [MARKETING_ROUTE_PAGES.demo]: "Abstract Demo | BeauRocks Karaoke",
-  [MARKETING_ROUTE_PAGES.demoAuto]: "Auto Demo | BeauRocks Karaoke",
+  [MARKETING_ROUTE_PAGES.demo]: "How It Works | BeauRocks Karaoke",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "Demo | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.changelog]: "Product Changelog | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.hostAccess]: "Host Access | BeauRocks Karaoke",
   [MARKETING_ROUTE_PAGES.forHosts]: "Apply To Host Karaoke Nights | BeauRocks Karaoke",
@@ -56,8 +56,8 @@ const PAGE_TITLE_MAP = Object.freeze({
 
 const PAGE_DESCRIPTION_MAP = Object.freeze({
   [MARKETING_ROUTE_PAGES.discover]: "Find karaoke nights by city, host, venue, and time window with BeauRocks Setlist Finder.",
-  [MARKETING_ROUTE_PAGES.demo]: "See the conceptual system story behind BeauRocks across host, TV, audience, and singer surfaces.",
-  [MARKETING_ROUTE_PAGES.demoAuto]: "Watch a local-only autoplay walkthrough of the BeauRocks host, TV, and audience room experience.",
+  [MARKETING_ROUTE_PAGES.demo]: "Understand how BeauRocks keeps the host, TV, audience, and singer surfaces in sync across one room moment.",
+  [MARKETING_ROUTE_PAGES.demoAuto]: "See BeauRocks in action through a product-faithful walkthrough of the host, TV, and audience room experience.",
   [MARKETING_ROUTE_PAGES.changelog]: "Release updates and product changes across host, audience, and public TV experiences.",
   [MARKETING_ROUTE_PAGES.hostAccess]: "Approved hosts sign in here to open Host Dashboard. New host partners can request early access.",
   [MARKETING_ROUTE_PAGES.forHosts]: "Apply for BeauRocks host access and launch karaoke nights from a single operator deck.",

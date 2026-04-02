@@ -907,7 +907,11 @@ const isApprovedRunOfShowBacking = (backingPlan = {}) => {
   if (!RUN_OF_SHOW_ALLOWED_BACKING_SOURCES.has(sourceType)) return false;
   if (sourceType === "manual_external") return false;
   const approvalStatus = String(backingPlan?.approvalStatus || "").trim().toLowerCase();
-  return approvalStatus === "approved" && backingPlan?.playbackReady === true;
+  if (approvalStatus === "rejected") return false;
+  if (sourceType === "user_submitted") {
+    return approvalStatus === "approved" && backingPlan?.playbackReady === true;
+  }
+  return backingPlan?.playbackReady === true;
 };
 const buildDefaultRunOfShowDirector = () => ({
   version: 1,
