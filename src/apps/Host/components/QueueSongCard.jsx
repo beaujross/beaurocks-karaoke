@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { doc, deleteDoc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
+import { isAudienceSelectedUnverifiedResolution } from '../../../lib/requestModes';
 
 const QueueSongCard = ({
     song,
@@ -17,6 +18,9 @@ const QueueSongCard = ({
     handleTouchEnd,
     updateStatus,
     startEdit,
+    onApproveAudienceBacking,
+    onAvoidAudienceBacking,
+    backingDecisionBusyKey = '',
     statusPill,
     styles,
     compactViewport = false,
@@ -33,6 +37,8 @@ const QueueSongCard = ({
     const queueIsYouTube = queueBacking.isYouTube;
     const queuePlaybackReady = isQueueEntryPlayable(song);
     const songStatus = String(song?.status || '').trim().toLowerCase();
+    const isAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(song?.resolutionStatus);
+    const backingDecisionBusy = String(backingDecisionBusyKey || '').startsWith(`${song.id}:`);
     const isAssignedToRunOfShow = songStatus === 'assigned';
     const assignedRunOfShowSlot = runOfShowAssignableSlots.find((slot) => slot.id === String(song?.runOfShowItemId || '').trim()) || null;
     const hasTimedLyrics = Array.isArray(song?.lyricsTimed) && song.lyricsTimed.length > 0;
@@ -48,19 +54,17 @@ const QueueSongCard = ({
     if (lyricsStatus === 'pending') {
         lyricsChipLabel = 'Lyrics Pending';
         lyricsChipTone = ' border-cyan-300/40 text-cyan-100 bg-cyan-500/10';
-        lyricsSupportText = 'Checking cache, Apple, and AI fallback.';
     } else if (lyricsStatus === 'resolved') {
-        lyricsChipLabel = hasTimedLyrics ? 'Timed Lyrics' : 'Static Lyrics';
+        lyricsChipLabel = hasTimedLyrics ? 'Timed' : 'Lyrics';
         lyricsChipTone = hasTimedLyrics
             ? ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10'
             : ' border-sky-300/40 text-sky-100 bg-sky-500/10';
-        lyricsSupportText = hasTimedLyrics ? 'Timed sync ready for TV and singer.' : 'Lyrics ready with duration-based scroll.';
     } else if (lyricsStatus === 'needs_user_token') {
-        lyricsChipLabel = 'Needs Apple Auth';
+        lyricsChipLabel = 'Apple Auth';
         lyricsChipTone = ' border-amber-300/45 text-amber-100 bg-amber-500/10';
         lyricsSupportText = 'Authorize Apple Music to pull synced lyrics.';
     } else if (lyricsStatus === 'capability_blocked') {
-        lyricsChipLabel = 'Capability Blocked';
+        lyricsChipLabel = 'Blocked';
         lyricsChipTone = ' border-rose-300/45 text-rose-100 bg-rose-500/10';
         lyricsSupportText = 'Lyrics fallback is currently blocked.';
     } else if (lyricsStatus === 'error') {
@@ -70,22 +74,19 @@ const QueueSongCard = ({
     } else if (lyricsStatus === 'no_match') {
         lyricsChipLabel = 'No Match';
         lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
-        lyricsSupportText = 'Open edit to add custom lyrics or try another source.';
     } else if (lyricsStatus === 'disabled') {
         lyricsChipLabel = 'Disabled';
         lyricsChipTone = ' border-zinc-500/45 text-zinc-300 bg-zinc-800/40';
-        lyricsSupportText = 'Lyrics enrichment is off for this room.';
     } else if (hasTimedLyrics) {
-        lyricsChipLabel = 'Timed Lyrics';
+        lyricsChipLabel = 'Timed';
         lyricsChipTone = ' border-emerald-300/40 text-emerald-100 bg-emerald-500/10';
-        lyricsSupportText = 'Timed sync ready for TV and singer.';
     } else if (hasLyrics) {
-        lyricsChipLabel = 'Static Lyrics';
+        lyricsChipLabel = 'Lyrics';
         lyricsChipTone = ' border-sky-300/40 text-sky-100 bg-sky-500/10';
-        lyricsSupportText = 'Lyrics ready with duration-based scroll.';
-    } else {
-        lyricsSupportText = 'Open edit to add playback or lyrics metadata.';
     }
+    const showSupportText = isAssignedToRunOfShow
+        || isAudienceSelectedUnverified
+        || ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus);
 
     return (
         <div
@@ -99,26 +100,26 @@ const QueueSongCard = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchEnd}
-            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-md' : 'p-2 rounded-lg'} border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
+            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
         >
             <div className={`flex items-start justify-between ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
                 <div className={`min-w-0 flex items-start ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
-                    <span className={`font-mono text-zinc-500 text-center text-xs ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-1'}`}>{index + 1}</span>
+                    <span className={`font-mono text-zinc-500 text-center text-[11px] ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-0.5'}`}>{index + 1}</span>
                     <button
                         type="button"
                         data-queue-drag-handle="true"
-                        className={`inline-flex items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300 ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[28px] min-w-[28px]'}`}
+                        className={`inline-flex items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300 ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[26px] min-w-[26px]'}`}
                         title={touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue'}
                         aria-label="Reorder queue item"
                         style={touchReorderEnabled ? { touchAction: 'none' } : undefined}
                     >
                         <i className="fa-solid fa-grip-lines text-xs"></i>
                     </button>
-                    {song.albumArtUrl && <img src={song.albumArtUrl} className={`${compactViewport ? 'w-7 h-7' : 'w-8 h-8'} rounded shadow-sm mt-0.5`}/>}
+                    {song.albumArtUrl && <img src={song.albumArtUrl} className={`${compactViewport ? 'w-7 h-7' : 'w-7 h-7'} rounded-lg shadow-sm mt-0.5`}/>}
                     <div className="min-w-0">
-                        <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-sm'}`}>{song.songTitle}</div>
-                        <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-xs'}`}>{song.singerName}</div>
-                        <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-widest'}`}>
+                        <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-[13px] leading-tight'}`}>{song.songTitle}</div>
+                        <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-[11px] leading-tight'}`}>{song.singerName}</div>
+                        <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-[0.14em]'}`}>
                             {queueUsesAppleBacking ? (
                                 <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple</span>
                             ) : queueMediaUrl ? (
@@ -129,7 +130,7 @@ const QueueSongCard = ({
                             ) : (
                                 <span className={`${statusPill}${queuePlaybackReady ? '' : ' border-amber-300/45 text-amber-100 bg-amber-500/10'}`}>
                                     <i className={`fa-solid ${queuePlaybackReady ? 'fa-file-audio' : 'fa-triangle-exclamation'} mr-1`}></i>
-                                    {queuePlaybackReady ? 'No Track' : 'Needs Backing'}
+                                    {queuePlaybackReady ? 'No Track' : 'Backing'}
                                 </span>
                             )}
                             <span className={`${statusPill}${lyricsChipTone}`} title={lyricsResolution || 'lyrics status'}>
@@ -146,19 +147,52 @@ const QueueSongCard = ({
                                     Assigned
                                 </span>
                             ) : null}
+                            {isAudienceSelectedUnverified ? (
+                                <span className={`${statusPill} border-cyan-300/40 text-cyan-100 bg-cyan-500/10`}>
+                                    <i className="fa-solid fa-circle-question mr-1"></i>
+                                    Host Check
+                                </span>
+                            ) : null}
                         </div>
-                        <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[11px]'}`}>
-                            {isAssignedToRunOfShow
-                                ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
-                                : lyricsSupportText}
-                        </div>
+                        {showSupportText ? (
+                            <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
+                                {isAssignedToRunOfShow
+                                    ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
+                                    : isAudienceSelectedUnverified
+                                        ? 'Guest-picked backing. Keep it or send it back to review.'
+                                        : lyricsSupportText}
+                            </div>
+                        ) : null}
+                        {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
+                            <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${compactViewport ? 'text-[10px]' : 'text-[11px]'}`}>
+                                {typeof onApproveAudienceBacking === 'function' ? (
+                                    <button
+                                        type="button"
+                                        disabled={backingDecisionBusy}
+                                        onClick={() => onApproveAudienceBacking(song)}
+                                        className={`${styles.btnStd} ${styles.btnHighlight} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'} ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        <i className="fa-solid fa-thumbs-up mr-1"></i>Use This
+                                    </button>
+                                ) : null}
+                                {typeof onAvoidAudienceBacking === 'function' ? (
+                                    <button
+                                        type="button"
+                                        disabled={backingDecisionBusy}
+                                        onClick={() => onAvoidAudienceBacking(song)}
+                                        className={`${styles.btnStd} ${styles.btnSecondary} border-rose-300/40 bg-rose-500/10 text-rose-100 hover:border-rose-200/60 ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'} ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        <i className="fa-solid fa-thumbs-down mr-1"></i>Avoid This
+                                    </button>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
-                            <div className={`mt-2 flex flex-wrap items-center gap-1.5 ${compactViewport ? 'text-[10px]' : 'text-[11px]'}`}>
-                                <span className="uppercase tracking-[0.16em] text-zinc-500">Run of show</span>
+                            <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${compactViewport ? 'text-[10px]' : 'text-[11px]'}`}>
                                 <select
                                     value={nextRunOfShowSlotId}
                                     onChange={(event) => setSelectedRunOfShowSlotId(event.target.value)}
-                                    className={`min-w-[170px] rounded-lg border border-white/10 bg-black/35 text-white outline-none ${compactViewport ? 'px-2 py-1 text-[10px]' : 'px-2.5 py-1.5 text-[11px]'}`}
+                                    className={`min-w-[150px] rounded-lg border border-white/10 bg-black/35 text-white outline-none ${compactViewport ? 'px-2 py-1 text-[10px]' : 'px-2 py-1 text-[10px]'}`}
                                 >
                                     {runOfShowAssignableSlots.map((slot) => (
                                         <option key={slot.id} value={slot.id}>
@@ -170,7 +204,7 @@ const QueueSongCard = ({
                                     type="button"
                                     disabled={!nextRunOfShowSlotId}
                                     onClick={() => onAssignQueueSongToRunOfShowItem(song.id, nextRunOfShowSlotId)}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'}`}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'}`}
                                 >
                                     <i className="fa-solid fa-link mr-1"></i>{isAssignedToRunOfShow ? 'Reassign Slot' : 'Assign Slot'}
                                 </button>
@@ -178,16 +212,28 @@ const QueueSongCard = ({
                         ) : null}
                     </div>
                 </div>
-                <div className={`shrink-0 ${compactViewport ? 'flex items-center gap-1' : 'flex flex-col items-end gap-1'}`}>
-                    <div className="flex items-center gap-1">
-                        <button onClick={() => updateStatus(song.id, 'performing')} className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
-                            <i className="fa-solid fa-play mr-1"></i>Play
+                <div className="shrink-0 min-w-[88px]">
+                    <div className="flex flex-col gap-1">
+                        <button
+                            title="Start performance"
+                            onClick={() => updateStatus(song.id, 'performing')}
+                            className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
+                        >
+                            <i className="fa-solid fa-play mr-1.5"></i>Start
                         </button>
-                        <button onClick={() => startEdit(song)} className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
-                            <i className="fa-solid fa-pen-to-square"></i>
+                        <button
+                            title="Edit queue item"
+                            onClick={() => startEdit(song)}
+                            className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
+                        >
+                            <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
                         </button>
-                        <button onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))} className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[28px]'}`}>
-                            <i className="fa-solid fa-trash"></i>
+                        <button
+                            title="Delete queue item"
+                            onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))}
+                            className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
+                        >
+                            <i className="fa-solid fa-trash mr-1.5"></i>Remove
                         </button>
                     </div>
                 </div>

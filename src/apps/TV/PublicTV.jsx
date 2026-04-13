@@ -65,6 +65,7 @@ import {
     VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
 import { buildQaTvFixture } from './qaTvFixtures';
+import { MONEYBAGS_BADGE_LABEL, normalizePurchaseCelebration } from '../../lib/roomMonetization';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -123,6 +124,15 @@ const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
         current = decoded;
     }
     return current;
+};
+
+const resolveRoomUserUid = (roomUser = {}, fallbackId = '') => {
+    const directUid = String(roomUser?.uid || '').trim();
+    if (directUid) return directUid;
+    const safeId = String(fallbackId || roomUser?.id || '').trim();
+    const underscoreIndex = safeId.indexOf('_');
+    if (underscoreIndex === -1) return safeId;
+    return safeId.slice(underscoreIndex + 1).trim();
 };
 
 const normalizeLobbyOrbPathname = (pathname = '') => {
@@ -625,7 +635,9 @@ const extractTopTight15 = ({ spotlightPayload = null, roomUser = null } = {}) =>
 const nowMs = () => Date.now();
 const clampPct = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 const ACTIVE_SCREEN_AUTO_CLOSE_MS = 90000;
-const HOW_TO_PLAY_AUTO_CLOSE_MS = 60000;
+const HOW_TO_PLAY_SLIDE_MS = 7000;
+const HOW_TO_PLAY_EXIT_BUFFER_MS = 2500;
+const HOW_TO_PLAY_AUTO_CLOSE_MS = ((HOW_TO_PLAY.sections || []).length * HOW_TO_PLAY_SLIDE_MS) + HOW_TO_PLAY_EXIT_BUFFER_MS;
 const GAME_PREVIEW_AUTO_HIDE_MS = 20000;
 const tvLogger = createLogger('PublicTV');
 const seededUnit = (seed) => {
@@ -688,6 +700,13 @@ const RUN_OF_SHOW_TAKEOVER_SCENES = {
         stripeClass: 'from-white/12 via-cyan-200/7 to-transparent',
         detailLabel: 'Control'
     },
+    performance_intro: {
+        eyebrow: 'Singer Transition',
+        shellClass: 'bg-[radial-gradient(circle_at_top,rgba(244,114,182,0.18),transparent_44%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.18),transparent_32%),linear-gradient(145deg,#09090b_10%,#140b1f_54%,#081825_100%)]',
+        orbClass: 'bg-[radial-gradient(circle,rgba(244,114,182,0.28),transparent_66%)]',
+        stripeClass: 'from-white/12 via-fuchsia-200/8 to-transparent',
+        detailLabel: 'Mic Swap'
+    },
     closing: {
         eyebrow: 'Closing Moment',
         shellClass: 'bg-[radial-gradient(circle_at_top,rgba(250,204,21,0.16),transparent_40%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.16),transparent_42%),linear-gradient(145deg,#09090b_5%,#111827_48%,#1f1329_100%)]',
@@ -745,15 +764,67 @@ const formatRunOfShowCountdown = (remainingMs = 0) => {
     return `${mins}:${String(secs).padStart(2, '0')}`;
 };
 
+const formatRunOfShowRemainingTotal = (remainingMs = 0) => {
+    const totalSeconds = Math.max(0, Math.ceil(Number(remainingMs || 0) / 1000));
+    if (!totalSeconds) return '0m';
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    if (mins > 0) return `${mins}m`;
+    return `${totalSeconds}s`;
+};
+
 const toTitleCaseWords = (value = '') => String(value || '')
     .split(/[_\s]+/)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
+const TakeoverSoundtrackPlayer = ({ soundtrack = null, nowValue = 0 }) => {
+    const sourceType = String(soundtrack?.sourceType || '').trim().toLowerCase();
+    const mediaUrl = String(soundtrack?.mediaUrl || '').trim();
+    const youtubeId = String(soundtrack?.youtubeId || '').trim();
+    const startedAtMs = Math.max(0, Number(soundtrack?.startedAtMs || 0));
+    const pageOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://beau.rocks';
+    const elapsedSec = startedAtMs > 0 ? Math.max(0, Math.floor((Number(nowValue || nowMs()) - startedAtMs) / 1000)) : 0;
+    const youtubeSrc = useMemo(() => {
+        if (sourceType !== 'youtube' || !youtubeId) return '';
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${elapsedSec}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&rel=0&modestbranding=1`;
+    }, [elapsedSec, pageOrigin, sourceType, youtubeId]);
+
+    if (sourceType === 'youtube' && youtubeSrc) {
+        return (
+            <iframe
+                key={`${youtubeId}_${startedAtMs || 0}`}
+                title="Takeover soundtrack"
+                src={youtubeSrc}
+                allow="autoplay; encrypted-media"
+                className="pointer-events-none absolute left-[-9999px] top-[-9999px] h-px w-px opacity-0"
+            />
+        );
+    }
+
+    if (!mediaUrl) return null;
+
+    if (/\.(mp3|m4a|aac|wav|ogg)$/i.test(mediaUrl)) {
+        return <audio key={`${mediaUrl}_${startedAtMs || 0}`} src={mediaUrl} autoPlay className="hidden" />;
+    }
+
+    return (
+        <video
+            key={`${mediaUrl}_${startedAtMs || 0}`}
+            src={mediaUrl}
+            autoPlay
+            playsInline
+            className="pointer-events-none absolute left-[-9999px] top-[-9999px] h-px w-px opacity-0"
+        />
+    );
+};
+
 const RunOfShowTakeoverOverlay = ({
     overlay = {},
     roomCode = '',
+    logoUrl = '',
     zClass = 'z-[195]',
     preview = false,
     nowValue = 0
@@ -764,6 +835,8 @@ const RunOfShowTakeoverOverlay = ({
     const headline = String(overlay?.headline || overlay?.title || 'Run Of Show').trim() || 'Run Of Show';
     const subhead = String(overlay?.subhead || '').trim();
     const summary = String(overlay?.summary || '').trim();
+    const soundtrack = overlay?.soundtrack && typeof overlay.soundtrack === 'object' ? overlay.soundtrack : null;
+    const soundtrackLabel = String(soundtrack?.label || '').trim();
     const options = Array.isArray(overlay?.options) ? overlay.options.filter(Boolean).slice(0, 4) : [];
     const modeKey = String(overlay?.modeKey || '').trim();
     const durationSec = Math.max(0, Number(overlay?.durationSec || 0));
@@ -774,16 +847,19 @@ const RunOfShowTakeoverOverlay = ({
         ? clampPct((remainingMs / (durationSec * 1000)) * 100)
         : 0;
     const roomLabel = String(roomCode || '').trim() ? `Room ${roomCode}` : 'Room Live';
-    const detailModeLabel = preview ? 'TV only preview' : 'Live room takeover';
-    const isAnnouncementScene = ['announcement', 'intro', 'closing', 'default'].includes(sceneKey);
+    const brandLogoUrl = String(logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
+    const detailModeLabel = preview ? 'TV Preview' : scene.detailLabel;
     const metaChips = [
-        preview ? 'Preview mode' : scene.eyebrow,
         roomLabel,
         modeKey ? toTitleCaseWords(modeKey) : detailModeLabel,
     ].filter(Boolean);
+    const bodyCopy = summary || subhead;
 
     return (
         <div
+            data-tv-takeover-scene={sceneKey}
+            data-tv-room-code={String(roomCode || '').trim().toUpperCase()}
+            data-tv-brand-logo={brandLogoUrl}
             className={`public-tv fixed inset-0 ${zClass} overflow-hidden ${scene.shellClass} text-white`}
             style={overlay?.backgroundMedia ? {
                 backgroundImage: `linear-gradient(rgba(2,6,23,0.7), rgba(2,6,23,0.88)), url(${overlay.backgroundMedia})`,
@@ -793,87 +869,91 @@ const RunOfShowTakeoverOverlay = ({
         >
             <div className={`absolute -left-[12vw] top-[-12vh] h-[46vw] w-[46vw] rounded-full blur-3xl ${scene.orbClass}`}></div>
             <div className={`absolute right-[-10vw] top-[20vh] h-[34vw] w-[34vw] rounded-full blur-3xl ${theme.spotlightClass}`}></div>
+            <div className="tv-takeover-ray-field"></div>
+            <div className="tv-takeover-ray-field tv-takeover-ray-field-alt"></div>
             <div className={`absolute inset-0 bg-gradient-to-br ${scene.stripeClass}`}></div>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,0.08)_45%,rgba(2,6,23,0.55)_100%)]"></div>
             <div className="absolute inset-0 opacity-[0.14]" style={{
                 backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
                 backgroundSize: '36px 36px'
             }}></div>
+            <TakeoverSoundtrackPlayer soundtrack={soundtrack} nowValue={nowValue} />
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent"></div>
-            <div className="relative z-10 flex h-full flex-col justify-between gap-8 px-8 py-8 md:px-12 md:py-10">
-                <div className="flex flex-wrap items-center gap-4">
-                    <div className={`rounded-full border px-5 py-3 text-sm font-black uppercase tracking-[0.28em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
-                        {preview ? 'Preview Mode' : scene.eyebrow}
+            <div className="absolute right-8 top-8 opacity-[0.12] md:right-14 md:top-12">
+                <img src={brandLogoUrl} alt="" className="h-auto w-[clamp(220px,20vw,360px)] object-contain" />
+            </div>
+            <div className="relative z-10 flex h-full flex-col justify-between gap-8 px-8 py-8 md:px-14 md:py-12">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center gap-3 rounded-full border border-white/12 bg-black/24 px-4 py-2.5 backdrop-blur">
+                            <img src={brandLogoUrl} alt="Room brand" className="h-11 w-11 rounded-2xl object-contain" />
+                            <span className="text-sm font-black uppercase tracking-[0.28em] text-white/80">{roomLabel}</span>
+                        </div>
+                        <div className={`rounded-full border px-6 py-3.5 text-[0.95rem] font-black uppercase tracking-[0.3em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
+                            {preview ? 'Preview Mode' : scene.eyebrow}
+                        </div>
+                        {soundtrackLabel ? (
+                            <div className="rounded-full border border-white/12 bg-black/24 px-5 py-3 text-sm font-black uppercase tracking-[0.22em] text-white/72 backdrop-blur">
+                                Now Playing {soundtrackLabel}
+                            </div>
+                        ) : null}
                     </div>
                     {remainingMs > 0 ? (
-                        <div className="rounded-full border border-white/10 bg-black/25 px-5 py-3 text-sm font-black uppercase tracking-[0.22em] text-white/80">
+                        <div className="rounded-full border border-white/10 bg-black/25 px-6 py-3.5 text-[0.95rem] font-black uppercase tracking-[0.24em] text-white/80">
                             {preview ? 'Preview ' : 'Remaining '} {formatRunOfShowCountdown(remainingMs)}
                         </div>
                     ) : null}
                 </div>
-                <div className={`relative flex min-h-0 flex-1 flex-col justify-center ${isAnnouncementScene ? 'max-w-[1500px]' : 'max-w-[1600px]'}`}>
-                    <div className={`relative ${isAnnouncementScene ? 'mb-8' : 'mb-10'} overflow-hidden rounded-[2.9rem] border border-white/12 bg-black/18 px-8 py-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur md:px-10 md:py-10`}>
-                        <div className="tv-takeover-ray-field" style={{ '--ray-inner': '185px' }}></div>
-                        <div className="tv-takeover-ray-field tv-takeover-ray-field-alt" style={{ '--ray-inner': '138px' }}></div>
-                        <div className="absolute inset-x-0 bottom-0 h-[58%] bg-gradient-to-t from-[#050814] via-[#050814]/82 to-transparent"></div>
-                        <div className={`relative z-10 ${isAnnouncementScene ? 'flex items-center gap-10' : 'flex items-center gap-8'}`}>
-                            <div className="tv-takeover-brand-shell relative flex h-[260px] w-[260px] shrink-0 items-center justify-center rounded-[2.8rem] border border-white/16 bg-black/26 shadow-[0_30px_90px_rgba(0,0,0,0.32)]">
-                                <img
-                                    src={ASSETS.logo}
-                                    alt="BeauRocks Karaoke"
-                                    className="tv-takeover-logo h-auto w-[clamp(250px,22vw,390px)] object-contain drop-shadow-[0_0_34px_rgba(255,255,255,0.42)]"
-                                />
+                <div className="relative flex min-h-0 flex-1 items-center">
+                    <div className="max-w-[1520px]">
+                        <div className={`mb-7 inline-flex items-center gap-4 rounded-full border border-white/12 bg-black/24 px-6 py-3 text-[0.95rem] font-black uppercase tracking-[0.26em] text-white/72 backdrop-blur`}>
+                            <span className={`h-3 w-20 rounded-full bg-gradient-to-r ${theme.lineClass}`}></span>
+                            <span>{detailModeLabel}</span>
+                        </div>
+                        <div
+                            data-tv-takeover-headline
+                            className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(7rem,16vw,18rem)] font-bebas leading-[0.82] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]`}
+                        >
+                            {headline}
+                        </div>
+                        {bodyCopy ? (
+                            <div data-tv-takeover-body className="mt-6 max-w-[1220px] text-[clamp(2rem,3.3vw,3.8rem)] font-semibold leading-[1.04] text-zinc-100">
+                                {bodyCopy}
                             </div>
-                            <div className="min-w-0">
-                                <div className={`mb-4 h-2.5 w-52 rounded-full bg-gradient-to-r ${theme.lineClass}`}></div>
-                                <div className="text-[clamp(1.7rem,2.4vw,2.7rem)] font-black uppercase tracking-[0.22em] text-white/90">
-                                    BeauRocks Karaoke
-                                </div>
-                                <div className="mt-4 max-w-[860px] text-[clamp(2rem,3.6vw,4rem)] font-semibold leading-[1.02] text-white">
-                                    {subhead || 'Big-screen host moments built for the whole room.'}
-                                </div>
+                        ) : null}
+                        {options.length ? (
+                            <div className="mt-10 grid max-w-[1320px] gap-5 md:grid-cols-2">
+                                {options.map((option, index) => (
+                                    <div key={`${option}-${index}`} className="rounded-[1.9rem] border border-white/10 bg-black/24 px-7 py-6 shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
+                                        <div className="text-[0.95rem] uppercase tracking-[0.24em] text-white/52">Option {index + 1}</div>
+                                        <div className="mt-3 text-[clamp(2.2rem,3.5vw,4rem)] font-semibold leading-tight text-zinc-50">{option}</div>
+                                    </div>
+                                ))}
                             </div>
-                        </div>
+                        ) : null}
                     </div>
-                    <div className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(5.6rem,13vw,13rem)] font-bebas leading-[0.86] text-transparent drop-shadow-[0_12px_48px_rgba(0,0,0,0.28)]`}>
-                        {headline}
-                    </div>
-                    {summary ? (
-                        <div className="mt-5 max-w-[1200px] text-[clamp(1.6rem,2.6vw,2.55rem)] font-semibold leading-[1.12] text-zinc-100">
-                            {summary}
-                        </div>
-                    ) : null}
-                    {options.length ? (
-                        <div className="mt-8 grid max-w-[1380px] gap-4 md:grid-cols-2">
-                            {options.map((option, index) => (
-                                <div key={`${option}-${index}`} className="rounded-[1.7rem] border border-white/10 bg-black/24 px-6 py-5 shadow-[0_18px_40px_rgba(0,0,0,0.28)]">
-                                    <div className="text-sm uppercase tracking-[0.24em] text-white/52">Option {index + 1}</div>
-                                    <div className="mt-3 text-[clamp(1.8rem,2.8vw,3rem)] font-semibold leading-tight text-zinc-50">{option}</div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : null}
                 </div>
-                <div className="flex flex-wrap items-end justify-between gap-4 rounded-[2rem] border border-white/10 bg-black/18 px-6 py-5 backdrop-blur">
+                <div className="flex flex-wrap items-end justify-between gap-4 rounded-[2rem] border border-white/10 bg-black/18 px-7 py-6 backdrop-blur">
                     <div className="flex flex-wrap gap-3">
                         {metaChips.map((chip) => (
-                            <span key={chip} className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-[clamp(0.95rem,1.2vw,1.15rem)] font-black uppercase tracking-[0.2em] text-white/76">
+                            <span key={chip} className="rounded-full border border-white/10 bg-black/25 px-5 py-2.5 text-[clamp(1rem,1.2vw,1.2rem)] font-black uppercase tracking-[0.2em] text-white/76">
                                 {chip}
                             </span>
                         ))}
                     </div>
-                    <div className="min-w-[320px]">
+                    <div className="min-w-[380px]">
                         {remainingMs > 0 ? (
                             <>
-                                <div className="flex items-center justify-between gap-4 text-sm font-black uppercase tracking-[0.24em] text-white/58">
+                                <div className="flex items-center justify-between gap-4 text-[0.95rem] font-black uppercase tracking-[0.24em] text-white/58">
                                     <span>{preview ? 'Preview Window' : 'Public TV Live'}</span>
                                     <span className="text-white/88">{formatRunOfShowCountdown(remainingMs)}</span>
                                 </div>
-                                <div className="mt-3 h-3 overflow-hidden rounded-full border border-white/10 bg-white/8">
+                                <div className="mt-3 h-4 overflow-hidden rounded-full border border-white/10 bg-white/8">
                                     <div className={`h-full rounded-full bg-gradient-to-r ${theme.accentClass}`} style={{ width: `${progressPct}%` }}></div>
                                 </div>
                             </>
                         ) : (
-                            <div className="text-right text-[clamp(1.05rem,1.35vw,1.3rem)] font-semibold uppercase tracking-[0.18em] text-white/68">
+                            <div className="text-right text-[clamp(1.15rem,1.35vw,1.4rem)] font-semibold uppercase tracking-[0.18em] text-white/68">
                                 {preview ? 'TV-only preview | audience unaffected' : 'Show graphics live on Public TV'}
                             </div>
                         )}
@@ -887,26 +967,36 @@ const RunOfShowTakeoverOverlay = ({
 const RunOfShowStatusHud = ({ hud = null, fixed = true }) => {
     if (!hud) return null;
     return (
-        <div className={`pointer-events-none ${fixed ? 'fixed left-3 top-3 z-[185]' : 'absolute left-3 top-3 z-[88]'} max-w-[min(34rem,calc(100vw-1.5rem))]`}>
-            <div className="rounded-[1.6rem] border border-cyan-300/26 bg-[linear-gradient(135deg,rgba(6,10,22,0.9),rgba(10,16,34,0.88))] px-4 py-3 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                <div className="flex items-start gap-4">
+        <div className={`pointer-events-none ${fixed ? 'fixed left-3 right-3 top-3 z-[185]' : 'absolute left-3 right-3 top-3 z-[88]'} flex justify-center`}>
+            <div className="w-full max-w-[min(56rem,calc(100vw-1.5rem))] rounded-[1.25rem] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(6,10,22,0.82),rgba(10,16,34,0.76))] px-3 py-2.5 shadow-[0_18px_34px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+                <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/85">{hud.eyebrow || 'Run Of Show'}</div>
-                        <div className="mt-1 text-[1.05rem] font-black leading-tight text-white md:text-[1.2rem]">{hud.title}</div>
-                        {hud.subtitle ? (
-                            <div className="mt-1 text-[0.8rem] font-medium leading-snug text-zinc-200/82 md:text-[0.92rem]">{hud.subtitle}</div>
-                        ) : null}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="text-[9px] font-black uppercase tracking-[0.24em] text-cyan-200/82">{hud.eyebrow || 'Run Of Show'}</span>
+                            <span className="truncate text-[0.9rem] font-black text-white md:text-[1rem]">{hud.title}</span>
+                            {hud.subtitle ? <span className="truncate text-[0.72rem] text-zinc-300/82 md:text-[0.78rem]">{hud.subtitle}</span> : null}
+                        </div>
                         {hud.nextLabel ? (
-                            <div className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300/78">{hud.nextLabel}</div>
+                            <div className="mt-1 truncate text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300/72">{hud.nextLabel}</div>
                         ) : null}
                     </div>
                     {hud.remainingMs > 0 ? (
-                        <div className="shrink-0 rounded-[1.2rem] border border-white/10 bg-black/24 px-3 py-2 text-right">
-                            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white/58">{hud.countdownLabel || 'Remaining'}</div>
-                            <div className="mt-1 text-[1.15rem] font-black leading-none text-white md:text-[1.35rem]">{formatRunOfShowCountdown(hud.remainingMs)}</div>
+                        <div className="shrink-0 text-right">
+                            <div className="text-[8px] font-black uppercase tracking-[0.22em] text-white/52">{hud.countdownLabel || 'Remaining'}</div>
+                            <div className="mt-0.5 text-[1rem] font-black leading-none text-white md:text-[1.1rem]">{formatRunOfShowCountdown(hud.remainingMs)}</div>
+                            {hud.showRemainingMs > 0 ? (
+                                <div className="mt-1 text-[8px] font-black uppercase tracking-[0.2em] text-cyan-200/72">
+                                    Show Left {formatRunOfShowRemainingTotal(hud.showRemainingMs)}
+                                </div>
+                            ) : null}
                         </div>
                     ) : null}
                 </div>
+                {hud.remainingMs > 0 ? (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-300 transition-[width] duration-700 ease-out" style={{ width: `${Math.max(0, Math.min(100, Number(hud.progressPct || 0)))}%` }}></div>
+                    </div>
+                ) : null}
             </div>
         </div>
     );
@@ -1211,9 +1301,11 @@ const LeaderboardOverlay = ({ users, songs }) => {
     );
 };
 
-const PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
-const PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
-const PERFORMANCE_RECAP_TOTAL_MS = PERFORMANCE_RECAP_BREAKDOWN_MS + PERFORMANCE_RECAP_LEADERBOARD_MS;
+const DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
+const DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
+const DEFAULT_APPLAUSE_WARMUP_SEC = 5;
+const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 5;
+const DEFAULT_APPLAUSE_MEASURE_SEC = 5;
 
 const buildRoomLeaderboardStats = (users = [], songs = []) => {
     const stats = new Map();
@@ -1268,34 +1360,37 @@ const TipOverlay = ({ room }) => {
     );
 };
 
-const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
+const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [], startedAtMs = 0 }) => {
     const slides = HOW_TO_PLAY.sections || [];
-    const [index, setIndex] = useState(0);
+    const [clockMs, setClockMs] = useState(() => nowMs());
 
     useEffect(() => {
-        if (!slides.length) return undefined;
+        if (!slides.length || !startedAtMs) return undefined;
+        setClockMs(nowMs());
         const timer = setInterval(() => {
-            setIndex(prev => (prev + 1) % slides.length);
-        }, 6000);
+            setClockMs(nowMs());
+        }, 500);
         return () => clearInterval(timer);
-    }, [slides.length]);
+    }, [slides.length, startedAtMs]);
 
+    const elapsedMs = Math.max(0, clockMs - Number(startedAtMs || 0));
+    const index = slides.length ? Math.min(slides.length - 1, Math.floor(elapsedMs / HOW_TO_PLAY_SLIDE_MS)) : 0;
     const active = slides[index] || { title: '', items: [] };
     const audienceBase = typeof window !== 'undefined' ? getSurfaceBaseHref('app', window.location) : '/';
     const qrValue = `${audienceBase}?room=${roomCode}`;
 
     return (
-        <div className="public-tv fixed inset-0 z-[200] bg-zinc-900/95 flex flex-col items-center justify-center text-white font-saira p-3 md:p-6">
-            <div className="w-[96%] md:w-[92%] max-w-6xl bg-black/55 border border-cyan-500/30 rounded-[2rem] 2xl:rounded-[2.5rem] p-4 md:p-6 2xl:p-10 shadow-[0_0_90px_rgba(34,211,238,0.25)]">
-                <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-10 items-center">
+        <div className="public-tv fixed inset-0 z-[200] bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.14),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.14),transparent_38%),#111115] flex flex-col items-center justify-center text-white font-saira p-2 md:p-4">
+            <div className="flex h-[95vh] w-[98vw] max-w-[1800px] flex-col rounded-[2rem] border border-cyan-500/30 bg-black/70 px-6 py-5 shadow-[0_0_90px_rgba(34,211,238,0.22)] md:px-8 md:py-6 2xl:px-10 2xl:py-8">
+                <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.8fr] lg:gap-8 items-stretch">
                     <div>
                         <div className="text-xs md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-400">BROSS Entertainment</div>
-                        <div className="text-3xl md:text-5xl 2xl:text-7xl font-bebas text-cyan-300 tracking-[0.12em] md:tracking-widest mt-2">{HOW_TO_PLAY.title}</div>
-                        <div className="text-sm md:text-lg 2xl:text-2xl text-zinc-400 mb-4 md:mb-8">{HOW_TO_PLAY.subtitle}</div>
+                        <div className="mt-2 text-5xl font-bebas tracking-[0.12em] text-cyan-300 md:text-7xl 2xl:text-[6.5rem]">{HOW_TO_PLAY.title}</div>
+                        <div className="mb-4 text-lg text-zinc-300 md:mb-6 md:text-2xl 2xl:text-3xl">{HOW_TO_PLAY.subtitle}</div>
 
-                        <div className="bg-black/50 border border-white/10 rounded-3xl p-4 md:p-6 2xl:p-10">
-                            <div className="text-2xl md:text-4xl 2xl:text-5xl font-bold text-pink-300 uppercase tracking-[0.08em] md:tracking-widest mb-4 md:mb-6">{active.title}</div>
-                            <ul className="text-lg md:text-2xl 2xl:text-4xl text-zinc-100 space-y-2 md:space-y-3 2xl:space-y-5 leading-snug">
+                        <div className="flex h-[calc(100%-6rem)] min-h-[420px] flex-col rounded-[2rem] border border-white/10 bg-black/55 p-6 md:min-h-[520px] md:p-8 2xl:p-10">
+                            <div className="mb-5 text-4xl font-bold uppercase tracking-[0.08em] text-pink-300 md:mb-7 md:text-6xl 2xl:text-[4.75rem]">{active.title}</div>
+                            <ul className="space-y-4 text-[2rem] leading-tight text-zinc-100 md:space-y-5 md:text-[2.65rem] 2xl:space-y-7 2xl:text-[3.5rem]">
                                 {active.items.map(item => (
                                     <li key={item} className="flex gap-4">
                                         <span className="text-cyan-300">&gt;</span>
@@ -1305,30 +1400,30 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [] }) => {
                             </ul>
                         </div>
                     </div>
-                    <div className="flex flex-col items-center gap-4">
-                        <img src={logoUrl || ASSETS.logo} className="h-16 md:h-20 2xl:h-24 object-contain" alt="BROSS" />
-                        <div className="flex items-center gap-4">
-                            <div className="flex flex-col gap-2 md:gap-3 text-xs md:text-sm uppercase tracking-[0.15em] md:tracking-widest text-zinc-300">
+                    <div className="flex h-full flex-col items-center justify-center gap-5">
+                        <img src={logoUrl || ASSETS.logo} className="h-20 object-contain md:h-28 2xl:h-32" alt="BROSS" />
+                        <div className="flex items-center gap-5">
+                            <div className="flex flex-col gap-3 text-sm uppercase tracking-[0.15em] text-zinc-200 md:text-lg md:tracking-[0.22em]">
                                 {queueRules.map(rule => (
-                                    <div key={rule.label} className="flex items-center gap-2 bg-black/50 border border-white/10 px-3 py-2 rounded-full">
+                                    <div key={rule.label} className="flex items-center gap-3 rounded-full border border-white/10 bg-black/50 px-4 py-3">
                                         <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
                                         {rule.label}
                                     </div>
                                 ))}
                             </div>
-                            <div className="bg-white p-2 md:p-3 rounded-2xl shadow-xl">
-                                <LocalQrImage value={qrValue} size={192} alt="Join QR" className="w-36 h-36 md:w-44 md:h-44 2xl:w-56 2xl:h-56 object-cover" />
+                            <div className="rounded-[1.75rem] bg-white p-3 shadow-xl md:p-4">
+                                <LocalQrImage value={qrValue} size={256} alt="Join QR" className="h-52 w-52 object-cover md:h-64 md:w-64 2xl:h-72 2xl:w-72" />
                             </div>
                         </div>
-                        <div className="text-xs md:text-sm text-zinc-300 uppercase tracking-[0.2em] md:tracking-[0.4em]">Room {roomCode}</div>
+                        <div className="text-base uppercase tracking-[0.3em] text-zinc-300 md:text-xl 2xl:text-2xl">Room {roomCode}</div>
                     </div>
                 </div>
 
-                <div className="mt-5 md:mt-8 flex items-center justify-between text-xs md:text-sm text-zinc-400">
+                <div className="mt-4 flex items-center justify-between text-sm text-zinc-400 md:text-base 2xl:text-lg">
                     <div>Slide {index + 1} of {slides.length}</div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2.5">
                         {slides.map((_, i) => (
-                            <span key={i} className={`h-2 w-8 rounded-full ${i === index ? 'bg-cyan-400' : 'bg-zinc-700'}`}></span>
+                            <span key={i} className={`h-2.5 w-10 rounded-full ${i === index ? 'bg-cyan-400' : 'bg-zinc-700'}`}></span>
                         ))}
                     </div>
                 </div>
@@ -1368,7 +1463,7 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
         const targetTime = Math.max(0, (Date.now() - room.videoStartTimestamp) / 1000);
         postYoutubeCommand('seekTo', [targetTime, true]);
         postYoutubeCommand(room?.videoPlaying ? 'playVideo' : 'pauseVideo', []);
-    }, [postYoutubeCommand, room?.videoPlaying, room?.videoStartTimestamp, youtubeId]);
+    }, [postYoutubeCommand, room, youtubeId]);
 
     useEffect(() => {
         setYoutubeIframeReady(false);
@@ -1478,6 +1573,7 @@ const PublicTV = ({ roomCode }) => {
     const [messages, setMessages] = useState([]); 
     const [activities, setActivities] = useState([]);
     const [photoOverlay, setPhotoOverlay] = useState(null);
+    const [crowdSelfieWall, setCrowdSelfieWall] = useState([]);
     const [recap, setRecap] = useState(null);
     const [started, setStarted] = useState(false);
     const [audioCtx, setAudioCtx] = useState(null);
@@ -1523,6 +1619,7 @@ const PublicTV = ({ roomCode }) => {
     const [, setLobbyLiveEvents] = useState([]);
     const [bingoRngNow, setBingoRngNow] = useState(nowMs());
     const [bonusDropBurst, setBonusDropBurst] = useState(null);
+    const [purchaseCelebrationBurst, setPurchaseCelebrationBurst] = useState(null);
     const [popTriviaVotes, setPopTriviaVotes] = useState([]);
     const [popTriviaNow, setPopTriviaNow] = useState(nowMs());
     const [recapNowMs, setRecapNowMs] = useState(nowMs());
@@ -1568,11 +1665,16 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         const previewActive = !!(room?.tvPreviewOverlay && room.tvPreviewOverlay.active);
         const announcementActive = !!room?.announcement?.active;
-        if (!previewActive && !announcementActive) return undefined;
+        const runOfShowClockActive = room?.runOfShowEnabled === true
+            || (Number(room?.currentPerformanceMeta?.startedAtMs || 0) > 0 && Number(room?.currentPerformanceMeta?.durationSec || 0) > 0);
+        if (!previewActive && !announcementActive && !runOfShowClockActive) return undefined;
         setTakeoverNowMs(nowMs());
         const timer = setInterval(() => setTakeoverNowMs(nowMs()), 500);
         return () => clearInterval(timer);
     }, [
+        room?.currentPerformanceMeta?.durationSec,
+        room?.currentPerformanceMeta?.startedAtMs,
+        room?.runOfShowEnabled,
         room?.tvPreviewOverlay?.active,
         room?.tvPreviewOverlay?.startedAtMs,
         room?.tvPreviewOverlay?.durationSec,
@@ -1626,6 +1728,7 @@ const PublicTV = ({ roomCode }) => {
     const lastTipKey = useRef('');
     const recapPreviewRef = useRef(null);
     const lastBonusDropRef = useRef(null);
+    const lastPurchaseCelebrationRef = useRef(null);
     const lastGuitarModeRef = useRef(null);
     const activeGuitarSessionRef = useRef(null);
     const guitarSyncSessionRef = useRef(null);
@@ -2861,7 +2964,14 @@ const PublicTV = ({ roomCode }) => {
 
         // Live listener to room_users so we can show vibe racers during guitar mode
         const unsubVibe = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => {
-            const raw = s.docs.map(d => d.data());
+            const raw = s.docs.map((docSnap) => {
+                const data = docSnap.data() || {};
+                return {
+                    id: docSnap.id,
+                    ...data,
+                    uid: resolveRoomUserUid(data, docSnap.id)
+                };
+            });
             setRoomUsers(raw);
             const list = raw.map(u => ({
                 uid: u.uid,
@@ -3274,6 +3384,33 @@ const PublicTV = ({ roomCode }) => {
         return () => clearTimeout(t);
     }, [room?.photoOverlay?.url, room?.photoOverlay?.timestamp, room?.photoOverlay]);
     useEffect(() => {
+        if (!roomCode) {
+            setCrowdSelfieWall([]);
+            return undefined;
+        }
+        const submissionsQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'),
+            where('roomCode', '==', roomCode)
+        );
+        const unsub = onSnapshot(
+            submissionsQuery,
+            (snap) => {
+                const next = snap.docs
+                    .map((entry) => ({ id: entry.id, ...entry.data() }))
+                    .filter((entry) => String(entry.status || '').trim().toLowerCase() === 'approved')
+                    .sort((a, b) => {
+                        const aTs = typeof a?.timestamp?.toMillis === 'function' ? a.timestamp.toMillis() : Number(a?.timestamp || 0);
+                        const bTs = typeof b?.timestamp?.toMillis === 'function' ? b.timestamp.toMillis() : Number(b?.timestamp || 0);
+                        return bTs - aTs;
+                    })
+                    .slice(0, 12);
+                setCrowdSelfieWall(next);
+            },
+            () => setCrowdSelfieWall([])
+        );
+        return () => unsub();
+    }, [roomCode]);
+    useEffect(() => {
         const drop = room?.bonusDrop;
         if (!drop?.id) return;
         if (lastBonusDropRef.current === drop.id) return;
@@ -3282,6 +3419,19 @@ const PublicTV = ({ roomCode }) => {
         const t = setTimeout(() => setBonusDropBurst(null), 6000);
         return () => clearTimeout(t);
     }, [room?.bonusDrop?.id, room?.bonusDrop]);
+    useEffect(() => {
+        const celebration = normalizePurchaseCelebration(room?.purchaseCelebration || {});
+        if (!celebration.id) return;
+        if (lastPurchaseCelebrationRef.current === celebration.id) return;
+        if (celebration.createdAtMs > 0 && (Date.now() - celebration.createdAtMs) > 120000) {
+            lastPurchaseCelebrationRef.current = celebration.id;
+            return;
+        }
+        lastPurchaseCelebrationRef.current = celebration.id;
+        setPurchaseCelebrationBurst(celebration);
+        const t = setTimeout(() => setPurchaseCelebrationBurst(null), 6500);
+        return () => clearTimeout(t);
+    }, [room?.purchaseCelebration]);
 
     // --- EFFECT: Loop & Logic ---
     useEffect(() => { comboRef.current = combo; }, [combo]);
@@ -3530,6 +3680,34 @@ const PublicTV = ({ roomCode }) => {
             .join(' ');
     };
 
+    const performanceRecapBreakdownMs = Math.max(
+        3000,
+        Math.min(
+            12000,
+            Math.round(Number(room?.performanceRecapBreakdownMs ?? DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS) || DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS)
+        )
+    );
+    const performanceRecapLeaderboardMs = Math.max(
+        3000,
+        Math.min(
+            12000,
+            Math.round(Number(room?.performanceRecapLeaderboardMs ?? DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS) || DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS)
+        )
+    );
+    const performanceRecapTotalMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs;
+    const applauseWarmupSec = Math.max(
+        0,
+        Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? DEFAULT_APPLAUSE_WARMUP_SEC) || DEFAULT_APPLAUSE_WARMUP_SEC))
+    );
+    const applauseCountdownSec = Math.max(
+        1,
+        Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? DEFAULT_APPLAUSE_COUNTDOWN_SEC) || DEFAULT_APPLAUSE_COUNTDOWN_SEC))
+    );
+    const applauseMeasureSec = Math.max(
+        2,
+        Math.min(10, Math.round(Number(room?.applauseMeasureSec ?? DEFAULT_APPLAUSE_MEASURE_SEC) || DEFAULT_APPLAUSE_MEASURE_SEC))
+    );
+
     // Auto Recap
     useEffect(() => {
         if (room?.activeMode && room.activeMode !== 'karaoke') return;
@@ -3542,18 +3720,18 @@ const PublicTV = ({ roomCode }) => {
             const lastTs = getTimestampMs(room.lastPerformance.timestamp);
             if (!lastTs) return undefined;
             const timeSinceEnd = nowMs() - lastTs;
-            if (timeSinceEnd < PERFORMANCE_RECAP_TOTAL_MS) {
+            if (timeSinceEnd < performanceRecapTotalMs) {
                 if (!recap || room.lastPerformance.timestamp !== recap.timestamp) {
                     setRecap(room.lastPerformance);
                 }
-                const remaining = PERFORMANCE_RECAP_TOTAL_MS - timeSinceEnd;
+                const remaining = performanceRecapTotalMs - timeSinceEnd;
                 const t = setTimeout(() => setRecap(null), remaining);
                 return () => clearTimeout(t);
             } else {
                 if(recap) setRecap(null);
             }
         }
-    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, room?.showPerformanceRecap, recap]);
+    }, [room?.lastPerformance, room?.activeMode, room?.activeScreen, room?.showPerformanceRecap, recap, performanceRecapTotalMs]);
 
     useEffect(() => {
         if (!room?.recapPreview?.timestamp) return;
@@ -3562,9 +3740,9 @@ const PublicTV = ({ roomCode }) => {
         if (recapPreviewRef.current === previewTs) return;
         recapPreviewRef.current = previewTs;
         setRecap(room.recapPreview);
-        const t = setTimeout(() => setRecap(null), PERFORMANCE_RECAP_TOTAL_MS);
+        const t = setTimeout(() => setRecap(null), performanceRecapTotalMs);
         return () => clearTimeout(t);
-    }, [room?.recapPreview?.timestamp, room?.recapPreview]);
+    }, [room?.recapPreview?.timestamp, room?.recapPreview, performanceRecapTotalMs]);
 
     useEffect(() => {
         if (!recap) return undefined;
@@ -3605,13 +3783,13 @@ const PublicTV = ({ roomCode }) => {
     // Applause Sequence
     useEffect(() => {
         if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') {
-            setApplauseStep('celebrate');
-            setCelebrateCountdown(5);
-            setCountdown(5);
-            setMeasure(5);
+            setApplauseStep(applauseWarmupSec > 0 ? 'celebrate' : 'countdown');
+            setCelebrateCountdown(applauseWarmupSec);
+            setCountdown(applauseCountdownSec);
+            setMeasure(applauseMeasureSec);
             setApplauseMax(0);
         }
-    }, [room?.activeMode, applauseStep]);
+    }, [room?.activeMode, applauseStep, applauseCountdownSec, applauseMeasureSec, applauseWarmupSec]);
     useEffect(() => () => {
         if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
     }, []);
@@ -3625,7 +3803,7 @@ const PublicTV = ({ roomCode }) => {
             if (countdown > 0) timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
             else {
                 setApplauseStep('measuring');
-                setMeasure(5);
+                setMeasure(applauseMeasureSec);
                 updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'applause' });
             }
         } else if (applauseStep === 'measuring') {
@@ -3642,7 +3820,7 @@ const PublicTV = ({ roomCode }) => {
             }
         }
         return () => clearTimeout(timer);
-    }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse]);
+    }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse, applauseMeasureSec]);
 
     const current = songs.find(s => s.status === 'performing');
     const runOfShowDirector = useMemo(
@@ -3663,11 +3841,88 @@ const PublicTV = ({ roomCode }) => {
     );
     const runOfShowHud = useMemo(() => {
         if (room?.runOfShowEnabled !== true) return null;
+        const runOfShowItems = Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [];
         const liveItem = runOfShowLiveItem;
         const stagedOrNextItem = runOfShowStagedItem || (runOfShowNextItem?.id !== liveItem?.id ? runOfShowNextItem : null);
         if (!liveItem && !stagedOrNextItem) return null;
+        const activeIndex = runOfShowItems.findIndex((item) => (
+            item?.id
+            && (
+                item.id === liveItem?.id
+                || item.id === runOfShowStagedItem?.id
+                || item.id === runOfShowNextItem?.id
+            )
+        ));
+        const fallbackIndex = runOfShowItems.findIndex((item) => {
+            const status = String(item?.status || '').trim().toLowerCase();
+            return !['complete', 'skipped'].includes(status);
+        });
+        const showRemainingMs = (() => {
+            const startIndex = activeIndex >= 0 ? activeIndex : fallbackIndex;
+            if (startIndex < 0) return 0;
+            let totalMs = 0;
+            runOfShowItems.forEach((item, index) => {
+                const status = String(item?.status || '').trim().toLowerCase();
+                if (index < startIndex || ['complete', 'skipped'].includes(status)) return;
+                const isCurrentLive = item?.id && item.id === liveItem?.id;
+                const isPerformanceItem = String(item?.type || '').trim().toLowerCase() === 'performance';
+                const performanceIntroActive = isCurrentLive
+                    && isPerformanceItem
+                    && room?.announcement?.active
+                    && String(room?.announcement?.runOfShowItemId || '').trim() === String(item?.id || '').trim()
+                    && String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase() === 'performance_intro';
+                const plannedDurationSec = Math.max(
+                    0,
+                    Number(
+                        isPerformanceItem
+                            ? (String(item?.plannedDurationSource || '').trim().toLowerCase() === 'backing'
+                                ? (item?.backingPlan?.durationSec || item?.plannedDurationSec || 0)
+                                : (item?.plannedDurationSec || item?.backingPlan?.durationSec || 0))
+                            : (item?.plannedDurationSec || 0)
+                    ) || 0
+                );
+                if (!isCurrentLive) {
+                    totalMs += plannedDurationSec * 1000;
+                    return;
+                }
+                const liveDurationSec = Math.max(
+                    0,
+                    Number(
+                        isPerformanceItem
+                            ? (
+                                performanceIntroActive
+                                    ? (room?.announcement?.durationSec || plannedDurationSec)
+                                    : (room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec || current?.duration || plannedDurationSec)
+                            )
+                            : plannedDurationSec
+                    ) || 0
+                );
+                const liveStartedAtMs = Math.max(
+                    0,
+                    Number(
+                        isPerformanceItem
+                            ? (
+                                performanceIntroActive
+                                    ? (room?.announcement?.startedAtMs || item?.liveStartedAtMs || 0)
+                                    : (room?.currentPerformanceMeta?.startedAtMs || getTimestampMs(current?.performingStartedAt) || item?.liveStartedAtMs || 0)
+                            )
+                            : (item?.liveStartedAtMs || 0)
+                    ) || 0
+                );
+                if (liveDurationSec > 0 && liveStartedAtMs > 0) {
+                    totalMs += Math.max(0, (liveStartedAtMs + (liveDurationSec * 1000)) - takeoverNowMs);
+                } else {
+                    totalMs += liveDurationSec * 1000;
+                }
+            });
+            return Math.max(0, totalMs);
+        })();
         if (liveItem) {
             const isPerformance = liveItem.type === 'performance';
+            const performanceIntroActive = isPerformance
+                && room?.announcement?.active
+                && String(room?.announcement?.runOfShowItemId || '').trim() === String(liveItem?.id || '').trim()
+                && String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase() === 'performance_intro';
             const liveTitle = isPerformance
                 ? (String(liveItem?.assignedPerformerName || current?.singerName || 'Performance Live').trim() || 'Performance Live')
                 : (String(liveItem?.presentationPlan?.headline || liveItem?.title || getRunOfShowItemLabel(liveItem?.type || '')).trim() || 'Run Of Show');
@@ -3682,7 +3937,9 @@ const PublicTV = ({ roomCode }) => {
                 0,
                 Number(
                     isPerformance
-                        ? (room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec || current?.duration || liveItem?.plannedDurationSec || 0)
+                        ? (performanceIntroActive
+                            ? (room?.announcement?.durationSec || 0)
+                            : (room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec || current?.duration || liveItem?.plannedDurationSec || 0))
                         : (liveItem?.plannedDurationSec || 0)
                 ) || 0
             );
@@ -3690,23 +3947,30 @@ const PublicTV = ({ roomCode }) => {
                 0,
                 Number(
                     isPerformance
-                        ? (room?.currentPerformanceMeta?.startedAtMs || getTimestampMs(current?.performingStartedAt) || liveItem?.liveStartedAtMs || 0)
+                        ? (performanceIntroActive
+                            ? (room?.announcement?.startedAtMs || liveItem?.liveStartedAtMs || 0)
+                            : (room?.currentPerformanceMeta?.startedAtMs || getTimestampMs(current?.performingStartedAt) || liveItem?.liveStartedAtMs || 0))
                         : (liveItem?.liveStartedAtMs || 0)
                 ) || 0
             );
             const remainingMs = durationSec > 0 && startedAtMs
                 ? Math.max(0, (startedAtMs + (durationSec * 1000)) - takeoverNowMs)
                 : 0;
+            const progressPct = durationSec > 0 && startedAtMs
+                ? Math.max(0, Math.min(100, ((durationSec * 1000) - remainingMs) / (durationSec * 10)))
+                : 0;
             const nextLabel = stagedOrNextItem
                 ? `Up next: ${String(stagedOrNextItem?.title || stagedOrNextItem?.songTitle || getRunOfShowItemLabel(stagedOrNextItem?.type || '')).trim() || 'Next block'}`
                 : '';
             return {
-                eyebrow: isPerformance ? 'Run Of Show Live Performance' : 'Run Of Show Live',
+                eyebrow: performanceIntroActive ? 'Run Of Show Singer Transition' : (isPerformance ? 'Run Of Show Live Performance' : 'Run Of Show Live'),
                 title: liveTitle,
                 subtitle: liveSubtitle,
                 nextLabel,
                 remainingMs,
-                countdownLabel: isPerformance ? 'Song Ends In' : 'Screen Ends In'
+                showRemainingMs,
+                progressPct,
+                countdownLabel: performanceIntroActive ? 'Song Starts In' : (isPerformance ? 'Song Ends In' : 'Screen Ends In')
             };
         }
         return {
@@ -3720,19 +3984,31 @@ const PublicTV = ({ roomCode }) => {
             ).trim(),
             nextLabel: '',
             remainingMs: 0,
+            showRemainingMs,
+            progressPct: 0,
             countdownLabel: ''
         };
     }, [
         current,
+        room?.announcement?.active,
+        room?.announcement?.durationSec,
+        room?.announcement?.runOfShowItemId,
+        room?.announcement?.startedAtMs,
+        room?.announcement?.takeoverScene,
+        room?.announcement?.type,
         room?.currentPerformanceMeta?.durationSec,
         room?.currentPerformanceMeta?.startedAtMs,
         room?.runOfShowEnabled,
+        runOfShowDirector?.items,
         runOfShowLiveItem,
         runOfShowNextItem,
         runOfShowStagedItem,
         takeoverNowMs
     ]);
-    currentPerformanceIdRef.current = current?.id || '';
+    const currentPerformanceId = String(current?.id || '').trim();
+    useEffect(() => {
+        currentPerformanceIdRef.current = currentPerformanceId;
+    }, [currentPerformanceId]);
     const applauseSubject = current || room?.lastPerformance || null;
     const applausePerformerName = String(
         applauseSubject?.singerName
@@ -3759,7 +4035,7 @@ const PublicTV = ({ roomCode }) => {
     );
     const popTriviaState = useMemo(() => {
         if (room?.activeMode !== 'karaoke') return null;
-        if (room?.popTriviaEnabled === false) return null;
+        if (room?.popTriviaEnabled !== true) return null;
         if (!current) return null;
         return getActivePopTriviaQuestion({
             song: current,
@@ -3827,7 +4103,7 @@ const PublicTV = ({ roomCode }) => {
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
     useEffect(() => {
-        const enabled = room?.marqueeEnabled !== false;
+        const enabled = room?.marqueeEnabled === true;
         const mode = room?.marqueeShowMode || 'always';
         const hasItems = marqueeItems.length > 0;
         const hasMessages = messages.length > 0;
@@ -3860,7 +4136,7 @@ const PublicTV = ({ roomCode }) => {
     }, [room?.marqueeEnabled, room?.marqueeDurationMs, room?.marqueeIntervalMs, room?.marqueeShowMode, room?.activeMode, messages.length, marqueeItems.length, current?.id, current]);
     useEffect(() => {
         if (room?.activeMode !== 'karaoke') return;
-        if (room?.popTriviaEnabled === false) return;
+        if (room?.popTriviaEnabled !== true) return;
         if (!current?.id || !Array.isArray(current?.popTrivia) || current.popTrivia.length === 0) return;
         setPopTriviaNow(nowMs());
         const timer = setInterval(() => setPopTriviaNow(nowMs()), 1000);
@@ -4194,8 +4470,10 @@ const PublicTV = ({ roomCode }) => {
     );
     const lobbyAltitudeMarkers = useMemo(() => {
         if (lobbyObjectiveIsTeamPong) return [];
-        return Array.from({ length: Math.floor(LOBBY_ALTITUDE_MAX_TRACKED_FT / 20) + 1 }, (_, index) => {
-            const altitudeFt = index * 20;
+        const markerValues = [0, 50, 100, LOBBY_ALTITUDE_MAX_TRACKED_FT]
+            .filter((value, index, list) => list.indexOf(value) === index)
+            .sort((a, b) => a - b);
+        return markerValues.map((altitudeFt) => {
             const topPct = clampLobby(lobbyAltitudeMarkerBaseTopPct - (altitudeFt / 2.3), -18, 142);
             return {
                 altitudeFt,
@@ -4204,6 +4482,48 @@ const PublicTV = ({ roomCode }) => {
             };
         }).filter((marker) => marker.topPct >= -6 && marker.topPct <= 104);
     }, [lobbyObjectiveIsTeamPong, lobbyAltitudeMarkerBaseTopPct]);
+    const lobbyVolleyParallaxPlatforms = useMemo(() => {
+        if (lobbyObjectiveIsTeamPong) return [];
+        const defs = [
+            { id: 'platform-a', baseTopPct: 88, leftPct: 12, widthPct: 18, layer: 'near', tiltDeg: -2, glow: 'rgba(45,212,191,0.24)' },
+            { id: 'platform-b', baseTopPct: 73, leftPct: 63, widthPct: 14, layer: 'mid', tiltDeg: 1.6, glow: 'rgba(125,211,252,0.2)' },
+            { id: 'platform-c', baseTopPct: 58, leftPct: 27, widthPct: 16, layer: 'near', tiltDeg: -1.5, glow: 'rgba(236,72,153,0.22)' },
+            { id: 'platform-d', baseTopPct: 42, leftPct: 70, widthPct: 19, layer: 'far', tiltDeg: 2.4, glow: 'rgba(125,211,252,0.16)' },
+            { id: 'platform-e', baseTopPct: 26, leftPct: 18, widthPct: 13, layer: 'mid', tiltDeg: -2.2, glow: 'rgba(45,212,191,0.18)' },
+            { id: 'platform-f', baseTopPct: 10, leftPct: 55, widthPct: 18, layer: 'far', tiltDeg: 1.2, glow: 'rgba(236,72,153,0.16)' }
+        ];
+        return defs.map((entry) => {
+            const shiftPct = entry.layer === 'near'
+                ? lobbyVolleyNearShiftPct
+                : entry.layer === 'mid'
+                    ? lobbyVolleyMidShiftPct
+                    : lobbyVolleyFarShiftPct;
+            return {
+                ...entry,
+                topPct: clampLobby(entry.baseTopPct + shiftPct, -10, 118)
+            };
+        }).filter((entry) => entry.topPct >= -8 && entry.topPct <= 110);
+    }, [lobbyObjectiveIsTeamPong, lobbyVolleyFarShiftPct, lobbyVolleyMidShiftPct, lobbyVolleyNearShiftPct]);
+    const lobbyVolleyCloudBands = useMemo(() => {
+        if (lobbyObjectiveIsTeamPong) return [];
+        const defs = [
+            { id: 'cloud-a', baseTopPct: 76, leftPct: 8, widthPct: 24, heightPx: 84, layer: 'near', opacity: 0.22 },
+            { id: 'cloud-b', baseTopPct: 60, leftPct: 58, widthPct: 20, heightPx: 70, layer: 'mid', opacity: 0.18 },
+            { id: 'cloud-c', baseTopPct: 34, leftPct: 18, widthPct: 26, heightPx: 90, layer: 'far', opacity: 0.16 },
+            { id: 'cloud-d', baseTopPct: 18, leftPct: 62, widthPct: 22, heightPx: 76, layer: 'mid', opacity: 0.14 }
+        ];
+        return defs.map((entry) => {
+            const shiftPct = entry.layer === 'near'
+                ? lobbyVolleyNearShiftPct * 0.72
+                : entry.layer === 'mid'
+                    ? lobbyVolleyMidShiftPct * 0.8
+                    : lobbyVolleyFarShiftPct * 0.88;
+            return {
+                ...entry,
+                topPct: clampLobby(entry.baseTopPct + shiftPct, -14, 118)
+            };
+        }).filter((entry) => entry.topPct >= -12 && entry.topPct <= 108);
+    }, [lobbyObjectiveIsTeamPong, lobbyVolleyFarShiftPct, lobbyVolleyMidShiftPct, lobbyVolleyNearShiftPct]);
     const lobbyPongState = useMemo(() => {
         const seed = String(roomCode || '')
             .split('')
@@ -4743,7 +5063,7 @@ const PublicTV = ({ roomCode }) => {
     const hasMarqueeContent = (marqueeItems.length > 0) || messages.length > 0;
     const isShortViewport = viewportSize.height <= 820;
     const isVeryShortViewport = viewportSize.height <= 700;
-    const isNarrowViewport = viewportSize.width <= 1180;
+    const _isNarrowViewport = viewportSize.width <= 1180;
     const isVeryNarrowViewport = viewportSize.width <= 760;
     const isTinyHostPreviewMode = isHostPreviewEmbed && (viewportSize.width <= 520 || viewportSize.height <= 430);
     const tvOverflowClass = isShortViewport
@@ -4779,7 +5099,8 @@ const PublicTV = ({ roomCode }) => {
         : stageMinHeightClass;
     const sidebarGapClass = isTinyHostPreviewMode ? 'gap-1 pb-0.5' : isShortViewport ? 'gap-1.5 pb-1' : 'gap-2 pb-2';
     const isDistanceConstrained = viewportSize.width <= 1680 || viewportSize.height <= 900;
-    const compactJoinCardMode = isTinyHostPreviewMode || lobbyCompactHudMode || isDistanceConstrained;
+    const initialJoinProfile = normalizeTvExploreProfile(room?.tvPresentationProfile || '');
+    const compactJoinCardMode = isTinyHostPreviewMode || lobbyCompactHudMode || isDistanceConstrained || initialJoinProfile === 'simple' || initialJoinProfile === 'cinema';
     const joinQrSize = isTinyHostPreviewMode
         ? 64
         : compactJoinCardMode
@@ -4859,59 +5180,7 @@ const PublicTV = ({ roomCode }) => {
         ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
         : true;
     if (tvPreviewOverlay && !tvPreviewExpired) {
-        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
-        const accentTheme = String(tvPreviewOverlay.accentTheme || 'cyan').trim().toLowerCase();
-        const accentClass = accentTheme === 'pink'
-            ? 'from-pink-400 via-fuchsia-300 to-rose-300'
-            : accentTheme === 'amber'
-                ? 'from-amber-300 via-yellow-200 to-orange-300'
-                : accentTheme === 'emerald'
-                    ? 'from-emerald-300 via-teal-200 to-cyan-300'
-                    : 'from-cyan-300 via-sky-200 to-blue-300';
-        return (
-            <div
-                className="public-tv fixed inset-0 z-[205] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(139,92,246,0.22),transparent_55%),radial-gradient(circle_at_bottom,rgba(6,182,212,0.18),transparent_45%),#05070a] text-white"
-                style={tvPreviewOverlay.backgroundMedia ? {
-                    backgroundImage: `linear-gradient(rgba(2,6,23,0.8), rgba(2,6,23,0.9)), url(${tvPreviewOverlay.backgroundMedia})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                } : undefined}
-            >
-                <div className="relative h-full flex flex-col items-center justify-center px-6 md:px-10 text-center">
-                    <div className="rounded-full border border-violet-300/35 bg-violet-500/12 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-[0.28em] text-violet-100">
-                        Preview Mode
-                    </div>
-                    <div className="mt-4 text-xs md:text-sm uppercase tracking-[0.22em] text-white/70">
-                        {tvPreviewOverlay.takeoverScene || tvPreviewOverlay.type || 'preview'}
-                    </div>
-                    <div className={`mt-5 bg-gradient-to-r ${accentClass} bg-clip-text text-transparent text-[clamp(3rem,8vw,7rem)] font-bebas leading-[0.92] max-w-[1100px]`}>
-                        {tvPreviewOverlay.headline || tvPreviewOverlay.title || 'Run Of Show Preview'}
-                    </div>
-                    {!!tvPreviewOverlay.subhead && (
-                        <div className="mt-4 max-w-[900px] text-xl md:text-3xl text-zinc-100 leading-snug">
-                            {tvPreviewOverlay.subhead}
-                        </div>
-                    )}
-                    {!!tvPreviewOverlay.summary && (
-                        <div className="mt-5 rounded-full border border-white/10 bg-black/25 px-5 py-2 text-sm md:text-lg text-white/90">
-                            {tvPreviewOverlay.summary}
-                        </div>
-                    )}
-                    {Array.isArray(tvPreviewOverlay.options) && tvPreviewOverlay.options.length > 0 ? (
-                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 max-w-[920px]">
-                            {tvPreviewOverlay.options.slice(0, 4).map((option, index) => (
-                                <div key={`${option}-${index}`} className="rounded-full border border-white/10 bg-black/25 px-4 py-2 text-sm md:text-lg text-zinc-100">
-                                    {option}
-                                </div>
-                            ))}
-                        </div>
-                    ) : null}
-                    <div className="mt-8 text-sm md:text-lg uppercase tracking-[0.18em] text-white/60">
-                        TV-only preview · audience unaffected
-                    </div>
-                </div>
-            </div>
-        );
+        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
     }
     if (room?.activeScreen === 'leaderboard') {
         return (
@@ -4929,7 +5198,7 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
-            if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} />;
+            if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} />;
     if (room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
@@ -4959,44 +5228,7 @@ const PublicTV = ({ roomCode }) => {
     }
     if (room?.announcement?.active) {
         const announcement = room.announcement || {};
-        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} zClass="z-[195]" nowValue={takeoverNowMs} />;
-        const accentTheme = String(announcement.accentTheme || 'cyan').trim().toLowerCase();
-        const accentClass = accentTheme === 'pink'
-            ? 'from-pink-400 via-fuchsia-300 to-rose-300'
-            : accentTheme === 'amber'
-                ? 'from-amber-300 via-yellow-200 to-orange-300'
-                : accentTheme === 'emerald'
-                    ? 'from-emerald-300 via-teal-200 to-cyan-300'
-                    : 'from-cyan-300 via-sky-200 to-blue-300';
-        const backgroundMedia = String(announcement.backgroundMedia || '').trim();
-        return (
-            <div
-                className="public-tv fixed inset-0 z-[195] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.24),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_45%),#05070a] text-white"
-                style={backgroundMedia ? {
-                    backgroundImage: `linear-gradient(rgba(2,6,23,0.76), rgba(2,6,23,0.88)), url(${backgroundMedia})`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center'
-                } : undefined}
-            >
-                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_36%,rgba(255,255,255,0.02))]"></div>
-                <div className="relative h-full flex flex-col items-center justify-center px-6 md:px-10 text-center">
-                    <div className="rounded-full border border-white/15 bg-black/35 px-4 py-2 text-xs md:text-sm font-black uppercase tracking-[0.28em] text-zinc-200">
-                        {announcement.takeoverScene || announcement.type || 'Announcement'}
-                    </div>
-                    <div className={`mt-5 bg-gradient-to-r ${accentClass} bg-clip-text text-transparent text-[clamp(3rem,8vw,7rem)] font-bebas leading-[0.92] max-w-[1100px]`}>
-                        {announcement.headline || 'Tonight In Progress'}
-                    </div>
-                    {!!announcement.subhead && (
-                        <div className="mt-4 max-w-[920px] text-xl md:text-3xl text-zinc-100 leading-snug">
-                            {announcement.subhead}
-                        </div>
-                    )}
-                    <div className="mt-8 text-sm md:text-lg uppercase tracking-[0.22em] text-white/70">
-                        Room {roomCode || '--'}
-                    </div>
-                </div>
-            </div>
-        );
+        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} zClass="z-[195]" nowValue={takeoverNowMs} />;
     }
     if (chatTvFullscreenActive) {
         return (
@@ -5334,7 +5566,7 @@ const PublicTV = ({ roomCode }) => {
         ].filter(Boolean).slice(0, 3);
         const recapStartMs = getTimestampMs(recap.timestamp) || recapNowMs;
         const recapAgeMs = Math.max(0, recapNowMs - recapStartMs);
-        const recapLeaderboardPhase = recapAgeMs >= PERFORMANCE_RECAP_BREAKDOWN_MS;
+        const recapLeaderboardPhase = recapAgeMs >= performanceRecapBreakdownMs;
         const rankedPerformanceLeaderboard = buildPerformanceLeaderboardStats(songs, roomUsers, recap);
         const recapLeaderboardMode = LEADERBOARD_MODE_DEFS.find((mode) => mode.key === 'totalPoints') || LEADERBOARD_MODE_DEFS[3];
         const rankedPerformanceLeaderboardWithRanks = sortLeaderboardEntriesForMode(rankedPerformanceLeaderboard, recapLeaderboardMode);
@@ -5609,7 +5841,8 @@ const PublicTV = ({ roomCode }) => {
         : roomTvPresentationProfile;
     const exploreSimple = tvPresentationProfile === 'simple';
     const exploreCinema = tvPresentationProfile === 'cinema';
-    const isCinema = exploreSimple || exploreCinema || roomLayoutMode === 'cinema';
+    const isCinema = exploreCinema || roomLayoutMode === 'cinema';
+    const isSimpleTvProfile = exploreSimple;
     const isMinimal = !exploreSimple && !exploreCinema && roomLayoutMode === 'minimal';
     const guitarTakeoverMode = room?.lightMode === 'guitar';
     const hasActivePopTriviaPanel = !!(popTriviaQuestion || showPopTriviaEndState);
@@ -5621,17 +5854,18 @@ const PublicTV = ({ roomCode }) => {
     const popTriviaUrgent = !!popTriviaQuestion && Number(popTriviaState?.timeLeftSec || 0) <= 5;
     const popTriviaStageSpanClass = isCinema
         ? 'col-span-12'
-        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
-    const popTriviaSidebarSpanClass = lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
+        : (lobbyCompactHudMode || isSimpleTvProfile ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
+    const popTriviaSidebarSpanClass = lobbyCompactHudMode || isSimpleTvProfile ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
     const defaultStageSpanClass = isCinema
         ? 'col-span-12'
-        : (lobbyCompactHudMode ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
-    const defaultSidebarSpanClass = lobbyCompactHudMode ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
+        : (lobbyCompactHudMode || isSimpleTvProfile ? 'col-span-12 lg:col-span-9' : 'col-span-12 lg:col-span-8');
+    const defaultSidebarSpanClass = lobbyCompactHudMode || isSimpleTvProfile ? 'col-span-12 lg:col-span-3' : 'col-span-12 lg:col-span-4';
     const stageAreaSpanClass = hasActivePopTriviaPanel
         ? popTriviaStageSpanClass
         : (guitarTakeoverMode ? 'col-span-12' : defaultStageSpanClass);
     const sidebarAreaSpanClass = hasActivePopTriviaPanel ? popTriviaSidebarSpanClass : defaultSidebarSpanClass;
     const showAmbientFx = !exploreSimple;
+    const showJoinOverlay = !room?.hideJoinOverlay;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
@@ -5649,6 +5883,56 @@ const PublicTV = ({ roomCode }) => {
         })()
         : visualizerBaseMode;
     const visualizerActive = (started || applauseStep !== 'idle') && visualizerEnabled;
+    const renderJoinOverlayCard = ({ floating = false } = {}) => {
+        if (!showJoinOverlay) return null;
+        const shellClass = floating
+            ? (isVeryShortViewport
+                ? 'absolute right-3 top-3 z-[160] max-w-[min(34vw,17rem)]'
+                : 'absolute right-3 top-3 md:right-5 md:top-5 2xl:right-8 2xl:top-8 z-[160] max-w-[min(30vw,20rem)]')
+            : '';
+        const cardClass = floating
+            ? 'rounded-2xl border-[3px] border-fuchsia-300/45 bg-black/58 px-3 py-3 shadow-[0_0_30px_rgba(0,0,0,0.28)] backdrop-blur-xl'
+            : `${isTinyHostPreviewMode ? 'p-2 rounded-xl' : lobbyCompactHudMode ? 'p-2 md:p-3 lg:-mt-1' : 'p-3 md:p-3.5 lg:-mt-2'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl shadow-lg border-[3px] border-fuchsia-400/45 bg-black/35 backdrop-blur-xl`;
+        const qrFrameClass = floating
+            ? 'shrink-0 rounded-2xl border-[3px] border-white/80 bg-white p-1.5 shadow-[0_0_22px_rgba(255,255,255,0.14)]'
+            : `shrink-0 bg-white ${isTinyHostPreviewMode ? 'p-1 rounded-xl' : lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-2.5'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl border-[3px] border-white/80 shadow-[0_0_28px_rgba(255,255,255,0.16)]`;
+        const qrClass = floating
+            ? 'w-[88px] h-[88px] md:w-[108px] md:h-[108px] 2xl:w-[124px] 2xl:h-[124px]'
+            : joinQrClass;
+        const qrSize = floating ? 124 : joinQrSize;
+        return (
+            <div className={shellClass}>
+                <div className={cardClass}>
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 text-left">
+                            <div className={`${floating ? 'text-[11px] tracking-[0.22em]' : isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
+                                Join
+                            </div>
+                            <div className={`${floating ? 'mt-1 text-2xl md:text-3xl tracking-[0.14em]' : isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
+                                {roomCode}
+                            </div>
+                            <div className={`${floating ? 'mt-1 text-[10px]' : isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
+                                {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
+                            </div>
+                            <div className={`${floating ? 'mt-1 text-[11px] md:text-xs' : isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
+                                {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
+                            </div>
+                        </div>
+                        <div className={qrFrameClass}>
+                            <LocalQrImage
+                                value={joinUrl}
+                                size={qrSize}
+                                alt="QR"
+                                className={qrClass}
+                            />
+                        </div>
+                    </div>
+                    {isMinimal && !floating && !isTinyHostPreviewMode ? <div className="mt-3"><MiniVideoPane room={room} current={current} muted={isHostPreviewEmbed} /></div> : null}
+                </div>
+                {!floating ? <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div> : null}
+            </div>
+        );
+    };
     const bingoRng = room?.bingoMysteryRng;
     const showBingoRngOverlay = room?.bingoMode === 'mystery' && (
         bingoRng?.active ||
@@ -5747,6 +6031,24 @@ const PublicTV = ({ roomCode }) => {
                         <div className="bonus-drop-title">{bonusDropBurst.by || 'Host'} made it rain</div>
                         <div className="bonus-drop-points">+{bonusDropBurst.points || 0} PTS</div>
                         <div className="bonus-drop-sub">for all lobby members</div>
+                    </div>
+                </div>
+            )}
+            {showAmbientFx && purchaseCelebrationBurst && (
+                <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
+                    <div className="bonus-drop-burst">
+                        <div className="bonus-drop-title">
+                            {purchaseCelebrationBurst.title || `${purchaseCelebrationBurst.buyerName || 'Someone'} boosted the room`}
+                        </div>
+                        <div className="bonus-drop-points">
+                            {purchaseCelebrationBurst.points > 0 ? `+${purchaseCelebrationBurst.points} PTS` : MONEYBAGS_BADGE_LABEL}
+                        </div>
+                        <div className="bonus-drop-sub">
+                            {purchaseCelebrationBurst.subtitle
+                                || (purchaseCelebrationBurst.badgeAwarded
+                                    ? `${purchaseCelebrationBurst.label || 'Room support'} - ${purchaseCelebrationBurst.badgeLabel || MONEYBAGS_BADGE_LABEL}`
+                                    : (purchaseCelebrationBurst.label || 'Room support'))}
+                        </div>
                     </div>
                 </div>
             )}
@@ -6002,21 +6304,23 @@ const PublicTV = ({ roomCode }) => {
                                     <div className="mt-2 text-[11px] md:text-[13px] uppercase tracking-[0.14em] text-zinc-300">
                                         {guitarTopJammer ? `Now leading: ${guitarTopJammer.name}` : `Energy ${guitarEngagementScore}%`}
                                     </div>
-                                    <div className="mt-4 flex items-center gap-4">
-                                        <div className="rounded-2xl bg-white p-2 shadow-[0_0_30px_rgba(255,255,255,0.18)]">
-                                            <LocalQrImage
-                                                value={joinUrl}
-                                                size={86}
-                                                alt="QR"
-                                                className="h-[86px] w-[86px]"
-                                            />
+                                    {showJoinOverlay ? (
+                                        <div className="mt-4 flex items-center gap-4">
+                                            <div className="rounded-2xl bg-white p-2 shadow-[0_0_30px_rgba(255,255,255,0.18)]">
+                                                <LocalQrImage
+                                                    value={joinUrl}
+                                                    size={86}
+                                                    alt="QR"
+                                                    className="h-[86px] w-[86px]"
+                                                />
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100">Join to Jam</div>
+                                                <div className="mt-1 text-3xl md:text-4xl font-bebas text-white tracking-[0.14em]">{roomCode}</div>
+                                                <div className="mt-1 text-[11px] md:text-[12px] uppercase tracking-[0.12em] text-zinc-200">Scan on your phone</div>
+                                            </div>
                                         </div>
-                                        <div className="min-w-0">
-                                            <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-cyan-100">Join to Jam</div>
-                                            <div className="mt-1 text-3xl md:text-4xl font-bebas text-white tracking-[0.14em]">{roomCode}</div>
-                                            <div className="mt-1 text-[11px] md:text-[12px] uppercase tracking-[0.12em] text-zinc-200">Scan on your phone</div>
-                                        </div>
-                                    </div>
+                                    ) : null}
                                 </div>
                             </div>
                         </div>
@@ -6374,9 +6678,59 @@ const PublicTV = ({ roomCode }) => {
                             <div className="absolute left-[90%] top-1.5 -translate-x-1/2 text-sm md:text-lg font-bold text-purple-200 bg-black/70 px-2 md:px-3 py-1 rounded">4x</div>
                         </div>
                         {room?.activeMode === 'selfie_cam' ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-50">
-                                <i className="fa-solid fa-camera text-5xl md:text-7xl 2xl:text-9xl text-white animate-bounce mb-3 md:mb-4"></i>
-                                <h1 className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-pink-500 text-center">SELFIE CAM ACTIVE!</h1>
+                            <div className="absolute inset-0 z-50 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(0,0,0,0)_32%),radial-gradient(circle_at_82%_18%,rgba(34,211,238,0.18),rgba(0,0,0,0)_22%),linear-gradient(180deg,rgba(3,7,18,0.76),rgba(2,6,23,0.9))]">
+                                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),transparent_34%,rgba(255,255,255,0.03))]" />
+                                <div className="absolute left-1/2 top-1/2 h-[54vw] w-[54vw] max-h-[640px] max-w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/18 bg-cyan-300/8 blur-3xl" />
+                                <div className="absolute left-1/2 top-1/2 h-[34vw] w-[34vw] max-h-[420px] max-w-[420px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 blur-2xl" />
+                                <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                                    <div className="inline-flex items-center gap-3 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-5 py-2 text-[11px] md:text-sm font-black uppercase tracking-[0.3em] text-cyan-100 shadow-[0_0_32px_rgba(34,211,238,0.16)]">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,0.95)]" />
+                                        Crowd Cam
+                                    </div>
+                                    <div className="relative mt-7">
+                                        <div className="absolute inset-[-24px] rounded-full border border-white/10 selfie-cam-pulse-ring" />
+                                        <div className="absolute inset-[-56px] rounded-full border border-cyan-300/15 selfie-cam-pulse-ring-delayed" />
+                                        <div className="relative flex h-28 w-28 items-center justify-center rounded-full border border-white/12 bg-black/35 shadow-[0_0_40px_rgba(236,72,153,0.14)] md:h-36 md:w-36 2xl:h-44 2xl:w-44">
+                                            <i className="fa-solid fa-camera text-5xl md:text-6xl 2xl:text-8xl text-white" />
+                                        </div>
+                                    </div>
+                                    <h1 className="mt-8 text-[clamp(2.8rem,6vw,5.8rem)] font-bebas leading-[0.9] text-white">
+                                        Selfie Cam Is Live
+                                    </h1>
+                                    <div className="mt-3 max-w-[920px] text-lg md:text-2xl text-cyan-100/90">
+                                        Snap from your phone and watch the best crowd shots hit the big screen.
+                                    </div>
+                                    <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-fuchsia-300/28 bg-fuchsia-400/12 px-5 py-2 text-[11px] md:text-sm font-black uppercase tracking-[0.24em] text-fuchsia-100">
+                                        <i className="fa-solid fa-sparkles" />
+                                        Fresh photos drop live
+                                    </div>
+                                    {crowdSelfieWall.length > 0 && (
+                                        <div data-tv-crowd-selfie-wall className="mt-8 w-full max-w-[980px]">
+                                            <div className="text-[10px] md:text-xs font-black uppercase tracking-[0.28em] text-cyan-200">Approved Crowd Wall</div>
+                                            <div className="mt-3 flex flex-wrap items-center justify-center gap-4 md:gap-5">
+                                                {crowdSelfieWall.slice(0, 6).map((entry) => (
+                                                    <div key={entry.id} className="flex w-[108px] flex-col items-center text-center md:w-[132px]">
+                                                        <div className="rounded-full bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.18),rgba(255,255,255,0.02)_42%,rgba(0,0,0,0.18))] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,0.34)] md:p-2">
+                                                            <div className="rounded-full bg-[linear-gradient(135deg,rgba(236,72,153,0.72),rgba(34,211,238,0.72))] p-[3px] md:p-1">
+                                                                <div className="h-24 w-24 overflow-hidden rounded-full border border-white/12 bg-black/45 md:h-28 md:w-28">
+                                                                    <img
+                                                                        src={entry.url}
+                                                                        alt={entry.userName || 'Crowd selfie'}
+                                                                        className="h-full w-full object-cover"
+                                                                        style={{ objectPosition: '50% 28%' }}
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 inline-flex max-w-full items-center justify-center rounded-full border border-white/12 bg-black/45 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white md:text-xs">
+                                                            <span className="truncate">{entry.userName || 'Guest'}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ) : (
                             <>
@@ -6422,40 +6776,11 @@ const PublicTV = ({ roomCode }) => {
                 </div>
                 
                 {/* SIDEBAR: Hidden in Cinema Mode */}
+                {isCinema && !guitarTakeoverMode ? renderJoinOverlayCard({ floating: true }) : null}
+
                 {!isCinema && !guitarTakeoverMode && (
                     <div className={`${sidebarAreaSpanClass} flex flex-col ${sidebarGapClass} h-full min-h-0 overflow-hidden transition-all duration-500`}>
-                        {!room?.hideJoinOverlay && (
-                            <>
-                                <div className={`${isTinyHostPreviewMode ? 'p-2 rounded-xl' : lobbyCompactHudMode ? 'p-2 md:p-3 lg:-mt-1' : 'p-3 md:p-3.5 lg:-mt-2'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl shadow-lg border-[3px] border-fuchsia-400/45 bg-black/35 backdrop-blur-xl`}>
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0 flex-1 text-left">
-                                            <div className={`${isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
-                                                Join
-                                            </div>
-                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
-                                                {roomCode}
-                                            </div>
-                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
-                                                {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
-                                            </div>
-                                            <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
-                                                {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
-                                            </div>
-                                        </div>
-                                        <div className={`shrink-0 bg-white ${isTinyHostPreviewMode ? 'p-1 rounded-xl' : lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-2.5'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl border-[3px] border-white/80 shadow-[0_0_28px_rgba(255,255,255,0.16)]`}>
-                                            <LocalQrImage
-                                                value={joinUrl}
-                                                size={joinQrSize}
-                                                alt="QR"
-                                                className={joinQrClass}
-                                            />
-                                        </div>
-                                    </div>
-                                    {isMinimal && !isTinyHostPreviewMode && <div className="mt-3"><MiniVideoPane room={room} current={current} muted={isHostPreviewEmbed} /></div>}
-                                </div>
-                                <div className="h-[2px] mx-4 rounded-full bg-gradient-to-r from-transparent via-white/25 to-transparent opacity-40"></div>
-                            </>
-                        )}
+                        {renderJoinOverlayCard()}
                          {room?.bouncerMode && (
                             <div className="px-3 py-2 rounded-2xl bg-black/70 border border-red-400/45 text-red-200 text-sm md:text-base font-bold tracking-[0.14em] uppercase flex items-center justify-center gap-2">
                                 <i className="fa-solid fa-lock"></i>
@@ -6905,25 +7230,39 @@ const PublicTV = ({ roomCode }) => {
             
             {/* Selfie Overlay */}
             {photoOverlay && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 animate-in zoom-in">
-                    <div className="relative transform rotate-[-5deg] bg-white p-3 md:p-4 pb-12 md:pb-16 shadow-2xl max-w-[94vw]">
-                        <img src={photoOverlay.url} className="max-h-[68vh] max-w-[90vw] border-2 border-zinc-200" />
-                        <img src={ASSETS.logo} className="absolute top-2 right-2 md:top-4 md:right-4 w-14 md:w-24 opacity-90" alt="BROSS" />
-                        {photoOverlay.mode === 'guitar_victory' ? (
-                            <div className="absolute bottom-4 left-0 w-full text-center">
-                                <div className="text-sm md:text-xl text-pink-600 font-black uppercase tracking-[0.18em] md:tracking-[0.4em]">Guitar Solo MVP</div>
-                                <div className="text-xl md:text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
-                                <div className="text-xs md:text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Shredded the hardest.'}</div>
+                <div className="absolute inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.18),rgba(0,0,0,0)_28%),radial-gradient(circle_at_78%_20%,rgba(34,211,238,0.16),rgba(0,0,0,0)_24%),rgba(0,0,0,0.82)] animate-in fade-in duration-300">
+                    <div className="absolute inset-0 selfie-flash-burst pointer-events-none" />
+                    <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_30%,rgba(255,255,255,0.02))] pointer-events-none" />
+                    <div className="relative max-w-[94vw]">
+                        <div className="absolute inset-[-24px] rounded-[2.6rem] border border-white/12 bg-white/6 blur-xl" />
+                        <div className="relative rotate-[-4deg] rounded-[2rem] border border-white/14 bg-[#fff8f1] p-3 md:p-4 pb-16 md:pb-20 shadow-[0_28px_90px_rgba(0,0,0,0.5)]">
+                            <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/88 px-3 py-1.5 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-zinc-700">
+                                <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
+                                {photoOverlay.mode === 'guitar_victory'
+                                    ? 'Guitar Solo MVP'
+                                    : photoOverlay.mode === 'strobe_victory'
+                                        ? 'Beat Drop MVP'
+                                        : 'Crowd Cam Drop'}
                             </div>
-                        ) : photoOverlay.mode === 'strobe_victory' ? (
-                            <div className="absolute bottom-4 left-0 w-full text-center">
-                                <div className="text-sm md:text-xl text-cyan-600 font-black uppercase tracking-[0.18em] md:tracking-[0.4em]">Beat Drop MVP</div>
-                                <div className="text-xl md:text-3xl text-black font-bold font-mono mt-1">{photoOverlay.userName}</div>
-                                <div className="text-xs md:text-sm text-zinc-600 font-semibold mt-1">{photoOverlay.copy || 'Kept the beat alive.'}</div>
+                            <img src={photoOverlay.url} className="max-h-[68vh] max-w-[90vw] rounded-[1.4rem] border-2 border-zinc-200 object-cover" />
+                            <img src={ASSETS.logo} className="absolute right-3 top-3 w-14 opacity-90 md:right-4 md:top-4 md:w-24" alt="BROSS" />
+                            <div className="absolute inset-x-0 bottom-0 px-5 pb-5 pt-10 text-center">
+                                <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/88 px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-zinc-700">
+                                    <span className="text-lg">{photoOverlay.mode === 'guitar_victory' ? EMOJI.guitar : photoOverlay.mode === 'strobe_victory' ? EMOJI.bolt : EMOJI.camera}</span>
+                                    {photoOverlay.mode === 'guitar_victory'
+                                        ? 'Solo Spotlight'
+                                        : photoOverlay.mode === 'strobe_victory'
+                                            ? 'Beat Spotlight'
+                                            : 'Fresh From The Crowd'}
+                                </div>
+                                <div className="mt-3 text-2xl md:text-4xl font-black text-zinc-950">
+                                    {photoOverlay.userName || 'Guest'}
+                                </div>
+                                <div className="mt-1 text-sm md:text-base font-semibold text-zinc-600">
+                                    {photoOverlay.copy || (photoOverlay.mode ? 'Big screen moment captured.' : 'Just landed on the big screen.')}
+                                </div>
                             </div>
-                        ) : (
-                            <div className="absolute bottom-4 left-0 w-full text-center text-xl md:text-3xl text-black font-bold font-mono">{EMOJI.camera} {photoOverlay.userName}</div>
-                        )}
+                        </div>
                     </div>
                 </div>
             )}
@@ -6937,7 +7276,7 @@ const PublicTV = ({ roomCode }) => {
                             Crowd Moment
                         </div>
                         <h1 className="text-[clamp(2.75rem,7vw,6.5rem)] font-bebas text-white tracking-[0.12em] md:tracking-[0.2em] leading-none">
-                            {applauseStep === 'celebrate' ? 'MAKE SOME NOISE FOR' : 'CHEER FOR'}
+                            {applauseStep === 'celebrate' ? 'WARM UP FOR' : applauseStep === 'countdown' ? 'GET READY FOR' : 'CHEER FOR'}
                         </h1>
                         <div className="text-[clamp(3rem,9vw,8rem)] font-black uppercase tracking-tight leading-[0.9] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-white to-cyan-300 drop-shadow-[0_0_28px_rgba(236,72,153,0.22)]">
                             {applausePerformerName}
@@ -6969,23 +7308,23 @@ const PublicTV = ({ roomCode }) => {
                     <div className="mt-4 md:mt-8 text-center px-4">
                         <div className="text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce">
                             {applauseStep === 'celebrate'
-                                ? 'CELEBRATE THE PERFORMANCE'
+                                ? `WARM-UP LIVE ${celebrateCountdown}`
                                 : applauseStep === 'countdown'
-                                    ? 'APPLAUSE METER OPENS SOON'
+                                    ? `METER OPENS IN ${countdown}`
                                     : applauseStep === 'measuring'
-                                        ? `MEASURING... ${measure}`
+                                        ? `METER LIVE ${measure}`
                                         : 'PEAK LEVEL REACHED'}
                         </div>
                         {(applauseStep === 'celebrate' || applauseStep === 'countdown') ? (
                             <div className="mt-3 text-sm md:text-xl uppercase tracking-[0.24em] text-zinc-400">
                                 {applauseStep === 'celebrate'
-                                    ? `Crowd warm-up ${celebrateCountdown}`
-                                    : `Noise meter in ${countdown}`}
+                                    ? 'Crowd warm-up before the meter opens'
+                                    : 'Noise meter opens now'}
                             </div>
                         ) : null}
                         {applauseStep === 'countdown' ? (
                             <div className="mt-4 flex items-center justify-center gap-2 md:gap-3">
-                                {Array.from({ length: 5 }, (_, idx) => {
+                                {Array.from({ length: applauseCountdownSec }, (_, idx) => {
                                     const active = idx < countdown;
                                     return (
                                         <span
@@ -7219,6 +7558,26 @@ const PublicTV = ({ roomCode }) => {
                         ) : (
                             <>
                                 <div
+                                    className="absolute inset-[-10%] pointer-events-none"
+                                    style={{
+                                        transform: `translate3d(0, ${(-8 + (lobbyVolleySkyShiftPct * 0.48)).toFixed(4)}%, 0) scale(${(1.02 + (lobbyVolleyParallaxEase * 0.08)).toFixed(4)})`,
+                                        background: `linear-gradient(180deg,
+                                            rgba(8,15,42,0.98) 0%,
+                                            rgba(20,40,88,0.92) 18%,
+                                            rgba(12,63,106,0.82) ${32 + (lobbyVolleyAltitudeProgress * 10)}%,
+                                            rgba(24,88,122,0.54) ${58 + (lobbyVolleyAltitudeProgress * 8)}%,
+                                            rgba(10,14,28,0.22) 100%)`
+                                    }}
+                                />
+                                <div
+                                    className="absolute inset-[-8%] pointer-events-none"
+                                    style={{
+                                        transform: `translate3d(0, ${(lobbyVolleySkyShiftPct * 0.86).toFixed(4)}%, 0)`,
+                                        opacity: 0.4 + (lobbyVolleyParallaxEase * 0.2),
+                                        background: 'radial-gradient(circle at 12% 16%, rgba(255,255,255,0.18), rgba(255,255,255,0) 18%), radial-gradient(circle at 26% 22%, rgba(255,255,255,0.12), rgba(255,255,255,0) 14%), radial-gradient(circle at 52% 12%, rgba(255,255,255,0.14), rgba(255,255,255,0) 16%), radial-gradient(circle at 74% 18%, rgba(255,255,255,0.16), rgba(255,255,255,0) 18%), radial-gradient(circle at 88% 10%, rgba(255,255,255,0.12), rgba(255,255,255,0) 13%)'
+                                    }}
+                                />
+                                <div
                                     className="absolute inset-x-[-10%] top-[-18%] h-[52%] pointer-events-none"
                                     style={{
                                         transform: `translate3d(0, ${lobbyVolleySkyShiftPct}%, 0) scale(${(1 + (lobbyVolleyParallaxEase * 0.08)).toFixed(4)})`,
@@ -7244,6 +7603,68 @@ const PublicTV = ({ roomCode }) => {
                                         filter: 'blur(18px)'
                                     }}
                                 />
+                                <div
+                                    className="absolute inset-x-[-5%] bottom-[-6%] h-[28%] pointer-events-none"
+                                    style={{
+                                        transform: `translate3d(0, ${(lobbyVolleyFarShiftPct * 0.22).toFixed(4)}%, 0)`,
+                                        background: 'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(3,7,18,0.16) 12%, rgba(2,6,23,0.68) 100%)'
+                                    }}
+                                />
+                                <div
+                                    className="absolute left-[-4%] bottom-[5%] w-[62%] h-[24%] pointer-events-none opacity-80"
+                                    style={{
+                                        transform: `translate3d(0, ${(lobbyVolleyFarShiftPct * 0.56).toFixed(4)}%, 0)`,
+                                        clipPath: 'polygon(0 100%, 0 62%, 12% 40%, 22% 58%, 34% 28%, 44% 50%, 56% 18%, 70% 48%, 84% 30%, 100% 54%, 100% 100%)',
+                                        background: 'linear-gradient(180deg, rgba(34,211,238,0.18), rgba(15,23,42,0.12) 28%, rgba(7,10,26,0.92) 100%)',
+                                        filter: 'drop-shadow(0 0 28px rgba(34,211,238,0.14))'
+                                    }}
+                                />
+                                <div
+                                    className="absolute right-[-8%] bottom-[4%] w-[56%] h-[26%] pointer-events-none opacity-92"
+                                    style={{
+                                        transform: `translate3d(0, ${(lobbyVolleyNearShiftPct * 0.48).toFixed(4)}%, 0)`,
+                                        clipPath: 'polygon(0 100%, 0 54%, 14% 38%, 25% 60%, 38% 26%, 49% 50%, 61% 20%, 72% 42%, 84% 24%, 100% 58%, 100% 100%)',
+                                        background: 'linear-gradient(180deg, rgba(236,72,153,0.18), rgba(8,10,26,0.16) 26%, rgba(2,6,23,0.96) 100%)',
+                                        filter: 'drop-shadow(0 0 34px rgba(236,72,153,0.16))'
+                                    }}
+                                />
+                                {lobbyVolleyCloudBands.map((cloud) => (
+                                    <div
+                                        key={cloud.id}
+                                        className="absolute pointer-events-none"
+                                        style={{
+                                            top: `${cloud.topPct}%`,
+                                            left: `${cloud.leftPct}%`,
+                                            width: `${cloud.widthPct}%`,
+                                            height: `${cloud.heightPx}px`,
+                                            opacity: cloud.opacity + (lobbyVolleyParallaxEase * 0.08),
+                                            filter: 'blur(10px)',
+                                            background: 'radial-gradient(circle at 20% 60%, rgba(255,255,255,0.1), rgba(255,255,255,0) 42%), radial-gradient(circle at 46% 52%, rgba(255,255,255,0.16), rgba(255,255,255,0) 44%), radial-gradient(circle at 74% 58%, rgba(255,255,255,0.12), rgba(255,255,255,0) 40%)'
+                                        }}
+                                    />
+                                ))}
+                                {lobbyVolleyParallaxPlatforms.map((platform) => (
+                                    <div
+                                        key={platform.id}
+                                        className="absolute pointer-events-none"
+                                        style={{
+                                            top: `${platform.topPct}%`,
+                                            left: `${platform.leftPct}%`,
+                                            width: `${platform.widthPct}%`,
+                                            transform: `rotate(${platform.tiltDeg}deg)`,
+                                            filter: `drop-shadow(0 0 14px ${platform.glow})`
+                                        }}
+                                    >
+                                        <div className="h-[14px] rounded-full border border-cyan-100/35 bg-black/22 backdrop-blur-sm">
+                                            <div
+                                                className="h-full rounded-full"
+                                                style={{
+                                                    background: 'linear-gradient(90deg, rgba(45,212,191,0.38), rgba(125,211,252,0.62) 44%, rgba(244,114,182,0.42) 100%)'
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
                                 <div className="absolute left-[6%] right-[6%] lobby-volley-ground-line" style={{ top: `${lobbyGroundLineRenderTopPct}%` }}>
                                     <div className="lobby-volley-ground-core" />
                                 </div>
@@ -7290,14 +7711,15 @@ const PublicTV = ({ roomCode }) => {
                                 {lobbyAltitudeMarkers.map((marker) => (
                                     <div
                                         key={`lobby-altitude-marker-${marker.altitudeFt}`}
-                                        className="absolute left-[10%] right-[31%] pointer-events-none"
+                                        className="absolute left-[8%] right-[22%] pointer-events-none"
                                         style={{ top: `${marker.topPct}%` }}
                                     >
-                                        <div className={`relative h-px w-full ${marker.isMajor ? 'bg-cyan-200/36' : 'bg-white/12'}`}>
-                                            <span className={`absolute -left-[7%] -translate-y-1/2 rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${
+                                        <div className={`relative h-px w-full ${marker.isMajor ? 'bg-cyan-200/46' : 'bg-white/16'}`}>
+                                            <div className="absolute inset-0 bg-gradient-to-r from-cyan-200/0 via-cyan-200/30 to-fuchsia-300/0" />
+                                            <span className={`absolute right-0 -translate-y-1/2 rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em] ${
                                                 marker.isMajor
-                                                    ? 'border border-cyan-200/35 bg-black/45 text-cyan-100'
-                                                    : 'text-white/42'
+                                                    ? 'border border-cyan-200/42 bg-black/48 text-cyan-100'
+                                                    : 'text-white/52'
                                             }`}>
                                                 {marker.altitudeFt}ft
                                             </span>
@@ -7402,13 +7824,29 @@ const PublicTV = ({ roomCode }) => {
                                         )}
                                     </div>
                                 </div>
-                                <div className="absolute left-[4.5%] top-[18%] rounded-[22px] border border-cyan-200/28 bg-black/38 px-4 py-3 shadow-[0_0_26px_rgba(34,211,238,0.16)] backdrop-blur">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/75">Orb Height</div>
-                                    <div className="mt-1 text-[34px] md:text-[48px] leading-none font-bebas text-white">
-                                        {Math.round(lobbyOrbAltitudeState.altitudeFt)}ft
+                                <div className="absolute left-[5%] bottom-[10.5%] rounded-[24px] border border-cyan-200/34 bg-[linear-gradient(180deg,rgba(2,6,23,0.74),rgba(8,15,42,0.58))] px-4 py-3 shadow-[0_0_28px_rgba(34,211,238,0.14)] backdrop-blur-md">
+                                    <div className="flex items-end gap-3">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/72">Current Height</div>
+                                            <div className="mt-1 flex items-end gap-1.5">
+                                                <span className="text-[38px] md:text-[54px] leading-none font-bebas text-white">
+                                                    {Math.round(lobbyOrbAltitudeState.altitudeFt)}
+                                                </span>
+                                                <span className="mb-1 text-[14px] md:text-[18px] uppercase tracking-[0.16em] text-cyan-100/86">ft</span>
+                                            </div>
+                                        </div>
+                                        <div className="pb-1 text-right">
+                                            <div className="text-[10px] uppercase tracking-[0.2em] text-white/56">Peak</div>
+                                            <div className="text-[20px] md:text-[24px] leading-none font-bebas text-white/90">
+                                                {Math.round(lobbyPeakAltitudeFt)}ft
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-white/70">
-                                        Peak {Math.round(lobbyPeakAltitudeFt)}ft
+                                    <div className="mt-2 h-[5px] w-[180px] md:w-[220px] rounded-full bg-white/12 overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-gradient-to-r from-cyan-300 via-sky-300 to-fuchsia-400 transition-all duration-200"
+                                            style={{ width: `${Math.max(4, lobbyVolleyAltitudeProgress * 100)}%` }}
+                                        />
                                     </div>
                                 </div>
                             </>
@@ -7657,7 +8095,7 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Reactions */}
-            {featuredReaction && currentPerformanceIdRef.current && (
+            {featuredReaction && currentPerformanceId && (
                 <div className="absolute left-1/2 top-5 z-[210] w-[min(92vw,880px)] -translate-x-1/2 pointer-events-none">
                     <div className={`featured-reaction-spotlight relative overflow-hidden rounded-[2rem] border px-5 py-4 md:px-7 md:py-5 ${featuredReaction.isVip ? 'border-yellow-300/65 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.32),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_48px_rgba(251,191,36,0.24)]' : 'border-cyan-300/35 bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_44px_rgba(34,211,238,0.18)]'}`}>
                         <div className="absolute inset-0 featured-reaction-sheen opacity-70" aria-hidden="true" />
@@ -7814,6 +8252,8 @@ const PublicTV = ({ roomCode }) => {
               @keyframes selfie-grid-sheen { 0% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } 50% { transform: translateX(4%) translateY(8%); opacity: 0.32; } 100% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } }
               @keyframes selfie-card-fresh { 0%, 100% { box-shadow: 0 0 0 rgba(34,211,238,0.0), 0 18px 60px rgba(0,0,0,0.35); } 50% { box-shadow: 0 0 36px rgba(34,211,238,0.18), 0 22px 70px rgba(0,0,0,0.42); } }
               @keyframes selfie-arrival-enter { 0% { opacity: 0; transform: scale(0.86) rotate(-4deg); } 22% { opacity: 1; transform: scale(1.03) rotate(-1deg); } 100% { opacity: 1; transform: scale(1) rotate(-2deg); } }
+              @keyframes selfie-cam-pulse { 0% { transform: scale(0.88); opacity: 0.52; } 70% { transform: scale(1.14); opacity: 0; } 100% { transform: scale(1.14); opacity: 0; } }
+              @keyframes selfie-flash-burst { 0% { opacity: 0.95; } 30% { opacity: 0.42; } 100% { opacity: 0; } }
               @keyframes tv-sweep { 0% { transform: translateX(-120%); opacity: 0; } 20% { opacity: 0.45; } 50% { opacity: 0.12; } 100% { transform: translateX(120%); opacity: 0; } }
               @keyframes bonus-pop { 0% { opacity: 0; transform: scale(0.7); } 20% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0; transform: scale(1.08); } }
               @keyframes bonus-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
@@ -7919,6 +8359,9 @@ const PublicTV = ({ roomCode }) => {
               .selfie-wall-card { transition: transform 450ms ease, box-shadow 450ms ease, border-color 450ms ease; }
               .selfie-wall-card-fresh { animation: selfie-card-fresh 2.8s ease-in-out infinite; }
               .selfie-arrival-spotlight { animation: selfie-arrival-enter 0.38s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+              .selfie-cam-pulse-ring { animation: selfie-cam-pulse 2.4s ease-out infinite; }
+              .selfie-cam-pulse-ring-delayed { animation: selfie-cam-pulse 2.4s ease-out infinite 0.9s; }
+              .selfie-flash-burst { background: radial-gradient(circle at center, rgba(255,255,255,0.36), rgba(255,255,255,0.08) 32%, rgba(255,255,255,0) 62%); animation: selfie-flash-burst 0.65s ease-out both; }
               .tv-light-sweep { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.12) 45%, transparent 80%); animation: tv-sweep 10s ease-in-out infinite; mix-blend-mode: screen; }
               .lobby-burst-anchor { transform: translate(-50%, -50%); }
               .lobby-burst-motion { animation: lobby-burst-rise 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }

@@ -7,6 +7,7 @@ const ASSETS_DIR = path.join(DIST_DIR, "assets");
 const LEGACY_INDEX_ALIASES = [
   "index-BbrHeXcI.js",
   "index-BMypM57O.js",
+  "index-Dt77l75Z.js",
 ];
 
 const LEGACY_FIREBASE_ALIASES = [

@@ -16,6 +16,7 @@ import ModerationInboxDrawer from './components/ModerationInboxDrawer';
 import HostQaDebugPanel from './components/HostQaDebugPanel';
 import RunOfShowDirectorPanel from './components/RunOfShowDirectorPanel';
 import HostRoomLaunchPad from './components/HostRoomLaunchPad';
+import EventCreditsConfigPanel from './components/EventCreditsConfigPanel';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
@@ -33,7 +34,11 @@ import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
 import useHostSmokeTest from './hooks/useHostSmokeTest';
 import useHostLaunchFlow from './hooks/useHostLaunchFlow';
+import useHostEntryBootstrap from './hooks/useHostEntryBootstrap';
+import useHostLandingLaunchpad from './hooks/useHostLandingLaunchpad';
 import useHostRoomEntry from './hooks/useHostRoomEntry';
+import useHostRoomManager from './hooks/useHostRoomManager';
+import useHostWorkspaceState from './hooks/useHostWorkspaceState';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -45,12 +50,11 @@ import {
     callFunction,
     ensureAppCheckToken,
     assertRoomHostAccess,
+    upsertHostRoomDiscoveryListing,
     removeHostRoomDiscoveryListing,
     ensureOrganization,
     bootstrapOnboardingWorkspace,
     getMyEntitlements,
-    listHostWorkspaceOperators,
-    searchHostVenueAutocomplete,
     getMyUsageSummary,
     getMyUsageInvoiceDraft,
     saveMyUsageInvoiceDraft,
@@ -69,18 +73,38 @@ import { useToast } from '../../context/ToastContext';
 import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
+import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
-import { buildSongKey, ensureSong, ensureTrack, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
+import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
+import {
+    getHostMomentCueMeta,
+    getHostMomentCueSoundCandidates
+} from '../../lib/hostMomentCues';
 import {
     buildCollaborationSuggestionMap,
-    buildTrustedCatalogEntry,
     rankSongRequestCandidates
 } from '../../lib/songRequestResolution';
 import {
+    applyAudienceSelectedBackingDecision,
+    applyQueueReviewAutoResolvedCandidate,
+    applyRejectedQueueReviewSelection,
+    markQueueReviewAutoSuggestionFallback,
+    markQueueReviewAutoSuggestionProcessing,
+    markQueueReviewAutoSuggestionReady,
+    persistTrustedCatalogChoiceForRoom,
+    resolveQueueReviewSelectionForHost,
+    saveHostBackingPreferenceForRoom,
+} from './queueSongReviewActions';
+import {
+    AUDIENCE_BACKING_MODES,
     REQUEST_MODE_OPTIONS,
     REQUEST_MODES,
+    UNKNOWN_BACKING_POLICIES,
+    deriveAudienceBackingMode,
+    deriveUnknownBackingPolicy,
     normalizeRoomRequestMode
 } from '../../lib/requestModes';
+import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
 import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
@@ -153,9 +177,11 @@ import {
     getRunOfShowItemLabel,
     getRunOfShowLiveItem,
     getRunOfShowStagedItem,
+    getRunOfShowPreflightReport,
     getRunOfShowOperatorRole,
     getRunOfShowRoleCapabilities,
     getRunOfShowOperatingHint,
+    hasRunOfShowTakeoverSoundtrackIdentity,
     isRunOfShowItemReady,
     normalizeRunOfShowPolicy,
     normalizeRunOfShowRoles,
@@ -172,12 +198,26 @@ import {
     deriveAutoDjStepItems,
     describeAutoDjSequenceState
 } from './autoDjStateMachine';
-import { normalizeHostPermissionLevel, canQuickStartForRole } from './launchAccess';
+import { normalizeHostPermissionLevel } from './launchAccess';
 import {
     getAutoEndSchedule,
     getTrackDurationSecFromSearchResult
 } from './hostPlaybackAutomation';
-import { createQuickLaunchDiscoveryDraft } from './hostLaunchHelpers';
+import {
+    buildProvisionEventCreditsPayload,
+    createEventCreditsDraft,
+    createQuickLaunchDiscoveryDraft,
+    fromDateTimeLocalInput
+} from './hostLaunchHelpers';
+import {
+    AAHF_KICKOFF_EVENT_PROFILE_ID,
+    AAHF_KICKOFF_STARTS_AT_LOCAL,
+    AAHF_KICKOFF_STARTS_AT_MS,
+    ROOM_EVENT_PROFILE_OPTIONS,
+    buildRoomEventProfilePatch,
+    getRoomEventProfileMeta,
+} from './roomEventProfiles';
+import { MONEYBAGS_BADGE_LABEL } from '../../lib/roomMonetization';
 
 // --- CONSTANTS & CONFIG ---
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '';
@@ -218,6 +258,141 @@ const HOST_PORTAL_RELEASE_BRIEF = Object.freeze({
         'Archive, restore, cleanup, and permanent delete paths for older rooms'
     ])
 });
+const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
+    const items = resequenceRunOfShowItems([
+        createRunOfShowItem('intro', {
+            title: 'AAHF Kick-Off',
+            plannedDurationSec: 75,
+            status: 'ready',
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'intro',
+                headline: 'AAHF Karaoke Kick-Off',
+                subhead: 'Doors open, phones out, and the room lights up for the first singer.',
+                accentTheme: 'fuchsia'
+            },
+            audioPlan: {
+                momentCueId: 'next_up',
+                momentCueTiming: 'start',
+                momentCueAutoFire: true,
+            }
+        }, now),
+        createRunOfShowItem('announcement', {
+            title: 'How To Join In',
+            plannedDurationSec: 30,
+            status: 'ready',
+            roomMomentPlan: {
+                showHowToPlay: true
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'how_to_play',
+                headline: 'Phones out. Scan. Request.',
+                subhead: 'Quick onboarding pass for guests before the first run starts.',
+                accentTheme: 'cyan'
+            }
+        }, now + 1),
+        ...Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
+            title: `Round One Slot ${index + 1}`,
+            plannedDurationSec: 210,
+            performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+            status: 'blocked',
+        }, now + index + 2)),
+        createRunOfShowItem('announcement', {
+            title: 'Support The Show',
+            plannedDurationSec: 35,
+            status: 'ready',
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'tipping',
+                headline: 'Support the AAHF kick-off',
+                subhead: 'Fuel the room before the next run starts.',
+                accentTheme: 'pink'
+            },
+            audioPlan: {
+                duckBackingEnabled: true,
+                duckLevelPct: 24,
+                momentCueId: 'hype',
+                momentCueTiming: 'start',
+                momentCueAutoFire: true,
+            }
+        }, now + 10),
+        createRunOfShowItem('announcement', {
+            title: 'Selfie Cam Moment',
+            plannedDurationSec: 45,
+            status: 'ready',
+            roomMomentPlan: {
+                activeMode: 'selfie_cam'
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'selfie_cam',
+                headline: 'Selfie Cam goes live',
+                subhead: 'Turn the room into the spotlight before round two.',
+                accentTheme: 'amber'
+            }
+        }, now + 11),
+        createRunOfShowItem('intermission', {
+            title: 'Take Five',
+            plannedDurationSec: 300,
+            status: 'ready',
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'intermission',
+                headline: 'Take five',
+                subhead: 'Refresh drinks, queue up, and get ready for round two.',
+                accentTheme: 'violet'
+            },
+            audioPlan: {
+                momentCueId: 'reset',
+                momentCueTiming: 'end',
+                momentCueAutoFire: true,
+            }
+        }, now + 12),
+        ...Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
+            title: `Round Two Slot ${index + 1}`,
+            plannedDurationSec: 210,
+            performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+            status: 'blocked',
+        }, now + index + 20)),
+        createRunOfShowItem('closing', {
+            title: 'Finale Push',
+            plannedDurationSec: 60,
+            status: 'ready',
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'closing',
+                headline: 'Thanks for singing',
+                subhead: 'Wrap the room cleanly and point guests to the next AAHF beat.',
+                accentTheme: 'fuchsia'
+            },
+            audioPlan: {
+                momentCueId: 'celebrate',
+                momentCueTiming: 'start',
+                momentCueAutoFire: true,
+            }
+        }, now + 30),
+    ]);
+    return {
+        templateId: 'starter_aahf_kickoff',
+        templateName: 'AAHF Kick-Off',
+        templateType: 'starter',
+        runOfShowPolicy: normalizeRunOfShowPolicy({
+            defaultAutomationMode: 'auto',
+            lateBlockPolicy: 'compress',
+            noShowPolicy: 'pull_from_queue',
+            queueDivergencePolicy: 'queue_can_fill_gaps',
+            blockedActionPolicy: 'manual_override_allowed'
+        }),
+        runOfShowDirector: normalizeRunOfShowDirector({
+            enabled: true,
+            automationPaused: false,
+            automationStatus: 'idle',
+            currentItemId: items[0]?.id || '',
+            items
+        }),
+    };
+};
 const decodeUriComponentSafe = (value = '') => {
     try {
         return decodeURIComponent(value);
@@ -469,6 +644,30 @@ const isStrongQueueReviewCandidate = (candidate = null) => {
     return false;
 };
 
+const isYouTubeQueueReviewCandidate = (candidate = null) => {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const source = String(candidate.source || '').trim().toLowerCase();
+    const mediaUrl = String(candidate.mediaUrl || '').trim();
+    return source === 'youtube' || !!parseYouTubeVideoId(mediaUrl);
+};
+
+const prioritizeQueueReviewCandidates = (candidates = []) => (
+    [...(Array.isArray(candidates) ? candidates : [])].sort((left, right) => {
+        const leftScore = Number(left?.score || 0);
+        const rightScore = Number(right?.score || 0);
+        const leftYouTube = isYouTubeQueueReviewCandidate(left);
+        const rightYouTube = isYouTubeQueueReviewCandidate(right);
+        const leftPriority = leftScore
+            + (leftYouTube ? (isStrongQueueReviewCandidate(left) ? 140 : leftScore >= 160 ? 90 : 0) : 0);
+        const rightPriority = rightScore
+            + (rightYouTube ? (isStrongQueueReviewCandidate(right) ? 140 : rightScore >= 160 ? 90 : 0) : 0);
+        if (rightPriority !== leftPriority) return rightPriority - leftPriority;
+        return rightScore - leftScore;
+    })
+);
+
+const pickPreferredQueueReviewCandidate = (candidates = []) => prioritizeQueueReviewCandidates(candidates)[0] || null;
+
 const normalizeHostWorkspaceTab = (value = '') => {
     const safeValue = String(value || '').trim().toLowerCase();
     if (safeValue === 'show') return 'run_of_show';
@@ -489,6 +688,7 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
             : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
     const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' · ') || 'Queued performance';
     const durationSec = Math.max(0, Math.round(Number(song?.duration || 0)));
+    const shouldSyncPlannedDuration = durationSec > 0 && String(item?.plannedDurationSource || '').trim().toLowerCase() !== 'manual';
     return {
         performerMode: 'assigned',
         assignedPerformerUid: String(song?.singerUid || '').trim(),
@@ -497,7 +697,10 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
         songId: String(song?.songId || '').trim(),
         songTitle: String(song?.songTitle || '').trim(),
         artistName: String(song?.artist || '').trim(),
-        plannedDurationSec: durationSec > 0 ? durationSec : Number(item?.plannedDurationSec || 0),
+        ...(shouldSyncPlannedDuration ? {
+            plannedDurationSec: durationSec,
+            plannedDurationSource: 'backing'
+        } : {}),
         preparedQueueSongId: String(song?.id || '').trim(),
         queueLinkState: 'linked',
         backingPlan: {
@@ -558,8 +761,8 @@ const generateAIContent = async (type, context) => {
     try {
         const roomCode = getRoomCodeFromLocation();
         const payload = roomCode
-            ? { type, context, roomCode }
-            : { type, context };
+            ? { type, context, roomCode, usageContext: { source: `host_${type}` } }
+            : { type, context, usageContext: { source: `host_${type}` } };
         const data = await callFunction('geminiGenerate', payload);
         return data?.result || null;
     } catch (e) {
@@ -596,6 +799,44 @@ const getLocalVideos = async () => {
         const store = tx.objectStore(LOCAL_STORE);
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+    });
+};
+
+const saveLocalVideo = async (entry = {}) => {
+    const db = await openLocalDb();
+    const safeTitle = String(entry.title || '').trim();
+    const safeBlob = entry.blob;
+    if (!safeTitle || !safeBlob) throw new Error('title and blob are required');
+    const payload = {
+        id: String(entry.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`),
+        title: safeTitle,
+        artist: String(entry.artist || 'Offline Backup').trim() || 'Offline Backup',
+        fileName: String(entry.fileName || `${safeTitle}.media`).trim() || `${safeTitle}.media`,
+        mediaType: String(entry.mediaType || (((safeBlob.type || '').startsWith('audio/')) ? 'audio' : 'video')).trim() || 'video',
+        blob: safeBlob,
+        size: Number(entry.size || safeBlob.size || 0) || 0,
+        offlineReady: entry.offlineReady !== false,
+        createdAtMs: Math.max(0, Number(entry.createdAtMs || Date.now()) || Date.now())
+    };
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(LOCAL_STORE, 'readwrite');
+        const store = tx.objectStore(LOCAL_STORE);
+        const req = store.put(payload);
+        req.onsuccess = () => resolve(payload);
+        req.onerror = () => reject(req.error);
+    });
+};
+
+const deleteLocalVideo = async (id = '') => {
+    const safeId = String(id || '').trim();
+    if (!safeId) return;
+    const db = await openLocalDb();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(LOCAL_STORE, 'readwrite');
+        const store = tx.objectStore(LOCAL_STORE);
+        const req = store.delete(safeId);
+        req.onsuccess = () => resolve(true);
         req.onerror = () => reject(req.error);
     });
 };
@@ -637,7 +878,7 @@ const HOST_NIGHT_PRESETS = {
             showFameLevel: false,
             requestMode: REQUEST_MODES.guestBackingOptional,
             allowSingerTrackSelect: true,
-            marqueeEnabled: true,
+            marqueeEnabled: false,
             marqueeShowMode: 'idle',
             chatShowOnTv: false,
             chatTvMode: 'auto',
@@ -647,6 +888,7 @@ const HOST_NIGHT_PRESETS = {
             bingoAutoApprovePct: 45,
             bingoAudienceReopenEnabled: true,
             autoLyricsOnQueue: false,
+            popTriviaEnabled: false,
             queueSettings: {
                 limitMode: 'none',
                 limitCount: 0,
@@ -691,6 +933,7 @@ const HOST_NIGHT_PRESETS = {
             bingoAutoApprovePct: 60,
             bingoAudienceReopenEnabled: true,
             autoLyricsOnQueue: true,
+            popTriviaEnabled: false,
             queueSettings: {
                 limitMode: 'per_night',
                 limitCount: 2,
@@ -725,7 +968,7 @@ const HOST_NIGHT_PRESETS = {
             showFameLevel: false,
             requestMode: REQUEST_MODES.guestBackingOptional,
             allowSingerTrackSelect: true,
-            marqueeEnabled: true,
+            marqueeEnabled: false,
             marqueeShowMode: 'always',
             chatShowOnTv: true,
             chatTvMode: 'activity',
@@ -735,6 +978,7 @@ const HOST_NIGHT_PRESETS = {
             bingoAutoApprovePct: 35,
             bingoAudienceReopenEnabled: true,
             autoLyricsOnQueue: false,
+            popTriviaEnabled: false,
             gamePreviewId: 'bingo',
             queueSettings: {
                 limitMode: 'none',
@@ -780,6 +1024,7 @@ const HOST_NIGHT_PRESETS = {
             bingoAutoApprovePct: 50,
             bingoAudienceReopenEnabled: true,
             autoLyricsOnQueue: false,
+            popTriviaEnabled: false,
             gamePreviewId: 'trivia_pop',
             queueSettings: {
                 limitMode: 'per_night',
@@ -1209,7 +1454,10 @@ const annotateQueueSearchResults = (items = [], { sourceReason = '', sourceDetai
     }))
 );
 
-const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, concurrency = 4 } = {}) => {
+const fetchYouTubeEmbeddableStatusMap = async (
+    videoIds = [],
+    { batchSize = 50, concurrency = 4, roomCode = '' } = {}
+) => {
     const ids = [...new Set((Array.isArray(videoIds) ? videoIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
     const statusMap = new Map();
     if (!ids.length) return statusMap;
@@ -1223,7 +1471,11 @@ const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, 
             const chunkIds = ids.slice(start, start + safeBatchSize);
             if (!chunkIds.length) continue;
             try {
-                const statusData = await callFunction('youtubeStatus', { ids: chunkIds });
+                const statusData = await callFunction('youtubeStatus', {
+                    ids: chunkIds,
+                    roomCode,
+                    usageContext: { source: 'host_playlist_status_refresh' }
+                });
                 (statusData?.items || []).forEach((entry) => {
                     statusMap.set(entry.id, !!entry.embeddable);
                 });
@@ -1368,6 +1620,23 @@ const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 const BILLING_WARMUP_MESSAGE = 'Billing tools are warming up. You can keep hosting and retry in a moment.';
 
 const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+const RUN_OF_SHOW_PERFORMANCE_INTRO_SEC = 15;
+const isRunOfShowModeActivationError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return code.includes('failed-precondition') && message.includes('not in run-of-show mode');
+};
+const isRunOfShowStartPreconditionError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return code.includes('failed-precondition') && message.includes('only staged items can be started');
+};
+const getResolvedRunOfShowPerformanceDurationSec = (item = {}, fallback = 180) => {
+    const plannedDurationSec = Math.max(0, Math.round(Number(item?.plannedDurationSec || 0) || 0));
+    const backingDurationSec = Math.max(0, Math.round(Number(item?.backingPlan?.durationSec || 0) || 0));
+    if (backingDurationSec > 0) return backingDurationSec;
+    return plannedDurationSec || Math.max(0, Math.round(Number(fallback || 0) || 0));
+};
 
 const deriveBracketUiState = (room) => {
     const bracket = room && room.karaokeBracket ? room.karaokeBracket : null;
@@ -2063,6 +2332,7 @@ const IncomingModerationQueuePanel = ({
     const listMaxHeight = embedded ? 'max-h-72' : 'max-h-[calc(100vh-270px)]';
     const approveDoodleUid = actions?.approveDoodleUid;
     const approveSelfieSubmission = actions?.approveSelfieSubmission;
+    const moderateCrowdSelfieSubmission = actions?.moderateCrowdSelfieSubmission;
     const approveBingoSuggestion = actions?.approveBingoSuggestion;
     const clearBingoSuggestion = actions?.clearBingoSuggestion;
 
@@ -2083,7 +2353,7 @@ const IncomingModerationQueuePanel = ({
                     <div className="text-2xl font-bold text-white mt-1">{doodlePending}</div>
                 </div>
                 <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
-                    <div className="text-xs uppercase tracking-widest text-zinc-500">Selfie Pending</div>
+                    <div className="text-xs uppercase tracking-widest text-zinc-500">Selfies Pending</div>
                     <div className="text-2xl font-bold text-cyan-300 mt-1">{selfiePending}</div>
                 </div>
                 <div className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3">
@@ -2098,21 +2368,22 @@ const IncomingModerationQueuePanel = ({
             ) : queueItems.length > 0 ? (
                 <div className={`grid grid-cols-1 lg:grid-cols-2 gap-3 ${listMaxHeight} overflow-y-auto custom-scrollbar pr-1`}>
                     {queueItems.map((item) => (
-                        <div key={item.key} className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-3 flex items-start gap-3">
+                        <div key={item.key} data-moderation-item-type={item.type} className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-3 flex items-start gap-3">
                             {item.image ? (
                                 <img
                                     src={item.image}
                                     alt={item.title}
-                                    className="w-20 h-20 rounded-lg object-cover bg-zinc-950 border border-white/10"
+                                    className={`w-20 h-20 object-cover bg-zinc-950 border border-white/10 ${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'rounded-full ring-2 ring-cyan-300/35 ring-offset-2 ring-offset-zinc-950' : 'rounded-lg'}`}
+                                    style={(item.type === 'crowd_selfie' || item.type === 'selfie') ? { objectPosition: '50% 28%' } : undefined}
                                 />
                             ) : (
-                                <div className="w-20 h-20 rounded-lg bg-zinc-950 border border-white/10 flex items-center justify-center text-zinc-500">
+                                <div className={`w-20 h-20 bg-zinc-950 border border-white/10 flex items-center justify-center text-zinc-500 ${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'rounded-full ring-2 ring-cyan-300/20 ring-offset-2 ring-offset-zinc-950' : 'rounded-lg'}`}>
                                     <i className={`fa-solid ${item.type === 'bingo' ? 'fa-table-cells-large' : 'fa-image'}`}></i>
                                 </div>
                             )}
                             <div className="min-w-0 flex-1">
                                 <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">
-                                    {item.type === 'doodle' ? 'Doodle-oke' : item.type === 'selfie' ? 'Selfie Challenge' : 'Bingo'}
+                                    {item.type === 'doodle' ? 'Doodle-oke' : item.type === 'selfie' ? 'Selfie Challenge' : item.type === 'crowd_selfie' ? 'Crowd Selfie' : 'Bingo'}
                                 </div>
                                 <div className="text-sm font-bold text-white truncate mt-0.5">{item.title}</div>
                                 <div className="text-xs text-zinc-400 mt-0.5">{item.subtitle}</div>
@@ -2135,10 +2406,30 @@ const IncomingModerationQueuePanel = ({
                                         <button
                                             onClick={() => approveSelfieSubmission?.(item.submission)}
                                             disabled={busyAction || !item.submission?.id || typeof approveSelfieSubmission !== 'function'}
-                                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-[10px] px-2 py-1 ${(busyAction || !item.submission?.id || typeof approveSelfieSubmission !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            className={`${STYLES.btnStd} ${STYLES.btnInfo} text-[10px] px-3 py-1.5 ${(busyAction || !item.submission?.id || typeof approveSelfieSubmission !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            Approve
+                                            Approve + Queue
                                         </button>
+                                    )}
+                                    {item.type === 'crowd_selfie' && (
+                                        <>
+                                            <button
+                                                data-moderation-crowd-selfie-approve
+                                                onClick={() => moderateCrowdSelfieSubmission?.(item.submission, 'approve')}
+                                                disabled={busyAction || !item.submission?.id || typeof moderateCrowdSelfieSubmission !== 'function'}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[10px] px-3 py-1.5 ${(busyAction || !item.submission?.id || typeof moderateCrowdSelfieSubmission !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Approve + Show
+                                            </button>
+                                            <button
+                                                data-moderation-crowd-selfie-reject
+                                                onClick={() => moderateCrowdSelfieSubmission?.(item.submission, 'reject')}
+                                                disabled={busyAction || !item.submission?.id || typeof moderateCrowdSelfieSubmission !== 'function'}
+                                                className={`${STYLES.btnStd} text-[10px] px-3 py-1.5 border border-red-400/35 bg-red-500/12 text-red-100 ${(busyAction || !item.submission?.id || typeof moderateCrowdSelfieSubmission !== 'function') ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                Reject
+                                            </button>
+                                        </>
                                     )}
                                     {item.type === 'bingo' && (
                                         <>
@@ -2227,7 +2518,6 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     const triviaCorrectLabel = isTriviaMode
         ? (Array.isArray(qaData?.options) ? qaData.options[Number(qaData?.correct)] : null)
         : null;
-
     useEffect(() => () => {
         if (interactionTimerRef.current) {
             clearTimeout(interactionTimerRef.current);
@@ -2431,7 +2721,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         }
     };
 
-    const triggerTemporaryLightMode = async (mode, durationMs = 9000) => {
+    const _triggerTemporaryLightMode = async (mode, durationMs = 9000) => {
         const safeDuration = Math.max(3000, Number(durationMs || 9000));
         if (interactionTimerRef.current) {
             clearTimeout(interactionTimerRef.current);
@@ -2679,7 +2969,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         id: `host_rescue_${now}`,
                         kind: 'rescue',
                         label: 'HOST RESCUE',
-                        by: hostName || 'Host',
+                        by: room?.hostName || 'Host',
                         triggeredAt: now,
                         durationMs: 3200
                     },
@@ -2701,7 +2991,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         id: `vocal_boost_${now}`,
                         kind: 'vocal_boost',
                         label: 'HARMONY BOOST',
-                        by: hostName || 'Host',
+                        by: room?.hostName || 'Host',
                         triggeredAt: now,
                         durationMs: 4500
                     },
@@ -2723,7 +3013,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         id: `scale_save_${now}`,
                         kind: 'scale_save',
                         label: 'SCALE SAVE',
-                        by: hostName || 'Host',
+                        by: room?.hostName || 'Host',
                         triggeredAt: now,
                         durationMs: 5000
                     },
@@ -3184,32 +3474,29 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, toggleHowToPlay, startStormSequence, stopStormSequence, startBeatDrop, users, marqueeEnabled, setMarqueeEnabled, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, setAutoDj, autoDjDelaySec, setAutoDjDelaySec, autoEndOnTrackFinish, setAutoEndOnTrackFinish, autoBonusEnabled, setAutoBonusEnabled, autoBonusPoints, setAutoBonusPoints, autoBgMusic, setAutoBgMusic, playingBg, setBgMusicState, holdAutoBgDuringStageActivation, startReadyCheck, chatShowOnTv, setChatShowOnTv, popTriviaEnabled, setPopTriviaEnabled, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowAutomationPaused = false, onOpenRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
-        tvControlsOpen,
-        setTvControlsOpen,
         soundboardOpen,
         setSoundboardOpen,
         chatOpen,
         setChatOpen,
-        overlaysOpen,
-        setOverlaysOpen,
-        vibeSyncOpen,
-        setVibeSyncOpen,
-        automationOpen,
-        setAutomationOpen,
         applyWorkspacePreset,
-        expandAllPanels,
-        collapseAllPanels,
-        resetPanelLayout,
         searchQ,
         setSearchQ,
         autocompleteProvider,
         setAutocompleteProvider,
         showAddForm,
         setShowAddForm,
+        reviewQueueOpen,
+        setReviewQueueOpen,
+        pendingQueueOpen,
+        setPendingQueueOpen,
+        readyQueueOpen,
+        setReadyQueueOpen,
+        assignedQueueOpen,
+        setAssignedQueueOpen,
         results,
         setResults,
         manual,
@@ -3260,10 +3547,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             onClick={onToggle}
             aria-expanded={!!open}
             data-feature-id={featureId || undefined}
-            className={`w-full flex items-center justify-between ${STYLES.header} ${toneClass}`}
+            className={`w-full min-h-[46px] gap-3 rounded-2xl px-1 text-left touch-manipulation flex items-center justify-between ${STYLES.header} ${toneClass}`}
         >
-            <span>{label}</span>
-            <i className={`fa-solid fa-chevron-down transition-transform ${open ? 'rotate-180' : ''}`}></i>
+            <span className="min-w-0 flex-1">{label}</span>
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/25 text-zinc-200">
+                <i className={`fa-solid fa-chevron-down transition-transform ${open ? 'rotate-180' : ''}`}></i>
+            </span>
         </button>
     );
     const toast = useToast() || console.log;
@@ -3278,6 +3567,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const autoDjObservedSongRef = useRef('');
     const autoDjObservedPerfTsRef = useRef(0);
     const reviewAutoSuggestingIdsRef = useRef(new Set());
+    const postPerformanceBackingPromptKeyRef = useRef('');
     const [commandOpen, setCommandOpen] = useState(false);
     const [commandQuery, setCommandQuery] = useState('');
     const [autoDjSequenceState, setAutoDjSequenceState] = useState(() => createAutoDjSequenceState());
@@ -3285,6 +3575,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const [queueSearchNoResultHint, setQueueSearchNoResultHint] = useState('');
     const [trustedCatalog, setTrustedCatalog] = useState({});
     const [reviewActionBusyKey, setReviewActionBusyKey] = useState('');
+    const [backingDecisionBusyKey, setBackingDecisionBusyKey] = useState('');
+    const [postPerformanceBackingPrompt, setPostPerformanceBackingPrompt] = useState(null);
+    const [postPerformanceBackingPromptBusy, setPostPerformanceBackingPromptBusy] = useState(false);
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
@@ -3569,6 +3862,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         searchYouTube,
         openYtSearch
     } = useQueueMediaTools({
+        roomCode,
         ytIndex,
         setYtIndex,
         persistYtIndex,
@@ -3587,6 +3881,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     useEffect(() => {
         upsertYtIndexEntriesRef.current = typeof onUpsertYtIndexEntries === 'function' ? onUpsertYtIndexEntries : null;
     }, [onUpsertYtIndexEntries]);
+    const queueTabUpsertYtIndexEntries = useCallback(async (...args) => {
+        if (typeof upsertYtIndexEntriesRef.current !== 'function') {
+            throw new Error('YouTube index updater is unavailable.');
+        }
+        return upsertYtIndexEntriesRef.current(...args);
+    }, []);
     const {
         addSong,
         addSongFromResult,
@@ -3666,7 +3966,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     return;
                 }
                 try {
-                    const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 7 });
+                    const data = await callFunction('itunesSearch', {
+                        term: normalizedQuery,
+                        limit: 7,
+                        roomCode,
+                        usageContext: { source: 'host_queue_search_apple' }
+                    });
                     if (cancelled) return;
                     const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
                         sourceReason: 'apple_authorized',
@@ -3704,7 +4009,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 const ytFallbackData = await callFunction('youtubeSearch', {
                     query: `${normalizedQuery} karaoke`,
                     maxResults: 6,
-                    playableOnly: true
+                    playableOnly: true,
+                    roomCode,
+                    usageContext: { source: 'host_queue_search_youtube_fallback' }
                 });
                 if (cancelled) return;
                 liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
@@ -3791,46 +4098,160 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const reviewQueueItems = useMemo(
         () => reviewRequired.map((song) => ({
             ...song,
-            reviewCandidates: rankSongRequestCandidates({
+            reviewCandidates: prioritizeQueueReviewCandidates(rankSongRequestCandidates({
                 request: song,
                 trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
                 catalogCandidates: [],
                 ytIndex
-            }),
+            })),
             collaborationCandidates: reviewCollaborationMap[song.id] || []
         })),
         [reviewRequired, reviewCollaborationMap, trustedCatalog, ytIndex]
     );
+    useEffect(() => {
+        if (!reviewQueueOpen || !reviewQueueItems.length) return;
+        const candidateEntries = reviewQueueItems
+            .slice(0, 6)
+            .flatMap((song) => (Array.isArray(song.reviewCandidates) ? song.reviewCandidates.slice(0, 2) : []))
+            .map((candidate) => ({
+                id: candidate?.id || '',
+                mediaUrl: candidate?.mediaUrl || '',
+                title: candidate?.title || '',
+                artist: candidate?.artist || '',
+                source: candidate?.source || 'youtube'
+            }))
+            .filter((candidate) => {
+                const diagnosticsKey = getYtDiagnosticsKey(candidate);
+                return diagnosticsKey && !ytDiagnosticsMap[diagnosticsKey]?.loaded;
+            });
+        if (!candidateEntries.length) return;
+        let cancelled = false;
+        void Promise.allSettled(
+            candidateEntries.map(async (entry) => {
+                if (cancelled) return null;
+                return fetchYtDiagnostics(entry);
+            })
+        );
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchYtDiagnostics, getYtDiagnosticsKey, reviewQueueItems, reviewQueueOpen, ytDiagnosticsMap]);
 
     const persistTrustedCatalogChoice = useCallback(async (song, candidate, layer = 'host_favorite') => {
-        if (!roomCode || !song?.songTitle || !candidate) return;
-        const resolvedSongId = String(song.songId || buildSongKey(song.songTitle, song.artist || 'Unknown')).trim();
-        if (!resolvedSongId) return;
-        const currentEntry = (trustedCatalog?.[resolvedSongId] && typeof trustedCatalog[resolvedSongId] === 'object')
-            ? trustedCatalog[resolvedSongId]
-            : {};
-        const nextEntry = buildTrustedCatalogEntry({
-            existing: currentEntry,
-            songId: resolvedSongId,
-            title: song.songTitle || '',
-            artist: song.artist || 'Unknown',
-            trackId: candidate.trackId || '',
-            mediaUrl: candidate.mediaUrl || '',
-            appleMusicId: candidate.appleMusicId || '',
-            source: candidate.source || '',
-            label: candidate.label || '',
-            layer,
-            qualityScore: candidate.score || candidate.qualityScore || 0,
-            approvalState: layer === 'host_favorite' ? 'approved' : (candidate.approvalState || 'candidate')
+        return persistTrustedCatalogChoiceForRoom({
+            roomCode,
+            trustedCatalog,
+            song,
+            candidate,
+            layer
         });
-        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), {
-            trustedCatalog: {
-                [resolvedSongId]: nextEntry
-            },
-            updatedAt: serverTimestamp()
-        }, { merge: true });
     }, [roomCode, trustedCatalog]);
     persistTrustedCatalogChoiceRef.current = persistTrustedCatalogChoice;
+
+    const rateBackingPreference = useCallback(async (songLike, rating = 'up') => {
+        const result = await saveHostBackingPreferenceForRoom({
+            roomCode,
+            trustedCatalog,
+            ytIndex,
+            songLike,
+            rating,
+            onUpsertYtIndexEntries: queueTabUpsertYtIndexEntries,
+            onPersistTrustedCatalogChoice: persistTrustedCatalogChoice,
+            onTrackFeedbackError: (error) => {
+                hostLogger.warn('Global track feedback save failed', error);
+            }
+        });
+        if (!result?.handled) {
+            toast('Backing feedback is currently only saved for YouTube tracks.');
+            return;
+        }
+        setPostPerformanceBackingPrompt((currentPrompt) => (
+            currentPrompt && currentPrompt.videoId === result.videoId ? null : currentPrompt
+        ));
+        toast(result.preference === 'down' ? 'Saved: skip this track next time.' : 'Saved: use this track again.');
+    }, [persistTrustedCatalogChoice, queueTabUpsertYtIndexEntries, roomCode, toast, trustedCatalog, ytIndex]);
+
+    const handlePostPerformanceBackingPromptAction = useCallback(async (action = 'skip') => {
+        const normalizedAction = String(action || 'skip').trim().toLowerCase();
+        const activePrompt = postPerformanceBackingPrompt;
+        if (!activePrompt) return;
+        if (normalizedAction === 'skip') {
+            setPostPerformanceBackingPrompt(null);
+            setPostPerformanceBackingPromptBusy(false);
+            return;
+        }
+        setPostPerformanceBackingPromptBusy(true);
+        try {
+            await rateBackingPreference(activePrompt.songLike, normalizedAction === 'avoid' ? 'down' : 'up');
+            setPostPerformanceBackingPrompt(null);
+        } finally {
+            setPostPerformanceBackingPromptBusy(false);
+        }
+    }, [postPerformanceBackingPrompt, rateBackingPreference]);
+
+    const resolveAudienceSelectedBacking = useCallback(async (songLike, action = 'approve') => {
+        const safeAction = String(action || 'approve').trim().toLowerCase();
+        const songId = String(songLike?.id || '').trim();
+        if (!songId) return;
+        const actionKey = `${songId}:${safeAction}`;
+        if (backingDecisionBusyKey === actionKey) return;
+        setBackingDecisionBusyKey(actionKey);
+        try {
+            const result = await applyAudienceSelectedBackingDecision({
+                songLike,
+                action: safeAction,
+                onRateBackingPreference: rateBackingPreference
+            });
+            if (result?.outcome === 'returned_to_review') {
+                toast('Sent back for host review and marked to skip next time.');
+            } else if (result?.outcome === 'saved_down') {
+                toast('Saved: skip this track next time.');
+            } else if (result?.outcome === 'approved_saved' || result?.outcome === 'saved_up') {
+                toast('Queued and saved as a good track.');
+            }
+        } catch (error) {
+            hostLogger.warn('Failed to resolve audience-selected backing', error);
+            toast('Could not update that track note right now.');
+        } finally {
+            setBackingDecisionBusyKey((currentKey) => (currentKey === actionKey ? '' : currentKey));
+        }
+    }, [backingDecisionBusyKey, rateBackingPreference, toast]);
+
+    useEffect(() => {
+        setPostPerformanceBackingPrompt(null);
+        setPostPerformanceBackingPromptBusy(false);
+        postPerformanceBackingPromptKeyRef.current = '';
+    }, [roomCode]);
+
+    useEffect(() => {
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const lastPerformanceUrl = String(room?.lastPerformance?.mediaUrl || '').trim();
+        const videoId = parseYouTubeId(lastPerformanceUrl);
+        if (!lastPerformanceTs || !videoId) return;
+        const performanceKey = `${videoId}:${lastPerformanceTs}`;
+        if (postPerformanceBackingPromptKeyRef.current === performanceKey) return;
+        postPerformanceBackingPromptKeyRef.current = performanceKey;
+        setPostPerformanceBackingPromptBusy(false);
+        setPostPerformanceBackingPrompt({
+            performanceKey,
+            videoId,
+            songTitle: room?.lastPerformance?.songTitle || 'Recent performance',
+            artist: room?.lastPerformance?.artist || 'YouTube backing',
+            albumArtUrl: room?.lastPerformance?.albumArtUrl || '',
+            songLike: {
+                ...(room?.lastPerformance || {}),
+                mediaUrl: lastPerformanceUrl,
+            }
+        });
+    }, [
+        parseYouTubeId,
+        room?.lastPerformance,
+        room?.lastPerformance?.albumArtUrl,
+        room?.lastPerformance?.artist,
+        room?.lastPerformance?.mediaUrl,
+        room?.lastPerformance?.songTitle,
+        room?.lastPerformance?.timestamp
+    ]);
 
     useEffect(() => {
         if (!roomCode || typeof onUpsertYtIndexEntries !== 'function') return;
@@ -3845,21 +4266,19 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         let cancelled = false;
         reviewAutoSuggestingIdsRef.current.add(nextSong.id);
 
-        const resolveReviewCandidates = (song, extraYtMatches = []) => rankSongRequestCandidates({
+        const resolveReviewCandidates = (song, extraYtMatches = []) => prioritizeQueueReviewCandidates(rankSongRequestCandidates({
             request: song,
             trustedCatalogEntry: trustedCatalog?.[song.songId] || null,
             catalogCandidates: [],
             ytIndex: [...(ytIndex || []), ...(Array.isArray(extraYtMatches) ? extraYtMatches : [])]
-        });
+        }));
 
-        const applyAutoSuggestion = async () => {
-            const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', nextSong.id);
+    const applyAutoSuggestion = async () => {
             const searchQuery = buildQueueReviewSearchQuery(nextSong);
             try {
-                await updateDoc(songRef, {
-                    reviewAutoSuggestionState: 'processing',
-                    reviewAutoSuggestionQuery: searchQuery,
-                    reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                await markQueueReviewAutoSuggestionProcessing({
+                    songId: nextSong.id,
+                    searchQuery
                 });
             } catch (stateError) {
                 hostLogger.debug('Queue review auto-suggest state write skipped', stateError);
@@ -3867,15 +4286,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
 
             try {
                 let rankedCandidates = resolveReviewCandidates(nextSong);
-                let bestCandidate = rankedCandidates[0] || null;
+                let bestCandidate = pickPreferredQueueReviewCandidate(rankedCandidates);
                 let liveMatches = [];
 
-                if (!isStrongQueueReviewCandidate(bestCandidate) && searchQuery) {
+                if (searchQuery && (!isStrongQueueReviewCandidate(bestCandidate) || !isYouTubeQueueReviewCandidate(bestCandidate))) {
                     try {
                         const ytData = await callFunction('youtubeSearch', {
                             query: `${searchQuery} karaoke`,
                             maxResults: 5,
-                            playableOnly: true
+                            playableOnly: true,
+                            roomCode,
+                            usageContext: { source: 'host_queue_review_auto_youtube' }
                         });
                         liveMatches = normalizeYouTubeSearchItems(ytData?.items || [], {
                             reason: 'queue_review_auto'
@@ -3891,7 +4312,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 sourceDetail: 'Auto-suggested from singer queue review.'
                             })));
                             rankedCandidates = resolveReviewCandidates(nextSong, liveMatches);
-                            bestCandidate = rankedCandidates[0] || null;
+                            bestCandidate = pickPreferredQueueReviewCandidate(rankedCandidates);
                         }
                     } catch (youtubeError) {
                         hostLogger.debug('Queue review auto-suggest YouTube search failed', youtubeError);
@@ -3901,40 +4322,25 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 if (cancelled) return;
 
                 if (isStrongQueueReviewCandidate(bestCandidate)) {
-                    const candidateSource = String(bestCandidate?.source || '').trim().toLowerCase();
-                    const candidateMediaUrl = String(bestCandidate?.mediaUrl || '').trim();
-                    const candidateAppleMusicId = String(bestCandidate?.appleMusicId || '').trim();
-                    const candidateTrackId = String(bestCandidate?.trackId || '').trim();
-                    await updateDoc(songRef, {
-                        trackId: candidateTrackId || null,
-                        trackSource: candidateSource || null,
-                        mediaUrl: candidateMediaUrl,
-                        appleMusicId: candidateAppleMusicId,
-                        playbackReady: !!(candidateMediaUrl || candidateAppleMusicId || candidateTrackId),
-                        mediaResolutionStatus: 'host_auto_selected',
-                        resolutionStatus: 'resolved',
-                        resolutionLayer: String(bestCandidate?.layer || candidateSource || 'host_auto').trim() || 'host_auto',
-                        reviewRequestedAt: null,
-                        reviewAutoSuggestionState: 'auto_resolved',
-                        reviewAutoSuggestionTopScore: Number(bestCandidate?.score || 0),
-                        reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                    await applyQueueReviewAutoResolvedCandidate({
+                        song: nextSong,
+                        candidate: {
+                            ...bestCandidate,
+                            layer: String(bestCandidate?.layer || 'host_auto').trim() || 'host_auto'
+                        }
                     });
                 } else {
-                    await updateDoc(songRef, {
-                        reviewAutoSuggestionState: 'review_ready',
-                        reviewAutoSuggestionTopScore: Number(bestCandidate?.score || 0),
-                        reviewAutoSuggestionCandidateCount: Math.max(0, Number(rankedCandidates.length || 0)),
-                        reviewAutoSuggestionUpdatedAt: serverTimestamp()
+                    await markQueueReviewAutoSuggestionReady({
+                        songId: nextSong.id,
+                        topScore: Number(bestCandidate?.score || 0),
+                        candidateCount: Math.max(0, Number(rankedCandidates.length || 0))
                     });
                 }
             } catch (error) {
                 if (!cancelled) {
                     hostLogger.debug('Queue review auto-suggest failed', error);
                     try {
-                        await updateDoc(songRef, {
-                            reviewAutoSuggestionState: 'review_ready',
-                            reviewAutoSuggestionUpdatedAt: serverTimestamp()
-                        });
+                        await markQueueReviewAutoSuggestionFallback({ songId: nextSong.id });
                     } catch (stateError) {
                         hostLogger.debug('Queue review auto-suggest fallback state write skipped', stateError);
                     }
@@ -3956,51 +4362,16 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         if (reviewActionBusyKey === actionKey) return;
         setReviewActionBusyKey(actionKey);
         try {
-            const canonicalTitle = String(song.songTitle || '').trim();
-            const canonicalArtist = String(song.artist || 'Unknown').trim() || 'Unknown';
-            const songRecord = await ensureSong({
-                title: canonicalTitle,
-                artist: canonicalArtist,
-                artworkUrl: song.albumArtUrl || '',
-                verifyMeta: false,
-                verifiedBy: hostName || 'host'
+            await resolveQueueReviewSelectionForHost({
+                song,
+                candidate,
+                hostName,
+                resolvedByUid: auth.currentUser?.uid || null,
+                saveFavorite: !!options?.saveFavorite,
+                submitTrustedReview: !!options?.submitTrustedReview,
+                persistTrustedCatalogChoice
             });
-            const resolvedSongId = songRecord?.songId || song.songId || buildSongKey(canonicalTitle, canonicalArtist);
-            const candidateSource = String(candidate.source || (candidate.appleMusicId ? 'apple' : candidate.mediaUrl ? 'youtube' : 'custom')).trim().toLowerCase();
-            const trackRecord = await ensureTrack({
-                songId: resolvedSongId,
-                source: candidateSource || 'custom',
-                mediaUrl: candidate.mediaUrl || '',
-                appleMusicId: candidate.appleMusicId || '',
-                label: candidate.label || null,
-                duration: candidate.duration ?? song.duration ?? null,
-                audioOnly: candidateSource === 'apple',
-                backingOnly: true,
-                addedBy: hostName || 'Host',
-                approvalState: options?.submitTrustedReview ? 'submitted' : (candidate.approvalState || 'candidate'),
-                qualityScore: candidate.score || candidate.qualityScore || 0
-            });
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
-                songId: resolvedSongId,
-                trackId: trackRecord?.trackId || song.trackId || null,
-                trackSource: candidateSource || null,
-                mediaUrl: candidate.mediaUrl || '',
-                appleMusicId: candidate.appleMusicId || '',
-                playbackReady: true,
-                mediaResolutionStatus: options?.submitTrustedReview ? 'trusted_review_submitted' : 'host_reviewed',
-                resolutionStatus: 'resolved',
-                resolutionLayer: options?.saveFavorite ? 'host_favorite' : (candidate.layer || 'room_recent'),
-                reviewResolvedAt: serverTimestamp(),
-                reviewResolvedBy: auth.currentUser?.uid || null,
-                status: String(song.status || '').trim().toLowerCase() === 'pending' ? 'requested' : song.status
-            });
-            if (options?.saveFavorite) {
-                await persistTrustedCatalogChoice(song, {
-                    ...candidate,
-                    trackId: trackRecord?.trackId || candidate.trackId || ''
-                }, 'host_favorite');
-            }
-            toast(options?.submitTrustedReview ? 'Queued and sent for trusted review.' : options?.saveFavorite ? 'Queued and saved to room favorites.' : 'Queued with selected backing.');
+            toast(options?.submitTrustedReview ? 'Queued and shared as trusted.' : options?.saveFavorite ? 'Queued and saved for this room.' : 'Queued with this track.');
         } catch (error) {
             hostLogger.warn('Failed to resolve review request', error);
             toast('Could not resolve that request right now.');
@@ -4015,11 +4386,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         if (reviewActionBusyKey === actionKey) return;
         setReviewActionBusyKey(actionKey);
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
-                status: 'rejected',
-                resolutionStatus: 'rejected',
-                reviewResolvedAt: serverTimestamp(),
-                reviewResolvedBy: auth.currentUser?.uid || null
+            await applyRejectedQueueReviewSelection({
+                songId: song.id,
+                resolvedByUid: auth.currentUser?.uid || null
             });
             toast('Request rejected.');
         } catch (error) {
@@ -4556,6 +4925,39 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         autoDjApplauseFallbackTimerRef.current = null;
     }, []);
 
+    const clearStagePlaybackState = useCallback(async () => {
+        await stopAppleMusic?.();
+        await updateRoom({
+            activeMode: 'karaoke',
+            mediaUrl: '',
+            currentPerformanceMeta: null,
+            singAlongMode: false,
+            videoPlaying: false,
+            videoStartTimestamp: null,
+            pausedAt: null,
+            showLyricsTv: false,
+            showVisualizerTv: false,
+            showLyricsSinger: false,
+            audienceVideoMode: 'off',
+            appleMusicPlayback: null
+        });
+    }, [stopAppleMusic, updateRoom]);
+
+    const returnCurrentPerformanceToQueue = useCallback(async (songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
+        clearAutoDjApplauseFallback();
+        autoDjApplausePendingSongRef.current = '';
+        await updateDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', targetSongId),
+            { status: 'requested' }
+        );
+        await clearStagePlaybackState();
+        pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'returned_to_queue' });
+        toast(`${targetSong?.songTitle || 'Current song'} returned to queue.`);
+    }, [clearAutoDjApplauseFallback, clearStagePlaybackState, pushAutoDjEvent, songs, toast]);
+
     const startApplauseSequence = useCallback(async ({ songId = '', autoFinalize = false } = {}) => {
         if (!songId) return;
         pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_STARTED, { songId });
@@ -4863,30 +5265,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 run: async () => { applyWorkspacePreset('broadcast'); }
             },
             {
-                id: 'expand-all',
-                label: 'Expand All Panels',
-                enabled: true,
-                hint: 'Open every section',
-                keywords: 'expand all panels layout',
-                run: async () => { expandAllPanels(); }
-            },
-            {
-                id: 'collapse-all',
-                label: 'Collapse All Panels',
-                enabled: true,
-                hint: 'Collapse every section',
-                keywords: 'collapse all panels layout',
-                run: async () => { collapseAllPanels(); }
-            },
-            {
-                id: 'reset-layout',
-                label: 'Reset Panel Layout',
-                enabled: true,
-                hint: 'Restore default layout',
-                keywords: 'reset default layout',
-                run: async () => { resetPanelLayout(); }
-            },
-            {
                 id: 'ui-feature-check',
                 label: 'Run UI Feature Check',
                 enabled: true,
@@ -4966,7 +5344,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     );
 
     const queueListSection = (
-        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-1.5 space-y-1.5' : 'p-2 space-y-2'} custom-scrollbar`}>
+        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
@@ -4976,16 +5354,24 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             />
             {showQueueList && reviewQueueItems.length > 0 && (
                 <div className="rounded-2xl border border-amber-300/20 bg-gradient-to-br from-amber-500/10 via-black/30 to-pink-500/10 p-3 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setReviewQueueOpen((v) => !v)}
+                        aria-expanded={!!reviewQueueOpen}
+                        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-300/18 bg-black/25 px-3 py-2 text-left transition hover:border-amber-300/35"
+                    >
                         <div>
-                            <div className="text-[10px] uppercase tracking-[0.3em] text-amber-200/80">Backing Review</div>
+                            <div className="text-[10px] uppercase tracking-[0.3em] text-amber-200/80">Track Check</div>
                             <div className="text-lg font-black text-white">Unresolved Requests</div>
                         </div>
-                        <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
-                            {reviewQueueItems.length} needs host pick
+                        <div className="flex items-center gap-2">
+                            <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-amber-100">
+                                {reviewQueueItems.length} needs host pick
+                            </div>
+                            <i className={`fa-solid fa-chevron-down text-xs text-amber-100 transition-transform ${reviewQueueOpen ? 'rotate-180' : ''}`}></i>
                         </div>
-                    </div>
-                    {reviewQueueItems.map((song) => {
+                    </button>
+                    {reviewQueueOpen ? reviewQueueItems.map((song) => {
                         const topCandidate = song.reviewCandidates?.[0] || null;
                         const busy = reviewActionBusyKey.startsWith(`${song.id}:`);
                         return (
@@ -5030,7 +5416,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 </div>
                                 {song.reviewCandidates?.length > 0 && (
                                     <div className="mt-3 grid gap-2">
-                                        {song.reviewCandidates.slice(0, 3).map((candidate) => (
+                                        {song.reviewCandidates.slice(0, 3).map((candidate) => {
+                                            const diagnosticsKey = getYtDiagnosticsKey(candidate);
+                                            const diagnosticsEntry = diagnosticsKey ? ytDiagnosticsMap[diagnosticsKey] : null;
+                                            const diagnostics = diagnosticsEntry?.diagnostics || null;
+                                            const diagnosticsTone = getTrackDiagnosticsTone(diagnostics);
+                                            const diagnosticsSupport = getTrackDiagnosticsSupport(diagnostics);
+                                            return (
                                             <div key={candidate.id} className="rounded-xl border border-white/10 bg-zinc-950/55 px-3 py-2">
                                                 <div className="flex items-center justify-between gap-3">
                                                     <div className="min-w-0">
@@ -5039,11 +5431,34 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             {candidate.artist ? ` • ${candidate.artist}` : ''}
                                                         </div>
                                                         <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
-                                                            {candidate.layer.replace(/_/g, ' ')} • {candidate.source || 'track'} • score {Math.round(candidate.score || 0)}
+                                                            {(candidate.label || candidate.layer.replace(/_/g, ' '))} • {candidate.source || 'track'}
                                                         </div>
                                                         {candidate.reason && (
                                                             <div className="mt-1 text-xs text-zinc-400">{candidate.reason}</div>
                                                         )}
+                                                        {diagnostics ? (
+                                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                {diagnosticsTone ? (
+                                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${diagnosticsTone.className}`}>
+                                                                        {diagnosticsTone.label}
+                                                                    </span>
+                                                                ) : null}
+                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                    {Number(diagnostics.successCount || 0)} good shows
+                                                                </span>
+                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                    {Number(diagnostics.failureCount || 0)} bad calls
+                                                                </span>
+                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                    {Number(diagnostics.globalAvoidRoomCount || 0)} rooms skipped
+                                                                </span>
+                                                            </div>
+                                                        ) : diagnosticsEntry?.error ? (
+                                                            <div className="mt-2 text-xs text-rose-200">{diagnosticsEntry.error}</div>
+                                                        ) : null}
+                                                        {diagnosticsSupport ? (
+                                                            <div className="mt-2 text-xs text-zinc-400">{diagnosticsSupport}</div>
+                                                        ) : null}
                                                     </div>
                                                     <div className="flex flex-wrap justify-end gap-2">
                                                         <button
@@ -5052,7 +5467,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             onClick={() => resolveReviewRequest(song, candidate)}
                                                             className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}
                                                         >
-                                                            Approve + Queue
+                                                            Queue This
                                                         </button>
                                                         <button
                                                             type="button"
@@ -5060,7 +5475,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             onClick={() => resolveReviewRequest(song, candidate, { saveFavorite: true, mode: 'favorite' })}
                                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}
                                                         >
-                                                            Save Favorite
+                                                            Save for This Room
                                                         </button>
                                                         <button
                                                             type="button"
@@ -5068,12 +5483,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             onClick={() => resolveReviewRequest(song, candidate, { submitTrustedReview: true, mode: 'trusted' })}
                                                             className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                                         >
-                                                            Submit Review
+                                                            Share as Trusted
                                                         </button>
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
                                 {song.collaborationCandidates?.length > 0 && (
@@ -5106,14 +5522,20 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 </div>
                             </div>
                         );
-                    })}
+                    }) : null}
                 </div>
             )}
             <QueueListPanel
                 showQueueList={showQueueList}
                 pending={pending}
+                pendingQueueOpen={pendingQueueOpen}
+                onTogglePendingQueue={() => setPendingQueueOpen((v) => !v)}
                 queue={queue}
+                readyQueueOpen={readyQueueOpen}
+                onToggleReadyQueue={() => setReadyQueueOpen((v) => !v)}
                 assigned={assigned}
+                assignedQueueOpen={assignedQueueOpen}
+                onToggleAssignedQueue={() => setAssignedQueueOpen((v) => !v)}
                 onApprovePending={(songId) => updateStatus(songId, 'requested')}
                 onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
                 dragQueueId={dragQueueId}
@@ -5129,6 +5551,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 startEdit={startEdit}
                 onRetryLyrics={retryLyricsForSong}
                 onFetchTimedLyrics={fetchTimedLyricsForSong}
+                onApproveAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'approve')}
+                onAvoidAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'avoid')}
+                backingDecisionBusyKey={backingDecisionBusyKey}
                 statusPill={statusPill}
                 styles={STYLES}
                 compactViewport={compactViewport}
@@ -5217,12 +5642,65 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     </div>
                 </div>
             )}
+            {postPerformanceBackingPrompt && (
+                <div className="fixed right-4 top-24 z-[190] w-[min(92vw,26rem)]">
+                    <div className="rounded-3xl border border-cyan-300/30 bg-gradient-to-br from-[#12182a]/95 via-[#111827]/95 to-[#1a1025]/95 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur-sm">
+                        <div className="flex items-start gap-3">
+                            {postPerformanceBackingPrompt.albumArtUrl ? (
+                                <img
+                                    src={postPerformanceBackingPrompt.albumArtUrl}
+                                    alt="Backing art"
+                                    className="h-14 w-14 rounded-2xl border border-white/10 object-cover"
+                                />
+                            ) : (
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-2xl text-cyan-200">
+                                    <i className="fa-brands fa-youtube"></i>
+                                </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Track check</div>
+                                <div className="mt-1 text-lg font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
+                                <div className="text-sm text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
+                                <div className="mt-2 text-sm text-zinc-400">Would you use this track again?</div>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => void handlePostPerformanceBackingPromptAction('prefer')}
+                                disabled={postPerformanceBackingPromptBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fa-solid fa-thumbs-up"></i>
+                                Use Again
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handlePostPerformanceBackingPromptAction('avoid')}
+                                disabled={postPerformanceBackingPromptBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fa-solid fa-thumbs-down"></i>
+                                Bad Track
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handlePostPerformanceBackingPromptAction('skip')}
+                                disabled={postPerformanceBackingPromptBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Skip
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className={`flex-1 min-h-0 ${
                 isMobileLayout
                     ? 'flex flex-col gap-3'
                     : isTightLayout
-                        ? 'grid grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] gap-4'
-                        : 'grid grid-cols-3 gap-6'
+                        ? 'grid grid-cols-[minmax(280px,1.02fr)_minmax(360px,1fr)] gap-5'
+                        : 'grid grid-cols-[minmax(280px,0.9fr)_minmax(360px,1fr)_minmax(360px,1fr)] gap-5'
             } overflow-hidden`}>
             {/* LEFT CONTROLS */}
             <div className={`w-full ${
@@ -5244,6 +5722,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                             <StageNowPlayingPanel
                                 room={room}
                                 current={current}
+                                lastPerformance={room?.lastPerformance || null}
                                 hasLyrics={hasLyrics}
                                 lobbyCount={lobbyCount}
                                 queueCount={queueCount}
@@ -5268,10 +5747,19 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 customBonus={customBonus}
                                 setCustomBonus={setCustomBonus}
                                 addBonusToCurrent={addBonusToCurrent}
+                                onRateBacking={rateBackingPreference}
+                                onResolveAudienceBacking={resolveAudienceSelectedBacking}
+                                backingDecisionBusyKey={backingDecisionBusyKey}
                                 updateStatus={updateStatus}
                                 onMeasureApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
                                 onEndPerformance={(songId) => handleEndPerformance(songId)}
+                                onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
                                 progressStageToNext={progressStageToNext}
+                                runOfShowEnabled={runOfShowEnabled}
+                                runOfShowAutomationPaused={runOfShowAutomationPaused}
+                                onOpenRunOfShow={onOpenRunOfShow}
+                                onToggleRunOfShowPause={onToggleRunOfShowPause}
+                                onStopRunOfShow={onStopRunOfShow}
                                 styles={STYLES}
                                 emoji={EMOJI}
                             />
@@ -5729,6 +6217,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lobbyTotalEmojis = users.reduce((sum, u) => sum + (u.totalEmojis || 0), 0);
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
+    const autoDjPlayableQueue = useMemo(
+        () => songs
+            .filter((song) => (
+                song.status === 'requested'
+                && isQueueEntryPlayable(song, { appleMusicEnabled: !!appleMusicAuthorized })
+            ))
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        [songs, appleMusicAuthorized]
+    );
+    const autoDjNextPlayableQueueSong = autoDjPlayableQueue[0] || null;
+    const autoDjPlayableQueueCount = autoDjPlayableQueue.length;
     const {
         activeBracket,
         bracketCrowdVotingEnabled,
@@ -5775,6 +6274,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [ytCurateStatus, setYtCurateStatus] = useState('');
     const [ytIndexSort, setYtIndexSort] = useState('recent');
     const [ytIndexActionVideoId, setYtIndexActionVideoId] = useState('');
+    const [ytDiagnosticsMap, setYtDiagnosticsMap] = useState({});
+    const [ytDiagnosticsLoadingKey, setYtDiagnosticsLoadingKey] = useState('');
     const [itunesBackoffRemaining, setItunesBackoffRemaining] = useState(0);
     const [pendingLocalFile, setPendingLocalFile] = useState(null);
     const [uploadingLocal, setUploadingLocal] = useState(false);
@@ -5820,7 +6321,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         return filtered.sort(sorters[ytIndexSort] || sorters.recent);
     }, [ytIndex, ytIndexFilter, ytIndexSort]);
-    const ytIndexStats = useMemo(() => {
+    const _ytIndexStats = useMemo(() => {
         const safeList = (ytIndex || []).map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean);
         const playableCount = safeList.filter((entry) => entry.playable !== false).length;
         const provenCount = safeList.filter((entry) => Number(entry.successCount || 0) > 0).length;
@@ -5830,6 +6331,166 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             proven: provenCount,
         };
     }, [ytIndex]);
+    const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
+    const roomUploadLibraryItems = useMemo(() => (
+        (Array.isArray(localLibrary) ? localLibrary : [])
+            .filter((item) => item?._local || item?._cloud)
+            .map((item, index) => ({
+                id: String(item?.id || `room_upload_${index}`),
+                source: 'local',
+                trackName: String(item?.title || 'Room Media').trim() || 'Room Media',
+                artistName: String(item?.artist || (item?._local ? 'Offline Backup' : 'Room Upload')).trim() || (item?._local ? 'Offline Backup' : 'Room Upload'),
+                artworkUrl100: '',
+                url: String(item?.url || '').trim(),
+                mediaType: String(item?.mediaType || (isAudioUrl(item?.url || '') ? 'audio' : 'video')).trim() || 'video',
+                offlineReady: item?._local === true || item?.offlineReady === true,
+                playable: true,
+                curatedAtMs: Math.max(0, Number(item?.createdAtMs || item?.createdAt?.seconds * 1000 || 0)),
+                fileName: String(item?.fileName || '').trim(),
+                storagePath: String(item?.storagePath || '').trim(),
+                _local: item?._local === true,
+                _cloud: item?._cloud === true,
+                sourceDetail: item?._local
+                    ? 'Saved on this host device for offline backup.'
+                    : 'Uploaded room media backup.'
+            }))
+            .filter((item) => item.url)
+    ), [localLibrary]);
+    const roomLibraryItems = useMemo(() => {
+        const merged = mergeUniqueQueueSearchResults(
+            roomUploadLibraryItems,
+            (ytIndex || []).map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean)
+        );
+        const sorters = {
+            recent: (left, right) => {
+                const leftWeight = left.source === 'local' ? (left.offlineReady ? 3 : 2) : 1;
+                const rightWeight = right.source === 'local' ? (right.offlineReady ? 3 : 2) : 1;
+                if (rightWeight !== leftWeight) return rightWeight - leftWeight;
+                return Number(right.curatedAtMs || 0) - Number(left.curatedAtMs || 0);
+            },
+            alpha: (left, right) => `${left.trackName} ${left.artistName}`.localeCompare(`${right.trackName} ${right.artistName}`),
+            usage: (left, right) => (
+                (Number(right.successCount || 0) + Number(right.usageCount || 0) + (right.offlineReady ? 50 : 0))
+                - (Number(left.successCount || 0) + Number(left.usageCount || 0) + (left.offlineReady ? 50 : 0))
+            ),
+        };
+        return merged.sort(sorters[ytIndexSort] || sorters.recent);
+    }, [roomUploadLibraryItems, ytIndex, ytIndexSort]);
+    const roomLibraryFilteredSorted = useMemo(() => {
+        const needle = ytIndexFilter.trim().toLowerCase();
+        return roomLibraryItems.filter((entry) => !needle || `${entry.trackName} ${entry.artistName} ${entry.fileName || ''}`.toLowerCase().includes(needle));
+    }, [roomLibraryItems, ytIndexFilter]);
+    const roomLibraryStats = useMemo(() => ({
+        total: roomLibraryItems.length,
+        youtube: roomLibraryItems.filter((entry) => entry.source === 'youtube').length,
+        uploads: roomLibraryItems.filter((entry) => entry.source === 'local' && entry._cloud).length,
+        offline: roomLibraryItems.filter((entry) => entry.source === 'local' && entry.offlineReady).length,
+    }), [roomLibraryItems]);
+    const getYtDiagnosticsKey = useCallback((entry = {}) => (
+        String(entry?.videoId || entry?.id || entry?.mediaUrl || entry?.url || '').trim()
+    ), []);
+    const fetchYtDiagnostics = useCallback(async (entry = {}) => {
+        const diagnosticsKey = getYtDiagnosticsKey(entry);
+        if (!diagnosticsKey) return null;
+        const existing = ytDiagnosticsMap[diagnosticsKey];
+        if (existing?.loaded && !existing?.error) return existing;
+        setYtDiagnosticsLoadingKey(diagnosticsKey);
+        try {
+            const response = await getTrackDiagnostics({
+                title: entry?.trackName || entry?.title || '',
+                artist: entry?.artistName || entry?.artist || '',
+                mediaUrl: entry?.mediaUrl || entry?.url || '',
+                source: entry?.source || 'youtube'
+            });
+            const diagnostics = response?.diagnostics || null;
+            const nextEntry = {
+                loaded: true,
+                error: '',
+                trackId: response?.trackId || '',
+                songId: response?.songId || '',
+                diagnostics
+            };
+            setYtDiagnosticsMap((current) => ({ ...current, [diagnosticsKey]: nextEntry }));
+            return nextEntry;
+        } catch (error) {
+            const message = String(error?.message || 'Diagnostics unavailable.');
+            const nextEntry = {
+                loaded: true,
+                error: message,
+                trackId: '',
+                songId: '',
+                diagnostics: null
+            };
+            setYtDiagnosticsMap((current) => ({ ...current, [diagnosticsKey]: nextEntry }));
+            return nextEntry;
+        } finally {
+            setYtDiagnosticsLoadingKey((current) => (current === diagnosticsKey ? '' : current));
+        }
+    }, [getYtDiagnosticsKey, ytDiagnosticsMap]);
+    const ytDiagnosticsStats = useMemo(() => {
+        const loadedDiagnostics = Object.values(ytDiagnosticsMap)
+            .map((entry) => entry?.diagnostics)
+            .filter(Boolean);
+        const observingCount = loadedDiagnostics.filter((entry) => entry.globalFeedbackState === 'observing').length;
+        const suppressedCount = loadedDiagnostics.filter((entry) => entry.globalFeedbackState === 'suppressed').length;
+        return {
+            loaded: loadedDiagnostics.length,
+            observing: observingCount,
+            suppressed: suppressedCount
+        };
+    }, [ytDiagnosticsMap]);
+    const getTrackDiagnosticsTone = useCallback((diagnostics = null) => {
+        const state = String(diagnostics?.globalFeedbackState || '').trim().toLowerCase();
+        if (state === 'suppressed') {
+            return {
+                label: 'Avoid for now',
+                className: 'border-rose-300/25 bg-rose-500/10 text-rose-100'
+            };
+        }
+        if (state === 'observing') {
+            return {
+                label: 'Use with caution',
+                className: 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+            };
+        }
+        if (diagnostics) {
+            return {
+                label: 'Good bet',
+                className: 'border-sky-300/25 bg-sky-500/10 text-sky-100'
+            };
+        }
+        return null;
+    }, []);
+    const getTrackDiagnosticsSupport = useCallback((diagnostics = null) => {
+        if (!diagnostics) return '';
+        const state = String(diagnostics?.globalFeedbackState || '').trim().toLowerCase();
+        if (state === 'suppressed') {
+            return 'Multiple rooms marked this backing as a bad fit. Only use it if you know it works.';
+        }
+        if (state === 'observing') {
+            return 'Hosts have mixed history on this backing. Double-check the title and version before you queue it.';
+        }
+        return 'No cross-room warning signs yet. This is the safest quick pick from the current matches.';
+    }, []);
+    useEffect(() => {
+        if (!showYtIndex) return;
+        const visibleEntries = ytIndexFilteredSorted.slice(0, 8);
+        const pendingEntries = visibleEntries.filter((entry) => {
+            const diagnosticsKey = getYtDiagnosticsKey(entry);
+            return diagnosticsKey && !ytDiagnosticsMap[diagnosticsKey]?.loaded;
+        });
+        if (!pendingEntries.length) return;
+        let cancelled = false;
+        void Promise.allSettled(
+            pendingEntries.map(async (entry) => {
+                if (cancelled) return null;
+                return fetchYtDiagnostics(entry);
+            })
+        );
+        return () => {
+            cancelled = true;
+        };
+    }, [fetchYtDiagnostics, getYtDiagnosticsKey, showYtIndex, ytDiagnosticsMap, ytIndexFilteredSorted]);
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const onViewportChange = () => {
@@ -5876,7 +6537,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setYtCurateLoading(true);
             setYtCurateStatus('');
             try {
-                const data = await callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 8, playableOnly: true });
+                const data = await callFunction('youtubeSearch', {
+                    query: `${query} karaoke`,
+                    maxResults: 8,
+                    playableOnly: true,
+                    roomCode,
+                    usageContext: { source: 'host_youtube_curate_search' }
+                });
                 if (canceled) return;
                 const items = (data?.items || [])
                     .map((item) => normalizeYtIndexEntry(item, {
@@ -5957,13 +6624,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const logoInputRef = useRef(null);
     const orbSkinInputRef = useRef(null);
     const autoJoinAttemptKeyRef = useRef('');
-    const [lastProvisionedLaunchUrls, setLastProvisionedLaunchUrls] = useState({
-        roomCode: '',
-        hostUrl: '',
-        tvUrl: '',
-        audienceUrl: '',
-        updatedAtMs: 0,
-    });
     const [quickStartChecklistRoomCode, setQuickStartChecklistRoomCode] = useState('');
     const [quickStartChecklistProgress, setQuickStartChecklistProgress] = useState({
         roomCode: '',
@@ -5984,7 +6644,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showFameLevel, setShowFameLevel] = useState(true);
     const [requestMode, setRequestMode] = useState(REQUEST_MODES.canonicalOpen);
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
+    const [audienceBackingMode, setAudienceBackingMode] = useState(AUDIENCE_BACKING_MODES.canonicalOnly);
+    const [unknownBackingPolicy, setUnknownBackingPolicy] = useState(UNKNOWN_BACKING_POLICIES.requireReview);
     const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
+    const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
     const [programMode, setProgramMode] = useState(RUN_OF_SHOW_PROGRAM_MODES.standard);
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
@@ -5996,7 +6659,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [hostNightPreset, setHostNightPreset] = useState('custom');
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
-    const [popTriviaEnabled, setPopTriviaEnabled] = useState(true);
+    const [popTriviaEnabled, setPopTriviaEnabled] = useState(false);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
             if (typeof window === 'undefined') return true;
@@ -6008,6 +6671,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     useEffect(() => {
         setAllowSingerTrackSelect(requestMode === REQUEST_MODES.guestBackingOptional);
+        setAudienceBackingMode(deriveAudienceBackingMode({
+            requestMode,
+            allowSingerTrackSelect: requestMode === REQUEST_MODES.guestBackingOptional,
+        }));
+        setUnknownBackingPolicy((currentPolicy) => {
+            if (requestMode !== REQUEST_MODES.guestBackingOptional) {
+                return deriveUnknownBackingPolicy({
+                    requestMode,
+                    allowSingerTrackSelect: false,
+                });
+            }
+            return currentPolicy || UNKNOWN_BACKING_POLICIES.requireReview;
+        });
     }, [requestMode]);
     const [audiencePreviewCollapsed, setAudiencePreviewCollapsed] = useState(() => {
         try {
@@ -6075,24 +6751,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [tipGiftUserId, setTipGiftUserId] = useState('');
     const [tipGiftAmount, setTipGiftAmount] = useState('');
-    const [roomManagerBusyCode, setRoomManagerBusyCode] = useState('');
-    const [roomManagerBusyAction, setRoomManagerBusyAction] = useState('');
-    const [roomManagerError, setRoomManagerError] = useState('');
-    const [recentHostRoomsLoading, setRecentHostRoomsLoading] = useState(false);
-    const [recentHostRooms, setRecentHostRooms] = useState([]);
-    const [entryError, setEntryError] = useState('');
-    const [landingLaunchMode, setLandingLaunchMode] = useState('start');
-    const [showLandingListingOptions, setShowLandingListingOptions] = useState(false);
-    const [launchRoomName, setLaunchRoomName] = useState('');
-    const [launchCoHostUids, setLaunchCoHostUids] = useState([]);
-    const [showLaunchCoHosts, setShowLaunchCoHosts] = useState(false);
-    const [launchCoHostSearch, setLaunchCoHostSearch] = useState('');
-    const [workspaceOperatorCandidates, setWorkspaceOperatorCandidates] = useState([]);
-    const [workspaceOperatorLoading, setWorkspaceOperatorLoading] = useState(false);
-    const [workspaceOperatorError, setWorkspaceOperatorError] = useState('');
-    const [venueSearchResults, setVenueSearchResults] = useState([]);
-    const [venueSearchLoading, setVenueSearchLoading] = useState(false);
-    const [venueSearchError, setVenueSearchError] = useState('');
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -6163,6 +6821,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [missionAdvancedPartyOpen, setMissionAdvancedPartyOpen] = useState(false);
     const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
     const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
+    const eventCreditsRemoteSyncKeyRef = useRef('');
     useEffect(() => {
         if (!isMarketingDemoFixture) return;
         const fixture = demoFixture || {};
@@ -6209,34 +6868,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             </button>
         </div>
     ) : null;
-    const resolveLaunchUrlsForRoomCode = useCallback((candidateCode = '') => {
-        const normalizedCode = String(candidateCode || '').trim().toUpperCase();
-        if (!normalizedCode) {
-            return {
-                roomCode: '',
-                hostUrl: '',
-                tvUrl: '',
-                audienceUrl: '',
-                provisioned: false,
-            };
-        }
-        const fallbackUrls = {
-            roomCode: normalizedCode,
-            hostUrl: `${hostBase}?mode=host&room=${encodeURIComponent(normalizedCode)}`,
-            tvUrl: `${tvBase}?room=${encodeURIComponent(normalizedCode)}&mode=tv`,
-            audienceUrl: `${audienceBase}?room=${encodeURIComponent(normalizedCode)}`,
-            provisioned: false,
-        };
-        const provisionedRoomCode = String(lastProvisionedLaunchUrls?.roomCode || '').trim().toUpperCase();
-        if (provisionedRoomCode !== normalizedCode) return fallbackUrls;
-        return {
-            roomCode: normalizedCode,
-            hostUrl: lastProvisionedLaunchUrls.hostUrl || fallbackUrls.hostUrl,
-            tvUrl: lastProvisionedLaunchUrls.tvUrl || fallbackUrls.tvUrl,
-            audienceUrl: lastProvisionedLaunchUrls.audienceUrl || fallbackUrls.audienceUrl,
-            provisioned: true,
-        };
-    }, [hostBase, tvBase, audienceBase, lastProvisionedLaunchUrls]);
+    const hostViewerUid = auth.currentUser?.uid || uid || '';
+    const {
+        roomManagerBusyCode,
+        roomManagerBusyAction,
+        recentHostRoomsLoading,
+        recentHostRooms,
+        setRoomManagerBusy,
+        clearRoomManagerBusy,
+        setRoomManagerError,
+    } = useHostRoomManager({
+        hostUid: hostViewerUid,
+        hostLogger,
+    });
+    const {
+        setLastProvisionedLaunchUrls,
+        entryError,
+        setEntryError,
+        landingLaunchMode,
+        setLandingLaunchMode,
+        launchRoomName,
+        setLaunchRoomName,
+        launchCoHostUids,
+        showLaunchCoHosts,
+        setShowLaunchCoHosts,
+        launchCoHostSearch,
+        setLaunchCoHostSearch,
+        workspaceOperatorLoading,
+        workspaceOperatorError,
+        resolveLaunchUrlsForRoomCode,
+        toggleLaunchCoHost,
+        filteredLaunchCoHosts,
+    } = useHostWorkspaceState({
+        audienceBase,
+        currentUid: hostViewerUid,
+        hostBase,
+        hostLogger,
+        hostName,
+        orgId: orgContext?.orgId || '',
+        tvBase,
+        uid,
+    });
     const activeRoomLaunchUrls = useMemo(
         () => resolveLaunchUrlsForRoomCode(roomCode),
         [resolveLaunchUrlsForRoomCode, roomCode]
@@ -6474,7 +7146,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     const ytFallbackData = await callFunction('youtubeSearch', {
                         query: `${normalizedQuery} karaoke`,
                         maxResults: 8,
-                        playableOnly: true
+                        playableOnly: true,
+                        roomCode,
+                        usageContext: { source: 'host_catalog_search_youtube_fallback' }
                     });
                     liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
                         reason: 'apple_missing'
@@ -6489,7 +7163,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setCatalogueResults(fallbackResults);
                     return;
                 }
-                const data = await callFunction('itunesSearch', { term: normalizedQuery, limit: 5 });
+                const data = await callFunction('itunesSearch', {
+                    term: normalizedQuery,
+                    limit: 5,
+                    roomCode,
+                    usageContext: { source: 'host_catalog_search_apple' }
+                });
                 const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
                     sourceReason: 'apple_authorized',
                     sourceDetail: 'Apple Music/iTunes search match.'
@@ -6545,7 +7224,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const runOfShowAutoStartCooldownUntilRef = useRef(0);
     const runOfShowAutoCompleteKeyRef = useRef('');
     const runOfShowPerformanceHandledRef = useRef('');
+    const runOfShowPerformanceIntroTimerRef = useRef(null);
+    const runOfShowPendingPerformanceIntroRef = useRef({ itemId: '', queueDocId: '' });
     const [runOfShowAutomationRetryTick, setRunOfShowAutomationRetryTick] = useState(0);
+    const triggerHostMomentCueRef = useRef(null);
     const runOfShowDirector = useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirectorState || {}),
         [runOfShowDirectorState]
@@ -6571,6 +7253,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }), [runOfShowLiveItem, runOfShowNextItem, runOfShowPolicy, runOfShowStagedItem]);
     const stormTimersRef = useRef([]);
     const sfxPulseRef = useRef(null);
+    const hostMomentFeedbackTimerRef = useRef(null);
     const seededMarqueeRef = useRef(false);
     const runOfShowRemoteSyncRef = useRef({
         director: '',
@@ -6582,6 +7265,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const runOfShowLocalEditAtRef = useRef(0);
     const toast = useToast();
+    const [activeMomentFeedback, setActiveMomentFeedback] = useState(null);
     const moderationNudgeAtRef = useRef(0);
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
@@ -6589,6 +7273,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         () => normalizeRunOfShowDirector(runOfShowDirectorState || roomRef.current?.runOfShowDirector || {}),
         [runOfShowDirectorState]
     );
+    const requestRunOfShowAutomationRecheck = useCallback(() => {
+        setRunOfShowAutomationRetryTick((tick) => tick + 1);
+    }, []);
+    const applyRunOfShowActionResult = useCallback((result = {}) => {
+        const nextDirector = normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+        if (result?.runOfShowDirector) {
+            const nextDirectorKey = JSON.stringify(nextDirector);
+            runOfShowRemoteSyncRef.current.director = nextDirectorKey;
+            setRunOfShowDirectorState(nextDirector);
+        }
+        if (result?.runOfShowPolicy) {
+            const normalizedPolicy = normalizeRunOfShowPolicy(result.runOfShowPolicy);
+            runOfShowRemoteSyncRef.current.policy = JSON.stringify(normalizedPolicy);
+            setRunOfShowPolicy(normalizedPolicy);
+        }
+        return nextDirector;
+    }, [runOfShowDirectorState]);
+    useEffect(() => {
+        return () => {
+            if (hostMomentFeedbackTimerRef.current) {
+                clearTimeout(hostMomentFeedbackTimerRef.current);
+            }
+        };
+    }, []);
     const deriveRunOfShowEditableStatus = useCallback((item = {}) => {
         const currentStatus = String(item?.status || '').toLowerCase();
         if (['live', 'complete', 'skipped'].includes(currentStatus)) return currentStatus;
@@ -6631,18 +7339,56 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .map((entry) => entry.trim())
             .filter(Boolean);
     }, []);
+    const clearRunOfShowPerformanceIntroTimer = useCallback(() => {
+        if (runOfShowPerformanceIntroTimerRef.current) {
+            clearTimeout(runOfShowPerformanceIntroTimerRef.current);
+            runOfShowPerformanceIntroTimerRef.current = null;
+        }
+        runOfShowPendingPerformanceIntroRef.current = { itemId: '', queueDocId: '' };
+    }, []);
+    const buildRunOfShowTakeoverSoundtrackPayload = useCallback((item = {}, startedAtMs = nowMs()) => {
+        const presentationPlan = item?.presentationPlan && typeof item.presentationPlan === 'object'
+            ? item.presentationPlan
+            : {};
+        if (presentationPlan?.soundtrackAutoPlay !== true) return null;
+        const sourceType = String(presentationPlan?.soundtrackSourceType || '').trim().toLowerCase();
+        if (!sourceType) return null;
+        const mediaUrl = String(presentationPlan?.soundtrackMediaUrl || '').trim();
+        const youtubeId = String(presentationPlan?.soundtrackYoutubeId || '').trim();
+        const appleMusicId = String(presentationPlan?.soundtrackAppleMusicId || '').trim();
+        if (sourceType === 'youtube' && !youtubeId && !mediaUrl) return null;
+        if (sourceType === 'apple_music' && !appleMusicId) return null;
+        if (sourceType === 'manual_external' && !mediaUrl) return null;
+        return {
+            sourceType,
+            label: String(presentationPlan?.soundtrackLabel || item?.title || getRunOfShowItemLabel(item?.type || '')).trim(),
+            mediaUrl,
+            youtubeId,
+            appleMusicId,
+            startedAtMs,
+            durationSec: Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10))
+        };
+    }, []);
     const buildRunOfShowStartRoomUpdates = useCallback((item = {}, startedAtMs = nowMs()) => {
         const roomUpdates = { tvPreviewOverlay: null };
         if (item?.presentationPlan?.publicTvTakeoverEnabled) {
+            const durationSec = Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10));
             roomUpdates.announcement = {
                 active: true,
                 runOfShowItemId: item.id,
                 type: item.type,
+                title: item.title || getRunOfShowItemLabel(item.type),
                 headline: item.presentationPlan?.headline || item.title || getRunOfShowItemLabel(item.type),
                 subhead: item.presentationPlan?.subhead || item.notes || '',
+                summary: item.type === 'performance'
+                    ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
+                    : '',
+                modeKey: item?.modeLaunchPlan?.modeKey || '',
                 takeoverScene: item.presentationPlan?.takeoverScene || item.type,
                 backgroundMedia: item.presentationPlan?.backgroundMedia || '',
                 accentTheme: item.presentationPlan?.accentTheme || 'cyan',
+                soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, startedAtMs),
+                durationSec,
                 startedAtMs
             };
         } else {
@@ -6659,6 +7405,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 options,
                 correct: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.correctIndex || 0)),
                 status: 'asking',
+                rewarded: false,
+                points: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.points || 100)),
                 startedAt: startedAtMs,
                 durationSec,
                 autoReveal,
@@ -6677,6 +7425,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 optionA: options[0] || 'Option A',
                 optionB: options[1] || 'Option B',
                 status: 'live',
+                rewarded: false,
+                points: Math.max(0, Number(item.modeLaunchPlan?.launchConfig?.points || 50)),
                 startedAt: startedAtMs,
                 durationSec,
                 autoReveal,
@@ -6710,9 +7460,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? item.roomMomentPlan.lightMode
             : 'off';
         return roomUpdates;
-    }, [parseRunOfShowOptions]);
+    }, [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
+    useEffect(() => () => {
+        if (runOfShowPerformanceIntroTimerRef.current) {
+            clearTimeout(runOfShowPerformanceIntroTimerRef.current);
+        }
+    }, []);
     const activateRunOfShowPerformanceItem = useCallback(async (item = {}, startedAtMs = nowMs()) => {
         if (item?.type !== 'performance' || !roomCode) return null;
+        clearRunOfShowPerformanceIntroTimer();
         const queueDocId = String(item?.preparedQueueSongId || buildRunOfShowQueueDocId(roomCode, item?.id)).trim();
         if (!queueDocId) return null;
         const backingPlan = item?.backingPlan || {};
@@ -6721,10 +7477,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const mediaUrl = rawMediaUrl || (youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : '');
         const appleMusicId = String(backingPlan?.appleMusicId || backingPlan?.trackId || '').trim();
         const queueDocRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', queueDocId);
-        const fallbackDurationSec = Math.max(
-            30,
-            Math.round(Number(item?.plannedDurationSec || backingPlan?.durationSec || 180) || 180)
-        );
+        const fallbackDurationSec = Math.max(30, getResolvedRunOfShowPerformanceDurationSec(item, 180));
         const queueSong = {
             id: queueDocId,
             roomCode,
@@ -6755,7 +7508,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             approvedSubmissionId: queueSong.approvedSubmissionId,
             duration: queueSong.duration,
             performanceStartedDurationSec: queueSong.performanceStartedDurationSec,
-            status: 'requested',
+            status: 'staged',
             timestamp: serverTimestamp(),
             priorityScore: startedAtMs,
             queuedFromRunOfShow: true,
@@ -6772,69 +7525,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             30,
             Math.round(Number(measuredDuration || queueSong.duration || fallbackDurationSec || 180) || 180)
         );
-        await updateDoc(queueDocRef, {
-            status: 'performing',
-            performingStartedAt: serverTimestamp(),
-            performanceStartedDurationSec: performanceDurationSec,
-            duration: performanceDurationSec,
-            mediaUrl: nextMediaUrl || queueSong.mediaUrl
-        });
         const roomSnapshot = roomRef.current || {};
         const stageDisplayFlags = {
             showLyricsTv: !!roomSnapshot?.showLyricsTv,
             showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
             showLyricsSinger: !!roomSnapshot?.showLyricsSinger
         };
-        if (useAppleBacking && autoStartMedia && appleMusicId) {
-            await playAppleMusicTrack(appleMusicId, {
-                title: queueSong.songTitle,
-                artist: queueSong.artist,
-                duration: performanceDurationSec
-            });
-            await updateRoom({
-                activeMode: 'karaoke',
-                activeScreen: 'stage',
-                announcement: null,
-                mediaUrl: '',
-                singAlongMode: false,
-                videoPlaying: false,
-                videoStartTimestamp: null,
-                currentPerformanceMeta: {
-                    songId: queueDocId,
-                    startedAtMs,
-                    durationSec: performanceDurationSec,
-                    source: 'apple_music',
-                    appleMusicId,
-                    runOfShowItemId: String(item?.id || '').trim()
-                },
-                videoVolume: 100,
-                tvPreviewOverlay: null,
-                gameData: null,
-                triviaQuestion: null,
-                wyrData: null,
-                howToPlay: { active: false, id: startedAtMs },
-                lightMode: 'off',
-                ...stageDisplayFlags
-            });
-            return { queueDocId, durationSec: performanceDurationSec };
-        }
         await stopAppleMusic?.();
         await updateRoom({
             activeMode: 'karaoke',
             activeScreen: 'stage',
-            announcement: null,
-            mediaUrl: nextMediaUrl,
-            singAlongMode: false,
-            videoPlaying: autoStartMedia && !!nextMediaUrl,
-            videoStartTimestamp: autoStartMedia ? startedAtMs : null,
-            currentPerformanceMeta: {
-                songId: queueDocId,
-                startedAtMs,
-                durationSec: performanceDurationSec,
-                source: nextMediaUrl ? 'backing_media' : 'none',
-                mediaUrl: nextMediaUrl || '',
-                runOfShowItemId: String(item?.id || '').trim()
+            announcement: {
+                active: true,
+                runOfShowItemId: String(item?.id || '').trim(),
+                type: 'performance',
+                title: item?.title || queueSong.songTitle || 'Performance Slot',
+                headline: queueSong.singerName || 'Next Performer',
+                subhead: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' · ') || 'Mic change in progress',
+                summary: 'Mic transition in progress',
+                takeoverScene: 'performance_intro',
+                accentTheme: item?.presentationPlan?.accentTheme || 'pink',
+                durationSec: RUN_OF_SHOW_PERFORMANCE_INTRO_SEC,
+                startedAtMs
             },
+            mediaUrl: '',
+            singAlongMode: false,
+            videoPlaying: false,
+            videoStartTimestamp: null,
+            currentPerformanceMeta: null,
             videoVolume: 100,
             tvPreviewOverlay: null,
             gameData: null,
@@ -6845,8 +7563,100 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...stageDisplayFlags,
             appleMusicPlayback: null
         });
-        return { queueDocId, durationSec: performanceDurationSec };
-    }, [playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
+        runOfShowPendingPerformanceIntroRef.current = {
+            itemId: String(item?.id || '').trim(),
+            queueDocId
+        };
+        runOfShowPerformanceIntroTimerRef.current = setTimeout(() => {
+            const pendingIntro = runOfShowPendingPerformanceIntroRef.current;
+            if (pendingIntro.itemId !== String(item?.id || '').trim() || pendingIntro.queueDocId !== queueDocId) return;
+            const latestDirector = normalizeRunOfShowDirector(roomRef.current?.runOfShowDirector || {});
+            if (roomRef.current?.runOfShowEnabled !== true || latestDirector.currentItemId !== String(item?.id || '').trim()) {
+                clearRunOfShowPerformanceIntroTimer();
+                return;
+            }
+            const actualStartedAtMs = nowMs();
+            updateDoc(queueDocRef, {
+                status: 'performing',
+                performingStartedAt: serverTimestamp(),
+                performanceStartedDurationSec: performanceDurationSec,
+                duration: performanceDurationSec,
+                mediaUrl: nextMediaUrl || queueSong.mediaUrl
+            })
+                .then(async () => {
+                    if (useAppleBacking && autoStartMedia && appleMusicId) {
+                        await playAppleMusicTrack(appleMusicId, {
+                            title: queueSong.songTitle,
+                            artist: queueSong.artist,
+                            duration: performanceDurationSec
+                        });
+                        await updateRoom({
+                            activeMode: 'karaoke',
+                            activeScreen: 'stage',
+                            announcement: null,
+                            mediaUrl: '',
+                            singAlongMode: false,
+                            videoPlaying: false,
+                            videoStartTimestamp: null,
+                            currentPerformanceMeta: {
+                                songId: queueDocId,
+                                startedAtMs: actualStartedAtMs,
+                                durationSec: performanceDurationSec,
+                                source: 'apple_music',
+                                appleMusicId,
+                                runOfShowItemId: String(item?.id || '').trim()
+                            },
+                            videoVolume: 100,
+                            tvPreviewOverlay: null,
+                            gameData: null,
+                            triviaQuestion: null,
+                            wyrData: null,
+                            howToPlay: { active: false, id: actualStartedAtMs },
+                            lightMode: 'off',
+                            ...stageDisplayFlags
+                        });
+                        return;
+                    }
+                    await updateRoom({
+                        activeMode: 'karaoke',
+                        activeScreen: 'stage',
+                        announcement: null,
+                        mediaUrl: nextMediaUrl,
+                        singAlongMode: false,
+                        videoPlaying: autoStartMedia && !!nextMediaUrl,
+                        videoStartTimestamp: autoStartMedia ? actualStartedAtMs : null,
+                        currentPerformanceMeta: {
+                            songId: queueDocId,
+                            startedAtMs: actualStartedAtMs,
+                            durationSec: performanceDurationSec,
+                            source: nextMediaUrl ? 'backing_media' : 'none',
+                            mediaUrl: nextMediaUrl || '',
+                            runOfShowItemId: String(item?.id || '').trim()
+                        },
+                        videoVolume: 100,
+                        tvPreviewOverlay: null,
+                        gameData: null,
+                        triviaQuestion: null,
+                        wyrData: null,
+                        howToPlay: { active: false, id: actualStartedAtMs },
+                        lightMode: 'off',
+                        ...stageDisplayFlags,
+                        appleMusicPlayback: null
+                    });
+                })
+                .catch((error) => {
+                    hostLogger.warn('Run-of-show performance intro handoff failed', error);
+                })
+                .finally(() => {
+                    clearRunOfShowPerformanceIntroTimer();
+                });
+        }, RUN_OF_SHOW_PERFORMANCE_INTRO_SEC * 1000);
+        return {
+            queueDocId,
+            durationSec: performanceDurationSec,
+            introDurationSec: RUN_OF_SHOW_PERFORMANCE_INTRO_SEC
+        };
+    }, [clearRunOfShowPerformanceIntroTimer, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
     const buildRunOfShowCompletionRoomUpdates = useCallback((item = {}, completedAtMs = nowMs()) => {
         if (item?.type === 'performance') return null;
         return {
@@ -6859,6 +7669,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             howToPlay: { active: false, id: completedAtMs },
             lightMode: 'off'
         };
+    }, []);
+    const fireRunOfShowItemCueIfNeeded = useCallback(async (item = {}, timing = 'start') => {
+        const audioPlan = item?.audioPlan && typeof item.audioPlan === 'object' ? item.audioPlan : {};
+        const cueId = String(audioPlan?.momentCueId || '').trim().toLowerCase();
+        const cueTiming = String(audioPlan?.momentCueTiming || 'start').trim().toLowerCase() || 'start';
+        if (!cueId || audioPlan?.momentCueAutoFire !== true || cueTiming !== String(timing || 'start').trim().toLowerCase()) {
+            return;
+        }
+        await triggerHostMomentCueRef.current?.(cueId, {
+            quiet: true,
+            skipActivityLog: true,
+            sourceLabel: 'run of show',
+            itemTitle: item?.title || getRunOfShowItemLabel(item?.type || '')
+        });
     }, []);
     const buildRunOfShowPreviewPayload = useCallback((item = {}) => ({
         active: true,
@@ -6875,10 +7699,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         options: parseRunOfShowOptions(item?.modeLaunchPlan?.launchConfig || {}),
         backgroundMedia: item?.presentationPlan?.backgroundMedia || '',
         accentTheme: item?.presentationPlan?.accentTheme || 'cyan',
+        soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, nowMs()),
         takeoverScene: item?.presentationPlan?.takeoverScene || item?.type || 'preview',
         durationSec: Math.max(6, Math.min(20, Number(item?.plannedDurationSec || 10) || 10)),
         startedAtMs: nowMs()
-    }), [parseRunOfShowOptions]);
+    }), [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
+    const syncRunOfShowTakeoverSoundtrack = useCallback(async (item = {}, action = 'start') => {
+        const soundtrack = buildRunOfShowTakeoverSoundtrackPayload(item, nowMs());
+        if (action === 'stop') {
+            if (soundtrack?.sourceType === 'apple_music' || String(item?.presentationPlan?.soundtrackSourceType || '').trim().toLowerCase() === 'apple_music') {
+                await stopAppleMusic?.();
+                await updateRoom({ appleMusicPlayback: null });
+            }
+            return;
+        }
+        if (!soundtrack || soundtrack.sourceType !== 'apple_music' || !soundtrack.appleMusicId) return;
+        await playAppleMusicTrack(soundtrack.appleMusicId, {
+            title: soundtrack.label || item?.title || '',
+            artist: '',
+            duration: soundtrack.durationSec
+        });
+    }, [buildRunOfShowTakeoverSoundtrackPayload, playAppleMusicTrack, stopAppleMusic, updateRoom]);
     const previewRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
         const item = director.items.find((entry) => entry.id === itemId);
@@ -6914,27 +7755,52 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!options?.silent) {
             trackEvent('run_of_show_item_prepared', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
         }
-        return persistRunOfShowDirector(nextDirector);
-    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState]);
+        const persistedDirector = await persistRunOfShowDirector(nextDirector);
+        if (ready) requestRunOfShowAutomationRecheck();
+        return persistedDirector;
+    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState]);
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (!isMarketingDemoFixture) {
-            const result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
-            const nextDirector = normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
-            if (result?.runOfShowDirector) {
-                setRunOfShowDirectorState(nextDirector);
+            let result;
+            let preparedDirector = currentDirector;
+            try {
+                result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
+            } catch (error) {
+                if (isRunOfShowModeActivationError(error)) {
+                    await persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
+                        programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                        runOfShowEnabled: true,
+                        roomUpdates: { tvPreviewOverlay: null }
+                    });
+                    await sleep(250);
+                    result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
+                } else if (isRunOfShowStartPreconditionError(error)) {
+                    preparedDirector = await prepareRunOfShowItem(itemId, { ...options, silent: true });
+                    const preparedItem = preparedDirector.items.find((item) => item.id === itemId);
+                    if (!preparedItem || preparedItem.status !== 'staged') throw error;
+                    await sleep(150);
+                    result = await executeRunOfShowAction({ roomCode, action: 'start', itemId });
+                } else {
+                    throw error;
+                }
             }
-            if (result?.runOfShowPolicy) {
-                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
-            }
-            const startedItem = nextDirector.items.find((item) => item.id === itemId) || requestedItem;
+            const nextDirector = applyRunOfShowActionResult(result);
+            const startedItem = nextDirector.items.find((item) => item.id === itemId)
+                || preparedDirector.items.find((item) => item.id === itemId)
+                || requestedItem;
             const startedAtMs = Number(startedItem?.liveStartedAtMs || nowMs());
             if (startedItem?.type === 'performance') {
                 await activateRunOfShowPerformanceItem(startedItem, startedAtMs);
             } else if (startedItem) {
                 await updateRoom(buildRunOfShowStartRoomUpdates(startedItem, startedAtMs));
+                await syncRunOfShowTakeoverSoundtrack(startedItem, 'start');
             }
+            if (startedItem) {
+                await fireRunOfShowItemCueIfNeeded(startedItem, 'start');
+            }
+            requestRunOfShowAutomationRecheck();
             trackEvent('run_of_show_item_started', { roomCode, itemId, automated: options?.automation === true });
             return nextDirector;
         }
@@ -6967,27 +7833,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 nextDirector.items.find((item) => item.id === itemId) || targetItem,
                 startedAtMs
             );
+            await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
+            requestRunOfShowAutomationRecheck();
             return persistedDirector;
         }
-        return persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowStartRoomUpdates(targetItem, startedAtMs) });
-    }, [activateRunOfShowPerformanceItem, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, roomCode, runOfShowDirectorState, updateRoom]);
+        const persistedDirector = await persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowStartRoomUpdates(targetItem, startedAtMs) });
+        await syncRunOfShowTakeoverSoundtrack(targetItem, 'start');
+        await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
+        requestRunOfShowAutomationRecheck();
+        return persistedDirector;
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, executeRunOfShowAction, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: options?.skip === true ? 'skip' : 'complete', itemId });
-            if (result?.runOfShowDirector) {
-                setRunOfShowDirectorState(normalizeRunOfShowDirector(result.runOfShowDirector));
-            }
-            if (result?.runOfShowPolicy) {
-                setRunOfShowPolicy(normalizeRunOfShowPolicy(result.runOfShowPolicy));
-            }
+            const nextDirector = applyRunOfShowActionResult(result);
             const roomUpdates = buildRunOfShowCompletionRoomUpdates(targetItem, nowMs());
             if (roomUpdates) {
                 await updateRoom(roomUpdates);
             }
+            await syncRunOfShowTakeoverSoundtrack(targetItem, 'stop');
+            if (!options?.skip && targetItem) {
+                await fireRunOfShowItemCueIfNeeded(targetItem, 'end');
+            }
+            requestRunOfShowAutomationRecheck();
             trackEvent(options?.skip === true ? 'run_of_show_item_skipped' : 'run_of_show_item_completed', { roomCode, itemId, automated: options?.automation === true });
-            return normalizeRunOfShowDirector(result?.runOfShowDirector || roomRef.current?.runOfShowDirector || runOfShowDirectorState || {});
+            return nextDirector;
         }
         const director = currentDirector;
         if (!targetItem) return director;
@@ -7005,8 +7877,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ))
         });
         trackEvent('run_of_show_item_completed', { roomCode, itemId, type: targetItem.type, automated: options?.automation === true });
-        return persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowCompletionRoomUpdates(targetItem, completedAtMs) || undefined });
-    }, [buildRunOfShowCompletionRoomUpdates, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode, runOfShowDirectorState, updateRoom]);
+        const persistedDirector = await persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowCompletionRoomUpdates(targetItem, completedAtMs) || undefined });
+        await syncRunOfShowTakeoverSoundtrack(targetItem, 'stop');
+        if (!options?.skip && targetItem) {
+            await fireRunOfShowItemCueIfNeeded(targetItem, 'end');
+        }
+        requestRunOfShowAutomationRecheck();
+        return persistedDirector;
+    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, executeRunOfShowAction, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -7029,6 +7907,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return persistRunOfShowDirector(nextDirector);
     }, [completeRunOfShowItem, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
     const setRunOfShowEnabledState = useCallback(async (nextEnabled) => {
+        if (nextEnabled !== true) {
+            clearRunOfShowPerformanceIntroTimer();
+        }
         const director = normalizeRunOfShowDirector({
             ...getCurrentRunOfShowDirector(),
             enabled: nextEnabled === true
@@ -7037,7 +7918,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             programMode: nextEnabled === true ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : programMode,
             runOfShowEnabled: nextEnabled === true
         });
-    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, programMode]);
+    }, [clearRunOfShowPerformanceIntroTimer, getCurrentRunOfShowDirector, persistRunOfShowDirector, programMode]);
     const setRunOfShowProgramModeState = useCallback(async (nextMode) => {
         const normalizedMode = normalizeRunOfShowProgramMode(nextMode);
         return persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
@@ -7097,14 +7978,55 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const patchRunOfShowItem = useCallback(async (itemId, patch = {}) => {
         const director = getCurrentRunOfShowDirector();
+        const previousItem = (director.items || []).find((item) => item.id === itemId) || null;
         const nextDirector = updateRunOfShowItem(director, itemId, (item) => {
             const nextItem = { ...item, ...(patch || {}) };
             nextItem.status = deriveRunOfShowEditableStatus(nextItem);
             nextItem.blockedReason = nextItem.status === 'blocked' ? (nextItem.type === 'performance' ? 'performance_not_ready' : 'item_not_ready') : '';
             return nextItem;
         });
-        return persistRunOfShowDirector(nextDirector);
-    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+        const persistedDirector = await persistRunOfShowDirector(nextDirector);
+        const persistedItem = (persistedDirector.items || []).find((item) => item.id === itemId) || null;
+        const activeAnnouncementItemId = String(room?.announcement?.runOfShowItemId || '').trim();
+        const previewItemId = String(room?.tvPreviewOverlay?.itemId || '').trim();
+
+        if (persistedItem && activeAnnouncementItemId === itemId) {
+            const startedAtMs = Math.max(
+                0,
+                Number(room?.announcement?.startedAtMs || persistedItem.liveStartedAtMs || nowMs())
+            );
+            const nextAnnouncement = persistedItem?.presentationPlan?.publicTvTakeoverEnabled
+                ? (buildRunOfShowStartRoomUpdates(persistedItem, startedAtMs)?.announcement || null)
+                : null;
+            await updateRoom({ announcement: nextAnnouncement });
+
+            const previousHadSoundtrack = hasRunOfShowTakeoverSoundtrackIdentity(previousItem?.presentationPlan || {});
+            const nextHasSoundtrack = hasRunOfShowTakeoverSoundtrackIdentity(persistedItem?.presentationPlan || {});
+            if (previousHadSoundtrack || nextHasSoundtrack) {
+                await syncRunOfShowTakeoverSoundtrack(previousItem || persistedItem, 'stop');
+                if (persistedItem?.presentationPlan?.soundtrackAutoPlay === true) {
+                    await syncRunOfShowTakeoverSoundtrack(persistedItem, 'start');
+                }
+            }
+        }
+
+        if (persistedItem && previewItemId === itemId) {
+            await updateRoom({ tvPreviewOverlay: buildRunOfShowPreviewPayload(persistedItem) });
+        }
+
+        return persistedDirector;
+    }, [
+        buildRunOfShowPreviewPayload,
+        buildRunOfShowStartRoomUpdates,
+        deriveRunOfShowEditableStatus,
+        getCurrentRunOfShowDirector,
+        persistRunOfShowDirector,
+        room?.announcement?.runOfShowItemId,
+        room?.announcement?.startedAtMs,
+        room?.tvPreviewOverlay?.itemId,
+        syncRunOfShowTakeoverSoundtrack,
+        updateRoom
+    ]);
     const runOfShowAssignableSlots = useMemo(
         () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
             .filter((item) => item?.type === 'performance')
@@ -7130,6 +8052,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const runOfShowQueueCandidates = useMemo(
         () => (Array.isArray(songs) ? songs : []).filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested'),
         [songs]
+    );
+    const runOfShowPendingCountsById = useMemo(() => {
+        const counts = {};
+        (Array.isArray(runOfShowSubmissions) ? runOfShowSubmissions : []).forEach((entry) => {
+            const itemId = String(entry?.itemId || '').trim();
+            if (!itemId) return;
+            if (String(entry?.submissionStatus || 'pending').trim().toLowerCase() !== 'pending') return;
+            counts[itemId] = Number(counts[itemId] || 0) + 1;
+        });
+        return counts;
+    }, [runOfShowSubmissions]);
+    const runOfShowPreflightReport = useMemo(
+        () => getRunOfShowPreflightReport(runOfShowDirector, { pendingCountsById: runOfShowPendingCountsById }),
+        [runOfShowDirector, runOfShowPendingCountsById]
     );
     const assignQueueSongToRunOfShowItem = useCallback(async (songId, itemId) => {
         const safeSongId = String(songId || '').trim();
@@ -7164,8 +8100,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             automationStatus: paused === true ? 'paused' : 'idle'
         });
     }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
-    const startRunOfShowNow = useCallback(async () => {
+    const startRunOfShowNow = useCallback(async (options = {}) => {
         if (!roomCode) return getCurrentRunOfShowDirector();
+        const allowUnsafe = options?.allowUnsafe === true;
+        if (!allowUnsafe && runOfShowPreflightReport.criticalCount > 0) {
+            toast(runOfShowPreflightReport.summary || 'Run of show still has critical blockers.');
+            return getCurrentRunOfShowDirector();
+        }
         const activeMode = normalizeRunOfShowProgramMode(programMode);
         if (activeMode !== RUN_OF_SHOW_PROGRAM_MODES.runOfShow || !runOfShowEnabled) {
             await persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
@@ -7190,20 +8131,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return preparedDirector;
         }
         return startRunOfShowItem(preparedItem.id, { manualLaunch: true });
-    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, prepareRunOfShowItem, programMode, roomCode, runOfShowEnabled, startRunOfShowItem, toast]);
-    const stopRunOfShowNow = useCallback(async () => persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
-        programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
-        runOfShowEnabled: false,
-        roomUpdates: {
-            tvPreviewOverlay: null,
-            announcement: null
-        }
-    }), [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, prepareRunOfShowItem, programMode, roomCode, runOfShowEnabled, runOfShowPreflightReport.criticalCount, runOfShowPreflightReport.summary, startRunOfShowItem, toast]);
+    const stopRunOfShowNow = useCallback(async () => {
+        const result = await persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
+            programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
+            runOfShowEnabled: false,
+            roomUpdates: {
+                tvPreviewOverlay: null,
+                announcement: null,
+                appleMusicPlayback: null
+            }
+        });
+        await stopAppleMusic?.();
+        return result;
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, stopAppleMusic]);
     const advanceRunOfShowNext = useCallback(async () => {
         const currentDirector = getCurrentRunOfShowDirector();
         const liveItem = getRunOfShowLiveItem(currentDirector);
-        if (liveItem?.id) return completeRunOfShowItem(liveItem.id, { manualAdvance: true });
         const stagedItem = getRunOfShowStagedItem(currentDirector);
+        if (liveItem?.id) {
+            const completedDirector = await completeRunOfShowItem(liveItem.id, { manualAdvance: true });
+            if (stagedItem?.id) {
+                return startRunOfShowItem(stagedItem.id, { manualAdvance: true });
+            }
+            return completedDirector;
+        }
         if (stagedItem?.id) return startRunOfShowItem(stagedItem.id, { manualAdvance: true });
         const nextItem = getNextRunOfShowItem(currentDirector);
         if (!nextItem?.id) return currentDirector;
@@ -7217,6 +8169,87 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         return startRunOfShowItem(preparedItem.id, { manualAdvance: true });
     }, [completeRunOfShowItem, getCurrentRunOfShowDirector, prepareRunOfShowItem, startRunOfShowItem, toast]);
+    const openRunOfShowIssueFromChrome = useCallback((options = {}) => {
+        setTab('run_of_show');
+        const requestedItemId = String(options?.itemId || '').trim();
+        const preferredCriticalItem = requestedItemId
+            ? (runOfShowPreflightReport?.criticalItems || []).find((entry) => String(entry?.itemId || '').trim() === requestedItemId) || null
+            : (runOfShowPreflightReport?.criticalItems?.[0] || null);
+        const preferredRiskyItem = !preferredCriticalItem
+            ? (
+                requestedItemId
+                    ? (runOfShowPreflightReport?.riskyItems || []).find((entry) => String(entry?.itemId || '').trim() === requestedItemId) || null
+                    : (runOfShowPreflightReport?.riskyItems?.[0] || null)
+            )
+            : null;
+        const preferredItemId = String(
+            requestedItemId
+            || preferredCriticalItem?.itemId
+            || preferredRiskyItem?.itemId
+            || runOfShowNextItem?.id
+            || runOfShowStagedItem?.id
+            || runOfShowLiveItem?.id
+            || ''
+        ).trim();
+        if (!preferredItemId) return;
+        const targetItem = (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : []).find((entry) => entry.id === preferredItemId) || null;
+        const pendingSubmissionCount = Number(runOfShowPendingCountsById?.[preferredItemId] || 0);
+        const firstBlockerKey = String(preferredCriticalItem?.blockers?.[0]?.key || '').trim().toLowerCase();
+        const issueAction = pendingSubmissionCount > 0 || firstBlockerKey === 'performer_submission_pending'
+            ? 'approval'
+            : firstBlockerKey.startsWith('backing_')
+                ? 'backing'
+                : preferredCriticalItem
+                    ? 'setup'
+                    : targetItem?.type === 'performance'
+                        ? 'backing'
+                        : 'setup';
+        setRunOfShowFocusRequest({
+            itemId: preferredItemId,
+            action: issueAction,
+            token: Date.now()
+        });
+    }, [
+        runOfShowDirector?.items,
+        runOfShowLiveItem?.id,
+        runOfShowNextItem?.id,
+        runOfShowPendingCountsById,
+        runOfShowPreflightReport?.criticalItems,
+        runOfShowPreflightReport?.riskyItems,
+        runOfShowStagedItem?.id
+    ]);
+    const triggerRunOfShowTimelineItem = useCallback(async (itemId) => {
+        const safeItemId = String(itemId || '').trim();
+        const currentDirector = getCurrentRunOfShowDirector();
+        const targetItem = currentDirector.items.find((item) => item.id === safeItemId) || null;
+        if (!targetItem) return currentDirector;
+        const targetStatus = String(targetItem?.status || '').trim().toLowerCase();
+        const targetIsLive = safeItemId === runOfShowLiveItem?.id;
+        const targetIsStaged = safeItemId === runOfShowStagedItem?.id;
+        const targetIsNext = safeItemId === runOfShowNextItem?.id;
+        if (!isRunOfShowRoom || targetIsLive || ['complete', 'skipped'].includes(targetStatus) || (!targetIsStaged && !targetIsNext)) {
+            setTab('run_of_show');
+            setRunOfShowFocusRequest({ itemId: safeItemId, token: Date.now() });
+            return currentDirector;
+        }
+        if (runOfShowLiveItem?.id) {
+            return advanceRunOfShowNext();
+        }
+        if (targetIsStaged) {
+            return startRunOfShowItem(safeItemId, { manualAdvance: true });
+        }
+        const preparedDirector = await prepareRunOfShowItem(safeItemId, { manualAdvance: true, silent: true });
+        const preparedItem = getRunOfShowStagedItem(preparedDirector)
+            || preparedDirector.items.find((item) => item.id === safeItemId)
+            || targetItem;
+        if (String(preparedItem?.status || '').trim().toLowerCase() !== 'staged') {
+            toast(`"${preparedItem?.title || getRunOfShowItemLabel(preparedItem?.type || '') || 'Next block'}" is not ready to go live yet.`);
+            setTab('run_of_show');
+            setRunOfShowFocusRequest({ itemId: safeItemId, token: Date.now() });
+            return preparedDirector;
+        }
+        return startRunOfShowItem(safeItemId, { manualAdvance: true });
+    }, [advanceRunOfShowNext, getCurrentRunOfShowDirector, isRunOfShowRoom, prepareRunOfShowItem, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id, setTab, startRunOfShowItem, toast]);
     const rewindRunOfShowPrevious = useCallback(async () => {
         const currentDirector = getCurrentRunOfShowDirector();
         const items = Array.isArray(currentDirector?.items) ? currentDirector.items : [];
@@ -7509,6 +8542,50 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return result;
     }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy]);
+    const applyRunOfShowStarterTemplate = useCallback(async (starterId = 'aahf_kickoff') => {
+        const safeStarterId = String(starterId || '').trim().toLowerCase();
+        const starter = safeStarterId === 'aahf_kickoff'
+            ? buildAahfKickoffStarterTemplate(Date.now())
+            : null;
+        if (!starter) return null;
+        const nextDirector = normalizeRunOfShowDirector(starter.runOfShowDirector || {});
+        const nextPolicy = normalizeRunOfShowPolicy(starter.runOfShowPolicy || {});
+        const nextTemplateMeta = normalizeRunOfShowTemplateMeta({
+            ...(runOfShowTemplateMeta || {}),
+            currentTemplateId: starter.templateId,
+            currentTemplateName: starter.templateName,
+        });
+        runOfShowRemoteSyncRef.current.director = JSON.stringify(nextDirector);
+        runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
+        runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextTemplateMeta);
+        setRunOfShowDirectorState(nextDirector);
+        setRunOfShowPolicy(nextPolicy);
+        setRunOfShowTemplateMeta(nextTemplateMeta);
+        setRunOfShowTemplates((prev) => {
+            const nextEntry = {
+                id: starter.templateId,
+                templateId: starter.templateId,
+                templateName: starter.templateName,
+                templateType: starter.templateType,
+                roomCode,
+                runOfShowDirector: nextDirector,
+                runOfShowPolicy: nextPolicy,
+            };
+            const existing = Array.isArray(prev) ? prev : [];
+            return [nextEntry, ...existing.filter((entry) => (entry.templateId || entry.id) !== starter.templateId)];
+        });
+        if (!isMarketingDemoFixture) {
+            await updateRoom({
+                programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                runOfShowEnabled: true,
+                runOfShowDirector: nextDirector,
+                runOfShowPolicy: nextPolicy,
+                runOfShowTemplateMeta: nextTemplateMeta,
+            });
+        }
+        toast(`${starter.templateName} applied.`);
+        return starter;
+    }, [isMarketingDemoFixture, roomCode, runOfShowTemplateMeta, toast, updateRoom]);
     const holdAutoBgDuringStageActivation = useCallback((durationMs = 2500) => {
         stageActivationPendingRef.current = true;
         if (stageActivationTimerRef.current) {
@@ -8038,7 +9115,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.allowSingerTrackSelect !== undefined && room?.allowSingerTrackSelect !== null) {
             setAllowSingerTrackSelect(!!room.allowSingerTrackSelect);
         }
+        setAudienceBackingMode(deriveAudienceBackingMode({
+            audienceBackingMode: room?.audienceBackingMode,
+            requestMode: room?.requestMode,
+            allowSingerTrackSelect: room?.allowSingerTrackSelect,
+        }));
+        setUnknownBackingPolicy(deriveUnknownBackingPolicy({
+            unknownBackingPolicy: room?.unknownBackingPolicy,
+            requestMode: room?.requestMode,
+            allowSingerTrackSelect: room?.allowSingerTrackSelect,
+        }));
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
+        setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
         const normalizedRunOfShowEnabled = room?.runOfShowEnabled === true || normalizedProgramMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
         const normalizedDirector = normalizeRunOfShowDirector(room?.runOfShowDirector || {});
@@ -8081,9 +9169,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
         }
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
-            setPopTriviaEnabled(room.popTriviaEnabled !== false);
+            setPopTriviaEnabled(room.popTriviaEnabled === true);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (isMarketingDemoFixture) return () => {};
         if (!roomCode || !isRunOfShowRoom) {
@@ -8187,7 +9275,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
-        if (runOfShowStagedItem.automationMode !== 'auto') return;
         const cooldownRemainingMs = runOfShowAutoStartCooldownUntilRef.current - nowMs();
         if (cooldownRemainingMs > 0) {
             const cooldownTimer = setTimeout(() => {
@@ -8226,7 +9313,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
         runOfShowLiveItem?.id,
-        runOfShowStagedItem?.automationMode,
         runOfShowStagedItem?.id,
         startRunOfShowItem
     ]);
@@ -8572,13 +9658,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (activeMode && activeMode !== 'karaoke') return;
         const lastPerfTs = getTimestampMs(room?.lastPerformance?.timestamp);
         if (lastPerfTs && nowMs() - lastPerfTs < 12000) return;
-        if (performingCount > 0 || queuedCount <= 0) return;
-        const queued = (songsRef.current || [])
-            .filter((song) => song.status === 'requested')
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
-        const next = queued[0];
+        if (performingCount > 0 || autoDjPlayableQueueCount <= 0) return;
+        const next = autoDjNextPlayableQueueSong;
         if (!next?.id) return;
-        const kickoffKey = `${next.id}:${queued.length}`;
+        const kickoffKey = `${next.id}:${autoDjPlayableQueueCount}`;
         if (autoDjKickoffRef.current === kickoffKey) return;
         autoDjKickoffRef.current = kickoffKey;
         const timer = setTimeout(() => {
@@ -8587,7 +9670,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }, 450);
         return () => clearTimeout(timer);
-    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, queuedCount, performingCount, startNextFromQueue]);
+    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
     useEffect(() => {
         if (!room?.autoDj) return;
         if (queuedCount > 0 || performingCount > 0) return;
@@ -8650,7 +9733,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const hydrated = items.map(item => {
                 const url = URL.createObjectURL(item.blob);
                 localUploadsRef.current.push(url);
-                return { title: item.title, artist: item.artist || 'Local Upload', url, _local: true, id: item.id, mediaType: item.mediaType || 'video', fileName: item.fileName || '' };
+                return {
+                    title: item.title,
+                    artist: item.artist || 'Offline Backup',
+                    url,
+                    _local: true,
+                    id: item.id,
+                    mediaType: item.mediaType || 'video',
+                    fileName: item.fileName || '',
+                    offlineReady: item.offlineReady !== false,
+                    createdAtMs: Number(item.createdAtMs || 0) || 0,
+                    size: Number(item.size || 0) || 0
+                };
             });
             setLocalLibrary(prev => [...prev, ...hydrated]);
         }).catch((e) => {
@@ -8804,70 +9898,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (lastError) throw lastError;
         return null;
     };
-    useEffect(() => {
-        let unsub = () => {};
-        const activeUid = auth.currentUser?.uid || uid || '';
-        if (!activeUid) {
-            setRecentHostRooms([]);
-            setRecentHostRoomsLoading(false);
-            return () => unsub();
-        }
-        setRecentHostRoomsLoading(true);
-        setRoomManagerError('');
-        try {
-            const recentRoomsQuery = query(
-                collection(db, 'artifacts', APP_ID, 'public', 'data', 'rooms'),
-                where('hostUids', 'array-contains', activeUid),
-                limit(20)
-            );
-            unsub = onSnapshot(
-                recentRoomsQuery,
-                (snapshot) => {
-                    const nextRooms = snapshot.docs
-                        .map((docSnap) => {
-                            const data = docSnap.data() || {};
-                            const createdAtMs = getTimestampMs(data.createdAt);
-                            const updatedAtMs = getTimestampMs(
-                                data.updatedAt
-                                || data.closedAt
-                                || data.createdAt
-                            );
-                            const archivedAtMs = getTimestampMs(data.archivedAt);
-                            return {
-                                code: docSnap.id,
-                                roomName: String(data.roomName || '').trim() || '',
-                                hostName: String(data.hostName || '').trim() || 'Host',
-                                orgName: String(data.orgName || '').trim() || '',
-                                activeMode: String(data.activeMode || 'karaoke').trim() || 'karaoke',
-                                createdAtMs,
-                                updatedAtMs,
-                                archivedAtMs,
-                                archived: !!archivedAtMs || String(data.archivedStatus || '').toLowerCase() === 'archived'
-                            };
-                        })
-                        .sort((a, b) => (b.updatedAtMs || b.createdAtMs || 0) - (a.updatedAtMs || a.createdAtMs || 0))
-                        .slice(0, 8);
-                    setRecentHostRooms(nextRooms);
-                    setRecentHostRoomsLoading(false);
-                },
-                (error) => {
-                    hostLogger.warn('Failed to load recent host rooms', error);
-                    setRoomManagerError('Could not load room history.');
-                    setRecentHostRooms([]);
-                    setRecentHostRoomsLoading(false);
-                }
-            );
-        } catch (error) {
-            hostLogger.warn('Recent room query failed', error);
-            setRoomManagerError('Could not load room history.');
-            setRecentHostRooms([]);
-            setRecentHostRoomsLoading(false);
-        }
-        return () => {
-            unsub();
-        };
-    }, [uid]);
-
     const syncOrgContextFromEntitlements = useCallback((entitlements = {}) => {
         setOrgContext(prev => ({
             ...prev,
@@ -8942,6 +9972,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackEvent,
         hostRoomProvisionDeploymentWarning: HOST_ROOM_PROVISION_DEPLOYMENT_WARNING,
     });
+    // Keep this after useHostLaunchFlow() so the eventCredits setter exists
+    // before React evaluates this effect's dependency array.
+    useEffect(() => {
+        const nextDraft = createEventCreditsDraft(room?.eventCredits || {});
+        const nextSyncKey = JSON.stringify(nextDraft);
+        if (eventCreditsRemoteSyncKeyRef.current === nextSyncKey) return;
+        eventCreditsRemoteSyncKeyRef.current = nextSyncKey;
+        setEventCreditsConfig(nextDraft);
+    }, [room?.eventCredits, setEventCreditsConfig]);
     const {
         joiningRoom,
         joinRoom,
@@ -8961,194 +10000,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setEntryError,
         toast,
     });
-    useEffect(() => {
-        if (String(launchRoomName || '').trim()) return;
-        const seededHost = String(hostName || '').trim();
-        if (!seededHost) return;
-        setLaunchRoomName(`${seededHost} Room`);
-    }, [hostName, launchRoomName]);
-
-    useEffect(() => {
-        if (!showLaunchCoHosts || !orgContext?.orgId || !uid) return undefined;
-        let cancelled = false;
-        setWorkspaceOperatorLoading(true);
-        setWorkspaceOperatorError('');
-        listHostWorkspaceOperators({ limit: 24 })
-            .then((result) => {
-                if (cancelled) return;
-                const items = Array.isArray(result?.items) ? result.items : [];
-                setWorkspaceOperatorCandidates(items);
-            })
-            .catch((error) => {
-                if (cancelled) return;
-                hostLogger.warn('Failed to load workspace operators', error);
-                setWorkspaceOperatorCandidates([]);
-                setWorkspaceOperatorError('Could not load co-host suggestions right now.');
-            })
-            .finally(() => {
-                if (cancelled) return;
-                setWorkspaceOperatorLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [hostLogger, orgContext?.orgId, showLaunchCoHosts, uid]);
-
-    useEffect(() => {
-        if (!quickLaunchDiscovery.publicRoom) {
-            setVenueSearchResults([]);
-            setVenueSearchLoading(false);
-            setVenueSearchError('');
-            return undefined;
-        }
-        const queryText = String(quickLaunchDiscovery.venueName || '').trim();
-        if (queryText.length < 2) {
-            setVenueSearchResults([]);
-            setVenueSearchLoading(false);
-            setVenueSearchError('');
-            return undefined;
-        }
-        let cancelled = false;
-        const timeoutId = window.setTimeout(async () => {
-            setVenueSearchLoading(true);
-            setVenueSearchError('');
-            try {
-                const result = await searchHostVenueAutocomplete({ query: queryText, limit: 6 });
-                if (cancelled) return;
-                setVenueSearchResults(Array.isArray(result?.items) ? result.items : []);
-            } catch (error) {
-                if (cancelled) return;
-                hostLogger.warn('Venue autocomplete search failed', error);
-                setVenueSearchResults([]);
-                setVenueSearchError('Could not load venue matches right now.');
-            } finally {
-                if (!cancelled) setVenueSearchLoading(false);
-            }
-        }, 220);
-        return () => {
-            cancelled = true;
-            window.clearTimeout(timeoutId);
-        };
-    }, [hostLogger, quickLaunchDiscovery.publicRoom, quickLaunchDiscovery.venueName]);
-
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const t = params.get('tab');
-        const c = params.get('catalogue');
-        const chat = params.get('chat');
-        const onboarding = String(params.get('onboarding') || '').toLowerCase();
-        const plan = String(params.get('plan') || '').trim();
-        const launchRoomCode = normalizeLaunchRoomCode(params.get('launch_room_code'));
-        const launchPublicRoom = parseLaunchBoolParam(params.get('launch_public_room'));
-        const launchVirtualOnly = parseLaunchBoolParam(params.get('launch_virtual_only'));
-        const launchTitle = String(params.get('launch_title') || '').trim();
-        const launchDescription = String(params.get('launch_description') || '').trim();
-        const launchStartsAt = String(params.get('launch_starts_at') || '').trim();
-        const launchCity = String(params.get('launch_city') || '').trim();
-        const launchState = String(params.get('launch_state') || '').trim();
-        const view = (params.get('view') || '').trim().toLowerCase();
-        const section = (params.get('section') || '').trim().toLowerCase();
-        const g = normalizeGameParam(params.get('game'));
-        let consumedMarketingOnboardingParams = false;
-        if (view) {
-            const chosenSection = section || getViewDefaultSection(view);
-            setActiveWorkspaceView(view);
-            setActiveWorkspaceSection(chosenSection);
-            if (view === 'queue') {
-                setTab('stage');
-                if (chosenSection === 'queue.catalog') setTab('browse');
-            } else if (view === 'show') {
-                setTab('run_of_show');
-            } else if (view === 'games') {
-                setTab('games');
-            } else if (view === 'audience') {
-                setTab('lobby');
-            } else {
-                setTab('admin');
-                const mappedTab = SECTION_TO_SETTINGS_TAB[chosenSection] || 'general';
-                setSettingsTab(mappedTab);
-            }
-        } else if (t === 'photos') {
-            setTab('lobby');
-            setLobbyTab('users');
-            openModerationInbox();
-        } else if (t === 'qa') {
-            setTab('admin');
-            setSettingsTab('qa');
-            setActiveWorkspaceView('advanced');
-            setActiveWorkspaceSection('advanced.diagnostics');
-        } else if (g) {
-            setTab('games');
-            setAutoOpenGameId(g);
-        } else if (t && ['stage', 'run_of_show', 'games', 'lobby', 'browse', 'admin'].includes(t)) {
-            setTab(t);
-            const redirect = LEGACY_TAB_REDIRECTS[t];
-            if (redirect) {
-                setActiveWorkspaceView(redirect.view);
-                setActiveWorkspaceSection(redirect.section);
-            }
-            if (t === 'admin') {
-                setActiveWorkspaceView('ops');
-                setActiveWorkspaceSection('ops.room_setup');
-                setSettingsTab('general');
-            }
-        }
-        if (c === '1') setCatalogueOnly(true);
-        if (chat === '1') setTab('stage');
-        if (onboarding === '1' || onboarding === 'true') {
-            const allowedPlanIds = new Set(HOST_ONBOARDING_PLAN_OPTIONS.map((option) => option.id));
-            const chosenPlan = allowedPlanIds.has(plan) ? plan : 'host_monthly';
-            openOnboardingWizard();
-            setOnboardingPlanId(chosenPlan);
-            setOnboardingStep(0);
-            consumedMarketingOnboardingParams = true;
-        }
-        if (
-            launchRoomCode
-            || launchPublicRoom
-            || launchVirtualOnly
-            || launchTitle
-            || launchDescription
-            || launchStartsAt
-            || launchCity
-            || launchState
-        ) {
-            if (launchRoomCode) {
-                setRoomCodeInput(launchRoomCode);
-            }
-            setLandingLaunchMode(
-                launchRoomCode && !launchPublicRoom && !launchVirtualOnly && !launchTitle && !launchDescription && !launchStartsAt && !launchCity && !launchState
-                    ? 'resume'
-                    : 'advanced'
-            );
-            setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft({
-                ...(launchTitle ? { title: launchTitle } : {}),
-                ...(launchDescription ? { description: launchDescription } : {}),
-                ...(launchStartsAt ? { startsAtLocal: launchStartsAt } : {}),
-                ...(launchCity ? { city: launchCity } : {}),
-                ...(launchState ? { state: launchState } : {}),
-                ...(launchPublicRoom ? { publicRoom: true } : {}),
-                ...(launchVirtualOnly ? { virtualOnly: true } : {}),
-            }));
-            consumedMarketingOnboardingParams = true;
-        }
-        if (consumedMarketingOnboardingParams) {
-            params.delete('onboarding');
-            params.delete('plan');
-            params.delete('source');
-            params.delete('launch_room_code');
-            params.delete('launch_public_room');
-            params.delete('launch_virtual_only');
-            params.delete('launch_title');
-            params.delete('launch_description');
-            params.delete('launch_starts_at');
-            params.delete('launch_city');
-            params.delete('launch_state');
-            const nextQuery = params.toString();
-            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
-            window.history.replaceState({}, '', nextUrl);
-        }
-    }, [openModerationInbox, openOnboardingWizard, setOnboardingPlanId, setOnboardingStep, setQuickLaunchDiscovery]);
+    useHostEntryBootstrap({
+        createQuickLaunchDiscoveryDraft,
+        getViewDefaultSection,
+        hostOnboardingPlanOptions: HOST_ONBOARDING_PLAN_OPTIONS,
+        isMarketingDemoFixture,
+        legacyTabRedirects: LEGACY_TAB_REDIRECTS,
+        normalizeGameParam,
+        normalizeLaunchRoomCode,
+        openModerationInbox,
+        openOnboardingWizard,
+        parseLaunchBoolParam,
+        qaHostFixtureId,
+        sectionToSettingsTab: SECTION_TO_SETTINGS_TAB,
+        setActiveWorkspaceSection,
+        setActiveWorkspaceView,
+        setAutoOpenGameId,
+        setCatalogueOnly,
+        setLandingLaunchMode,
+        setLobbyTab,
+        setOnboardingPlanId,
+        setOnboardingStep,
+        setQuickLaunchDiscovery,
+        setRoomCodeInput,
+        setSettingsTab,
+        setTab,
+    });
 
     const onboardingPlanLabel = useMemo(() => {
         const found = HOST_ONBOARDING_PLAN_OPTIONS.find(p => p.id === onboardingPlanId);
@@ -9631,6 +10508,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showFameLevel: !!legacyPresetSettings.showFameLevel,
             requestMode: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect),
             allowSingerTrackSelect: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+            audienceBackingMode: deriveAudienceBackingMode({
+                audienceBackingMode: legacyPresetSettings.audienceBackingMode,
+                requestMode: legacyPresetSettings.requestMode,
+                allowSingerTrackSelect: legacyPresetSettings.allowSingerTrackSelect,
+            }),
+            unknownBackingPolicy: deriveUnknownBackingPolicy({
+                unknownBackingPolicy: legacyPresetSettings.unknownBackingPolicy,
+                requestMode: legacyPresetSettings.requestMode,
+                allowSingerTrackSelect: legacyPresetSettings.allowSingerTrackSelect,
+            }),
             marqueeEnabled: !!nightSetupMarqueeEnabled,
             marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!nightSetupChatOnTv,
@@ -9641,7 +10528,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyPresetSettings.bingoAutoApprovePct ?? 50))),
             bingoAudienceReopenEnabled: legacyPresetSettings.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: legacyAutoLyricsEnabled,
-            popTriviaEnabled: legacyPresetSettings.popTriviaEnabled !== false,
+            popTriviaEnabled: legacyPresetSettings.popTriviaEnabled === true,
             gamePreviewId: nightSetupPrimaryMode === 'karaoke' ? null : nightSetupPrimaryMode,
             gameDefaults: {
                 triviaRoundSec: Math.max(5, Number(legacyGameDefaults.triviaRoundSec || 20)),
@@ -9699,12 +10586,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setShowFameLevel(!!payload.showFameLevel);
             setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
             setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
+            setAudienceBackingMode(deriveAudienceBackingMode({
+                audienceBackingMode: payload.audienceBackingMode,
+                requestMode: payload.requestMode,
+                allowSingerTrackSelect: payload.allowSingerTrackSelect,
+            }));
+            setUnknownBackingPolicy(deriveUnknownBackingPolicy({
+                unknownBackingPolicy: payload.unknownBackingPolicy,
+                requestMode: payload.requestMode,
+                allowSingerTrackSelect: payload.allowSingerTrackSelect,
+            }));
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setChatShowOnTv(!!payload.chatShowOnTv);
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
-            setPopTriviaEnabled(payload.popTriviaEnabled !== false);
+            setPopTriviaEnabled(payload.popTriviaEnabled === true);
             setSearchSources(payloadPreset.searchSources || { local: true, youtube: true, itunes: true });
             if (payload.autoBgMusic && !playingBg) setBgMusicState(true);
             if (!payload.autoBgMusic && playingBg) setBgMusicState(false);
@@ -9919,6 +10816,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             'room_users',
             'contacts',
             'selfie_submissions',
+            'crowd_selfie_submissions',
             'selfie_votes'
         ];
         await deleteRoomUploads(normalizedCode);
@@ -9981,8 +10879,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requireTypedCode: false
         });
         if (!approved) return;
-        setRoomManagerBusyCode(normalizedCode);
-        setRoomManagerBusyAction(nextArchived ? 'archive' : 'restore');
+        setRoomManagerBusy(normalizedCode, nextArchived ? 'archive' : 'restore');
         setRoomManagerError('');
         try {
             const activeUid = await ensureActiveUid();
@@ -10006,8 +10903,57 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRoomManagerError(nextArchived ? 'Could not archive room.' : 'Could not restore room.');
             toast(nextArchived ? 'Archive failed.' : 'Restore failed.');
         } finally {
-            setRoomManagerBusyCode('');
-            setRoomManagerBusyAction('');
+            clearRoomManagerBusy();
+        }
+    };
+    const setRoomDiscoverability = async (roomItem = {}, nextPublic = true) => {
+        const normalizedCode = String(roomItem?.code || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        const approved = confirmRoomManagerAction({
+            actionName: nextPublic ? 'publish this room to Discover' : 'make this room private',
+            roomCode: normalizedCode,
+            requireTypedCode: false
+        });
+        if (!approved) return;
+        setRoomManagerBusy(normalizedCode, nextPublic ? 'discover' : 'private');
+        setRoomManagerError('');
+        try {
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
+            if (nextPublic) {
+                const roomSupportConfig = buildProvisionEventCreditsPayload(roomItem?.eventCredits || {});
+                const listing = {
+                    publicRoom: true,
+                    title: String(roomItem?.discoverTitle || roomItem?.roomName || '').trim(),
+                    startsAtMs: Number(roomItem?.discoverStartsAtMs || 0) || 0,
+                    sessionMode: roomItem?.virtualOnly ? 'virtual' : (String(roomItem?.activeMode || 'karaoke').trim() || 'karaoke'),
+                    virtualOnly: roomItem?.virtualOnly === true,
+                    supportProvider: String(roomSupportConfig?.supportProvider || '').trim().toLowerCase(),
+                    supportLabel: String(roomSupportConfig?.supportLabel || '').trim(),
+                };
+                await runWithAppCheckWarmup(
+                    () => upsertHostRoomDiscoveryListing({
+                        roomCode: normalizedCode,
+                        listing,
+                    }),
+                    { scope: 'upsertHostRoomDiscoveryListing' }
+                );
+                toast(`Room ${normalizedCode} is now discoverable.`);
+            } else {
+                await runWithAppCheckWarmup(
+                    () => removeHostRoomDiscoveryListing(normalizedCode),
+                    { scope: 'removeHostRoomDiscoveryListing' }
+                );
+                toast(`Room ${normalizedCode} is now private.`);
+            }
+        } catch (error) {
+            hostLogger.warn('Room discoverability update failed', { roomCode: normalizedCode, nextPublic, error });
+            setRoomManagerError(nextPublic ? 'Could not publish room to Discover.' : 'Could not make room private.');
+            toast(nextPublic ? 'Discover publish failed.' : 'Make private failed.');
+        } finally {
+            clearRoomManagerBusy();
         }
     };
     const runLandingRoomCleanup = async (targetRoomCode = '') => {
@@ -10023,8 +10969,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requireTypedCode: false
         });
         if (!ok) return;
-        setRoomManagerBusyCode(normalizedCode);
-        setRoomManagerBusyAction('cleanup');
+        setRoomManagerBusy(normalizedCode, 'cleanup');
         setRoomManagerError('');
         try {
             const activeUid = await ensureActiveUid();
@@ -10042,8 +10987,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRoomManagerError('Could not clean room data.');
             toast('Cleanup failed.');
         } finally {
-            setRoomManagerBusyCode('');
-            setRoomManagerBusyAction('');
+            clearRoomManagerBusy();
         }
     };
     const runLandingRoomPermanentDelete = async (targetRoomCode = '') => {
@@ -10064,8 +11008,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requireTypedCode: true
         });
         if (!ok) return;
-        setRoomManagerBusyCode(normalizedCode);
-        setRoomManagerBusyAction('delete');
+        setRoomManagerBusy(normalizedCode, 'delete');
         setRoomManagerError('');
         try {
             const activeUid = await ensureActiveUid();
@@ -10084,10 +11027,135 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRoomManagerError('Could not permanently delete room.');
             toast('Permanent delete failed.');
         } finally {
-            setRoomManagerBusyCode('');
-            setRoomManagerBusyAction('');
+            clearRoomManagerBusy();
         }
     };
+    const setRoomPlannedStart = async (targetRoomCode = '', nextStartsAtLocal = '') => {
+        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        const safeStartsAtLocal = String(nextStartsAtLocal || '').trim();
+        const startsAtMs = safeStartsAtLocal ? fromDateTimeLocalInput(safeStartsAtLocal) : 0;
+        if (safeStartsAtLocal && !startsAtMs) {
+            toast('Enter a valid room start time.');
+            setRoomManagerError('Enter a valid room start time.');
+            return;
+        }
+        setRoomManagerBusy(normalizedCode, 'schedule');
+        setRoomManagerError('');
+        try {
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
+            await updateRoomByCode(normalizedCode, {
+                roomPlan: {
+                    startsAtLocal: safeStartsAtLocal,
+                    startsAtMs: startsAtMs || 0,
+                },
+                updatedAt: serverTimestamp(),
+            });
+            toast(safeStartsAtLocal ? `Room ${normalizedCode} scheduled.` : `Room ${normalizedCode} moved to tonight.`);
+        } catch (error) {
+            hostLogger.warn('Room schedule update failed', { roomCode: normalizedCode, error });
+            setRoomManagerError('Could not update room schedule.');
+            toast('Schedule update failed.');
+        } finally {
+            clearRoomManagerBusy();
+        }
+    };
+    const resetRoomToCurrentTemplate = async (roomItem = {}) => {
+        const normalizedCode = String(roomItem?.code || '').trim().toUpperCase();
+        const templateId = String(roomItem?.currentTemplateId || '').trim();
+        if (!normalizedCode || !templateId) return;
+        const approved = confirmRoomManagerAction({
+            actionName: `reset this room to template ${roomItem?.currentTemplateName || templateId}`,
+            roomCode: normalizedCode,
+            requireTypedCode: false
+        });
+        if (!approved) return;
+        setRoomManagerBusy(normalizedCode, 'template');
+        setRoomManagerError('');
+        try {
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
+            await manageRunOfShowTemplate({
+                roomCode: normalizedCode,
+                action: 'apply',
+                templateId,
+            });
+            toast(`${roomItem?.currentTemplateName || 'Current template'} reapplied to ${normalizedCode}.`);
+        } catch (error) {
+            hostLogger.warn('Room template reset failed', { roomCode: normalizedCode, templateId, error });
+            setRoomManagerError('Could not reset room from template.');
+            toast('Template reset failed.');
+        } finally {
+            clearRoomManagerBusy();
+        }
+    };
+    const seedAahfKickoffRoom = async (roomItem = {}) => {
+        const normalizedCode = String(roomItem?.code || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        const approved = confirmRoomManagerAction({
+            actionName: 'apply the AAHF Kick-Off setup to this room',
+            roomCode: normalizedCode,
+            requireTypedCode: false
+        });
+        if (!approved) return;
+        setRoomManagerBusy(normalizedCode, 'seed_aahf');
+        setRoomManagerError('');
+        try {
+            await runWithAppCheckWarmup(
+                () => assertRoomHostAccess(normalizedCode),
+                { scope: 'assertRoomHostAccess' }
+            );
+            const patch = buildRoomEventProfilePatch(AAHF_KICKOFF_EVENT_PROFILE_ID, {
+                startsAtLocal: AAHF_KICKOFF_STARTS_AT_LOCAL,
+                startsAtMs: AAHF_KICKOFF_STARTS_AT_MS,
+            });
+            if (!patch) {
+                throw new Error('AAHF event profile is unavailable.');
+            }
+            await updateRoomByCode(normalizedCode, {
+                ...patch,
+                updatedAt: serverTimestamp(),
+            });
+            toast(`AAHF Kick-Off applied to ${normalizedCode}.`);
+        } catch (error) {
+            hostLogger.warn('AAHF kickoff room seed failed', { roomCode: normalizedCode, error });
+            setRoomManagerError('Could not apply the AAHF Kick-Off setup.');
+            toast('AAHF room setup failed.');
+        } finally {
+            clearRoomManagerBusy();
+        }
+    };
+    const applyCurrentRoomEventProfile = useCallback(async (profileId = '') => {
+        const safeProfileId = String(profileId || '').trim().toLowerCase();
+        const profile = getRoomEventProfileMeta(safeProfileId);
+        if (!profile) {
+            toast('Event profile not found.');
+            return null;
+        }
+        if (!roomCode) {
+            toast('Create or open a room first.');
+            return null;
+        }
+        const patch = buildRoomEventProfilePatch(safeProfileId, {
+            startsAtLocal: profile.startsAtLocal,
+            startsAtMs: profile.startsAtMs,
+        });
+        if (!patch) {
+            toast('Could not build the event profile.');
+            return null;
+        }
+        await updateRoom({
+            ...patch,
+            updatedAt: serverTimestamp(),
+        });
+        toast(`${profile.label} applied to ${roomCode}.`);
+        return patch;
+    }, [roomCode, toast, updateRoom]);
 
     useEffect(() => {
         if (!normalizedInitialCode || isMarketingDemoFixture) return;
@@ -10279,6 +11347,123 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (sfxPulseRef.current) clearTimeout(sfxPulseRef.current);
         sfxPulseRef.current = setTimeout(() => setSfxLevel(0), 600);
     };
+    const momentSoundUrls = useMemo(() => {
+        const findSoundUrl = (...soundNames) => {
+            const targetNames = soundNames
+                .flat()
+                .map((name) => String(name || '').trim().toLowerCase())
+                .filter(Boolean);
+            return SOUNDS.find((sound) => targetNames.includes(String(sound?.name || '').trim().toLowerCase()))?.url || '';
+        };
+        return ['hype', 'celebrate', 'reveal', 'next_up', 'reset'].reduce((acc, cueId) => {
+            acc[cueId] = findSoundUrl(getHostMomentCueSoundCandidates(cueId));
+            return acc;
+        }, {});
+    }, []);
+    const clearHostMomentEffects = useCallback(async ({ keepMode = false } = {}) => {
+        const activeRoom = roomRef.current || {};
+        const lightMode = String(activeRoom?.lightMode || '').trim().toLowerCase();
+        if (lightMode === 'storm') {
+            await stopStormSequence?.();
+        } else if (lightMode && lightMode !== 'off') {
+            await updateRoom({
+                lightMode: 'off',
+                stormPhase: 'off',
+                lobbyVolleyEnabled: false
+            });
+        }
+        if (!keepMode && String(activeRoom?.activeMode || '').trim().toLowerCase() === 'selfie_cam') {
+            await updateRoom({ activeMode: 'karaoke' });
+        }
+    }, [stopStormSequence, updateRoom]);
+    const showHostMomentFeedback = useCallback((cueId = '', options = {}) => {
+        const meta = getHostMomentCueMeta(cueId);
+        if (!meta) return;
+        const sourceLabel = String(options?.sourceLabel || '').trim().toLowerCase();
+        const itemTitle = String(options?.itemTitle || '').trim();
+        const isRunOfShowCue = sourceLabel === 'run of show';
+        let detail = meta.detail || 'Live room cue';
+        if (isRunOfShowCue && itemTitle) {
+            detail = `Scene cue for ${itemTitle}`;
+        } else if (isRunOfShowCue) {
+            detail = 'Scene cue live';
+        } else if (itemTitle) {
+            detail = itemTitle;
+        } else if (sourceLabel) {
+            detail = `From ${sourceLabel}`;
+        }
+        setActiveMomentFeedback({
+            id: meta.id,
+            label: meta.label,
+            detail,
+            icon: meta.icon,
+            toneClass: meta.toneClass,
+            sourceTag: isRunOfShowCue ? 'Scene cue' : 'Live moment',
+            startedAt: Date.now()
+        });
+        if (hostMomentFeedbackTimerRef.current) {
+            clearTimeout(hostMomentFeedbackTimerRef.current);
+        }
+        hostMomentFeedbackTimerRef.current = setTimeout(() => {
+            setActiveMomentFeedback(null);
+            hostMomentFeedbackTimerRef.current = null;
+        }, 2600);
+    }, []);
+    const triggerHostMomentCue = useCallback(async (cueId = '', options = {}) => {
+        const normalizedCueId = String(cueId || '').trim().toLowerCase();
+        if (!normalizedCueId) return;
+        const quiet = options?.quiet === true;
+        const skipActivityLog = options?.skipActivityLog === true;
+        const sourceLabel = String(options?.sourceLabel || '').trim();
+        const itemTitle = String(options?.itemTitle || '').trim();
+        const playMomentSound = (soundUrl = '') => {
+            if (soundUrl) playSfxSafe(soundUrl);
+        };
+        const logMoment = async (message = '', emoji = EMOJI.sparkle) => {
+            if (skipActivityLog || !roomCode || !message) return;
+            await logActivity(roomCode, hostName || 'Host', message, emoji);
+        };
+        if (normalizedCueId === 'hype') {
+            playMomentSound(momentSoundUrls.hype);
+            await startBeatDrop?.();
+            await logMoment(sourceLabel ? `triggered a hype moment from ${sourceLabel}` : 'triggered a hype moment');
+            showHostMomentFeedback(normalizedCueId, options);
+            if (!quiet) toast?.(itemTitle ? `Hype cue fired for ${itemTitle}.` : 'Hype moment live.');
+            return;
+        }
+        if (normalizedCueId === 'celebrate') {
+            playMomentSound(momentSoundUrls.celebrate);
+            await logMoment(sourceLabel ? `triggered a celebration cue from ${sourceLabel}` : 'triggered a celebration moment');
+            showHostMomentFeedback(normalizedCueId, options);
+            if (!quiet) toast?.(itemTitle ? `Celebrate cue fired for ${itemTitle}.` : 'Celebration cue live.');
+            return;
+        }
+        if (normalizedCueId === 'reveal') {
+            playMomentSound(momentSoundUrls.reveal);
+            await logMoment(sourceLabel ? `triggered a reveal cue from ${sourceLabel}` : 'triggered a reveal cue');
+            showHostMomentFeedback(normalizedCueId, options);
+            if (!quiet) toast?.(itemTitle ? `Reveal cue fired for ${itemTitle}.` : 'Reveal cue live.');
+            return;
+        }
+        if (normalizedCueId === 'next_up') {
+            await clearHostMomentEffects();
+            playMomentSound(momentSoundUrls.next_up);
+            await logMoment(sourceLabel ? `teed up the next act from ${sourceLabel}` : 'teed up the next performer', EMOJI.mic);
+            showHostMomentFeedback(normalizedCueId, options);
+            if (!quiet) toast?.(itemTitle ? `Next up cue fired for ${itemTitle}.` : 'Next up cue live.');
+            return;
+        }
+        if (normalizedCueId === 'reset') {
+            await clearHostMomentEffects();
+            playMomentSound(momentSoundUrls.reset);
+            await logMoment(sourceLabel ? `reset the room after ${sourceLabel}` : 'reset the room vibe');
+            showHostMomentFeedback(normalizedCueId, options);
+            if (!quiet) toast?.('Room reset to neutral.');
+        }
+    }, [clearHostMomentEffects, hostName, logActivity, momentSoundUrls, playSfxSafe, roomCode, showHostMomentFeedback, startBeatDrop, toast]);
+    useEffect(() => {
+        triggerHostMomentCueRef.current = triggerHostMomentCue;
+    }, [triggerHostMomentCue]);
     const dropBonus = async (points) => {
         if (!roomCode) return;
         await updateRoom({ bonusDrop: { id: nowMs(), points, by: hostName || 'Host' } });
@@ -10632,6 +11817,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showFameLevel: !!presetSettings.showFameLevel,
             requestMode: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
             allowSingerTrackSelect: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+            audienceBackingMode: deriveAudienceBackingMode({
+                audienceBackingMode: presetSettings.audienceBackingMode,
+                requestMode: presetSettings.requestMode,
+                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
+            }),
+            unknownBackingPolicy: deriveUnknownBackingPolicy({
+                unknownBackingPolicy: presetSettings.unknownBackingPolicy,
+                requestMode: presetSettings.requestMode,
+                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
+            }),
             marqueeEnabled: !!presetSettings.marqueeEnabled,
             marqueeShowMode: presetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!presetSettings.chatShowOnTv,
@@ -10642,7 +11837,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
             bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: autoLyricsEnabled,
-            popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
+            popTriviaEnabled: presetSettings.popTriviaEnabled === true,
             gamePreviewId: presetSettings.gamePreviewId || null,
             gameDefaults: {
                 triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
@@ -10675,11 +11870,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setShowFameLevel(!!payload.showFameLevel);
             setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
             setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
+            setAudienceBackingMode(deriveAudienceBackingMode({
+                audienceBackingMode: payload.audienceBackingMode,
+                requestMode: payload.requestMode,
+                allowSingerTrackSelect: payload.allowSingerTrackSelect,
+            }));
+            setUnknownBackingPolicy(deriveUnknownBackingPolicy({
+                unknownBackingPolicy: payload.unknownBackingPolicy,
+                requestMode: payload.requestMode,
+                allowSingerTrackSelect: payload.allowSingerTrackSelect,
+            }));
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
-            setPopTriviaEnabled(payload.popTriviaEnabled !== false);
+            setPopTriviaEnabled(payload.popTriviaEnabled === true);
             setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
 
             if (payload.autoBgMusic && !playingBg) {
@@ -10747,6 +11952,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const saveApiKeys = async () => { 
         localStorage.setItem('bross_host_name', hostName || 'Host');
         if (roomCode) {
+            const nextEventCredits = buildProvisionEventCreditsPayload(eventCreditsConfig);
             await updateRoom({ 
                 tipUrl: tipSettings.link.trim() || null, 
                 tipQrUrl: tipSettings.qr.trim() || null,
@@ -10754,6 +11960,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 logoUrl: logoUrl?.trim() || null,
                 lobbyOrbSkinUrl: normalizeOrbSkinUrl(orbSkinUrl) || null,
                 tipCrates: normalizeTipCratesForSave(tipCrates),
+                eventCredits: nextEventCredits,
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
                 autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
@@ -10769,14 +11976,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 showFameLevel: !!showFameLevel,
                 requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
                 allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+                audienceBackingMode: deriveAudienceBackingMode({
+                    audienceBackingMode,
+                    requestMode,
+                    allowSingerTrackSelect,
+                }),
+                unknownBackingPolicy: deriveUnknownBackingPolicy({
+                    unknownBackingPolicy,
+                    requestMode,
+                    allowSingerTrackSelect,
+                }),
                 audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+                audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
                 programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
                 runOfShowEnabled: !!runOfShowEnabled,
                 runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
                 hostNightPreset: hostNightPreset || 'custom',
                 bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
                 autoLyricsOnQueue: !!autoLyricsOnQueue,
-                popTriviaEnabled: popTriviaEnabled !== false,
+                popTriviaEnabled: popTriviaEnabled === true,
                 queueSettings: {
                     limitMode: queueLimitMode || 'none',
                     limitCount: Math.max(0, Number(queueLimitCount || 0)),
@@ -10784,6 +12002,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     firstTimeBoost: !!queueFirstTimeBoost
                 }
             });
+            if (room?.publicRoom) {
+                await runWithAppCheckWarmup(
+                    () => upsertHostRoomDiscoveryListing({
+                        roomCode,
+                        listing: {
+                            publicRoom: true,
+                            title: String(room?.discoverTitle || room?.roomName || '').trim(),
+                            startsAtMs: Number(room?.discoverStartsAtMs || 0) || 0,
+                            sessionMode: room?.virtualOnly ? 'virtual' : (String(room?.activeMode || 'karaoke').trim() || 'karaoke'),
+                            virtualOnly: room?.virtualOnly === true,
+                            supportProvider: String(nextEventCredits?.supportProvider || '').trim().toLowerCase(),
+                            supportLabel: String(nextEventCredits?.supportLabel || '').trim(),
+                        },
+                    }),
+                    { scope: 'upsertHostRoomDiscoveryListing' }
+                );
+            }
         }
         toast("Settings Saved"); 
     };
@@ -10832,6 +12067,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!lastPerformanceTs || !videoId) return;
         const performanceKey = `${videoId}:${lastPerformanceTs}`;
         if (successfulYoutubePerformanceKeyRef.current === performanceKey) return;
+        const existingEntry = Array.isArray(ytIndex)
+            ? ytIndex.find((entry) => String(entry?.videoId || '').trim() === videoId)
+            : null;
+        if (existingEntry?.playable === false && Number(existingEntry?.failureCount || 0) > 0) {
+            successfulYoutubePerformanceKeyRef.current = performanceKey;
+            return;
+        }
         successfulYoutubePerformanceKeyRef.current = performanceKey;
         void upsertYtIndexEntries([{
             videoId,
@@ -10853,6 +12095,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.lastPerformance?.mediaUrl,
         room?.lastPerformance?.songTitle,
         room?.lastPerformance?.timestamp,
+        ytIndex,
         upsertYtIndexEntries
     ]);
 
@@ -11054,10 +12297,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const deleteRoomUploads = async (targetRoomCode = roomCode) => {
         const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!nextRoomCode) return 0;
-        const [uploadsSnap, reactionsSnap, selfieSnap] = await Promise.all([
+        const [uploadsSnap, reactionsSnap, selfieSnap, crowdSelfieSnap] = await Promise.all([
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', nextRoomCode))),
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', nextRoomCode))),
-            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', nextRoomCode)))
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', nextRoomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'), where('roomCode', '==', nextRoomCode)))
         ]);
         const storagePaths = new Set();
         uploadsSnap.docs.forEach((docSnap) => {
@@ -11073,6 +12317,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         });
         selfieSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            if (typeof data.storagePath === 'string' && data.storagePath) {
+                storagePaths.add(data.storagePath);
+            }
+        });
+        crowdSelfieSnap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
             if (typeof data.storagePath === 'string' && data.storagePath) {
                 storagePaths.add(data.storagePath);
@@ -11161,11 +12411,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }
 
     const indexYouTubePlaylist = async (playlistId) => {
-        const data = await callFunction('youtubePlaylist', { playlistId, maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL });
+        const data = await callFunction('youtubePlaylist', {
+            playlistId,
+            maxTotal: YOUTUBE_PLAYLIST_MAX_TOTAL,
+            roomCode,
+            usageContext: { source: 'host_youtube_playlist_index' }
+        });
         const items = normalizeYouTubePlaylistItems(data?.items || []);
         const playableMap = await fetchYouTubeEmbeddableStatusMap(items.map((item) => item.id), {
             batchSize: 50,
-            concurrency: 4
+            concurrency: 4,
+            roomCode
         });
         const playableItems = items.filter((item) => playableMap.get(item.id) === true);
         await upsertYtIndexEntries(playableItems.map((item) => ({
@@ -11360,7 +12616,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 };
             } else {
                 const query = `${title} ${artist}`.trim();
-                const data = await callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 1, playableOnly: true });
+                const data = await callFunction('youtubeSearch', {
+                    query: `${query} karaoke`,
+                    maxResults: 1,
+                    playableOnly: true,
+                    roomCode,
+                    usageContext: { source: 'host_manual_track_lookup_youtube' }
+                });
                 const first = (data?.items || [])[0];
                 if (!first) throw new Error('No verified playable results found');
                 item = {
@@ -11421,7 +12683,53 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setYtIndexActionVideoId('');
         }
     };
-    const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
+    const savePendingFileAsOfflineBackup = async (file, addToQueue = false) => {
+        if (!file) return null;
+        const maxBytes = 150 * 1024 * 1024;
+        if (file.size && file.size > maxBytes) {
+            toast('File too large. Max 150MB.');
+            return null;
+        }
+        try {
+            setUploadingLocal(true);
+            const title = file.name.replace(/\.[^/.]+$/, '');
+            const mediaType = file.type && file.type.startsWith('audio/') ? 'audio' : 'video';
+            const saved = await saveLocalVideo({
+                title,
+                artist: 'Offline Backup',
+                fileName: file.name,
+                mediaType,
+                blob: file,
+                size: file.size || 0,
+                offlineReady: true
+            });
+            const url = URL.createObjectURL(file);
+            localUploadsRef.current.push(url);
+            const newItem = {
+                id: saved.id,
+                title: saved.title,
+                artist: saved.artist,
+                url,
+                _local: true,
+                mediaType: saved.mediaType,
+                fileName: saved.fileName,
+                offlineReady: true,
+                createdAtMs: saved.createdAtMs,
+                size: saved.size || 0
+            };
+            setLocalLibrary((prev) => [...prev, newItem]);
+            toast(mediaType === 'audio' ? 'Saved offline audio backup on this device' : 'Saved offline video backup on this device');
+            if (addToQueue && roomCode) await addLocalItemToQueue(newItem);
+            return newItem;
+        } catch (error) {
+            hostLogger.error(error);
+            toast('Offline backup save failed.');
+            return null;
+        } finally {
+            setUploadingLocal(false);
+            setUploadProgress(0);
+        }
+    };
     const handleLocalUpload = async (file, addToQueue = false) => {
         if (!file) return null;
         if (!roomCode) {
@@ -11552,6 +12860,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Failed to delete upload');
         }
     };
+    const deleteOfflineBackup = async (item) => {
+        if (!item?.id || !item?._local) return;
+        const confirmed = window.confirm(`Remove offline backup "${item.title}" from this device?`);
+        if (!confirmed) return;
+        try {
+            await deleteLocalVideo(item.id);
+            setLocalLibrary((prev) => prev.filter((entry) => entry.id !== item.id));
+            if (item.url && String(item.url).startsWith('blob:')) {
+                URL.revokeObjectURL(item.url);
+                localUploadsRef.current = localUploadsRef.current.filter((url) => url !== item.url);
+            }
+            toast('Removed offline backup');
+        } catch (error) {
+            hostLogger.error(error);
+            toast('Failed to remove offline backup');
+        }
+    };
     const saveMarqueeSettings = async () => {
         const durationMs = Math.max(4000, Math.floor(Number(marqueeDurationSec || 0) * 1000));
         const intervalMs = Math.max(4000, Math.floor(Number(marqueeIntervalSec || 0) * 1000));
@@ -11640,6 +12965,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }, null);
             const photoSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), where('type', '==', 'photo')));
             const photos = photoSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const crowdSelfieSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'), where('roomCode', '==', roomCode)));
+            const crowdSelfies = crowdSelfieSnap.docs
+                .map((d) => ({ id: d.id, ...d.data() }))
+                .filter((entry) => String(entry.status || '').trim().toLowerCase() === 'approved')
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             const tournament = (() => {
                 const roomSummary = room?.bracketLastSummary || null;
                 if (roomSummary?.summaryVersion) {
@@ -11668,6 +12998,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 topEmojis,
                 loudestPerformance,
                 photos: photos.slice(0, 24),
+                crowdSelfies: crowdSelfies.slice(0, 24),
                 tournament,
                 highlights: [...tournamentMoments, ...(activities || []).slice(0, 20)].slice(0, 30)
             };
@@ -11859,6 +13190,62 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (sectionId) routeToWorkspaceSection(sectionId);
         return true;
     }, [joinRoom, roomCodeInput, routeToWorkspaceSection]);
+    const {
+        canStartLauncherRoom,
+        discoveryListingEnabled,
+        discoverVenueSummary,
+        handleLaunchVenueInputChange,
+        handleStartLauncherRoom,
+        hasLaunchRoomCode,
+        hasSelectedVenue,
+        landingListingDetailsOpen,
+        launchAccessPending,
+        launchRoomCodeCandidate,
+        launchState,
+        launchStateHelp,
+        launchStateTone,
+        recentRoomSnapshot,
+        resolvedLaunchPresetId,
+        retryLastHostAction,
+        selectLaunchVenueMatch,
+        selectedLaunchPreset,
+        setDiscoveryListingMode,
+        setShowLandingListingOptions,
+        shouldShowSetupCard,
+        venueSearchError,
+        venueSearchLoading,
+        venueSearchResults,
+    } = useHostLandingLaunchpad({
+        authError,
+        billingActionLoading,
+        canUseWorkspaceOnboarding,
+        createRoom,
+        creatingRoom,
+        entryError,
+        hostName,
+        hostNightPreset,
+        hostPermissionLevel,
+        hostLogger,
+        joiningRoom,
+        joinRoom,
+        launchCoHostUids,
+        launchRoomName,
+        openOnboardingWizard,
+        orgContext,
+        presetsById: HOST_NIGHT_PRESETS,
+        quickLaunchDiscovery,
+        recentHostRooms,
+        room,
+        roomCode,
+        roomCodeInput,
+        roomManagerBusyCode,
+        routeToWorkspaceSection,
+        setEntryError,
+        setQuickLaunchDiscovery,
+        subscriptionActionLoading,
+        toast,
+        uid,
+    });
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openAdminWorkspace('ops.room_setup');
@@ -12331,7 +13718,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setTop100ArtLoading(prev => ({ ...prev, [artKey]: true }));
         try {
             const term = encodeURIComponent(`${song.title} ${song.artist}`);
-            const data = await callFunction('itunesSearch', { term: decodeURIComponent(term), limit: 1 });
+            const data = await callFunction('itunesSearch', {
+                term: decodeURIComponent(term),
+                limit: 1,
+                roomCode,
+                usageContext: { source: 'host_top100_artwork' }
+            });
             const art = data?.results?.[0]?.artworkUrl100;
             if (art) {
                 const hiRes = art.replace('100x100', '600x600');
@@ -12465,8 +13857,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         toast(room?.autoLyricsOnQueue ? 'Queued (finalizing lyrics...)' : 'Added to queue');
     };
-
-    const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
 
     const getRoomUserTight15 = async (roomUser = {}) => {
         const fallback = sanitizeTight15List(roomUser?.tight15 || roomUser?.tight15Temp || []);
@@ -13366,29 +14756,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ))}
                             </div>
                         </div>
-                        {ytIndex.length > 0 && (
+                        {roomLibraryItems.length > 0 && (
                             <div>
                                 <div className="flex items-center justify-between mb-2">
-                                    <div className="text-xl font-bold text-white">YouTube Index</div>
+                                    <div>
+                                        <div className="text-xl font-bold text-white">Room Library</div>
+                                        <div className="text-sm text-zinc-500">Host-curated YouTube, uploads, and offline backups</div>
+                                    </div>
                                     <button onClick={() => { setYtIndexFilter(''); setShowYtIndex(true); }} className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-sm px-3 py-1`}>Open List</button>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                    {ytIndex.slice(0, 6).map(item => (
+                                    {roomLibraryItems.slice(0, 6).map(item => {
+                                        const sourceBadge = item.source === 'youtube'
+                                            ? 'YouTube'
+                                            : item.offlineReady
+                                                ? 'Offline Backup'
+                                                : 'Room Upload';
+                                        return (
                                         <div
-                                            key={item.videoId}
-                                            onClick={() => queueYouTubeFromCatalog(item)}
+                                            key={`${item.source}_${item.videoId || item.id || item.url}`}
+                                            onClick={() => {
+                                                if (item.source === 'youtube') queueYouTubeFromCatalog(item);
+                                                else addLocalItemToQueue(item);
+                                            }}
                                             className="bg-zinc-900/70 border border-zinc-800 rounded-xl px-3 py-3 text-left cursor-pointer hover:border-[#00C4D9]/40"
                                         >
                                             <div className="flex items-center gap-3">
-                                                <img src={item.artworkUrl100} alt={item.trackName} className="w-12 h-12 rounded-lg object-cover" />
+                                                <div className="w-12 h-12 rounded-lg bg-black/30 border border-white/10 overflow-hidden flex items-center justify-center">
+                                                    {item.artworkUrl100 ? (
+                                                        <img src={item.artworkUrl100} alt={item.trackName} className="w-12 h-12 object-cover" />
+                                                    ) : (
+                                                        <i className={`fa-solid ${item.mediaType === 'audio' ? 'fa-waveform-lines' : item.offlineReady ? 'fa-hard-drive' : 'fa-film'} text-cyan-200/80`}></i>
+                                                    )}
+                                                </div>
                                                 <div className="min-w-0 flex-1">
                                                     <div className="text-sm font-bold text-white truncate">{item.trackName}</div>
                                                     <div className="text-sm text-zinc-500 truncate">{item.artistName}</div>
+                                                    <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100/75">{sourceBadge}</div>
                                                 </div>
                                             </div>
                                             <div className="mt-3 text-sm uppercase tracking-widest text-zinc-500">Tap to queue</div>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             </div>
                         )}
@@ -13506,10 +14915,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const presetFeaturePills = [
             { label: 'Auto DJ', enabled: !!selectedPreset?.settings?.autoDj },
             { label: 'Background Music', enabled: !!selectedPreset?.settings?.autoBgMusic },
-            { label: 'Guest backing', enabled: normalizeRoomRequestMode(selectedPreset?.settings?.requestMode, selectedPreset?.settings?.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional },
-            { label: 'Bouncer Mode', enabled: !!selectedPreset?.settings?.bouncerMode },
+            { label: 'Guests Pick Track', enabled: normalizeRoomRequestMode(selectedPreset?.settings?.requestMode, selectedPreset?.settings?.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional },
+            { label: 'Host Approves Queue', enabled: !!selectedPreset?.settings?.bouncerMode },
             { label: 'Auto Lyrics', enabled: !!selectedPreset?.settings?.autoLyricsOnQueue },
-            { label: 'Pop Trivia', enabled: selectedPreset?.settings?.popTriviaEnabled !== false }
+            { label: 'Pop Trivia', enabled: selectedPreset?.settings?.popTriviaEnabled === true }
         ];
         const enabledPresetFeatureCount = presetFeaturePills.filter((item) => item.enabled).length;
         const recommendation = (() => {
@@ -14246,422 +15655,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     if(view === 'landing') {
-        const hasWorkspaceIdentity = Boolean(String(orgContext?.orgId || '').trim());
-        const hasHostIdentity = Boolean(String(hostName || '').trim());
-        const isFirstHostRun = !hasWorkspaceIdentity;
-        const shouldShowSetupCard = canUseWorkspaceOnboarding && isFirstHostRun;
-        const quickStartRoleAllowed = canQuickStartForRole(hostPermissionLevel);
-        const canQuickStartRoom = hasWorkspaceIdentity && hasHostIdentity && quickStartRoleAllowed;
-        const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
-        const authPending = !uid && !authError;
-        const launchAccessPending = (authPending || (!!uid && orgContext.loading) || billingActionLoading || !!subscriptionActionLoading) && !authError;
-        const authHealthLabel = authError
-            ? 'Auth Error'
-            : launchAccessPending
-                ? 'Checking Access'
-                : uid
-                    ? 'Authenticated'
-                    : 'Auth Pending';
-        const roomClosed = Boolean(room?.closedAt);
-        const roomPaused = Boolean(room?.paused || room?.isPaused || String(room?.activeMode || '').toLowerCase() === 'paused');
-        const launchRoomCodeCandidate = String(roomCodeInput || roomCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const hasLaunchRoomCode = launchRoomCodeCandidate.length >= 4 && launchRoomCodeCandidate.length <= 10;
-        const primaryLaunchDisabled = creatingRoom || joiningRoom || !!roomManagerBusyCode || launchAccessPending;
-        let launchState = 'Idle';
-        if (entryError) {
-            launchState = 'Error';
-        } else if (launchAccessPending) {
-            launchState = 'Syncing';
-        } else if (creatingRoom || joiningRoom) {
-            launchState = 'Starting';
-        } else if (roomClosed) {
-            launchState = 'Ended';
-        } else if (roomPaused) {
-            launchState = 'Paused';
-        } else if (roomCode && hasLaunchRoomCode && String(roomCode).toUpperCase() === launchRoomCodeCandidate) {
-            launchState = 'Live';
-        } else if (hasLaunchRoomCode) {
-            launchState = 'Ready';
-        }
-        const launchStateTone = (() => {
-            switch (launchState) {
-                case 'Syncing':
-                    return 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100';
-                case 'Starting':
-                    return 'border-cyan-300/40 bg-cyan-500/15 text-cyan-100';
-                case 'Live':
-                    return 'border-emerald-300/45 bg-emerald-500/15 text-emerald-100';
-                case 'Paused':
-                    return 'border-amber-300/45 bg-amber-500/15 text-amber-100';
-                case 'Ended':
-                    return 'border-zinc-300/40 bg-zinc-500/12 text-zinc-100';
-                case 'Error':
-                    return 'border-rose-300/45 bg-rose-500/15 text-rose-100';
-                case 'Ready':
-                    return 'border-indigo-300/45 bg-indigo-500/15 text-indigo-100';
-                default:
-                    return 'border-zinc-500/35 bg-zinc-500/10 text-zinc-200';
-            }
-        })();
-        const launchStateHelp = (() => {
-            switch (launchState) {
-                case 'Syncing':
-                    return 'Checking auth, workspace access, and room tools.';
-                case 'Starting':
-                    return 'Provisioning room and host controls.';
-                case 'Live':
-                    return `Room ${launchRoomCodeCandidate} is active.`;
-                case 'Paused':
-                    return 'Room is paused. Resume or reopen controls.';
-                case 'Ended':
-                    return 'Room session ended. Create or reopen a room.';
-                case 'Error':
-                    return 'Last launch action failed. Retry or use troubleshooting.';
-                case 'Ready':
-                    return `Room ${launchRoomCodeCandidate} is ready to open.`;
-                default:
-                    return 'Create a room or enter a room code to begin.';
-            }
-        })();
-        const resolveLaunchRoomCode = () => {
-            if (hasLaunchRoomCode) return launchRoomCodeCandidate;
-            toast('Enter a valid room code first.');
-            setEntryError('Enter a valid room code first.');
-            return '';
-        };
-        const launchUrls = hasLaunchRoomCode
-            ? resolveLaunchUrlsForRoomCode(launchRoomCodeCandidate)
-            : { hostUrl: '', tvUrl: '', audienceUrl: '', provisioned: false };
-        const launchAudienceUrl = launchUrls.audienceUrl;
-        const discoveryListingEnabled = !!quickLaunchDiscovery.publicRoom;
-        const discoveryListingVirtualOnly = !!quickLaunchDiscovery.virtualOnly;
-        const discoveryLocationSummary = discoveryListingVirtualOnly
-            ? 'Online only'
-            : [String(quickLaunchDiscovery.city || '').trim(), String(quickLaunchDiscovery.state || '').trim()].filter(Boolean).join(', ');
-        const discoveryLaunchSummary = discoveryListingEnabled
-            ? (
-                String(quickLaunchDiscovery.venueName || '').trim()
-                || String(quickLaunchDiscovery.title || '').trim()
-                || discoveryLocationSummary
-                || 'Guests will be able to find this room in Discover.'
-            )
-            : 'Private by default. Publish only if you want this room to appear in Discover.';
-        const setDiscoveryListingMode = (enabled) => {
-            if (enabled) {
-                setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
-                    ...prev,
-                    publicRoom: true
-                }));
-                return;
-            }
-            setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
-        };
-        const hasDiscoveryDraft = Boolean(
-            quickLaunchDiscovery.publicRoom
-            || quickLaunchDiscovery.virtualOnly
-            || String(quickLaunchDiscovery.title || '').trim()
-            || String(quickLaunchDiscovery.venueName || '').trim()
-            || String(quickLaunchDiscovery.description || '').trim()
-            || String(quickLaunchDiscovery.startsAtLocal || '').trim()
-            || String(quickLaunchDiscovery.address1 || '').trim()
-            || String(quickLaunchDiscovery.city || '').trim()
-            || String(quickLaunchDiscovery.state || '').trim()
-            || String(quickLaunchDiscovery.lat || '').trim()
-            || String(quickLaunchDiscovery.lng || '').trim()
-        );
-        const landingListingDetailsOpen = showLandingListingOptions || Boolean(
-            String(quickLaunchDiscovery.address1 || '').trim()
-            || String(quickLaunchDiscovery.lat || '').trim()
-            || String(quickLaunchDiscovery.lng || '').trim()
-        );
-        const recentLiveRooms = recentHostRooms.filter((roomItem) => !roomItem.archived);
-        const featuredRecentRoom = recentLiveRooms[0] || recentHostRooms[0] || null;
-        const launchModeMeta = {
-            start: {
-                label: 'Start Tonight',
-                title: shouldShowSetupCard ? 'Finish setup, then launch' : 'Create a fresh room',
-                detail: shouldShowSetupCard
-                    ? 'One quick setup pass.'
-                    : 'Fastest path to a live room.'
-            },
-            resume: {
-                label: 'Reopen',
-                title: featuredRecentRoom ? `Latest room ${featuredRecentRoom.code}` : 'Open a room code',
-                detail: featuredRecentRoom
-                    ? 'Jump back in fast.'
-                    : 'Use a room code to get back in.'
-            },
-            advanced: {
-                label: 'Advanced',
-                title: 'Diagnostics + room management',
-                detail: 'Recovery, listing details, and cleanup.'
-            }
-        };
-        const marketingChangelogUrl = typeof window !== 'undefined'
-            ? `${String(getSurfaceBaseHref('marketing', window.location) || '/').replace(/\/$/, '')}/changelog`
-            : '/changelog';
-        const recentRoomSnapshot = recentHostRooms.slice(0, 3);
-        const recentArchivedRoomCount = recentHostRooms.filter((roomItem) => roomItem.archived).length;
-        const launchRoomNameValue = String(launchRoomName || '').trim();
-        const resolvedLaunchPresetId = HOST_NIGHT_PRESETS[hostNightPreset] ? hostNightPreset : 'casual';
-        const selectedLaunchPreset = HOST_NIGHT_PRESETS[resolvedLaunchPresetId] || HOST_NIGHT_PRESETS.casual;
-        const canStartLauncherRoom = !!launchRoomNameValue && canQuickStartRoom && !primaryLaunchDisabled;
-        const filteredLaunchCoHosts = workspaceOperatorCandidates
-            .filter((candidate) => String(candidate?.uid || '').trim() && String(candidate?.uid || '').trim() !== String(uid || '').trim())
-            .filter((candidate) => {
-                const query = String(launchCoHostSearch || '').trim().toLowerCase();
-                if (!query) return true;
-                const haystack = [
-                    candidate?.name,
-                    candidate?.email,
-                    candidate?.uid,
-                    candidate?.role,
-                ].map((entry) => String(entry || '').toLowerCase()).join(' ');
-                return haystack.includes(query);
-            });
-        const discoverVenueSummary = [
-            String(quickLaunchDiscovery.city || '').trim(),
-            String(quickLaunchDiscovery.state || '').trim(),
-        ].filter(Boolean).join(', ');
-        const selectedVenueSource = String(quickLaunchDiscovery.venueSource || '').trim().toLowerCase();
-        const hasSelectedVenue = !!String(quickLaunchDiscovery.venueId || '').trim() && selectedVenueSource === 'selected';
-        const handleLaunchVenueInputChange = (value = '') => {
-            const nextValue = String(value || '');
-            setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
-                ...prev,
-                venueName: nextValue,
-                venueId: '',
-                venueSource: nextValue.trim() ? 'freeform' : '',
-            }));
-        };
-        const selectLaunchVenueMatch = (venue = {}) => {
-            const venueId = String(venue?.venueId || '').trim();
-            const title = String(venue?.title || '').trim();
-            const city = String(venue?.city || '').trim();
-            const state = String(venue?.state || '').trim();
-            const address1 = String(venue?.address1 || '').trim();
-            const lat = Number(venue?.location?.lat);
-            const lng = Number(venue?.location?.lng);
-            setQuickLaunchDiscovery((prev) => createQuickLaunchDiscoveryDraft({
-                ...prev,
-                venueName: title,
-                venueId,
-                venueSource: venueId ? 'selected' : 'freeform',
-                city: city || prev.city || '',
-                state: state || prev.state || '',
-                address1: address1 || prev.address1 || '',
-                lat: Number.isFinite(lat) ? String(lat) : (prev.lat || ''),
-                lng: Number.isFinite(lng) ? String(lng) : (prev.lng || ''),
-            }));
-            setVenueSearchResults([]);
-            setVenueSearchError('');
-        };
-        const toggleLaunchCoHost = (targetUid = '') => {
-            const safeUid = String(targetUid || '').trim();
-            if (!safeUid) return;
-            setLaunchCoHostUids((prev) => (
-                prev.includes(safeUid)
-                    ? prev.filter((entry) => entry !== safeUid)
-                    : [...prev, safeUid]
-            ));
-        };
-        const handleStartLauncherRoom = async ({ openNightSetup = false, launchTarget = 'stage' } = {}) => {
-            if (primaryLaunchDisabled) return;
-            if (!launchRoomNameValue) {
-                toast('Add a room name before starting.');
-                setEntryError('Add a room name before starting.');
-                return;
-            }
-            if (!canQuickStartRoom) {
-                if (canUseWorkspaceOnboarding) {
-                    toast('Finish host setup first, then start the room.');
-                    openOnboardingWizard();
-                    return;
-                }
-                toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-                return;
-            }
-            setEntryError('');
-            const result = await createRoom({
-                roomName: launchRoomNameValue,
-                coHostUids: launchCoHostUids,
-                nightPresetId: resolvedLaunchPresetId,
-                openNightSetup,
-            });
-            if (!result?.roomCode || openNightSetup) return;
-            if (launchTarget === 'show') {
-                routeToWorkspaceSection('show.timeline');
-                return;
-            }
-            if (launchTarget === 'settings') {
-                routeToWorkspaceSection('ops.room_setup', { forceAdmin: true });
-                return;
-            }
-            routeToWorkspaceSection('queue.live_run');
-        };
-        const portalMetrics = [
-            {
-                label: 'Current build',
-                value: RELEASE_VERSION,
-                detail: APP_BUILD ? APP_BUILD.split('.').slice(-2).join('.') : 'host surface'
-            },
-            {
-                label: 'Recent rooms',
-                value: recentHostRoomsLoading ? '...' : String(recentHostRooms.length).padStart(2, '0'),
-                detail: recentHostRoomsLoading ? 'Syncing library' : `${recentArchivedRoomCount} archived`
-            },
-            {
-                label: 'Room state',
-                value: launchState,
-                detail: hasLaunchRoomCode ? `Room ${launchRoomCodeCandidate}` : 'No room selected'
-            }
-        ];
-        const renderRecentRoomList = ({ managementMode = false } = {}) => (
-            <div className="mt-4 rounded-xl border border-cyan-400/25 bg-gradient-to-br from-[#120f22]/90 via-[#11152a]/90 to-[#13151f]/90 px-3 py-3 text-left">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-100/70">
-                    {managementMode ? 'Room Management' : 'Recent Rooms'}
-                </div>
-                <div className="text-xs text-cyan-100/75 mt-1">
-                    {managementMode
-                        ? 'Cleanup, archive, or restore rooms after the show.'
-                        : 'Jump back into a recent room without searching for the code first.'}
-                </div>
-                {recentHostRoomsLoading ? (
-                    <div className="text-xs text-cyan-100/70 mt-3">Loading recent rooms...</div>
-                ) : recentHostRooms.length > 0 ? (
-                    <div className="mt-3 space-y-2">
-                        {recentHostRooms.map((roomItem) => {
-                            const roomBusy = roomManagerBusyCode === roomItem.code;
-                            const busyLabel = roomBusy ? (
-                                roomManagerBusyAction === 'cleanup'
-                                    ? 'Cleaning...'
-                                    : roomManagerBusyAction === 'archive'
-                                        ? 'Archiving...'
-                                        : roomManagerBusyAction === 'restore'
-                                            ? 'Restoring...'
-                                            : roomManagerBusyAction === 'delete'
-                                                ? 'Deleting...'
-                                            : 'Working...'
-                            ) : '';
-                            const modifiedMs = roomItem.updatedAtMs || roomItem.createdAtMs || nowMs();
-                            return (
-                                <div key={roomItem.code} className="rounded-lg border border-cyan-400/22 bg-gradient-to-r from-[#0a101f]/80 via-[#0d1424]/80 to-[#1a1024]/70 px-2.5 py-2">
-                                    <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div>
-                                            <div className="text-sm font-semibold text-white">
-                                                {roomItem.code}
-                                                {roomItem.archived && (
-                                                    <span className="ml-2 text-[10px] uppercase tracking-[0.16em] rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-amber-200">Archived</span>
-                                                )}
-                                            </div>
-                                            <div className="text-[11px] text-cyan-100/70">
-                                                {roomItem.orgName || 'Workspace'}
-                                                {' | '}
-                                                {roomItem.activeMode || 'karaoke'}
-                                                {' | '}
-                                                {new Date(modifiedMs).toLocaleString()}
-                                            </div>
-                                        </div>
-                                        <div className="flex flex-wrap gap-1 justify-end">
-                                            <button
-                                                onClick={() => openExistingRoomWorkspace(roomItem.code, 'queue.live_run')}
-                                                disabled={roomBusy || joiningRoom}
-                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                Open
-                                            </button>
-                                            <button
-                                                onClick={() => openExistingRoomWorkspace(roomItem.code, managementMode ? 'advanced.diagnostics' : 'ops.room_setup')}
-                                                disabled={roomBusy || joiningRoom}
-                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                {managementMode ? 'Diagnostics' : 'Setup'}
-                                            </button>
-                                            {managementMode && (
-                                                <>
-                                                    <button
-                                                        onClick={() => runLandingRoomCleanup(roomItem.code)}
-                                                        disabled={roomBusy || joiningRoom}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {roomBusy && roomManagerBusyAction === 'cleanup' ? 'Cleaning...' : 'Cleanup'}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => setRoomArchivedState(roomItem.code, !roomItem.archived)}
-                                                        disabled={roomBusy || joiningRoom}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {roomBusy && (roomManagerBusyAction === 'archive' || roomManagerBusyAction === 'restore')
-                                                            ? busyLabel
-                                                            : roomItem.archived ? 'Restore' : 'Archive'}
-                                                    </button>
-                                                    {canPermanentlyDeleteRooms && (
-                                                        <button
-                                                            onClick={() => runLandingRoomPermanentDelete(roomItem.code)}
-                                                            disabled={roomBusy || joiningRoom}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} text-[11px] px-2 py-1 ${roomBusy || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            {roomBusy && roomManagerBusyAction === 'delete' ? 'Deleting...' : 'Delete Forever'}
-                                                        </button>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-500/8 px-2.5 py-2">
-                        <div className="text-xs text-cyan-100/75">
-                            {managementMode
-                                ? 'No rooms to manage yet. Launch your first room and it will appear here.'
-                                : 'No recent hosted rooms yet. Launch your first room and it will appear here.'}
-                        </div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setLandingLaunchMode('start')}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} text-[11px] px-2 py-1`}
-                            >
-                                Start Tonight
-                            </button>
-                            {canUseWorkspaceOnboarding && (
-                                <button
-                                    type="button"
-                                    onClick={openOnboardingWizard}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} text-[11px] px-2 py-1`}
-                                >
-                                    Finish Setup
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                )}
-                {roomManagerError && managementMode && (
-                    <div className="mt-2 text-xs text-rose-200 bg-rose-500/10 border border-rose-400/30 rounded-lg px-2 py-1.5">
-                        {roomManagerError}
-                    </div>
-                )}
-            </div>
-        );
-        const retryLastHostAction = async () => {
-            if (creatingRoom || joiningRoom || roomManagerBusyCode) return;
-            if (hasLaunchRoomCode) {
-                await joinRoom(launchRoomCodeCandidate);
-                return;
-            }
-            if (canQuickStartRoom) {
-                await createRoom({ openNightSetup: false });
-                return;
-            }
-            if (canUseWorkspaceOnboarding) {
-                openOnboardingWizard();
-                return;
-            }
-            toast(`${getMissingCapabilityLabel(CAPABILITY_KEYS.WORKSPACE_ONBOARDING)} is not enabled for this workspace.`);
-        };
         return ( 
         <div
             className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
@@ -14723,16 +15716,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 retryLastHostAction={retryLastHostAction}
                 hostUpdateDeploymentBanner={hostUpdateDeploymentBanner}
                 recentHostRoomsLoading={recentHostRoomsLoading}
+                recentHostRooms={recentHostRooms}
                 recentRoomSnapshot={recentRoomSnapshot}
                 roomManagerBusyCode={roomManagerBusyCode}
+                roomManagerBusyAction={roomManagerBusyAction}
                 joiningRoom={joiningRoom}
                 openExistingRoomWorkspace={openExistingRoomWorkspace}
                 roomCodeInput={roomCodeInput}
                 setRoomCodeInput={setRoomCodeInput}
                 launchRoomCodeCandidate={launchRoomCodeCandidate}
                 hasLaunchRoomCode={hasLaunchRoomCode}
-                joinRoom={joinRoom}
-                renderRecentRoomList={renderRecentRoomList}
+                runLandingRoomCleanup={runLandingRoomCleanup}
+                setRoomPlannedStart={setRoomPlannedStart}
+                setRoomDiscoverability={setRoomDiscoverability}
+                setRoomArchivedState={setRoomArchivedState}
+                resetRoomToCurrentTemplate={resetRoomToCurrentTemplate}
+                seedAahfKickoffRoom={seedAahfKickoffRoom}
+                runLandingRoomPermanentDelete={runLandingRoomPermanentDelete}
+                audienceBase={audienceBase}
+                canPermanentlyDeleteRooms={canPermanentlyDeleteRooms}
             />
             {showOnboardingWizard && (
                 <div className="fixed inset-0 z-[95] bg-black/85 backdrop-blur-sm overflow-y-auto p-3 md:p-6">
@@ -15046,6 +16048,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostName: hostName || 'Host',
         logoUrl: (logoUrl || '').trim() || null,
         tipCrates: normalizeTipCratesForSave(tipCrates),
+        eventCredits: buildProvisionEventCreditsPayload(eventCreditsConfig),
         appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
         appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
         autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
@@ -15061,14 +16064,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         showFameLevel: !!showFameLevel,
         requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
         allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+        audienceBackingMode: deriveAudienceBackingMode({
+            audienceBackingMode,
+            requestMode,
+            allowSingerTrackSelect,
+        }),
+        unknownBackingPolicy: deriveUnknownBackingPolicy({
+            unknownBackingPolicy,
+            requestMode,
+            allowSingerTrackSelect,
+        }),
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+        audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
         programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
         runOfShowEnabled: !!runOfShowEnabled,
         runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
         hostNightPreset: hostNightPreset || 'custom',
         bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
         autoLyricsOnQueue: !!autoLyricsOnQueue,
-        popTriviaEnabled: popTriviaEnabled !== false,
+        popTriviaEnabled: popTriviaEnabled === true,
         queueSettings: {
             limitMode: queueLimitMode || 'none',
             limitCount: Math.max(0, Number(queueLimitCount || 0)),
@@ -15085,6 +16099,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostName: room.hostName || 'Host',
             logoUrl: (room.logoUrl || '').trim() || null,
             tipCrates: normalizeTipCratesForSave(persistedTipCrates),
+            eventCredits: buildProvisionEventCreditsPayload(room.eventCredits || {}),
             appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(room.appleMusicAutoPlaylistId || ''),
             appleMusicAutoPlaylistTitle: (room.appleMusicAutoPlaylistTitle || '').trim(),
             autoBgFadeOutMs: Math.max(200, Number(room.autoBgFadeOutMs || 900)),
@@ -15100,14 +16115,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showFameLevel: room.showFameLevel !== false,
             requestMode: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect),
             allowSingerTrackSelect: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+            audienceBackingMode: deriveAudienceBackingMode({
+                audienceBackingMode: room.audienceBackingMode,
+                requestMode: room.requestMode,
+                allowSingerTrackSelect: room.allowSingerTrackSelect,
+            }),
+            unknownBackingPolicy: deriveUnknownBackingPolicy({
+                unknownBackingPolicy: room.unknownBackingPolicy,
+                requestMode: room.requestMode,
+                allowSingerTrackSelect: room.allowSingerTrackSelect,
+            }),
             audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
+            audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
             programMode: normalizeRunOfShowProgramMode(room.programMode),
             runOfShowEnabled: room.runOfShowEnabled === true || normalizeRunOfShowProgramMode(room.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
             runOfShowDirector: normalizeRunOfShowDirector(room.runOfShowDirector || {}),
             hostNightPreset: room.hostNightPreset || 'custom',
             bingoAudienceReopenEnabled: room.bingoAudienceReopenEnabled !== false,
             autoLyricsOnQueue: !!room.autoLyricsOnQueue,
-            popTriviaEnabled: room.popTriviaEnabled !== false,
+            popTriviaEnabled: room.popTriviaEnabled === true,
             queueSettings: {
                 limitMode: room.queueSettings?.limitMode || 'none',
                 limitCount: Math.max(0, Number(room.queueSettings?.limitCount || 0)),
@@ -15380,8 +16406,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         compactViewport: compactHostViewport,
         layoutMode: hostStageLayoutMode,
         onUpsertYtIndexEntries: upsertYtIndexEntries,
+        runOfShowEnabled,
+        runOfShowAutomationPaused: !!runOfShowDirector?.automationPaused,
+        onOpenRunOfShow: () => setTab('run_of_show'),
+        onToggleRunOfShowPause: toggleRunOfShowAutomationPause,
+        onStopRunOfShow: stopRunOfShowNow,
+        ytDiagnosticsMap,
+        fetchYtDiagnostics,
+        getYtDiagnosticsKey,
+        getTrackDiagnosticsTone,
+        getTrackDiagnosticsSupport,
         runOfShowAssignableSlots,
-        onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem
+        onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem,
+        onTriggerMoment: triggerHostMomentCue,
+        activeMomentId: activeMomentFeedback?.id || ''
     };
     const inAdminWorkspace = tab === 'admin';
 
@@ -15437,6 +16475,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     return (
             <div
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
+                data-host-active-tab={String(tab || '').trim()}
+                data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
                 className={`host-app min-h-screen ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden ${tabletTouchViewport ? 'overflow-y-hidden' : 'overflow-y-auto md:overflow-hidden'}`}
             >
                 {/* Header */}
@@ -15572,7 +16612,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     runOfShowLiveItem={runOfShowLiveItem}
                     runOfShowStagedItem={runOfShowStagedItem}
                     runOfShowNextItem={runOfShowNextItem}
+                    runOfShowPreflightReport={runOfShowPreflightReport}
                     onOpenShowWorkspace={() => handleTopChromeTabChange('run_of_show')}
+                    onOpenRunOfShowIssue={openRunOfShowIssueFromChrome}
+                    onTriggerRunOfShowItem={triggerRunOfShowTimelineItem}
                     onFocusRunOfShowItem={(itemId) => {
                         handleTopChromeTabChange('run_of_show');
                         setRunOfShowFocusRequest({
@@ -15584,7 +16627,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onStopRunOfShow={stopRunOfShowNow}
                     onAdvanceRunOfShow={advanceRunOfShowNext}
                     onRewindRunOfShow={rewindRunOfShowPrevious}
+                    onToggleRunOfShowAutomationPause={toggleRunOfShowAutomationPause}
                     runOfShowFocusMode={tab === 'run_of_show'}
+                    activeMomentFeedback={activeMomentFeedback}
                 />
                 <ModerationInboxDrawer
                     open={showModerationInbox}
@@ -15610,7 +16655,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-2 sm:p-3 md:p-4 lg:p-4' : 'p-3 sm:p-4 md:p-5 lg:p-6'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
@@ -15628,11 +16673,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </>
                 )}
                 {tab === 'run_of_show' && (
-                    <div className="flex min-h-0 flex-col gap-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-cyan-500/18 bg-gradient-to-r from-cyan-500/6 via-zinc-950/80 to-fuchsia-500/6 px-3 py-2">
+                    <div className="flex min-h-0 flex-col gap-4">
+                        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/92 px-4 py-3 backdrop-blur">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Workspace</div>
-                                <div className="mt-1 text-xs text-zinc-400">Timeline-first planning and live control.</div>
+                                <div className="mt-1 text-sm text-zinc-400">Timeline-first planning and live control.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -15655,6 +16700,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {roomCode ? (
                                 <RunOfShowDirectorPanel
                                     enabled={runOfShowEnabled}
+                                    roomCode={roomCode}
                                     programMode={programMode}
                                     director={runOfShowDirector}
                                     runOfShowPolicy={runOfShowPolicy}
@@ -15672,6 +16718,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     operatorRole={runOfShowOperatorRole}
                                     operatorCapabilities={runOfShowOperatorCapabilities}
                                     operatingHint={runOfShowOperatingHint}
+                                    preflightReport={runOfShowPreflightReport}
                                     compactViewport={compactHostViewport}
                                     onSetEnabled={setRunOfShowEnabledState}
                                     onSetProgramMode={setRunOfShowProgramModeState}
@@ -15697,6 +16744,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
                                     onSaveTemplate={saveRunOfShowTemplate}
                                     onApplyTemplate={applyRunOfShowTemplate}
+                                    onApplyStarterTemplate={applyRunOfShowStarterTemplate}
                                     onArchiveCurrent={archiveCurrentRunOfShow}
                                 />
                             ) : (
@@ -16571,6 +17619,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     );
                                 })}
                             </div>
+                            <div className="mt-4">
+                                <div className="text-sm uppercase tracking-widest text-zinc-400">Event profiles</div>
+                                <div className="host-form-helper mt-1">Reusable room packages for event-specific branding, audience shell colors, rules, credits, and run-of-show starters.</div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                                    {ROOM_EVENT_PROFILE_OPTIONS.map((profile) => {
+                                        const active = String(room?.eventProfileId || '').trim().toLowerCase() === profile.id;
+                                        return (
+                                            <button
+                                                key={profile.id}
+                                                type="button"
+                                                disabled={!roomCode}
+                                                onClick={() => applyCurrentRoomEventProfile(profile.id)}
+                                                data-host-event-profile={profile.id}
+                                                data-host-event-profile-active={active ? 'true' : 'false'}
+                                                className={`text-left rounded-xl border px-3 py-3 transition-all ${active ? 'border-fuchsia-400/50 bg-fuchsia-500/10' : 'border-zinc-700 bg-zinc-900/60 hover:border-fuchsia-400/30'} ${!roomCode ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-sm font-bold text-white">{profile.label}</div>
+                                                    <span className={`text-[10px] uppercase tracking-widest ${active ? 'text-fuchsia-200' : 'text-zinc-500'}`}>
+                                                        {active ? 'Active' : `v${profile.version}`}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-1 text-xs text-zinc-400">{profile.description}</div>
+                                                <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                                                    Starts {profile.startsAtLocal}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                                 <button
                                     onClick={() => setAudiencePreviewVisible(prev => !prev)}
@@ -16748,6 +17827,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                               </button>
                               <div className="host-form-helper">Shows a 10-second recap preview without closing the room.</div>
                                 <button
+                                    data-host-close-room-recap
                                     onClick={closeRoomWithRecap}
                                     disabled={closingRoom}
                                     className={`${STYLES.btnStd} ${STYLES.btnDanger} w-full`}
@@ -16779,7 +17859,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 })}
                             </div>
                             <div className="pt-3">
-                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience request policy</div>
+                                <div className="text-sm uppercase tracking-widest text-zinc-400">Guest song requests</div>
+                                <div className="host-form-helper mt-2">Choose how much freedom guests have when the room does not already know a good backing track.</div>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {REQUEST_MODE_OPTIONS.map((option) => (
                                         <button
@@ -16799,6 +17880,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="host-form-helper mt-2">
                                     {(REQUEST_MODE_OPTIONS.find((option) => option.id === requestMode) || REQUEST_MODE_OPTIONS[0]).description}
                                 </div>
+                                {requestMode === REQUEST_MODES.guestBackingOptional && (
+                                    <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-4">
+                                        <div className="text-sm uppercase tracking-widest text-zinc-400">When guests pick a new track</div>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                            {[
+                                                { id: UNKNOWN_BACKING_POLICIES.requireReview, label: 'Send to me first' },
+                                                { id: UNKNOWN_BACKING_POLICIES.autoQueueUnverified, label: 'Let it into the queue' },
+                                                { id: UNKNOWN_BACKING_POLICIES.blockUnknown, label: 'Do not show new tracks' }
+                                            ].map((option) => (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    onClick={() => setUnknownBackingPolicy(option.id)}
+                                                    className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                        unknownBackingPolicy === option.id
+                                                            ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                                            : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                                    }`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="host-form-helper mt-2">
+                                            {unknownBackingPolicy === UNKNOWN_BACKING_POLICIES.requireReview
+                                                ? 'Guests can browse YouTube options, but new tracks stop with you before they enter the queue.'
+                                                : unknownBackingPolicy === UNKNOWN_BACKING_POLICIES.autoQueueUnverified
+                                                    ? 'Guests can queue a new YouTube track right away. It will be marked so you can judge it quickly.'
+                                                    : 'Guests only see tracks that are already known or approved for this room.'}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <div className="pt-2">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Audience shell experiment</div>
@@ -16822,6 +17935,78 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     ))}
                             </div>
                             <div className="host-form-helper">Classic keeps the current audience app. Streamlined uses the two-tab shell with soft live-mode takeovers.</div>
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
+                                <div className="mt-2 text-sm text-zinc-300">Recolor the audience app for this room and optionally replace the default app title.</div>
+                                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    <label className="space-y-2">
+                                        <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Audience app title</div>
+                                        <input
+                                            data-host-audience-brand-title
+                                            value={audienceBrandTheme.appTitle}
+                                            onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                ...prev,
+                                                appTitle: event.target.value,
+                                            }))}
+                                            className={STYLES.input}
+                                            placeholder="AAHF Night"
+                                        />
+                                    </label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { key: 'primaryColor', label: 'Primary' },
+                                            { key: 'secondaryColor', label: 'Secondary' },
+                                            { key: 'accentColor', label: 'Accent' },
+                                        ].map((field) => (
+                                            <label key={field.key} className="space-y-2">
+                                                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{field.label}</div>
+                                                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-950/70 px-2 py-2">
+                                                    <input
+                                                        type="color"
+                                                        data-host-audience-brand-color={field.key}
+                                                        value={audienceBrandTheme[field.key]}
+                                                        onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                            ...prev,
+                                                            [field.key]: event.target.value,
+                                                        }))}
+                                                        className="h-9 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+                                                    />
+                                                    <input
+                                                        data-host-audience-brand-hex={field.key}
+                                                        value={audienceBrandTheme[field.key]}
+                                                        onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                            ...prev,
+                                                            [field.key]: event.target.value,
+                                                        }))}
+                                                        className="min-w-0 flex-1 bg-transparent text-xs font-semibold uppercase tracking-[0.12em] text-white outline-none"
+                                                        placeholder="#00C4D9"
+                                                    />
+                                                </div>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex flex-wrap items-center gap-3">
+                                    <div
+                                        className="rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white"
+                                        style={{
+                                            borderColor: `${audienceBrandTheme.primaryColor}66`,
+                                            background: `${audienceBrandTheme.primaryColor}26`,
+                                        }}
+                                    >
+                                        {audienceBrandTheme.appTitle || 'Audience app'}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {[audienceBrandTheme.primaryColor, audienceBrandTheme.secondaryColor, audienceBrandTheme.accentColor].map((value) => (
+                                            <span
+                                                key={value}
+                                                className="h-6 w-6 rounded-full border border-white/15 shadow-[0_0_18px_rgba(0,0,0,0.24)]"
+                                                style={{ backgroundColor: value }}
+                                            ></span>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
                             </div>
                             <div className="pt-4">
                                 <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-5">
@@ -17568,8 +18753,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                         {settingsTab === 'monetization' && (
                         <div className="space-y-4">
-                            <div className={STYLES.header}>Room Tip Crates</div>
-                            <div className="host-form-helper">Configure tip crates for room boosts or personal boosts. Stripe checkout is handled by the app.</div>
+                            <div className={STYLES.header}>Audience Store And Support</div>
+                            <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/8 p-4">
+                                <div className="text-[11px] uppercase tracking-[0.2em] text-cyan-100/72">Standard personal packs</div>
+                                <div className="mt-1 text-sm text-cyan-100/72">
+                                    These BeauRocks packs always appear in the audience app. Room-specific buyer boosts below are added on top of them.
+                                </div>
+                                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                    {POINTS_PACKS.map((pack) => (
+                                        <div key={pack.id} className="rounded-xl border border-white/10 bg-black/25 px-4 py-3">
+                                            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">Personal pack</div>
+                                            <div className="mt-1 text-lg font-black text-white">{pack.label}</div>
+                                            <div className="mt-1 text-sm text-zinc-300">${pack.amount} for +{pack.points} pts</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <EventCreditsConfigPanel
+                                eventCreditsConfig={eventCreditsConfig}
+                                setEventCreditsConfig={setEventCreditsConfig}
+                            />
+                            <div className={STYLES.header}>Boost Offers</div>
+                            <div className="host-form-helper">These offers appear in the audience Buy More Points sheet. Use reward scope to decide whether the buyer alone gets the points or the whole room gets the burst.</div>
                             <div className="space-y-2 max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
                                 {tipCrates.map((crate, idx) => (
                                     <div key={crate.id || `crate-${idx}`} className="bg-zinc-950/60 border border-white/5 rounded-lg p-3 space-y-2">
@@ -17629,7 +18834,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     setTipCrates(next);
                                                 }}
                                             />
-                                            Give buyer a Moneybags badge
+                                            Celebrate buyer with the {MONEYBAGS_BADGE_LABEL} badge
                                         </label>
                                         <button
                                             onClick={() => setTipCrates(prev => prev.filter((_, i) => i !== idx))}
@@ -17641,10 +18846,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 ))}
                             </div>
                             <button
-                                onClick={() => setTipCrates(prev => [...prev, { id: `crate_${nowMs()}`, label: '', amount: '', points: '', url: '' }])}
+                                onClick={() => setTipCrates(prev => [...prev, { id: `crate_${nowMs()}`, label: '', amount: '', points: '', rewardScope: 'room', awardBadge: false }])}
                                 className={`${STYLES.btnStd} ${STYLES.btnSecondary} w-full`}
                             >
-                                Add tip crate
+                                Add boost offer
                             </button>
                         </div>
                         )}
@@ -17868,7 +19073,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     disabled={uploadingLocal}
                                     title="Upload a local audio or video file"
                                 />
-                                <div className="host-form-helper ml-0 sm:ml-auto">Saved to room library and searchable</div>
+                                <div className="host-form-helper ml-0 sm:ml-auto">Cloud uploads are room-wide. Offline backups stay on this host device.</div>
                             </div>
                             <div className="host-form-helper">Audio/video only. Max 150MB. Room storage target: 2GB.</div>
                             <div className="flex items-center justify-between text-sm text-cyan-100/60">
@@ -17898,6 +19103,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     >
                                         Upload Only
                                     </button>
+                                    <button
+                                        onClick={async () => {
+                                            await savePendingFileAsOfflineBackup(pendingLocalFile, false);
+                                            setPendingLocalFile(null);
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 border-emerald-400/35 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300/55 hover:bg-emerald-500/20`}
+                                        disabled={uploadingLocal}
+                                    >
+                                        Save Offline Backup
+                                    </button>
                                 </div>
                             )}
                             {uploadingLocal && (
@@ -17905,23 +19120,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     Uploading... {Math.round(uploadProgress)}%
                                 </div>
                             )}
-                            <div className="border-t border-cyan-400/20 pt-2 text-sm text-cyan-100/60 uppercase tracking-widest">Recent uploads</div>
+                            <div className="border-t border-cyan-400/20 pt-2 text-sm text-cyan-100/60 uppercase tracking-widest">Recent room media</div>
                             <div className="space-y-2">
                                 {localLibrary.filter(i => i._local || i._cloud).slice(-3).reverse().map(item => (
                                     <div key={item.id} className="flex items-center gap-2 text-xs">
-                                        <div className="flex-1 truncate text-cyan-100/85">{item.title}</div>
+                                        <div className="flex-1 truncate text-cyan-100/85">
+                                            {item.title}
+                                            <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
+                                        </div>
                                         <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
                                             <i className="fa-solid fa-plus mr-1"></i> Add to Queue
                                         </button>
-                                        {item._cloud && (
+                                        {item._local ? (
+                                            <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
+                                                Remove Local
+                                            </button>
+                                        ) : item._cloud ? (
                                             <button onClick={() => deleteCloudUpload(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                 Delete
                                             </button>
-                                        )}
+                                        ) : null}
                                     </div>
                                 ))}
                                 {localLibrary.filter(i => i._local || i._cloud).length === 0 && (
-                                    <div className="text-sm text-cyan-100/60">No uploads yet.</div>
+                                    <div className="text-sm text-cyan-100/60">No room media yet.</div>
                                 )}
                             </div>
                             <div className="border-t border-cyan-400/20 pt-2 text-sm text-cyan-100/60 uppercase tracking-widest">Room library</div>
@@ -17942,19 +19164,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )
                                     .map(item => (
                                         <div key={item.id} className="flex items-center gap-2 text-xs">
-                                            <div className="flex-1 truncate text-cyan-100/85">{item.title}</div>
+                                            <div className="flex-1 truncate text-cyan-100/85">
+                                                {item.title}
+                                                <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
+                                            </div>
                                             <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
                                                 <i className="fa-solid fa-plus mr-1"></i> Add
                                             </button>
-                                            {item._cloud && (
+                                            {item._local ? (
+                                                <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
+                                                    Remove Local
+                                                </button>
+                                            ) : item._cloud ? (
                                                 <button onClick={() => deleteCloudUpload(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                     Delete
                                                 </button>
-                                            )}
+                                            ) : null}
                                         </div>
                                     ))}
                                 {localLibrary.filter(i => i._local || i._cloud).length === 0 && (
-                                    <div className="text-sm text-cyan-100/60">No uploads yet.</div>
+                                    <div className="text-sm text-cyan-100/60">No room media yet.</div>
                                 )}
                             </div>
                         </div>
@@ -18195,15 +19424,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
                                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
                                     <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); setYtCurateQuery(''); setYtCurateResults([]); setYtCurateStatus(''); }} className="text-zinc-400 text-sm">&larr; Back</button>
-                                    <div className="text-lg font-bold">YouTube Curator</div>
-                                    <div className="text-sm text-zinc-500">{ytIndexStats.total} indexed</div>
+                                    <div className="text-lg font-bold">Room Library Curator</div>
+                                    <div className="text-sm text-zinc-500">{roomLibraryStats.total} items</div>
                                 </div>
                                 <div className="flex-1 min-h-0 px-6 pb-6 pt-4 custom-scrollbar touch-scroll-y">
                                     <div className="grid grid-cols-1 xl:grid-cols-[420px,minmax(0,1fr)] gap-4 min-h-0">
                                         <div className="space-y-4">
                                             <div className="rounded-2xl border border-cyan-400/20 bg-zinc-900/65 p-4">
-                                                <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/75">Build the room index</div>
-                                                <div className="mt-2 text-sm text-zinc-300">Search verified YouTube karaoke backings, then add the good ones to your room library so audience Apple requests can auto-resolve to them.</div>
+                                                <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/75">Grow the room library</div>
+                                                <div className="mt-2 text-sm text-zinc-300">Search verified YouTube karaoke backings, then add the good ones to your room library so audience search and browse can land on them without live YouTube lookup.</div>
                                                 <div className="mt-4 rounded-2xl border border-zinc-700 bg-black/25 px-4 py-3">
                                                     <div className="flex items-center gap-3">
                                                         <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
@@ -18215,18 +19444,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         />
                                                     </div>
                                                 </div>
-                                                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                                <div className="mt-3 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Indexed</div>
-                                                        <div className="mt-1 text-lg font-black text-white">{ytIndexStats.total}</div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">YouTube</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{roomLibraryStats.youtube}</div>
                                                     </div>
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Playable</div>
-                                                        <div className="mt-1 text-lg font-black text-cyan-200">{ytIndexStats.playable}</div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Uploads</div>
+                                                        <div className="mt-1 text-lg font-black text-cyan-200">{roomLibraryStats.uploads}</div>
                                                     </div>
                                                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Proven</div>
-                                                        <div className="mt-1 text-lg font-black text-emerald-200">{ytIndexStats.proven}</div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Offline</div>
+                                                        <div className="mt-1 text-lg font-black text-emerald-200">{roomLibraryStats.offline}</div>
+                                                    </div>
+                                                    <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Suppressed</div>
+                                                        <div className="mt-1 text-lg font-black text-rose-200">{ytDiagnosticsStats.suppressed}</div>
+                                                        <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">{ytDiagnosticsStats.loaded} loaded</div>
                                                     </div>
                                                 </div>
                                                 {ytCurateStatus && (
@@ -18274,7 +19508,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="flex flex-wrap items-center justify-between gap-3">
                                                 <div>
                                                     <div className="text-xs uppercase tracking-[0.24em] text-zinc-500">Room library</div>
-                                                    <div className="text-sm text-white">The audience can auto-land on these if the song intent matches.</div>
+                                                    <div className="text-sm text-white">Browse everything the room can lean on: approved YouTube, cloud uploads, and host-device offline backups.</div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl px-3 py-2 flex items-center gap-2">
@@ -18283,7 +19517,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             value={ytIndexFilter}
                                                             onChange={e => setYtIndexFilter(e.target.value)}
                                                             className="bg-transparent text-sm text-white outline-none"
-                                                            placeholder="Filter indexed tracks..."
+                                                            placeholder="Filter room library..."
                                                         />
                                                     </div>
                                                     <select
@@ -18298,7 +19532,79 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 </div>
                                             </div>
                                             <div className="mt-4 grid grid-cols-1 2xl:grid-cols-2 gap-3 min-h-0 overflow-y-auto custom-scrollbar pr-1">
-                                                {ytIndexFilteredSorted.map((item) => (
+                                                {roomLibraryFilteredSorted.map((item) => {
+                                                    if (item.source !== 'youtube') {
+                                                        const localSourceLabel = item.offlineReady ? 'Offline Backup' : 'Room Upload';
+                                                        return (
+                                                            <div key={`${item.source}_${item.id || item.url}`} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-white/10 bg-zinc-950/50">
+                                                                        <i className={`fa-solid ${item.mediaType === 'audio' ? 'fa-waveform-lines' : item.offlineReady ? 'fa-hard-drive' : 'fa-film'} text-cyan-200/85`}></i>
+                                                                    </div>
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="font-bold text-white truncate">{item.trackName}</div>
+                                                                        <div className="text-sm text-zinc-400 truncate">{item.artistName}</div>
+                                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                                                                {localSourceLabel}
+                                                                            </span>
+                                                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                                {item.mediaType === 'audio' ? 'Audio' : 'Video'}
+                                                                            </span>
+                                                                            {item.fileName ? (
+                                                                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                                    {item.fileName.split('.').pop() || 'media'}
+                                                                                </span>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="mt-3 rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-3 text-xs text-zinc-400">
+                                                                    {item.offlineReady
+                                                                        ? 'Saved on this host device. This is the fastest fallback if the network gets weird.'
+                                                                        : 'Stored in the room library and available anywhere this room opens.'}
+                                                                </div>
+                                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                                    <button
+                                                                        onClick={() => addLocalItemToQueue(item)}
+                                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                                    >
+                                                                        + Add to Queue
+                                                                    </button>
+                                                                    <a
+                                                                        href={item.url}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}
+                                                                    >
+                                                                        Open
+                                                                    </a>
+                                                                    {item._local ? (
+                                                                        <button
+                                                                            onClick={() => deleteOfflineBackup(item)}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}
+                                                                        >
+                                                                            Remove Local
+                                                                        </button>
+                                                                    ) : item._cloud ? (
+                                                                        <button
+                                                                            onClick={() => deleteCloudUpload(item)}
+                                                                            className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}
+                                                                        >
+                                                                            Delete Upload
+                                                                        </button>
+                                                                    ) : null}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    }
+                                                    const diagnosticsKey = getYtDiagnosticsKey(item);
+                                                    const diagnosticsEntry = diagnosticsKey ? ytDiagnosticsMap[diagnosticsKey] : null;
+                                                    const diagnostics = diagnosticsEntry?.diagnostics || null;
+                                                    const diagnosticsBusy = ytDiagnosticsLoadingKey === diagnosticsKey;
+                                                    const diagnosticsTone = getTrackDiagnosticsTone(diagnostics);
+                                                    const diagnosticsSupport = getTrackDiagnosticsSupport(diagnostics);
+                                                    return (
                                                     <div key={item.videoId} className="rounded-xl border border-zinc-700 bg-black/25 p-3">
                                                         <div className="flex items-center gap-3">
                                                             <img src={item.artworkUrl100} alt={item.trackName} className="w-14 h-14 rounded-lg object-cover" />
@@ -18319,8 +19625,56 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                                             {item.usageCount} uses
                                                                         </span>
                                                                     )}
+                                                                    {diagnosticsTone ? (
+                                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${diagnosticsTone.className}`}>
+                                                                            {diagnosticsTone.label}
+                                                                        </span>
+                                                                    ) : null}
                                                                 </div>
                                                             </div>
+                                                        </div>
+                                                        <div className="mt-3 rounded-xl border border-white/10 bg-zinc-950/50 px-3 py-3">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track health</div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => fetchYtDiagnostics(item)}
+                                                                    disabled={diagnosticsBusy}
+                                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1 text-[10px] ${diagnosticsBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                                >
+                                                                    {diagnosticsBusy ? 'Loading...' : (diagnosticsEntry?.loaded ? 'Refresh' : 'Load')}
+                                                                </button>
+                                                            </div>
+                                                            {diagnosticsEntry?.error ? (
+                                                                <div className="mt-2 text-xs text-rose-200">{diagnosticsEntry.error}</div>
+                                                            ) : diagnostics ? (
+                                                                <div className="mt-2 space-y-2">
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                                                            Good shows {Number(diagnostics.successCount || 0)}
+                                                                        </span>
+                                                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                                                            Total uses {Number(diagnostics.usageCount || 0)}
+                                                                        </span>
+                                                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                                                            Rooms skipped {Number(diagnostics.globalAvoidRoomCount || 0)}
+                                                                        </span>
+                                                                        <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                                                            Bad calls {Number(diagnostics.failureCount || 0)}
+                                                                        </span>
+                                                                    </div>
+                                                                    {diagnosticsSupport ? (
+                                                                        <div className="text-xs text-zinc-400">{diagnosticsSupport}</div>
+                                                                    ) : null}
+                                                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                                                                        <span>Approval: {diagnostics.approvalState || 'candidate'}</span>
+                                                                        <span>Last success room: {diagnostics.lastSuccessfulRoomCode || 'none'}</span>
+                                                                        <span>Last avoid room: {diagnostics.lastAvoidedRoomCode || 'none'}</span>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="mt-2 text-xs text-zinc-500">Load track health to see whether other rooms had good or bad luck with this backing.</div>
+                                                            )}
                                                         </div>
                                                         <div className="mt-3 flex flex-wrap gap-2">
                                                             <button
@@ -18346,10 +19700,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                             </button>
                                                         </div>
                                                     </div>
-                                                ))}
-                                                {ytIndexFilteredSorted.length === 0 && (
+                                                )})}
+                                                {roomLibraryFilteredSorted.length === 0 && (
                                                     <div className="text-center text-zinc-500 text-sm rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6">
-                                                        No indexed YouTube tracks match this filter yet.
+                                                        No room library items match this filter yet.
                                                     </div>
                                                 )}
                                             </div>

@@ -15,6 +15,7 @@ export default defineConfig([
       'node_modules/**',
       'public/**',
       'tmp/**',
+      'tmp-*',
     ],
   },
   {

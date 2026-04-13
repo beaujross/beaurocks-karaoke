@@ -660,7 +660,7 @@ const TV_VARIANTS_BY_SCENE = {
 };
 
 const DEMO_ROOM_CODE = "DEMOPEEYV3GWZW";
-const getTvSurfaceVariant = (sceneId = "") => TV_VARIANTS_BY_SCENE[sceneId] || "karaoke";
+const _getTvSurfaceVariant = (sceneId = "") => TV_VARIANTS_BY_SCENE[sceneId] || "karaoke";
 const DEMO_HOST_NAME = "DJ BeauRocks";
 
 const toFakeTimestamp = (value = Date.now()) => {
@@ -892,7 +892,7 @@ const buildDemoRoom = (scene, sceneProgress = 0, nowMs = Date.now()) => ({
   timestamp: toFakeTimestamp(nowMs - Math.round(sceneProgress * 10000)),
 });
 
-const buildAudienceFixture = ({ scene, nextScene, sceneProgress, activeActionIndex, hostTypedSearch }) => {
+const _buildAudienceFixture = ({ scene, nextScene, sceneProgress, activeActionIndex, hostTypedSearch }) => {
   const nowMs = Date.now();
   const room = buildDemoRoom(scene, sceneProgress, nowMs);
   const songs = buildDemoSongs(scene, nextScene, sceneProgress, nowMs);
@@ -949,7 +949,7 @@ const buildAudienceFixture = ({ scene, nextScene, sceneProgress, activeActionInd
   };
 };
 
-const buildTvFixture = ({ scene, nextScene, sceneProgress, reactionItems, triviaRows }) => {
+const _buildTvFixture = ({ scene, nextScene, sceneProgress, reactionItems, triviaRows }) => {
   const nowMs = Date.now();
   const room = buildDemoRoom(scene, sceneProgress, nowMs);
   const songs = buildDemoSongs(scene, nextScene, sceneProgress, nowMs);
@@ -993,7 +993,7 @@ const buildTvFixture = ({ scene, nextScene, sceneProgress, reactionItems, trivia
   };
 };
 
-const buildHostFixture = ({ scene, nextScene, sceneProgress, reactionItems }) => {
+const _buildHostFixture = ({ scene, nextScene, sceneProgress, reactionItems }) => {
   const nowMs = Date.now();
   const room = buildDemoRoom(scene, sceneProgress, nowMs);
   return {
@@ -1014,7 +1014,7 @@ const buildHostFixture = ({ scene, nextScene, sceneProgress, reactionItems }) =>
   };
 };
 
-const getReactionItems = (scene, progress = 0) => {
+const _getReactionItems = (scene, progress = 0) => {
   const labels = scene.audience.actions.slice(0, 4).map((entry) => entry.split(" x")[0]);
   const baselines = [12, 18, 24, 30];
   return labels.map((label, index) => ({
@@ -1023,7 +1023,7 @@ const getReactionItems = (scene, progress = 0) => {
   }));
 };
 
-const getTriviaRows = (scene, progress = 0) => {
+const _getTriviaRows = (scene, progress = 0) => {
   const baselines = [14, 18, 16, 22];
   const growth = [8, 12, 10, 24];
   return scene.audience.actions.map((label, index) => ({
@@ -1033,7 +1033,7 @@ const getTriviaRows = (scene, progress = 0) => {
   }));
 };
 
-const getHostFocusFrame = (sceneId = "") => {
+const _getHostFocusFrame = (sceneId = "") => {
   switch (sceneId) {
     case "join_identity":
       return { left: "61%", top: "20%", width: "28%", height: "16%", label: "Share room code" };
@@ -1052,7 +1052,7 @@ const getHostFocusFrame = (sceneId = "") => {
   }
 };
 
-const getTvFocusFrame = (sceneId = "") => {
+const _getTvFocusFrame = (sceneId = "") => {
   switch (sceneId) {
     case "join_identity":
       return { left: "69%", top: "45%", width: "27%", height: "38%", label: "Join card lands on TV" };
@@ -1070,7 +1070,7 @@ const getTvFocusFrame = (sceneId = "") => {
   }
 };
 
-const getAudienceFocusFrame = (sceneId = "", activeIndex = 0) => {
+const _getAudienceFocusFrame = (sceneId = "", activeIndex = 0) => {
   if (sceneId === "join_identity") {
     const joinFrames = [
       { left: "15%", top: "16%", width: "20%", height: "10%" },
@@ -1524,7 +1524,7 @@ const buildHostFixtureAuto = ({ scene, nextScene, sceneProgress, reactionItems }
   };
 };
 
-const getHostFocusFrameAuto = (sceneId = "") => {
+const _getHostFocusFrameAuto = (sceneId = "") => {
   switch (sceneId) {
     case "karaoke_video_lyrics":
       return { left: "17%", top: "17%", width: "42%", height: "14%", label: "Search + cue song" };
@@ -1543,7 +1543,7 @@ const getHostFocusFrameAuto = (sceneId = "") => {
   }
 };
 
-const getTvFocusFrameAuto = (sceneId = "") => {
+const _getTvFocusFrameAuto = (sceneId = "") => {
   switch (sceneId) {
     case "guitar_vibe_sync":
       return { left: "18%", top: "16%", width: "62%", height: "50%", label: "Crowd jammers take over TV" };
@@ -1676,7 +1676,7 @@ const getSequenceIndexAuto = (sceneId = "", progress = 0) => {
   return 2;
 };
 
-const getTapCoach = (scene, activeIndex = 0) => {
+const _getTapCoach = (scene, activeIndex = 0) => {
   const currentAction = getActionDisplayLabel(scene?.audience?.actions?.[activeIndex] || scene?.audience?.actions?.[0] || "");
   switch (scene?.id) {
     case "join_identity":
@@ -1719,7 +1719,7 @@ const getTapCoach = (scene, activeIndex = 0) => {
   }
 };
 
-const getSceneSequence = (scene, tapCoach) => {
+const _getSceneSequence = (scene, tapCoach) => {
   switch (scene?.id) {
     case "join_identity":
       return [
@@ -1752,7 +1752,7 @@ const getAbstractBeatAnchorIndex = (beatId = "") => (
   ABSTRACT_SCROLL_EVENTS.findIndex((entry) => entry.beatId === beatId)
 );
 
-const getSequenceIndex = (sceneId = "", progress = 0) => {
+const _getSequenceIndex = (sceneId = "", progress = 0) => {
   if (sceneId === "trivia_break") {
     if (progress < 0.26) return 0;
     if (progress < 0.7) return 1;

@@ -38,7 +38,7 @@ const GoldenPathRail = lazy(() => import("./pages/GoldenPathRail"));
 
 const PRODUCT_BRAND = {
   name: "BeauRocks Karaoke",
-  tagline: "Modern karaoke for loud rooms and good nights",
+  tagline: "Karaoke that keeps the room together",
   finder: "Setlist Finder",
   tv: "Spotlight TV",
   audience: "Party Mic",
@@ -48,7 +48,7 @@ const PRODUCT_BRAND = {
 const PageShellLoader = () => (
   <div className="mk3-status">
     <strong>Loading page...</strong>
-    <span>Tuning the lights, checking the mic, and cueing the next scene.</span>
+    <span>Getting the next page ready.</span>
   </div>
 );
 
@@ -87,8 +87,8 @@ const normalizePage = (value = "") => {
   const safe = String(value || "").trim().toLowerCase();
   if (safe === "home") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "discover") return MARKETING_ROUTE_PAGES.discover;
-  if (safe === "demo") return MARKETING_ROUTE_PAGES.demo;
-  if (safe === "demo_auto" || safe === "demo-auto" || safe === "auto-demo") return MARKETING_ROUTE_PAGES.demoAuto;
+  if (safe === "demo") return MARKETING_ROUTE_PAGES.forFans;
+  if (safe === "demo_auto" || safe === "demo-auto" || safe === "auto-demo") return MARKETING_ROUTE_PAGES.forFans;
   if (safe === "changelog") return MARKETING_ROUTE_PAGES.changelog;
   if (safe === "host_access" || safe === "host-access") return MARKETING_ROUTE_PAGES.hostAccess;
   if (safe === "venue") return MARKETING_ROUTE_PAGES.venue;
@@ -280,6 +280,7 @@ const MarketingSite = () => {
   const [hostApplicationNotice, setHostApplicationNotice] = useState("");
   const [pendingHostApplicationsCount, setPendingHostApplicationsCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const authPanelRef = useRef(null);
   const moreMenuRef = useRef(null);
   const { session, actions } = useDirectorySession();
@@ -289,9 +290,7 @@ const MarketingSite = () => {
 
   const collapseNavMenus = useCallback(() => {
     setMobileMenuOpen(false);
-    if (moreMenuRef.current?.open) {
-      moreMenuRef.current.open = false;
-    }
+    setMoreMenuOpen(false);
   }, []);
 
   useEffect(() => {
@@ -309,13 +308,27 @@ const MarketingSite = () => {
   }, [collapseNavMenus, route.page, route.id]);
 
   useEffect(() => {
+    if (!moreMenuOpen || typeof document === "undefined") return () => {};
+    const handlePointerDown = (event) => {
+      if (moreMenuRef.current?.contains(event.target)) return;
+      setMoreMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [moreMenuOpen]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (!marketingFlags.routePathsEnabled) return;
-    const params = new URLSearchParams(window.location.search);
-    const hasLegacyQuery = params.get("mode") === "marketing" || params.has("page");
-    const hasLegacyPath = /^\/marketing(?:\/|$)/i.test(String(window.location.pathname || ""));
-    if (!hasLegacyQuery && !hasLegacyPath) return;
-
     const parsed = normalizeRouteInput(parseMarketingRouteFromLocation(window.location));
     const canonicalUrl = `${buildMarketingUrl(parsed)}${window.location.hash || ""}`;
     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash || ""}`;
@@ -844,27 +857,18 @@ const MarketingSite = () => {
       </span>
     );
   }, [pendingHostApplicationsCount]);
-  const handleNavHostAccess = useCallback(() => {
+  const openMarketingHostAccess = useCallback((source = "marketing_host_access") => {
     collapseNavMenus();
     if (hasFullAccount) {
-      openHostDashboard("marketing_nav_host_dashboard_primary");
+      openHostDashboard(source);
       return;
     }
-    trackEvent("mk_nav_host_access_click", { source: "nav_primary_host_access" });
-    requireFullAuth({
-      intent: "host_dashboard_resume",
-      targetType: "session",
-      returnRoute: {
-        page: MARKETING_ROUTE_PAGES.hostAccess,
-        params: {
-          ...withCampaignParams({ utm_content: "nav_primary_host_access" }),
-          intent: "host_dashboard_resume",
-          targetType: "session",
-        },
-      },
-      preferHostSurface: true,
-    });
-  }, [collapseNavMenus, hasFullAccount, openHostDashboard, requireFullAuth, withCampaignParams]);
+    trackEvent("mk_nav_host_access_click", { source });
+    navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: source }));
+  }, [collapseNavMenus, hasFullAccount, navigate, openHostDashboard, withCampaignParams]);
+  const handleNavHostAccess = useCallback(() => {
+    openMarketingHostAccess(hasFullAccount ? "marketing_nav_host_dashboard_primary" : "nav_primary_host_login");
+  }, [hasFullAccount, openMarketingHostAccess]);
 
   const postAuthHint = useMemo(() => {
     if (authMode === "signup") {
@@ -895,6 +899,7 @@ const MarketingSite = () => {
       onHostApplicationsChanged: refreshPendingHostApplicationsCount,
       buildHref,
       setSeoEntity,
+      onHostLogin: () => openMarketingHostAccess(hasFullAccount ? "fans_home_host_dashboard" : "fans_home_host_login"),
     };
     if (activePage === MARKETING_ROUTE_PAGES.discover) return <DiscoverPage {...pageProps} />;
     if (activePage === MARKETING_ROUTE_PAGES.demo) return <DemoExperiencePage {...pageProps} demoMode="abstract" />;
@@ -918,7 +923,7 @@ const MarketingSite = () => {
       return <GeoLandingPage {...pageProps} />;
     }
     return <DiscoverPage {...pageProps} />;
-  }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session, pendingHostApplicationsCount, refreshPendingHostApplicationsCount, buildHref]);
+  }, [activePage, requireFullAuth, route, navigate, mapsConfig, heroStats, session, pendingHostApplicationsCount, refreshPendingHostApplicationsCount, buildHref, setSeoEntity, openMarketingHostAccess, hasFullAccount]);
 
   return (
     <div className="mk3-site mk3-site-cinematic mk3-site-synthwave" data-page={activePage}>
@@ -961,14 +966,32 @@ const MarketingSite = () => {
                   </a>
                 ))}
                 {navSecondaryOptions.length > 0 && (
-                  <details ref={moreMenuRef} className={`mk3-more-menu ${moreMenuActive ? "is-active" : ""}`}>
-                    <summary>More</summary>
-                    <div className="mk3-more-list">
+                  <div
+                    ref={moreMenuRef}
+                    className={`mk3-more-menu ${moreMenuOpen ? "is-open" : ""} ${moreMenuActive ? "is-active" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="mk3-more-trigger"
+                      aria-haspopup="menu"
+                      aria-expanded={moreMenuOpen}
+                      aria-controls="mk3-more-menu-list"
+                      onClick={() => setMoreMenuOpen((open) => !open)}
+                    >
+                      More
+                    </button>
+                    <div
+                      id="mk3-more-menu-list"
+                      className="mk3-more-list"
+                      role="menu"
+                      hidden={!moreMenuOpen}
+                    >
                       {navSecondaryOptions.map((item) => (
                         <a
                           key={item.id}
                           href={buildHref(item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }))}
                           className={activePage === item.id ? "active" : ""}
+                          role="menuitem"
                           onClick={(event) => {
                             collapseNavMenus();
                             onMarketingAnchorClick(event, item.id, "", withCampaignParams({ utm_content: `nav_secondary_${item.id}` }));
@@ -978,7 +1001,7 @@ const MarketingSite = () => {
                         </a>
                       ))}
                     </div>
-                  </details>
+                  </div>
                 )}
               </nav>
             </div>
@@ -988,7 +1011,7 @@ const MarketingSite = () => {
                 className="mk3-account-action"
                 onClick={handleNavHostAccess}
               >
-                {hasFullAccount ? "Host Dashboard" : "Host Access"}
+                {hasFullAccount ? "Host Dashboard" : "Host Login"}
               </button>
               <button
                 type="button"
@@ -1034,7 +1057,7 @@ const MarketingSite = () => {
                 className="mk3-account-action mk3-mobile-host-access"
                 onClick={handleNavHostAccess}
               >
-                {hasFullAccount ? "Open Host Dashboard" : "Host Access"}
+                {hasFullAccount ? "Open Host Dashboard" : "Host Login"}
               </button>
             </div>
           </div>
@@ -1319,16 +1342,10 @@ const MarketingSite = () => {
                   Discover
                 </a>
                 <a
-                  href={buildHref(MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
-                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.demoAuto, "", withCampaignParams({ utm_content: "footer_demo_auto" }))}
+                  href={buildHref(MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
+                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.join, "", withCampaignParams({ utm_content: "footer_join" }))}
                 >
-                  Demo
-                </a>
-                <a
-                  href={buildHref(MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "footer_how_it_works" }))}
-                  onClick={(event) => onMarketingAnchorClick(event, MARKETING_ROUTE_PAGES.demo, "", withCampaignParams({ utm_content: "footer_how_it_works" }))}
-                >
-                  How It Works
+                  Join
                 </a>
               </div>
               <div className="mk3-site-footer-actions">
@@ -1339,18 +1356,10 @@ const MarketingSite = () => {
                       openHostDashboard("marketing_footer_host_dashboard");
                       return;
                     }
-                    requireFullAuth({
-                      intent: "host_dashboard_resume",
-                      targetType: "session",
-                      returnRoute: {
-                        page: MARKETING_ROUTE_PAGES.hostAccess,
-                        params: withCampaignParams({ utm_content: "footer_host_access" }),
-                      },
-                      preferHostSurface: true,
-                    });
+                    openMarketingHostAccess("footer_host_login");
                   }}
                 >
-                  {hasFullAccount ? "Open Host Dashboard" : "Host Access"}
+                  {hasFullAccount ? "Open Host Dashboard" : "Host Login"}
                 </button>
               </div>
             </footer>

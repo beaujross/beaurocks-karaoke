@@ -45,7 +45,7 @@ const MissionSetupAdvancedDrawer = ({
         >
             <div>
                 <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Advanced</div>
-                <div className="text-base font-bold text-white mt-1">Fine Tuning + Full Control</div>
+                <div className="text-base font-bold text-white mt-1">More room settings</div>
             </div>
             <div className="flex items-center gap-2">
                 {overrideCount > 0 && (
@@ -60,7 +60,7 @@ const MissionSetupAdvancedDrawer = ({
         {isOpen && (
             <div className="px-4 pb-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm text-zinc-300">All advanced controls are optional and preserve override precedence.</div>
+                    <div className="text-sm text-zinc-300">Everything here is optional. Use it when the quick setup is not enough.</div>
                     <button onClick={onResetAdvanced} className={`${styles.btnStd} ${styles.btnNeutral} text-[10px]`}>
                         Reset Advanced
                     </button>
@@ -68,10 +68,10 @@ const MissionSetupAdvancedDrawer = ({
 
                 <div className="rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-bold text-white">Spotlight Focus</div>
+                        <div className="text-sm font-bold text-white">Main room mode</div>
                         {canToggleSpotlightList && (
                             <button onClick={onToggleShowAllSpotlightModes} className={`${styles.btnStd} ${styles.btnNeutral} text-[10px]`}>
-                                {showAllSpotlightModes ? 'Show Featured' : 'Show All Modes'}
+                                {showAllSpotlightModes ? 'Show Short List' : 'Show All Modes'}
                             </button>
                         )}
                     </div>
@@ -93,7 +93,7 @@ const MissionSetupAdvancedDrawer = ({
 
                 <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
                     <button onClick={onToggleQueueOpen} className="w-full px-3 py-2 flex items-center justify-between text-left">
-                        <span className="text-sm font-bold text-white">Queue Overrides</span>
+                        <span className="text-sm font-bold text-white">Queue rules</span>
                         <i className={`fa-solid fa-chevron-${queueOpen ? 'up' : 'down'} text-zinc-500`}></i>
                     </button>
                     {queueOpen && (
@@ -146,7 +146,7 @@ const MissionSetupAdvancedDrawer = ({
 
                 <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
                     <button onClick={onTogglePartyOpen} className="w-full px-3 py-2 flex items-center justify-between text-left">
-                        <span className="text-sm font-bold text-white">Karaoke-First Guardrails</span>
+                        <span className="text-sm font-bold text-white">Karaoke-first guardrails</span>
                         <i className={`fa-solid fa-chevron-${partyOpen ? 'up' : 'down'} text-zinc-500`}></i>
                     </button>
                     {partyOpen && (
@@ -199,7 +199,7 @@ const MissionSetupAdvancedDrawer = ({
 
                 <div className="rounded-xl border border-zinc-700 bg-zinc-950/60">
                     <button onClick={onToggleTogglesOpen} className="w-full px-3 py-2 flex items-center justify-between text-left">
-                        <span className="text-sm font-bold text-white">Live Toggle Overrides</span>
+                        <span className="text-sm font-bold text-white">Live switches</span>
                         <i className={`fa-solid fa-chevron-${togglesOpen ? 'up' : 'down'} text-zinc-500`}></i>
                     </button>
                     {togglesOpen && (

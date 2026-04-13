@@ -1,6 +1,15 @@
 import { createDefaultRunOfShowDirector } from '../../lib/runOfShowDirector.js';
+import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 
 export const FIXED_QA_HOST_NOW_MS = 1763503200000;
+const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
+const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
+const AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
+    appTitle: 'AAHF Karaoke',
+    primaryColor: '#FF4FA3',
+    secondaryColor: '#1ED7FF',
+    accentColor: '#FACC15',
+});
 
 export const QA_HOST_SCENARIOS = Object.freeze([
     {
@@ -28,7 +37,11 @@ const buildDirector = (nowMs = FIXED_QA_HOST_NOW_MS) => createDefaultRunOfShowDi
                 subhead: 'House rules and the first performer handoff.',
                 takeoverScene: 'intro',
                 publicTvTakeoverEnabled: true,
-                accentTheme: 'amber'
+                accentTheme: 'amber',
+                soundtrackSourceType: 'manual_external',
+                soundtrackMediaUrl: 'https://media.example.com/fixtures/aahf-intro-sting.mp3',
+                soundtrackLabel: 'AAHF Intro Sting',
+                soundtrackAutoPlay: true
             }
         },
         {
@@ -53,17 +66,17 @@ const buildDirector = (nowMs = FIXED_QA_HOST_NOW_MS) => createDefaultRunOfShowDi
             }
         },
         {
-            id: 'trivia_break',
-            type: 'trivia_break',
-            title: 'Trivia Break',
+            id: 'audience_vote',
+            type: 'would_you_rather_break',
+            title: 'Audience Vote',
             status: 'draft',
             plannedDurationSec: 120,
             startsAtMs: nowMs + 420000,
             modeLaunchPlan: {
-                modeKey: 'trivia_pop',
+                modeKey: 'wyr',
                 launchConfig: {
-                    question: 'Which artist has the most karaoke staples?',
-                    optionsCsv: 'Whitney Houston, Queen, Journey'
+                    question: 'Would you rather open the next set with a power ballad or a singalong anthem?',
+                    optionsCsv: 'Power ballad, Singalong anthem'
                 }
             }
         },
@@ -96,15 +109,25 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
     if (safeId !== 'run-of-show-console') return null;
     return {
         roomCode,
-        tab: 'admin',
+        tab: 'run_of_show',
         settingsTab: 'general',
         room: {
             roomCode,
             hostUid: 'fixture_host',
             hostUids: ['fixture_host'],
             hostName: 'AAHF Host',
+            eventProfileId: AAHF_EVENT_PROFILE_ID,
+            eventProfileLabel: 'AAHF Kick-Off',
+            eventProfileVersion: 1,
             activeMode: 'karaoke',
+            logoUrl: AAHF_LOGO_URL,
+            lobbyOrbSkinUrl: AAHF_LOGO_URL,
             audienceShellVariant: 'streamlined',
+            audienceBrandTheme: AAHF_AUDIENCE_BRAND_THEME,
+            roomPlan: {
+                startsAtLocal: '2026-05-01T19:00',
+                startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+            },
             runOfShowEnabled: true,
             programMode: 'run_of_show',
             runOfShowPolicy: {

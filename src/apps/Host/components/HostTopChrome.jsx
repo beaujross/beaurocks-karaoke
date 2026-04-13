@@ -1,7 +1,13 @@
 import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
-import { getRunOfShowItemLabel, normalizeRunOfShowDirector } from '../../../lib/runOfShowDirector';
+import {
+    getRunOfShowHudActionKey,
+    getRunOfShowHudState,
+    getRunOfShowHudToneClass,
+    getRunOfShowItemLabel,
+    normalizeRunOfShowDirector
+} from '../../../lib/runOfShowDirector';
 
 const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
     const Comp = typeof onClick === 'function' ? 'button' : 'div';
@@ -20,7 +26,11 @@ const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onCl
 
 const getRunOfShowDurationSec = (item = {}) => Math.max(
     0,
-    Math.round(Number(item?.plannedDurationSec || item?.backingPlan?.durationSec || 0) || 0)
+    Math.round(Number(
+        String(item?.plannedDurationSource || '').trim().toLowerCase() === 'backing'
+            ? (item?.backingPlan?.durationSec || item?.plannedDurationSec || 0)
+            : (item?.plannedDurationSec || item?.backingPlan?.durationSec || 0)
+    ) || 0)
 );
 
 const formatRunOfShowDuration = (value = 0) => {
@@ -45,6 +55,17 @@ const formatRunOfShowTotalDuration = (value = 0) => {
     const remMins = mins % 60;
     if (hours > 0) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
     return `${mins}m`;
+};
+
+const formatRemainingShowTime = (value = 0) => {
+    const totalSec = Math.max(0, Math.ceil(Number(value || 0) || 0));
+    if (!totalSec) return '0m';
+    const hours = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    if (mins > 0) return mins < 10 && secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+    return `${secs}s`;
 };
 
 const HostTopChrome = ({
@@ -153,13 +174,19 @@ const HostTopChrome = ({
     runOfShowLiveItem = null,
     runOfShowStagedItem = null,
     runOfShowNextItem = null,
+    runOfShowPreflightReport = null,
     onOpenShowWorkspace,
+    onOpenRunOfShowIssue,
     onStartRunOfShow,
     onStopRunOfShow,
     onAdvanceRunOfShow,
     onRewindRunOfShow,
     onFocusRunOfShowItem,
-    runOfShowFocusMode = false
+    onTriggerRunOfShowItem,
+    onToggleRunOfShowAutomationPause,
+    runOfShowQaStatusDetail = '',
+    runOfShowFocusMode = false,
+    activeMomentFeedback = null
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -186,6 +213,7 @@ const HostTopChrome = ({
             return false;
         }
     });
+    const [compactRunOfShowToolsOpen, setCompactRunOfShowToolsOpen] = React.useState(false);
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
     const quickStartMenuRef = React.useRef(null);
@@ -223,6 +251,8 @@ const HostTopChrome = ({
             : normalizedPermission === 'member'
                 ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
                 : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
+    const queueWorkspaceMode = tab === 'stage';
+    const compactRunOfShowDense = queueWorkspaceMode && !runOfShowFocusMode;
     const missionStatus = missionRecommendation?.status || 'ready';
     const tvDisplayLabel = tvDisplayMode === 'lyrics_viz'
         ? 'Lyrics + Viz'
@@ -264,7 +294,7 @@ const HostTopChrome = ({
                             : activeCrowdObjectiveMode?.label || 'Off';
     const marqueeActive = !!marqueeEnabled;
     const chatTvActive = !!chatShowOnTv;
-    const popTriviaActive = popTriviaEnabled !== false;
+    const popTriviaActive = !!popTriviaEnabled;
     const chatFullscreenActive = chatTvActive && chatTvMode === 'fullscreen';
     const leaderboardActive = room?.activeScreen === 'leaderboard';
     const tipCtaActive = room?.activeScreen === 'tipping';
@@ -288,7 +318,7 @@ const HostTopChrome = ({
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-8 px-2.5 py-1 text-[11px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
         || showTvQuickMenu
@@ -297,10 +327,30 @@ const HostTopChrome = ({
         || showVibeQuickMenu
         || showLaunchMenu
         || showNavMenu;
-    const compactRunOfShowItems = React.useMemo(() => {
-        if (!runOfShowEnabled) return [];
-        const items = normalizeRunOfShowDirector(runOfShowDirector || {}).items || [];
-        return items.map((item, index) => {
+    const normalizedRunOfShowDirector = React.useMemo(
+        () => normalizeRunOfShowDirector(runOfShowDirector || {}),
+        [runOfShowDirector]
+    );
+    const normalizedRunOfShowItems = React.useMemo(
+        () => (Array.isArray(normalizedRunOfShowDirector.items) ? normalizedRunOfShowDirector.items.slice() : []),
+        [normalizedRunOfShowDirector]
+    );
+    const safeRunOfShowPreflightReport = runOfShowPreflightReport && typeof runOfShowPreflightReport === 'object'
+        ? runOfShowPreflightReport
+        : {
+            itemCount: normalizedRunOfShowItems.length,
+            readyCount: 0,
+            criticalCount: 0,
+            riskyCount: 0,
+            pendingApprovalCount: 0,
+            readyToStart: normalizedRunOfShowItems.length > 0,
+            criticalItems: [],
+            riskyItems: [],
+            summary: normalizedRunOfShowItems.length ? 'Show plan is loaded.' : 'Add at least one block before the show starts.'
+        };
+    const runOfShowAutomationPaused = !!normalizedRunOfShowDirector?.automationPaused;
+    const hasRunOfShowPlan = normalizedRunOfShowItems.length > 0;
+    const compactRunOfShowItems = normalizedRunOfShowItems.map((item, index) => {
             const status = String(item?.status || '').trim().toLowerCase();
             const type = String(item?.type || '').trim().toLowerCase();
             const isLive = item?.id && item.id === runOfShowLiveItem?.id;
@@ -337,7 +387,7 @@ const HostTopChrome = ({
                         : isNext
                             ? 'border-amber-300/35 bg-amber-500/12 text-amber-100'
                             : 'border-white/10 bg-black/25 text-zinc-300';
-            return {
+        return {
                 id: item?.id || `run-of-show-${index}`,
                 title: String(item?.title || '').trim() || getRunOfShowItemLabel(item?.type),
                 detail: type.replace(/_/g, ' '),
@@ -368,17 +418,10 @@ const HostTopChrome = ({
                         : type === 'announcement' || type === 'intro' || type === 'closing'
                             ? 'fa-bullhorn'
                             : 'fa-wave-square'
-            };
-        });
-    }, [runOfShowDirector, runOfShowEnabled, runOfShowLiveItem?.id, runOfShowNextItem?.id, runOfShowStagedItem?.id]);
-    const compactRunOfShowTotalDurationSec = React.useMemo(
-        () => compactRunOfShowItems.reduce((sum, item) => sum + Math.max(0, Number(item?.durationSec || 0) || 0), 0),
-        [compactRunOfShowItems]
-    );
-    const compactRunOfShowCurrentIndex = React.useMemo(
-        () => compactRunOfShowItems.findIndex((item) => item.isLive || item.isStaged || item.isNext),
-        [compactRunOfShowItems]
-    );
+        };
+    });
+    const compactRunOfShowTotalDurationSec = compactRunOfShowItems.reduce((sum, item) => sum + Math.max(0, Number(item?.durationSec || 0) || 0), 0);
+    const compactRunOfShowCurrentIndex = compactRunOfShowItems.findIndex((item) => item.isLive || item.isStaged || item.isNext);
     const runOfShowTransportStatus = runOfShowLiveItem?.id
         ? 'live'
         : runOfShowStagedItem?.id
@@ -386,8 +429,79 @@ const HostTopChrome = ({
             : runOfShowNextItem?.id
                 ? 'ready'
                 : 'idle';
+    const topCriticalRunOfShowItem = safeRunOfShowPreflightReport?.criticalItems?.[0] || null;
+    const topRiskyRunOfShowItem = safeRunOfShowPreflightReport?.riskyItems?.[0] || null;
+    const runOfShowHudState = getRunOfShowHudState({
+        hasPlan: hasRunOfShowPlan,
+        runEnabled: runOfShowEnabled,
+        automationPaused: runOfShowAutomationPaused,
+        preflightReport: safeRunOfShowPreflightReport,
+        issueDetail: topCriticalRunOfShowItem?.summary || topRiskyRunOfShowItem?.summary || '',
+        liveItemId: runOfShowLiveItem?.id,
+        stagedItemId: runOfShowStagedItem?.id,
+        nextItemId: runOfShowNextItem?.id
+    });
+    const runOfShowHudToneClass = getRunOfShowHudToneClass(runOfShowHudState.tone);
+    const runOfShowHudActionKey = getRunOfShowHudActionKey({
+        hasPlan: hasRunOfShowPlan,
+        runEnabled: runOfShowEnabled,
+        automationPaused: runOfShowAutomationPaused,
+        preflightReport: safeRunOfShowPreflightReport,
+        hasIssue: !!(topCriticalRunOfShowItem || topRiskyRunOfShowItem)
+    });
+    const runOfShowPrimaryAction = (() => {
+        if (runOfShowHudActionKey === 'open_show') {
+            return {
+                label: 'Open Show',
+                onClick: onOpenShowWorkspace,
+                className: styles.btnNeutral,
+                disabled: typeof onOpenShowWorkspace !== 'function'
+            };
+        }
+        if (runOfShowHudActionKey === 'go_live_check') {
+            return {
+                label: 'Go Live Check',
+                onClick: onOpenRunOfShowIssue || onOpenShowWorkspace,
+                className: styles.btnHighlight,
+                disabled: typeof (onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        if (runOfShowHudActionKey === 'start_show') {
+            return {
+                label: 'Start Show',
+                onClick: onStartRunOfShow,
+                className: styles.btnHighlight,
+                disabled: typeof onStartRunOfShow !== 'function'
+            };
+        }
+        if (runOfShowHudActionKey === 'resume') {
+            return {
+                label: 'Resume',
+                onClick: typeof onToggleRunOfShowAutomationPause === 'function'
+                    ? () => onToggleRunOfShowAutomationPause(false)
+                    : onOpenRunOfShowIssue || onOpenShowWorkspace,
+                className: styles.btnHighlight,
+                disabled: typeof (onToggleRunOfShowAutomationPause || onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        if (runOfShowHudActionKey === 'fix_issue') {
+            return {
+                label: 'Fix Issue',
+                onClick: () => (onOpenRunOfShowIssue || onOpenShowWorkspace)?.({ itemId: topCriticalRunOfShowItem?.itemId || topRiskyRunOfShowItem?.itemId || '' }),
+                className: styles.btnHighlight,
+                disabled: typeof (onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        return {
+            label: 'Advance',
+            onClick: onAdvanceRunOfShow,
+            className: styles.btnHighlight,
+            disabled: typeof onAdvanceRunOfShow !== 'function' || runOfShowTransportStatus === 'idle'
+        };
+    })();
     const showTimeClockEnabled = runOfShowEnabled || tab === 'run_of_show' || tab === 'show';
     const [showTimeNow, setShowTimeNow] = React.useState(() => Date.now());
+    const [showTimeDisplayMode, setShowTimeDisplayMode] = React.useState('time');
     const showTimeLabel = React.useMemo(() => (
         new Intl.DateTimeFormat(undefined, {
             hour: 'numeric',
@@ -395,13 +509,96 @@ const HostTopChrome = ({
             second: '2-digit'
         }).format(showTimeNow)
     ), [showTimeNow]);
-    const showTimeDateLabel = React.useMemo(() => (
-        new Intl.DateTimeFormat(undefined, {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric'
-        }).format(showTimeNow)
-    ), [showTimeNow]);
+    const showTimeRemainingSec = React.useMemo(() => {
+        if (!runOfShowEnabled || !normalizedRunOfShowItems.length) return 0;
+        const activeIndex = normalizedRunOfShowItems.findIndex((item) => (
+            item?.id
+            && (
+                item.id === runOfShowLiveItem?.id
+                || item.id === runOfShowStagedItem?.id
+                || item.id === runOfShowNextItem?.id
+            )
+        ));
+        const fallbackIndex = normalizedRunOfShowItems.findIndex((item) => {
+            const status = String(item?.status || '').trim().toLowerCase();
+            return !['complete', 'skipped'].includes(status);
+        });
+        const startIndex = activeIndex >= 0 ? activeIndex : fallbackIndex;
+        if (startIndex < 0) return 0;
+        let remainingSec = 0;
+        normalizedRunOfShowItems.forEach((item, index) => {
+            const status = String(item?.status || '').trim().toLowerCase();
+            if (index < startIndex || ['complete', 'skipped'].includes(status)) return;
+            const isLive = item?.id && item.id === runOfShowLiveItem?.id;
+            const isPerformance = String(item?.type || '').trim().toLowerCase() === 'performance';
+            const performanceIntroActive = isLive
+                && isPerformance
+                && room?.announcement?.active
+                && String(room?.announcement?.runOfShowItemId || '').trim() === String(item?.id || '').trim()
+                && String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase() === 'performance_intro';
+            const baseDurationSec = Math.max(0, Number(getRunOfShowDurationSec(item) || 0));
+            if (!isLive) {
+                remainingSec += baseDurationSec;
+                return;
+            }
+            const liveDurationSec = Math.max(
+                0,
+                Number(
+                    isPerformance
+                        ? (
+                            performanceIntroActive
+                                ? (room?.announcement?.durationSec || baseDurationSec)
+                                : (room?.currentPerformanceMeta?.durationSec || baseDurationSec)
+                        )
+                        : baseDurationSec
+                ) || 0
+            );
+            const liveStartedAtMs = Math.max(
+                0,
+                Number(
+                    isPerformance
+                        ? (
+                            performanceIntroActive
+                                ? (room?.announcement?.startedAtMs || item?.liveStartedAtMs || 0)
+                                : (room?.currentPerformanceMeta?.startedAtMs || item?.liveStartedAtMs || 0)
+                        )
+                        : (item?.liveStartedAtMs || 0)
+                ) || 0
+            );
+            if (liveDurationSec > 0 && liveStartedAtMs > 0) {
+                remainingSec += Math.max(0, liveDurationSec - ((showTimeNow - liveStartedAtMs) / 1000));
+            } else {
+                remainingSec += liveDurationSec;
+            }
+        });
+        return Math.max(0, Math.ceil(remainingSec));
+    }, [
+        normalizedRunOfShowItems,
+        room?.announcement?.active,
+        room?.announcement?.durationSec,
+        room?.announcement?.runOfShowItemId,
+        room?.announcement?.startedAtMs,
+        room?.announcement?.takeoverScene,
+        room?.announcement?.type,
+        room?.currentPerformanceMeta?.durationSec,
+        room?.currentPerformanceMeta?.startedAtMs,
+        runOfShowEnabled,
+        runOfShowLiveItem?.id,
+        runOfShowNextItem?.id,
+        runOfShowStagedItem?.id,
+        showTimeNow
+    ]);
+    const showTimeHasPlannedEnd = showTimeRemainingSec > 0;
+    const showTimeRemainingLabel = React.useMemo(
+        () => formatRemainingShowTime(showTimeRemainingSec),
+        [showTimeRemainingSec]
+    );
+    const showTimePrimaryLabel = showTimeDisplayMode === 'remaining' && showTimeHasPlannedEnd
+        ? showTimeRemainingLabel
+        : showTimeLabel;
+    const showTimeModeLabel = showTimeDisplayMode === 'remaining' && showTimeHasPlannedEnd
+        ? 'Show Left'
+        : 'Now';
     React.useEffect(() => {
         try {
             window.localStorage.setItem('bross_host_compact_run_of_show_collapsed', compactRunOfShowCollapsed ? '1' : '0');
@@ -409,6 +606,22 @@ const HostTopChrome = ({
             // Ignore storage failures for host chrome preferences.
         }
     }, [compactRunOfShowCollapsed]);
+    React.useEffect(() => {
+        if (runOfShowFocusMode || !(runOfShowEnabled || hasRunOfShowPlan)) {
+            setCompactRunOfShowToolsOpen(false);
+        }
+    }, [hasRunOfShowPlan, runOfShowEnabled, runOfShowFocusMode]);
+    React.useEffect(() => {
+        if (!showTimeClockEnabled || !showTimeHasPlannedEnd) {
+            setShowTimeDisplayMode('time');
+            return undefined;
+        }
+        setShowTimeDisplayMode('time');
+        const timer = window.setInterval(() => {
+            setShowTimeDisplayMode((prev) => (prev === 'time' ? 'remaining' : 'time'));
+        }, 5000);
+        return () => window.clearInterval(timer);
+    }, [showTimeClockEnabled, showTimeHasPlannedEnd]);
     const liveModeHostGuide = bangerActive
         ? {
             toneClass: 'border-orange-400/45 bg-orange-500/12 text-orange-100',
@@ -437,9 +650,6 @@ const HostTopChrome = ({
         setShowLaunchMenu(false);
         setShowNavMenu(false);
     }, [closeAllDeckMenus, setShowLaunchMenu, setShowNavMenu]);
-    const closeMenusBeforeNavigation = React.useCallback(() => {
-        closeAllTopMenus();
-    }, [closeAllTopMenus]);
     const openLaunchTarget = React.useCallback((targetUrl = '') => {
         const nextUrl = String(targetUrl || '').trim();
         if (!nextUrl || typeof window === 'undefined') return;
@@ -852,12 +1062,12 @@ const HostTopChrome = ({
         closeAllTopMenus();
     };
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3 py-1.5' : 'px-4 py-2'} flex flex-col gap-1.5 shadow-2xl shrink-0 relative z-20 border-b border-zinc-800`}>
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between w-full">
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative z-40 border-b border-zinc-800`}>
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className={`${runOfShowFocusMode ? 'h-9 lg:h-10' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
+                    className={`${runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
                     alt="Beaurocks Karaoke"
                 />
                 <div data-host-room-code className="text-[14px] sm:text-[16px] lg:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
@@ -888,7 +1098,7 @@ const HostTopChrome = ({
                         <i className="fa-solid fa-rocket"></i>
                     </button>
                     {showLaunchMenu && (
-                        <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
+                        <div className="absolute left-0 top-full mt-2 w-56 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100]">
                             <button
                                 type="button"
                                 onClick={() => openLaunchTarget(launchTvHref)}
@@ -928,14 +1138,20 @@ const HostTopChrome = ({
                     )}
                 </div>
                 {showTimeClockEnabled && (
-                    <div className={`ml-1 flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${runOfShowFocusMode ? 'px-2.5 py-1' : 'px-3 py-1.5'}`}>
-                        <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-8 w-8' : 'h-9 w-9'}`}>
+                    <div className={`ml-1 flex min-w-[168px] items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${runOfShowFocusMode ? 'px-3 py-1.5' : 'px-3 py-1.5'}`}>
+                        <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-9 w-9' : 'h-9 w-9'}`}>
                             <i className="fa-solid fa-clock"></i>
                         </div>
-                        <div className="min-w-0">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Show Time</div>
-                            <div className={`${runOfShowFocusMode ? 'mt-0 text-base' : 'mt-0.5 text-lg'} font-black leading-none text-white tabular-nums`}>{showTimeLabel}</div>
-                            <div className="mt-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-400">{showTimeDateLabel}</div>
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
+                                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Show Time</div>
+                                <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                    {showTimeModeLabel}
+                                </div>
+                            </div>
+                            <div className={`${runOfShowFocusMode ? 'mt-0 text-lg' : 'mt-0.5 text-lg'} truncate whitespace-nowrap font-black leading-none text-white tabular-nums`}>
+                                {showTimePrimaryLabel}
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1034,7 +1250,7 @@ const HostTopChrome = ({
                         <i className="fa-solid fa-bars"></i>
                     </button>
                     {showNavMenu && (
-                        <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-50">
+                        <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl z-[100]">
                             {typeof onOpenHostDashboard === 'function' && (
                                 <button
                                     onClick={() => {
@@ -1077,7 +1293,7 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-2.5 py-1.5' : 'px-3 py-2'}`}>
+        <div data-host-quick-strip-wrap="true" className={`w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
             <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
                 {shouldShowQuickStartButton && (
                     <div className="relative" ref={quickStartMenuRef}>
@@ -1894,102 +2110,215 @@ const HostTopChrome = ({
                     {missionStatusDetail || missionRecommendation?.reason || 'Action needed in room flow.'}
                 </div>
             )}
-            {liveModeHostGuide && !runOfShowFocusMode && (
+            {liveModeHostGuide && !runOfShowFocusMode && !(runOfShowEnabled || hasRunOfShowPlan) && (
                 <div className={`mt-2 rounded-xl border px-3 py-2 ${liveModeHostGuide.toneClass}`}>
                     <div className="text-[11px] uppercase tracking-[0.22em] font-bold">{liveModeHostGuide.title}</div>
                     <div className="text-xs mt-1">{liveModeHostGuide.summary}</div>
                     <div className="text-[11px] mt-1.5 text-white/90">{liveModeHostGuide.actions}</div>
                 </div>
             )}
+            {activeMomentFeedback?.id ? (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className={`mt-2 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2.5 shadow-[0_12px_30px_rgba(0,0,0,0.18)] ${activeMomentFeedback.toneClass || 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'}`}
+                >
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/12 bg-black/20 text-base text-white">
+                        <i className={`fa-solid ${activeMomentFeedback.icon || 'fa-bolt'}`}></i>
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/80">
+                                {activeMomentFeedback.sourceTag || 'Live moment'}
+                            </span>
+                            <span className="rounded-full border border-white/12 bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/90">
+                                {activeMomentFeedback.label}
+                            </span>
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-white">{activeMomentFeedback.detail || 'Cue live'}</div>
+                    </div>
+                </div>
+            ) : null}
         </div>
-        {runOfShowEnabled && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
+        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
             <div className="w-full">
-                <div className="rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3">
-                    <div className="flex items-center justify-between gap-3">
+                <div className={`rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] ${compactRunOfShowDense ? 'px-3 py-2' : 'px-3 py-3'}`}>
+                    <div className={`flex flex-wrap justify-between gap-2.5 ${compactRunOfShowDense ? 'items-center' : 'items-start'}`}>
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Run Of Show</div>
-                            <div className="mt-1 text-sm text-zinc-300">
-                                Compressed sequence strip for the current room plan.
-                                {compactRunOfShowCurrentIndex >= 0 ? ` Now at ${compactRunOfShowCurrentIndex + 1} of ${compactRunOfShowItems.length}.` : ''}
+                            <div className={`flex flex-wrap items-center gap-2 ${compactRunOfShowDense ? 'mt-0.5' : 'mt-1'}`}>
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${runOfShowHudToneClass}`}>
+                                    {runOfShowHudState.title}
+                                </span>
+                                {compactRunOfShowCurrentIndex >= 0 ? (
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                        {compactRunOfShowCurrentIndex + 1} of {compactRunOfShowItems.length}
+                                    </span>
+                                ) : null}
                             </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                                <span>Total show {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
-                                <span>{compactRunOfShowItems.length} sequence{compactRunOfShowItems.length === 1 ? '' : 's'}</span>
-                            </div>
+                            {!compactRunOfShowDense ? (
+                                <>
+                                    <div className="mt-2 text-[13px] text-zinc-300">
+                                        {runOfShowHudState.detail}
+                                    </div>
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                        <span>Total show {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
+                                        <span>{compactRunOfShowItems.length} sequence{compactRunOfShowItems.length === 1 ? '' : 's'}</span>
+                                        {runOfShowEnabled ? <span>Live mode</span> : <span>Not live yet</span>}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                    <span>{formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
+                                    <span>{compactRunOfShowItems.length} slots</span>
+                                    {runOfShowEnabled ? <span>Live</span> : <span>Draft</span>}
+                                </div>
+                            )}
                         </div>
-                        <div className="flex items-center gap-2">
-                            {typeof onRewindRunOfShow === 'function' && (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            {runOfShowPrimaryAction?.label ? (
                                 <button
                                     type="button"
-                                    onClick={onRewindRunOfShow}
-                                    disabled={!runOfShowEnabled || compactRunOfShowItems.length < 2}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                                    onClick={() => {
+                                        setCompactRunOfShowToolsOpen(false);
+                                        runOfShowPrimaryAction.onClick();
+                                    }}
+                                    disabled={runOfShowPrimaryAction.disabled}
+                                    className={`${styles.btnStd} ${runOfShowPrimaryAction.className} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em] disabled:opacity-40`}
                                 >
-                                    Previous
+                                    {runOfShowPrimaryAction.label}
                                 </button>
-                            )}
-                            {typeof onAdvanceRunOfShow === 'function' && (
+                            ) : null}
+                            {typeof onOpenShowWorkspace === 'function' && (
                                 <button
                                     type="button"
-                                    onClick={onAdvanceRunOfShow}
-                                    disabled={!runOfShowEnabled || runOfShowTransportStatus === 'idle'}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                                    onClick={() => {
+                                        setCompactRunOfShowToolsOpen(false);
+                                        onOpenShowWorkspace();
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
                                 >
-                                    {runOfShowLiveItem?.id ? 'Next' : runOfShowStagedItem?.id ? 'Go Live' : 'Start Next'}
-                                </button>
-                            )}
-                            {(typeof onStartRunOfShow === 'function' || typeof onStopRunOfShow === 'function') && (
-                                <button
-                                    type="button"
-                                    onClick={runOfShowEnabled ? onStopRunOfShow : onStartRunOfShow}
-                                    className={`${styles.btnStd} ${runOfShowEnabled ? styles.btnDanger : styles.btnHighlight} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
-                                >
-                                    {runOfShowEnabled ? 'Stop Run' : 'Start Run'}
+                                    {compactRunOfShowDense ? 'Open Show' : 'Show Workspace'}
                                 </button>
                             )}
                             <button
                                 type="button"
-                                onClick={() => setCompactRunOfShowCollapsed((prev) => !prev)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                                onClick={() => setCompactRunOfShowToolsOpen((prev) => !prev)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
                             >
-                                {compactRunOfShowCollapsed ? 'Expand Timeline' : 'Collapse Timeline'}
+                                {compactRunOfShowToolsOpen ? (compactRunOfShowDense ? 'Hide' : 'Less') : 'More'}
                             </button>
-                            {typeof onOpenShowWorkspace === 'function' && (
-                                <button
-                                    type="button"
-                                    onClick={onOpenShowWorkspace}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
-                                >
-                                    Show Board
-                                </button>
-                            )}
                         </div>
                     </div>
-                    {!compactRunOfShowCollapsed ? (
-                        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                    {compactRunOfShowToolsOpen ? (
+                        <div className={`mt-2 flex flex-wrap items-center gap-1.5 border-t border-white/10 ${compactRunOfShowDense ? 'pt-1.5' : 'pt-2'}`}>
+                            <button
+                                type="button"
+                                onClick={() => setCompactRunOfShowCollapsed((prev) => !prev)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
+                            >
+                                {compactRunOfShowCollapsed
+                                    ? (compactRunOfShowDense ? 'Expand Bar' : 'Expand Timeline')
+                                    : (compactRunOfShowDense ? 'Collapse Bar' : 'Collapse Timeline')}
+                            </button>
+                            {runOfShowEnabled && typeof onRewindRunOfShow === 'function' ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCompactRunOfShowToolsOpen(false);
+                                        onRewindRunOfShow();
+                                    }}
+                                    disabled={compactRunOfShowItems.length < 2}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
+                                >
+                                    Previous
+                                </button>
+                            ) : null}
+                            {runOfShowEnabled && typeof onStopRunOfShow === 'function' ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCompactRunOfShowToolsOpen(false);
+                                        onStopRunOfShow();
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em] disabled:opacity-40`}
+                                >
+                                    Stop Show
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    {!compactRunOfShowCollapsed && compactRunOfShowDense ? (
+                        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
                             {compactRunOfShowItems.map((item) => (
                                 <button
                                     key={item.id}
                                     type="button"
                                     onClick={() => {
+                                        if (typeof onTriggerRunOfShowItem === 'function') {
+                                            onTriggerRunOfShowItem(item.id);
+                                            return;
+                                        }
                                         if (typeof onFocusRunOfShowItem === 'function') {
                                             onFocusRunOfShowItem(item.id);
                                             return;
                                         }
                                         onOpenShowWorkspace?.();
                                     }}
-                                    className={`min-w-[180px] max-w-[244px] shrink-0 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_24px_rgba(16,185,129,0.16)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.32),0_0_20px_rgba(14,165,233,0.12)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.28)]' : ''}`}
+                                    className={`min-w-[138px] max-w-[170px] shrink-0 rounded-xl border px-2.5 py-2 text-left transition hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_20px_rgba(16,185,129,0.14)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.3),0_0_16px_rgba(14,165,233,0.1)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.24)]' : ''}`}
                                 >
-                                    <div className="flex items-start gap-3">
+                                    <div className="flex items-center gap-2">
                                         {item.artworkUrl ? (
-                                            <div className={`h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
+                                            <div className={`h-8 w-8 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
                                                 <img src={item.artworkUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
                                             </div>
                                         ) : (
-                                            <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
-                                                <i className={`fa-solid ${item.iconClass}`}></i>
+                                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
+                                                <i className={`fa-solid ${item.iconClass} text-xs`}></i>
                                             </div>
                                         )}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center justify-between gap-1.5">
+                                                <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${item.statusToneClass}`}>
+                                                    {item.badgeLabel}
+                                                </span>
+                                                <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-300">{item.durationLabel}</span>
+                                            </div>
+                                            <div className={`mt-1 truncate text-[12px] font-black leading-tight ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    ) : !compactRunOfShowCollapsed ? (
+                        <div className="mt-3 flex gap-2.5 overflow-x-auto pb-1.5 custom-scrollbar">
+                            {compactRunOfShowItems.map((item) => (
+                                <button
+                                    key={item.id}
+                                    type="button"
+                                    onClick={() => {
+                                        if (typeof onTriggerRunOfShowItem === 'function') {
+                                            onTriggerRunOfShowItem(item.id);
+                                            return;
+                                        }
+                                        if (typeof onFocusRunOfShowItem === 'function') {
+                                            onFocusRunOfShowItem(item.id);
+                                            return;
+                                        }
+                                        onOpenShowWorkspace?.();
+                                    }}
+                                    className={`min-w-[196px] max-w-[244px] shrink-0 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_24px_rgba(16,185,129,0.16)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.32),0_0_20px_rgba(14,165,233,0.12)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.28)]' : ''}`}
+                                >
+                                    <div className="flex items-start gap-2.5">
+                                        {item.artworkUrl ? (
+                                            <div className={`h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
+                                                <img src={item.artworkUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                            </div>
+                                        ) : (
+                                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
+                                                <i className={`fa-solid ${item.iconClass}`}></i>
+                                            </div>
+    )}
                                         <div className="min-w-0 flex-1">
                                             <div className="flex items-center justify-between gap-2">
                                                 <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${item.statusToneClass}`}>
@@ -1999,16 +2328,16 @@ const HostTopChrome = ({
                                                     {item.durationLabel}
                                                 </span>
                                             </div>
-                                            <div className={`mt-2 line-clamp-2 text-sm font-black ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
-                                            {item.summary ? <div className={`mt-1 line-clamp-2 text-xs ${item.isComplete ? 'text-zinc-500' : 'text-zinc-300'}`}>{item.summary}</div> : null}
-                                            <div className={`mt-2 text-[10px] uppercase tracking-[0.16em] ${item.isComplete ? 'text-zinc-600' : 'text-zinc-400'}`}>{item.detail}</div>
+                                            <div className={`mt-1.5 line-clamp-2 text-[13px] font-black leading-snug ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
+                                            {item.summary ? <div className={`mt-1 line-clamp-2 text-[12px] ${item.isComplete ? 'text-zinc-500' : 'text-zinc-300'}`}>{item.summary}</div> : null}
+                                            <div className={`mt-1.5 text-[10px] uppercase tracking-[0.16em] ${item.isComplete ? 'text-zinc-600' : 'text-zinc-400'}`}>{item.detail}</div>
                                         </div>
                                     </div>
                                 </button>
                             ))}
                         </div>
                     ) : (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-cyan-300/22 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                                 {compactRunOfShowItems.length} slots
                             </span>
@@ -2016,8 +2345,13 @@ const HostTopChrome = ({
                                 {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}
                             </span>
                             <span className="text-xs text-zinc-400">
-                                {compactRunOfShowItems[0]?.title ? `Starts with ${compactRunOfShowItems[0].title}` : 'Timeline ready'}
+                                {runOfShowEnabled
+                                    ? (compactRunOfShowItems[compactRunOfShowCurrentIndex]?.title
+                                        ? `Focused on ${compactRunOfShowItems[compactRunOfShowCurrentIndex].title}`
+                                        : 'Live show ready')
+                                    : (compactRunOfShowItems[0]?.title ? `Starts with ${compactRunOfShowItems[0].title}` : 'Timeline ready')}
                             </span>
+                            {runOfShowQaStatusDetail ? <span className="text-xs text-zinc-500">{runOfShowQaStatusDetail}</span> : null}
                         </div>
                     )}
                 </div>

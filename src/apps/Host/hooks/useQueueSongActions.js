@@ -23,6 +23,8 @@ import {
     extractYouTubeId
 } from '../../../lib/songCatalog';
 import { normalizeBackingChoice } from '../../../lib/playbackSource';
+import { requiresBackingHostReview } from '../../../lib/requestModes';
+import { buildHostEditedReviewState } from '../../../lib/queueSongReviewState';
 import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 
 const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
@@ -164,7 +166,10 @@ const resolveCanonicalIdentityBatchSafe = async (items = []) => {
     }
 };
 
-const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, concurrency = 4 } = {}) => {
+const fetchYouTubeEmbeddableStatusMap = async (
+    videoIds = [],
+    { batchSize = 50, concurrency = 4, roomCode = '' } = {}
+) => {
     const ids = [...new Set((Array.isArray(videoIds) ? videoIds : []).map((id) => String(id || '').trim()).filter(Boolean))];
     const statusMap = new Map();
     if (!ids.length) return statusMap;
@@ -178,7 +183,11 @@ const fetchYouTubeEmbeddableStatusMap = async (videoIds = [], { batchSize = 50, 
             const chunkIds = ids.slice(start, start + safeBatchSize);
             if (!chunkIds.length) continue;
             try {
-                const statusData = await callFunction('youtubeStatus', { ids: chunkIds });
+                const statusData = await callFunction('youtubeStatus', {
+                    ids: chunkIds,
+                    roomCode,
+                    usageContext: { source: 'host_queue_playlist_status_refresh' }
+                });
                 (statusData?.items || []).forEach((entry) => {
                     statusMap.set(entry.id, {
                         embeddable: !!entry.embeddable,
@@ -310,12 +319,14 @@ const useQueueSongActions = ({
                 await ensureAppCheckToken(false).catch(() => false);
                 const data = await callFunction('youtubePlaylist', {
                     playlistId,
-                    maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX
+                    maxTotal: YOUTUBE_PLAYLIST_QUEUE_MAX,
+                    roomCode,
+                    usageContext: { source: 'host_queue_playlist_import' }
                 });
                 const playlistItems = normalizeYouTubePlaylistItems(data?.items || []);
                 const statusMap = await fetchYouTubeEmbeddableStatusMap(
                     playlistItems.map((item) => item.id),
-                    { batchSize: 50, concurrency: 4 }
+                    { batchSize: 50, concurrency: 4, roomCode }
                 );
                 const queueItems = playlistItems
                     .map((item) => ({
@@ -786,7 +797,8 @@ const useQueueSongActions = ({
         const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId);
         const latestSnap = await getDoc(songRef).catch(() => null);
         const latestSong = latestSnap?.exists() ? (latestSnap.data() || {}) : {};
-        const wasReviewRequired = String(latestSong?.resolutionStatus || '').trim().toLowerCase() === 'review_required';
+        const latestStatus = String(latestSong?.status || '').trim().toLowerCase();
+        const wasReviewRequired = requiresBackingHostReview(latestSong?.resolutionStatus);
         const normalizedBacking = normalizeBackingChoice({
             mediaUrl: editForm.url,
             appleMusicId: editForm.appleMusicId
@@ -858,14 +870,13 @@ const useQueueSongActions = ({
             }
         }
         if (wasReviewRequired && (normalizedUrl || normalizedAppleMusicId)) {
-            updates.playbackReady = true;
-            updates.mediaResolutionStatus = 'host_reviewed';
-            updates.resolutionStatus = 'resolved';
-            updates.resolutionLayer = trackSource === 'youtube' ? 'host_favorite' : 'host_reviewed';
+            Object.assign(updates, buildHostEditedReviewState({
+                currentStatus: latestStatus,
+                currentResolutionStatus: latestSong?.resolutionStatus,
+                hasPlayableBacking: true,
+                trackSource
+            }));
             updates.reviewResolvedAt = serverTimestamp();
-            if (String(latestSong?.status || '').trim().toLowerCase() === 'pending') {
-                updates.status = 'requested';
-            }
         }
         await updateDoc(songRef, updates);
 

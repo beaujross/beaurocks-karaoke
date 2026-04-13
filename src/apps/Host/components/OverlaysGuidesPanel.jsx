@@ -58,11 +58,11 @@ const OverlaysGuidesPanel = ({
             </button>
             <button
                 onClick={async () => {
-                    const next = !(popTriviaEnabled !== false);
+                    const next = !popTriviaEnabled;
                     setPopTriviaEnabled?.(next);
                     await updateRoom({ popTriviaEnabled: next });
                 }}
-                className={`${styles.btnStd} ${popTriviaEnabled !== false ? styles.btnHighlight : styles.btnNeutral} flex-1`}
+                className={`${styles.btnStd} ${popTriviaEnabled ? styles.btnHighlight : styles.btnNeutral} flex-1`}
                 title="Enable AI pop-up trivia during karaoke songs"
             >
                 <i className="fa-solid fa-brain mr-2"></i>Pop Trivia

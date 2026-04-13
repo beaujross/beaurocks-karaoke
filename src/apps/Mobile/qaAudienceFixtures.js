@@ -1,4 +1,14 @@
+import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
+
 const DEFAULT_ROOM_CODE = 'DEMOAUD';
+const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
+const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
+const AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
+    appTitle: 'AAHF Karaoke',
+    primaryColor: '#FF4FA3',
+    secondaryColor: '#1ED7FF',
+    accentColor: '#FACC15',
+});
 
 const buildBaseRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'classic', activeMode = 'karaoke' } = {}) => ({
     roomCode,
@@ -25,6 +35,19 @@ const buildBaseRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'classic',
             launchedAt: Date.now()
         }
         : null,
+});
+
+const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlined', activeMode = 'karaoke' } = {}) => ({
+    ...buildBaseRoom({ roomCode, shellVariant, activeMode }),
+    eventProfileId: AAHF_EVENT_PROFILE_ID,
+    eventProfileLabel: 'AAHF Kick-Off',
+    eventProfileVersion: 1,
+    logoUrl: AAHF_LOGO_URL,
+    audienceBrandTheme: AAHF_AUDIENCE_BRAND_THEME,
+    roomPlan: {
+        startsAtLocal: '2026-05-01T19:00',
+        startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+    },
 });
 
 const buildBaseSongs = () => ([
@@ -92,6 +115,7 @@ const buildBaseFixture = ({ shellVariant = 'classic', activeMode = 'karaoke' } =
 export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'classic-home',
     'streamlined-home',
+    'streamlined-aahf-home',
     'classic-trivia',
     'streamlined-trivia',
 ]);
@@ -115,6 +139,13 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
             room: {
                 ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
             },
+        };
+    }
+
+    if (safeId === 'streamlined-aahf-home') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
         };
     }
 

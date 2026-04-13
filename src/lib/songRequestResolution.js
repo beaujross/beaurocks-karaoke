@@ -1,3 +1,5 @@
+import { isRejectedBackingResolution } from './requestModes.js';
+
 const normalizeSongIntentText = (value = '') => String(value || '')
   .toLowerCase()
   .replace(/karaoke|official|instrumental|backing track|lyrics video|lyric video|hd|4k/g, ' ')
@@ -53,6 +55,7 @@ const buildTrustedCandidate = ({
   qualityScore = 0,
   successCount = 0,
   usageCount = 0,
+  failureCount = 0,
   approvalState = '',
   reason = ''
 } = {}) => ({
@@ -69,6 +72,7 @@ const buildTrustedCandidate = ({
   qualityScore: Number(qualityScore || 0),
   successCount: Number(successCount || 0),
   usageCount: Number(usageCount || 0),
+  failureCount: Number(failureCount || 0),
   approvalState: String(approvalState || '').trim().toLowerCase(),
   reason: String(reason || '').trim()
 });
@@ -87,6 +91,7 @@ const buildYouTubeIndexCandidate = (entry = {}) => ({
   qualityScore: Number(entry.qualityScore || 0),
   successCount: Number(entry.successCount || 0),
   usageCount: Number(entry.usageCount || 0),
+  failureCount: Number(entry.failureCount || 0),
   approvalState: entry.playable === true ? 'approved' : 'candidate',
   reason: 'Matches the host-curated room library.'
 });
@@ -175,6 +180,7 @@ const rankSongRequestCandidates = ({
       const qualityScore = Number(candidate.qualityScore || 0);
       const successScore = Math.min(40, Number(candidate.successCount || 0) * 4);
       const usageScore = Math.min(24, Number(candidate.usageCount || 0) * 2);
+      const failurePenalty = Math.min(24, Number(candidate.failureCount || 0) * 6);
       const approvalScore = candidate.approvalState === 'approved'
         ? 20
         : candidate.approvalState === 'submitted'
@@ -184,7 +190,7 @@ const rankSongRequestCandidates = ({
         ...candidate,
         titleScore,
         artistScore,
-        score: layerScore + titleScore + artistScore + qualityScore + successScore + usageScore + approvalScore
+        score: layerScore + titleScore + artistScore + qualityScore + successScore + usageScore + approvalScore - failurePenalty
       };
     })
     .filter((candidate) => candidate.score > 0)
@@ -262,7 +268,7 @@ const buildCollaborationSuggestionMap = ({
   const optedIn = safeSongs.filter((song) => (
     ['requested', 'pending'].includes(String(song?.status || '').trim().toLowerCase())
     && song?.collabOpen === true
-    && String(song?.resolutionStatus || '').trim().toLowerCase() !== 'rejected'
+    && !isRejectedBackingResolution(song?.resolutionStatus)
   ));
   const groups = new Map();
   optedIn.forEach((song) => {

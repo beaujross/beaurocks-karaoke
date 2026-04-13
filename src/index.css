@@ -1223,16 +1223,19 @@ html, body, #root { height: 100%; width: 100%; }
   }
 
   .host-app[data-host-tablet-touch="true"] .host-top-quick-strip {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    overscroll-behavior-x: auto;
+    -webkit-overflow-scrolling: auto;
+    scrollbar-width: auto;
+    row-gap: 0.45rem;
     padding-bottom: 0.2rem;
+    touch-action: manipulation;
   }
 
   .host-app[data-host-tablet-touch="true"] .host-top-quick-strip > * {
     flex: 0 0 auto;
+    max-width: 100%;
   }
 
   .host-app[data-host-tablet-touch="true"] .custom-scrollbar,

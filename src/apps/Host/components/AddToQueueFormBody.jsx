@@ -25,10 +25,6 @@ const AddToQueueFormBody = ({
     setManualSingerMode,
     hostName,
     users,
-    lyricsOpen,
-    setLyricsOpen,
-    onGenerateManualLyrics,
-    openYtSearch,
     addSong,
     appleMusicAuthorized
 }) => {
@@ -111,7 +107,7 @@ const AddToQueueFormBody = ({
                             {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
                         </div>
                     </div>
-                    <div className="host-autocomplete-results-list max-h-80 overflow-y-auto custom-scrollbar">
+                    <div className="host-autocomplete-results-list max-h-[32rem] overflow-y-auto custom-scrollbar p-3">
                         {results.length > 0 ? results.map((r, idx) => (
                             (() => {
                                 const rowKey = getResultRowKey(r, idx);
@@ -120,48 +116,58 @@ const AddToQueueFormBody = ({
                                     <div
                                         key={rowKey}
                                         onClick={() => handleResultClick(r, idx)}
-                                        className="host-autocomplete-result-row group grid grid-cols-[52px_minmax(0,1fr)_auto] gap-3 items-center px-3 py-2.5 hover:bg-zinc-900/90 border-b border-white/5 cursor-pointer"
+                                        className="host-autocomplete-result-row group mb-3 cursor-pointer rounded-[1.35rem] border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] p-3 shadow-[0_12px_30px_rgba(0,0,0,0.22)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]"
                                     >
-                                        <div className="w-[52px] h-[52px] flex items-center justify-center bg-zinc-900 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
-                                            {r.source === 'local' ? (
-                                                <i className="fa-solid fa-hard-drive text-[#00C4D9] text-lg"></i>
-                                            ) : r.source === 'youtube' ? (
-                                                <div className="relative">
-                                                    <img src={r.artworkUrl100} className="w-[52px] h-[52px] rounded-lg object-cover" alt="" />
-                                                    <i className="fa-brands fa-youtube text-red-500 absolute -bottom-1 -right-1 text-[10px] bg-black/70 rounded-full p-[2px]"></i>
+                                        <div className="grid gap-3 md:grid-cols-[94px_minmax(0,1fr)]">
+                                            <div className="relative overflow-hidden rounded-[1.1rem] border border-white/10 bg-black/40">
+                                                {r.source === 'local' ? (
+                                                    <div className="flex h-[94px] w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))]">
+                                                        <i className="fa-solid fa-hard-drive text-[#00C4D9] text-2xl"></i>
+                                                    </div>
+                                                ) : (
+                                                    <img src={r.artworkUrl100} className="h-[94px] w-full object-cover" alt="" />
+                                                )}
+                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-2 py-2">
+                                                    <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-white">
+                                                        <span>#{idx + 1}</span>
+                                                        <span>{r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'YouTube' : 'Local'}</span>
+                                                    </div>
                                                 </div>
-                                            ) : (
-                                                <img src={r.artworkUrl100} className="w-[52px] h-[52px] rounded-lg object-cover" alt="" />
-                                            )}
-                                        </div>
-                                        <div className="min-w-0 space-y-0.5">
-                                            <div className="font-semibold text-white text-sm leading-tight truncate">{r.trackName}</div>
-                                            <div className="text-zinc-400 text-xs truncate">{r.artistName}</div>
-                                            <div className="flex items-center gap-1.5 mt-1">
-                                                <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${
-                                                    r.source === 'itunes'
-                                                        ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
-                                                        : r.source === 'youtube'
-                                                            ? 'border-red-300/40 bg-red-500/10 text-red-100'
-                                                            : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
-                                                }`}>
-                                                    {r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'YouTube' : 'Local'}
-                                                </span>
-                                                {r.source === 'youtube' && (
-                                                    <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-[0.08em] ${r.playable === false ? 'border-rose-300/40 bg-rose-500/10 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                                    {r.playable === false ? 'Unverified' : 'Playable'}
-                                                </span>
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="line-clamp-2 text-base font-black leading-tight text-white">{r.trackName}</div>
+                                                        <div className="mt-1 truncate text-sm text-zinc-300">{r.artistName}</div>
+                                                    </div>
+                                                    <div className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100 whitespace-nowrap">
+                                                        {isAdding ? 'Adding…' : (quickAddOnResultClick ? 'Quick Add' : 'Select')}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                                                        r.source === 'itunes'
+                                                            ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
+                                                            : r.source === 'youtube'
+                                                                ? 'border-red-300/40 bg-red-500/10 text-red-100'
+                                                                : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
+                                                    }`}>
+                                                        {r.source === 'itunes' ? 'Apple lookup' : r.source === 'youtube' ? 'Karaoke backing' : 'Local library'}
+                                                    </span>
+                                                    {r.source === 'youtube' ? (
+                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${r.playable === false ? 'border-rose-300/40 bg-rose-500/10 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
+                                                            {r.playable === false ? 'Needs review' : 'Stage ready'}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                {r.sourceDetail ? (
+                                                    <div className="mt-3 line-clamp-2 text-[11px] text-zinc-500">{r.sourceDetail}</div>
+                                                ) : (
+                                                    <div className="mt-3 text-[11px] text-zinc-500">
+                                                        {quickAddOnResultClick ? 'Click once to queue immediately.' : 'Click once to drop this into the manual queue form.'}
+                                                    </div>
                                                 )}
                                             </div>
-                                            {!!r.sourceDetail && (
-                                                <div className="text-[10px] text-zinc-500 truncate">{r.sourceDetail}</div>
-                                            )}
-                                        </div>
-                                        <div className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-zinc-300">
-                                            <span className="px-2 py-1 rounded-full border border-cyan-300/25 bg-cyan-500/10 text-cyan-100 whitespace-nowrap">
-                                                {isAdding ? 'Adding...' : (quickAddOnResultClick ? 'Quick Add' : 'Select Track')}
-                                            </span>
-                                            <i className="fa-solid fa-chevron-right text-zinc-500 group-hover:text-cyan-200"></i>
                                         </div>
                                     </div>
                                 );
@@ -186,7 +192,7 @@ const AddToQueueFormBody = ({
                     Queued: {quickAddNotice.songTitle}
                 </div>
                 <div className="text-xs text-zinc-300 mt-1">{quickAddNotice.statusText}</div>
-                {!!quickAddNotice.lyricsGenerationResolution && (
+                {Boolean(quickAddNotice.lyricsGenerationResolution) && (
                     <div className="text-[10px] uppercase tracking-[0.1em] text-emerald-100/80 mt-1">
                         Resolution: {quickAddNotice.lyricsGenerationResolution}
                     </div>

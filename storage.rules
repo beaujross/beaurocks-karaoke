@@ -90,9 +90,13 @@ service firebase.storage {
     }
 
     match /room_photos/{roomCode}/{uploaderUid}/{fileName} {
-      allow read: if isRoomHost(roomCode) || isRoomParticipant(roomCode);
-      allow create: if uploaderUid == request.auth.uid
-        && (isRoomHost(roomCode) || isRoomParticipant(roomCode))
+      allow read: if isRoomHost(roomCode)
+        || isRoomParticipant(roomCode)
+        || (isAuthed() && uploaderUid == request.auth.uid);
+      allow create: if isAuthed()
+        && uploaderUid == request.auth.uid
+        && firestore.exists(roomDocPath(roomCode))
+        && isRoomParticipant(roomCode)
         && isAllowedPhotoUpload();
       allow delete: if isRoomHost(roomCode) || uploaderUid == request.auth.uid;
       allow update: if false;

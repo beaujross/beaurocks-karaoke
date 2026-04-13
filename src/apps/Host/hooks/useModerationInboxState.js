@@ -36,9 +36,11 @@ const useModerationInboxState = ({
 } = {}) => {
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
+    const [crowdSelfieSubmissions, setCrowdSelfieSubmissions] = useState([]);
     const [busyAction, setBusyAction] = useState('');
     const [doodleLoading, setDoodleLoading] = useState(false);
     const [selfieLoading, setSelfieLoading] = useState(false);
+    const [crowdSelfieLoading, setCrowdSelfieLoading] = useState(false);
 
     const doodle = room?.doodleOke || null;
     const selfie = room?.selfieChallenge || null;
@@ -108,12 +110,41 @@ const useModerationInboxState = ({
         return () => unsub();
     }, [roomCode, selfiePromptId]);
 
+    useEffect(() => {
+        if (!roomCode) {
+            setCrowdSelfieSubmissions([]);
+            setCrowdSelfieLoading(false);
+            return;
+        }
+        setCrowdSelfieLoading(true);
+        const submissionsQuery = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'),
+            where('roomCode', '==', roomCode)
+        );
+        const unsub = onSnapshot(
+            submissionsQuery,
+            (snap) => {
+                const docs = snap.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+                docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
+                setCrowdSelfieSubmissions(docs);
+                setCrowdSelfieLoading(false);
+            },
+            (error) => {
+                moderationLogger.error('Failed to watch crowd selfie submissions', error);
+                setCrowdSelfieSubmissions([]);
+                setCrowdSelfieLoading(false);
+            }
+        );
+        return () => unsub();
+    }, [roomCode]);
+
     const snapshot = useMemo(() => buildModerationQueueSnapshot({
         doodleRequireReview,
         selfieRequireApproval,
         approvedUids,
         doodleSubmissions,
         selfieSubmissions,
+        crowdSelfieSubmissions,
         bingoSuggestions: room?.bingoSuggestions || {},
         bingoRevealed: room?.bingoRevealed || {}
     }), [
@@ -122,6 +153,7 @@ const useModerationInboxState = ({
         approvedUids,
         doodleSubmissions,
         selfieSubmissions,
+        crowdSelfieSubmissions,
         room?.bingoSuggestions,
         room?.bingoRevealed
     ]);
@@ -172,10 +204,46 @@ const useModerationInboxState = ({
                 submissionId,
                 approved: true
             });
+            setSelfieSubmissions((prev) => prev.map((entry) => (
+                String(entry?.id || '').trim() === submissionId
+                    ? { ...entry, approved: true, moderatedAt: nowMs() }
+                    : entry
+            )));
             safeToast('Selfie approved');
         } catch (error) {
             moderationLogger.error('Could not approve selfie submission', error);
             safeToast('Could not approve selfie');
+        } finally {
+            setBusyAction('');
+        }
+    }, [roomCode, callFunction, safeToast]);
+
+    const moderateCrowdSelfieSubmission = useCallback(async (submission = {}, action = 'approve') => {
+        const submissionId = String(submission?.id || '').trim();
+        const normalizedAction = String(action || '').trim().toLowerCase();
+        if (!roomCode || !submissionId || typeof callFunction !== 'function') return;
+        if (!['approve', 'reject'].includes(normalizedAction)) return;
+        setBusyAction(`crowd-selfie-${normalizedAction}-${submissionId}`);
+        try {
+            await callFunction('moderateCrowdSelfieSubmission', {
+                roomCode,
+                submissionId,
+                action: normalizedAction
+            });
+            setCrowdSelfieSubmissions((prev) => prev.map((entry) => (
+                String(entry?.id || '').trim() === submissionId
+                    ? {
+                        ...entry,
+                        approved: normalizedAction === 'approve',
+                        status: normalizedAction === 'approve' ? 'approved' : 'rejected',
+                        moderatedAt: nowMs()
+                    }
+                    : entry
+            )));
+            safeToast(normalizedAction === 'approve' ? 'Crowd selfie approved' : 'Crowd selfie rejected');
+        } catch (error) {
+            moderationLogger.error('Could not moderate crowd selfie submission', error);
+            safeToast(normalizedAction === 'approve' ? 'Could not approve crowd selfie' : 'Could not reject crowd selfie');
         } finally {
             setBusyAction('');
         }
@@ -224,13 +292,14 @@ const useModerationInboxState = ({
         actions: {
             approveDoodleUid,
             approveSelfieSubmission,
+            moderateCrowdSelfieSubmission,
             approveBingoSuggestion,
             clearBingoSuggestion
         },
         meta: {
             oldestPendingAt: snapshot.oldestPendingAt,
             busyAction,
-            loading: doodleLoading || selfieLoading,
+            loading: doodleLoading || selfieLoading || crowdSelfieLoading,
             severity,
             needsAttention
         }

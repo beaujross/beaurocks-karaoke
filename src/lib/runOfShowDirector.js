@@ -14,6 +14,9 @@ export const RUN_OF_SHOW_NO_SHOW_POLICIES = Object.freeze(['hold_for_host', 'ski
 export const RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES = Object.freeze(['host_override_only', 'allow_stage_manager', 'queue_can_fill_gaps']);
 export const RUN_OF_SHOW_BLOCKED_ACTION_POLICIES = Object.freeze(['focus_next_fix', 'manual_override_allowed', 'skip_blocked_after_review']);
 export const RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES = Object.freeze(['auto', 'manual']);
+export const RUN_OF_SHOW_MOMENT_CUE_IDS = Object.freeze(['', 'hype', 'celebrate', 'reveal', 'next_up', 'reset']);
+export const RUN_OF_SHOW_MOMENT_CUE_TIMINGS = Object.freeze(['start', 'end']);
+export const RUN_OF_SHOW_TAKEOVER_SOUNDTRACK_SOURCES = Object.freeze(['', 'youtube', 'apple_music', 'manual_external']);
 
 export const RUN_OF_SHOW_ITEM_TYPES = Object.freeze([
     'intro',
@@ -68,6 +71,9 @@ const ALLOWED_NO_SHOW_POLICIES = new Set(RUN_OF_SHOW_NO_SHOW_POLICIES);
 const ALLOWED_QUEUE_DIVERGENCE_POLICIES = new Set(RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES);
 const ALLOWED_BLOCKED_ACTION_POLICIES = new Set(RUN_OF_SHOW_BLOCKED_ACTION_POLICIES);
 const ALLOWED_DEFAULT_AUTOMATION_POLICIES = new Set(RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES);
+const ALLOWED_MOMENT_CUE_IDS = new Set(RUN_OF_SHOW_MOMENT_CUE_IDS);
+const ALLOWED_MOMENT_CUE_TIMINGS = new Set(RUN_OF_SHOW_MOMENT_CUE_TIMINGS);
+const ALLOWED_TAKEOVER_SOUNDTRACK_SOURCES = new Set(RUN_OF_SHOW_TAKEOVER_SOUNDTRACK_SOURCES);
 
 const clampInt = (value, min, max, fallback) => {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -219,14 +225,29 @@ const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     headline: readEditableTextField(overrides, 'headline'),
     subhead: readEditableTextField(overrides, 'subhead'),
     backgroundMedia: cleanText(overrides.backgroundMedia),
-    accentTheme: cleanText(overrides.accentTheme) || 'cyan'
+    accentTheme: cleanText(overrides.accentTheme) || 'cyan',
+    soundtrackSourceType: ALLOWED_TAKEOVER_SOUNDTRACK_SOURCES.has(cleanText(overrides.soundtrackSourceType).toLowerCase())
+        ? cleanText(overrides.soundtrackSourceType).toLowerCase()
+        : '',
+    soundtrackLabel: readEditableTextField(overrides, 'soundtrackLabel'),
+    soundtrackMediaUrl: cleanText(overrides.soundtrackMediaUrl),
+    soundtrackYoutubeId: cleanText(overrides.soundtrackYoutubeId),
+    soundtrackAppleMusicId: cleanText(overrides.soundtrackAppleMusicId),
+    soundtrackAutoPlay: overrides.soundtrackAutoPlay === true
 });
 
 const createDefaultAudioPlan = (type = '', overrides = {}) => ({
     duckBackingEnabled: overrides.duckBackingEnabled === true || type === 'announcement',
     duckLevelPct: clampInt(overrides.duckLevelPct, 0, 100, type === 'announcement' ? 35 : 100),
     resumeAfterBlock: overrides.resumeAfterBlock !== false,
-    voiceoverPriority: cleanText(overrides.voiceoverPriority) || (type === 'announcement' ? 'host' : '')
+    voiceoverPriority: cleanText(overrides.voiceoverPriority) || (type === 'announcement' ? 'host' : ''),
+    momentCueId: ALLOWED_MOMENT_CUE_IDS.has(cleanText(overrides.momentCueId).toLowerCase())
+        ? cleanText(overrides.momentCueId).toLowerCase()
+        : '',
+    momentCueAutoFire: overrides.momentCueAutoFire === true,
+    momentCueTiming: ALLOWED_MOMENT_CUE_TIMINGS.has(cleanText(overrides.momentCueTiming).toLowerCase())
+        ? cleanText(overrides.momentCueTiming).toLowerCase()
+        : 'start'
 });
 
 const createDefaultModeLaunchPlan = (type = '', overrides = {}) => {
@@ -252,6 +273,13 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
     const performerMode = ALLOWED_PERFORMER_MODES.has(cleanText(overrides.performerMode).toLowerCase())
         ? cleanText(overrides.performerMode).toLowerCase()
         : (safeType === 'performance' ? RUN_OF_SHOW_PERFORMER_MODES.placeholder : '');
+    const plannedDurationSource = safeType === 'performance'
+        ? (cleanText(overrides.plannedDurationSource).toLowerCase() === 'manual'
+            ? 'manual'
+            : cleanText(overrides.plannedDurationSource).toLowerCase() === 'backing'
+                ? 'backing'
+                : '')
+        : '';
     return {
         id: cleanText(overrides.id) || createId(safeType, now),
         type: safeType,
@@ -259,6 +287,7 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
         sequence: clampInt(overrides.sequence, 1, 999, 1),
         startsAtMs: asTimestampMs(overrides.startsAtMs, 0),
         plannedDurationSec: clampInt(overrides.plannedDurationSec, 0, 3600, safeType === 'performance' ? 180 : 45),
+        plannedDurationSource,
         status: ALLOWED_STATUSES.has(cleanText(overrides.status).toLowerCase())
             ? cleanText(overrides.status).toLowerCase()
             : 'draft',
@@ -322,7 +351,7 @@ export const resequenceRunOfShowItems = (items = []) => (
         }))
 );
 
-export const createDefaultRunOfShowDirector = (overrides = {}, now = Date.now()) => ({
+export const createDefaultRunOfShowDirector = (overrides = {}) => ({
     version: 1,
     enabled: overrides.enabled === true,
     automationPaused: overrides.automationPaused === true,
@@ -427,6 +456,21 @@ export const isRunOfShowItemReady = (item = {}) => {
     return !!cleanText(item?.title);
 };
 
+export const hasRunOfShowTakeoverSoundtrackIdentity = (presentationPlan = {}) => {
+    const sourceType = cleanText(presentationPlan?.soundtrackSourceType).toLowerCase();
+    if (!ALLOWED_TAKEOVER_SOUNDTRACK_SOURCES.has(sourceType) || !sourceType) return false;
+    if (sourceType === 'youtube') {
+        return !!cleanText(presentationPlan?.soundtrackYoutubeId) || !!cleanText(presentationPlan?.soundtrackMediaUrl);
+    }
+    if (sourceType === 'apple_music') {
+        return !!cleanText(presentationPlan?.soundtrackAppleMusicId);
+    }
+    if (sourceType === 'manual_external') {
+        return !!cleanText(presentationPlan?.soundtrackMediaUrl);
+    }
+    return false;
+};
+
 export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
     const safeType = cleanText(item?.type).toLowerCase();
     const performerMode = cleanText(item?.performerMode).toLowerCase();
@@ -504,6 +548,16 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
         } else if (item?.presentationPlan?.publicTvTakeoverEnabled === true && !cleanText(item?.presentationPlan?.headline)) {
             pushAdvisory('headline_missing', 'Add a headline so the Public TV takeover has a clear anchor.');
         }
+        const soundtrackSourceType = cleanText(item?.presentationPlan?.soundtrackSourceType).toLowerCase();
+        if (soundtrackSourceType && !hasRunOfShowTakeoverSoundtrackIdentity(item?.presentationPlan || {})) {
+            if (soundtrackSourceType === 'youtube') {
+                pushBlocker('takeover_soundtrack_missing', 'Add a YouTube ID or media URL for the takeover soundtrack.');
+            } else if (soundtrackSourceType === 'apple_music') {
+                pushBlocker('takeover_soundtrack_missing', 'Add an Apple Music track id for the takeover soundtrack.');
+            } else {
+                pushBlocker('takeover_soundtrack_missing', 'Add a direct media URL for the takeover soundtrack.');
+            }
+        }
     } else if (safeType === 'intermission' || safeType === 'buffer') {
         if (!cleanText(item?.title)) {
             pushBlocker('title_missing', 'Name this block so operators know why it is in the rundown.');
@@ -523,6 +577,178 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
             ? blockers[0]?.label || 'This block is not ready yet.'
             : advisories[0]?.label || 'Ready to stage.',
     };
+};
+
+export const getRunOfShowPreflightReport = (director = {}, options = {}) => {
+    const normalized = normalizeRunOfShowDirector(director);
+    const pendingCountsById = options?.pendingCountsById && typeof options.pendingCountsById === 'object'
+        ? options.pendingCountsById
+        : {};
+    const activeItems = normalized.items.filter((item) => !['complete', 'skipped', 'live'].includes(cleanText(item?.status).toLowerCase()));
+    const itemReports = activeItems.map((item) => {
+        const pendingSubmissionCount = clampInt(pendingCountsById[item.id], 0, 999, 0);
+        const readiness = getRunOfShowItemReadiness(item, { pendingSubmissionCount });
+        const sourceType = cleanText(item?.backingPlan?.sourceType).toLowerCase();
+        const riskyReasons = [];
+        if (item?.type === 'performance' && sourceType === 'user_submitted') {
+            riskyReasons.push('Uses an approved user-submitted track. Double-check it before relying on automation.');
+        }
+        if (item?.type === 'performance' && readiness?.advisories?.length) {
+            riskyReasons.push(...readiness.advisories.map((entry) => entry?.label).filter(Boolean));
+        }
+        return {
+            item,
+            readiness,
+            pendingSubmissionCount,
+            riskyReasons: [...new Set(riskyReasons)]
+        };
+    });
+    const criticalItems = itemReports
+        .filter((entry) => Array.isArray(entry.readiness?.blockers) && entry.readiness.blockers.length > 0)
+        .map((entry) => ({
+            itemId: entry.item.id,
+            sequence: Number(entry.item?.sequence || 0),
+            type: entry.item?.type || 'buffer',
+            title: entry.item?.title || getRunOfShowItemLabel(entry.item?.type || ''),
+            summary: entry.readiness?.summary || 'Needs setup.',
+            blockers: entry.readiness?.blockers || []
+        }));
+    const riskyItems = itemReports
+        .filter((entry) => !entry.readiness?.blockers?.length)
+        .filter((entry) => entry.riskyReasons.length > 0)
+        .map((entry) => ({
+            itemId: entry.item.id,
+            sequence: Number(entry.item?.sequence || 0),
+            type: entry.item?.type || 'buffer',
+            title: entry.item?.title || getRunOfShowItemLabel(entry.item?.type || ''),
+            summary: entry.riskyReasons[0] || entry.readiness?.summary || 'Review this block before launch.',
+            reasons: entry.riskyReasons
+        }));
+    const readyCount = itemReports.filter((entry) => entry.readiness?.ready === true).length;
+    const pendingApprovalCount = itemReports.reduce((sum, entry) => sum + Number(entry.pendingSubmissionCount || 0), 0);
+    const readyToStart = activeItems.length > 0 && criticalItems.length === 0;
+    return {
+        itemCount: activeItems.length,
+        readyCount,
+        criticalCount: criticalItems.length,
+        riskyCount: riskyItems.length,
+        pendingApprovalCount,
+        readyToStart,
+        criticalItems,
+        riskyItems,
+        summary: !activeItems.length
+            ? 'Add at least one run-of-show block before launch.'
+            : criticalItems.length
+                ? `${criticalItems.length} critical blocker${criticalItems.length === 1 ? '' : 's'} must be cleared before a safe start.`
+                : riskyItems.length
+                    ? `${riskyItems.length} risky block${riskyItems.length === 1 ? '' : 's'} should be reviewed before launch.`
+                    : 'All upcoming blocks are ready for launch.'
+    };
+};
+
+export const getRunOfShowHudState = ({
+    hasPlan = false,
+    runEnabled = false,
+    automationPaused = false,
+    preflightReport = null,
+    issueDetail = '',
+    liveItemId = '',
+    stagedItemId = '',
+    nextItemId = ''
+} = {}) => {
+    const safeReport = preflightReport && typeof preflightReport === 'object'
+        ? preflightReport
+        : {
+            readyToStart: !!hasPlan,
+            criticalCount: 0,
+            riskyCount: 0,
+            summary: hasPlan ? 'Show plan is loaded.' : 'Add at least one run-of-show block before launch.'
+        };
+    if (!hasPlan) {
+        return {
+            title: 'Ready to start',
+            detail: 'Build at least one show block before going live.',
+            tone: 'neutral'
+        };
+    }
+    if (!runEnabled) {
+        if (!safeReport.readyToStart || safeReport.criticalCount > 0) {
+            return {
+                title: 'Needs attention',
+                detail: safeReport.summary || 'Fix launch blockers before the show starts.',
+                tone: 'warning'
+            };
+        }
+        if (safeReport.riskyCount > 0) {
+            return {
+                title: 'Ready to start',
+                detail: safeReport.summary || 'The show can start, but a few blocks still need a host eye.',
+                tone: 'info'
+            };
+        }
+        return {
+            title: 'Ready to start',
+            detail: 'The show is set up and clear to launch.',
+            tone: 'success'
+        };
+    }
+    if (automationPaused) {
+        return {
+            title: 'Needs attention',
+            detail: 'Automation is paused. Resume when the room is ready.',
+            tone: 'warning'
+        };
+    }
+    if (cleanText(issueDetail)) {
+        return {
+            title: 'Needs attention',
+            detail: cleanText(issueDetail),
+            tone: 'warning'
+        };
+    }
+    return {
+        title: 'Running smoothly',
+        detail: stagedItemId
+            ? 'The next block is staged and ready to go live.'
+            : nextItemId
+                ? 'The next block is queued and ready to prep.'
+                : liveItemId
+                    ? 'The current block is live and the show is on track.'
+                    : 'The show is armed and ready for the next move.',
+        tone: 'success'
+    };
+};
+
+export const getRunOfShowHudToneClass = (tone = '') => {
+    const safeTone = cleanText(tone).toLowerCase();
+    if (safeTone === 'warning') return 'border-amber-300/28 bg-amber-500/12 text-amber-100';
+    if (safeTone === 'info') return 'border-cyan-300/22 bg-cyan-500/10 text-cyan-100';
+    if (safeTone === 'success') return 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100';
+    return 'border-white/10 bg-black/25 text-zinc-300';
+};
+
+export const getRunOfShowHudActionKey = ({
+    hasPlan = false,
+    runEnabled = false,
+    automationPaused = false,
+    preflightReport = null,
+    hasIssue = false
+} = {}) => {
+    const safeReport = preflightReport && typeof preflightReport === 'object'
+        ? preflightReport
+        : {
+            readyToStart: !!hasPlan,
+            criticalCount: 0,
+            riskyCount: 0
+        };
+    if (!hasPlan) return 'open_show';
+    if (!runEnabled) {
+        if (!safeReport.readyToStart || safeReport.criticalCount > 0 || safeReport.riskyCount > 0) return 'go_live_check';
+        return 'start_show';
+    }
+    if (automationPaused) return 'resume';
+    if (hasIssue) return 'fix_issue';
+    return 'advance';
 };
 
 export const getRunOfShowPublicItems = (director = {}) =>

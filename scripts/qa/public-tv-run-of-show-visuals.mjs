@@ -1,9 +1,13 @@
 import fs from "node:fs/promises";
-import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 import { FIXED_QA_TV_NOW_MS, QA_TV_VISUAL_SCENARIOS } from "../../src/apps/TV/qaTvFixtures.js";
+import {
+  delay,
+  ensurePlaywright,
+  startStaticDistServer,
+} from "./shared/playwrightQa.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,19 +31,12 @@ const FIXTURES = QA_TV_VISUAL_SCENARIOS.map((scenario) => ({
   ...scenario,
   viewport: { width: 1600, height: 900 },
 }));
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const ensurePlaywright = async () => {
-  try {
-    return await import("playwright");
-  } catch (error) {
-    const message = String(error?.message || error);
-    throw new Error(
-      `Playwright is not installed (${message}). Run: npm install && npm run qa:admin:prod:install`
-    );
-  }
-};
+const EXPECTED_SCENES = Object.freeze({
+  "preview-intro": "intro",
+  "preview-wyr": "would_you_rather_break",
+  "live-announcement": "announcement",
+  "live-closing": "closing",
+});
 
 const toBool = (value, fallback = false) => {
   if (value === undefined || value === null || value === "") return fallback;
@@ -47,70 +44,6 @@ const toBool = (value, fallback = false) => {
   if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
   return fallback;
-};
-
-const MIME_TYPES = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webp": "image/webp",
-};
-
-const resolveDistFilePath = async (requestPath = "/") => {
-  const normalized = decodeURIComponent(String(requestPath || "/")).split("?")[0];
-  const trimmed = normalized.replace(/^\/+/, "");
-  const joined = path.resolve(DIST_DIR, trimmed || "index.html");
-  if (!joined.startsWith(DIST_DIR)) {
-    return path.join(DIST_DIR, "index.html");
-  }
-  try {
-    const stats = await fs.stat(joined);
-    if (stats.isDirectory()) {
-      return path.join(joined, "index.html");
-    }
-    return joined;
-  } catch {
-    return path.join(DIST_DIR, "index.html");
-  }
-};
-
-const startLocalServer = async ({ port }) => {
-  await fs.access(path.join(DIST_DIR, "index.html"));
-  const server = http.createServer(async (req, res) => {
-    try {
-      const filePath = await resolveDistFilePath(req?.url || "/");
-      const body = await fs.readFile(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, {
-        "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
-        "Cache-Control": "no-store",
-      });
-      res.end(body);
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end(`Server error: ${String(error?.message || error)}`);
-    }
-  });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  const actualPort = typeof address === "object" && address ? address.port : port;
-  return {
-    baseUrl: `http://127.0.0.1:${actualPort}`,
-    stop: async () => {
-      await new Promise((resolve) => server.close(() => resolve()));
-    },
-  };
 };
 
 const ensureDir = async (dirPath) => {
@@ -164,6 +97,30 @@ const waitForBodyTexts = async ({ page, expectedTexts, timeoutMs }) => {
   throw new Error(`Timed out waiting for expected takeover copy: ${expectedTexts.join(", ")} :: ${lastBodyText}`);
 };
 
+const verifyTakeoverSemantics = async ({ page, scenario, timeoutMs }) => {
+  const overlay = page.locator(".public-tv").first();
+  await overlay.waitFor({ state: "visible", timeout: timeoutMs });
+
+  const scene = await overlay.getAttribute("data-tv-takeover-scene");
+  const roomCode = await overlay.getAttribute("data-tv-room-code");
+  const brandLogo = await overlay.getAttribute("data-tv-brand-logo");
+  const headline = page.locator("[data-tv-takeover-headline]").first();
+  const headlineFontSize = await headline.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).fontSize || "0"));
+
+  if (scene !== EXPECTED_SCENES[scenario.id]) {
+    throw new Error(`Unexpected takeover scene for ${scenario.id}: ${scene}`);
+  }
+  if (roomCode !== scenario.roomCode) {
+    throw new Error(`Unexpected room code for ${scenario.id}: ${roomCode}`);
+  }
+  if (!String(brandLogo || "").includes("karaoke-kickoff-logo-simple.png")) {
+    throw new Error(`Unexpected takeover brand logo for ${scenario.id}: ${brandLogo}`);
+  }
+  if (!(headlineFontSize >= 150)) {
+    throw new Error(`Headline font too small for ${scenario.id}: ${headlineFontSize}px`);
+  }
+};
+
 const main = async () => {
   const args = process.argv.slice(2);
   const updateBaselines = args.includes("--update-baselines");
@@ -178,7 +135,7 @@ const main = async () => {
   await ensureDir(BASELINE_DIR);
   await ensureDir(ARTIFACT_DIR);
 
-  const server = await startLocalServer({ port, timeoutMs });
+  const server = await startStaticDistServer({ distDir: DIST_DIR, port });
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
   await context.addInitScript((firebaseConfig, fixedNowMs) => {
@@ -205,6 +162,7 @@ const main = async () => {
       await waitForBodyTexts({ page, expectedTexts: scenario.expectedTexts, timeoutMs });
       const overlay = page.locator(".public-tv").first();
       await overlay.waitFor({ state: "visible", timeout: timeoutMs });
+      await verifyTakeoverSemantics({ page, scenario, timeoutMs });
       await delay(150);
 
       const artifactPath = path.join(ARTIFACT_DIR, `${scenario.id}.png`);

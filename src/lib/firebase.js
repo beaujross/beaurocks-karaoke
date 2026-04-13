@@ -166,6 +166,7 @@ const firebaseConfig = resolveFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 let appCheck = null;
 let appCheckInitAttempted = false;
+let appCheckDisabledReason = "";
 
 const shouldEnableAppCheckClient = () => {
   const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
@@ -193,6 +194,25 @@ const resolveAuthPersistenceMode = () => {
   return browserSessionPersistence;
 };
 
+const resolveQaAuthBootstrap = () => {
+  if (typeof window === "undefined") return null;
+  const host = String(window.location?.hostname || "").trim().toLowerCase();
+  const search = String(window.location?.search || "");
+  const params = new URLSearchParams(search);
+  const requested = params.get("qaAuthBootstrap") === "1";
+  const debugEnabled =
+    window.__app_check_debug_enabled === true ||
+    !!resolveRuntimeAppCheckDebugToken();
+  const localHost = host === "localhost" || host === "127.0.0.1";
+  if (!requested || (!debugEnabled && !localHost)) return null;
+  const bootstrap = window.__qa_auth_bootstrap;
+  if (!bootstrap || typeof bootstrap !== "object") return null;
+  const email = typeof bootstrap.email === "string" ? bootstrap.email.trim() : "";
+  const password = typeof bootstrap.password === "string" ? bootstrap.password.trim() : "";
+  if (!email || !password) return null;
+  return { email, password };
+};
+
 const getAppCheckSiteKey = () => {
   if (typeof window === "undefined") return "";
   const runtimeKey = typeof window.__app_check_site_key === "string"
@@ -210,11 +230,16 @@ const getAppCheckProviderMode = () => {
     ? window.__app_check_provider.trim()
     : "";
   const envProvider = readEnv("VITE_APP_CHECK_PROVIDER");
-  return resolveAppCheckProviderMode({
+  const resolvedMode = resolveAppCheckProviderMode({
     runtimeProvider,
     envProvider,
     fallback: "enterprise",
   });
+  // In soft mode, prefer the simpler v3 provider until Enterprise is fully healthy.
+  if (resolvedMode === "enterprise" && !shouldRequireLocalAppCheck()) {
+    return "v3";
+  }
+  return resolvedMode;
 };
 
 const createAppCheckProvider = (siteKey = "", providerMode = "enterprise") => {
@@ -253,6 +278,7 @@ if (typeof window !== "undefined") {
 }
 
 const initializeAppCheckClient = () => {
+  if (appCheckDisabledReason) return null;
   if (appCheck || appCheckInitAttempted || typeof window === "undefined") return appCheck;
   appCheckInitAttempted = true;
 
@@ -282,6 +308,29 @@ const initializeAppCheckClient = () => {
   }
   return null;
 }
+
+const shouldDisableAppCheckClient = (error) => {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    code.includes("appcheck/throttled")
+    || code.includes("appcheck/initial-throttle")
+    || message.includes("appcheck/throttled")
+    || message.includes("appcheck/initial-throttle")
+    || message.includes("exchangeRecaptchaEnterpriseToken".toLowerCase())
+    || message.includes("403")
+    || message.includes("forbidden")
+    || message.includes("401")
+    || message.includes("unauthorized")
+  );
+};
+
+const disableAppCheckClient = (reason = "unavailable", error = null) => {
+  if (appCheckDisabledReason) return;
+  appCheckDisabledReason = reason;
+  appCheck = null;
+  firebaseLogger.warn("app-check disabled for current session", { reason, error });
+};
 
 const auth = getAuth(app);
 if (typeof window !== 'undefined') {
@@ -317,6 +366,7 @@ const trackEvent = (name, params = {}) => {
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const ensureAppCheckToken = async (forceRefresh = false) => {
+  if (appCheckDisabledReason) return false;
   initializeAppCheckClient();
   if (!appCheck) return false;
   try {
@@ -324,6 +374,9 @@ const ensureAppCheckToken = async (forceRefresh = false) => {
     return !!tokenResult?.token;
   } catch (error) {
     firebaseLogger.debug("app-check token fetch failed", { forceRefresh, error });
+    if (!shouldRequireLocalAppCheck() && shouldDisableAppCheckClient(error)) {
+      disableAppCheckClient("token-fetch-failed", error);
+    }
     return false;
   }
 };
@@ -350,18 +403,21 @@ const callFunction = async (name, data = {}) => {
     return res.data;
   };
 
-  if (appCheck) {
+  if (appCheck && !appCheckDisabledReason) {
     try {
       await getAppCheckToken(appCheck, false);
     } catch (err) {
       firebaseLogger.debug("app-check token fetch failed before callable", { name, err });
+      if (!shouldRequireLocalAppCheck() && shouldDisableAppCheckClient(err)) {
+        disableAppCheckClient(`callable-prefetch-failed:${name}`, err);
+      }
     }
   }
 
   try {
     return await invoke();
   } catch (error) {
-    if (appCheck && isRecoverableAppCheckError(error)) {
+    if (appCheck && !appCheckDisabledReason && isRecoverableAppCheckError(error)) {
       let retryError = error;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         try {
@@ -375,6 +431,10 @@ const callFunction = async (name, data = {}) => {
           return await invoke();
         } catch (nextError) {
           retryError = nextError;
+          if (!shouldRequireLocalAppCheck() && shouldDisableAppCheckClient(nextError)) {
+            disableAppCheckClient(`callable-retry-failed:${name}`, nextError);
+            break;
+          }
           if (!isRecoverableAppCheckError(nextError)) {
             throw nextError;
           }
@@ -573,6 +633,18 @@ const sendBeauRocksEmailSignInLink = async (payload = {}) => {
 const joinRoomAudience = async (payload = {}) => {
   await requireAppCheckToken("joinRoomAudience");
   const data = await callFunction("joinRoomAudience", payload || {});
+  return data || null;
+};
+
+const updateAudienceIdentity = async (payload = {}) => {
+  await requireAppCheckToken("updateAudienceIdentity");
+  const data = await callFunction("updateAudienceIdentity", payload || {});
+  return data || null;
+};
+
+const uploadAudienceRoomPhoto = async (payload = {}) => {
+  await requireAppCheckToken("uploadAudienceRoomPhoto");
+  const data = await callFunction("uploadAudienceRoomPhoto", payload || {});
   return data || null;
 };
 
@@ -798,6 +870,12 @@ const initAuth = async (customToken) => {
       return { ok: true };
     }
 
+    const qaAuthBootstrap = resolveQaAuthBootstrap();
+    if (qaAuthBootstrap) {
+      await signInWithEmailAndPassword(auth, qaAuthBootstrap.email, qaAuthBootstrap.password);
+      return { ok: true, qaBootstrap: true };
+    }
+
     if (!shouldBootstrapAnonymousAuth({ customToken, currentUser: auth.currentUser })) {
       return {
         ok: true,
@@ -819,8 +897,9 @@ const ensuredUserProfileCache = new Map();
 const ensureUserProfile = async (uid, opts = {}) => {
   try {
     if (!uid) return;
-    const { name = 'Guest', avatar = '\uD83D\uDE00' } = opts;
-    const ensureKey = `${uid}:${String(name)}:${String(avatar)}`;
+    const { name = 'Guest' } = opts;
+    const defaultAvatar = '\uD83D\uDE00';
+    const ensureKey = `${uid}:${String(name)}`;
     if (ensuredUserProfileCache.get(uid) === ensureKey) return;
     const userRef = doc(db, 'users', uid);
     const snap = await getDoc(userRef);
@@ -829,7 +908,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
       await setDoc(userRef, {
         uid,
         name,
-        avatar,
+        avatar: defaultAvatar,
         tight15: [],
         unlockedEmojis: [],
         firstPerformanceUnlocked: false,
@@ -882,7 +961,14 @@ const ensureUserProfile = async (uid, opts = {}) => {
           favoriteGenre: false,
           socialLinks: [],
           recordLabel: false
-        }
+        },
+        crowdSelfieUrl: null,
+        crowdSelfieStoragePath: null,
+        crowdSelfieStatus: null,
+        crowdSelfieApprovedAt: null,
+        crowdSelfieSourceRoomCode: null,
+        crowdSelfieSubmissionId: null,
+        crowdSelfieConsentAcceptedAt: null
       });
       ensuredUserProfileCache.set(uid, ensureKey);
       return;
@@ -892,7 +978,7 @@ const ensureUserProfile = async (uid, opts = {}) => {
     const updates = {};
     if (data.uid !== uid) updates.uid = uid;
     if (data.name !== name) updates.name = name;
-    if (data.avatar !== avatar) updates.avatar = avatar;
+    if (!('avatar' in data)) updates.avatar = defaultAvatar;
     if (!('tight15' in data)) updates.tight15 = [];
     if (!('unlockedEmojis' in data)) updates.unlockedEmojis = [];
     if (!('firstPerformanceUnlocked' in data)) updates.firstPerformanceUnlocked = false;
@@ -925,6 +1011,13 @@ const ensureUserProfile = async (uid, opts = {}) => {
       socialLinks: [],
       recordLabel: false
     };
+    if (!('crowdSelfieUrl' in data)) updates.crowdSelfieUrl = null;
+    if (!('crowdSelfieStoragePath' in data)) updates.crowdSelfieStoragePath = null;
+    if (!('crowdSelfieStatus' in data)) updates.crowdSelfieStatus = null;
+    if (!('crowdSelfieApprovedAt' in data)) updates.crowdSelfieApprovedAt = null;
+    if (!('crowdSelfieSourceRoomCode' in data)) updates.crowdSelfieSourceRoomCode = null;
+    if (!('crowdSelfieSubmissionId' in data)) updates.crowdSelfieSubmissionId = null;
+    if (!('crowdSelfieConsentAcceptedAt' in data)) updates.crowdSelfieConsentAcceptedAt = null;
 
     if (!Object.keys(updates).length) {
       ensuredUserProfileCache.set(uid, ensureKey);
@@ -979,6 +1072,8 @@ export {
   previewDirectoryRoomSessionByCode,
   sendBeauRocksEmailSignInLink,
   joinRoomAudience,
+  updateAudienceIdentity,
+  uploadAudienceRoomPhoto,
   mergeAnonymousAccountData,
   claimAudienceEventGrant,
   redeemPromoCode,

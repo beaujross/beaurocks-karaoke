@@ -6,24 +6,6 @@ import { MARKETING_ROUTE_PAGES } from "../routing";
 import { marketingFlags } from "../featureFlags";
 import { PersonaPageFrame } from "./PersonaMarketingBlocks";
 
-const HOST_UNLOCKS = [
-  {
-    step: "01",
-    title: "Run the queue from one deck",
-    copy: "Search, queue, TV, and room controls stay together.",
-  },
-  {
-    step: "02",
-    title: "Launch a TV that leads",
-    copy: "The room always has one shared signal.",
-  },
-  {
-    step: "03",
-    title: "Give guests a cleaner join flow",
-    copy: "Phone join is fast and easier to trust.",
-  },
-];
-
 const deriveWaitlistName = (email = "") => {
   const local = String(email || "").split("@")[0] || "";
   const normalized = local
@@ -34,7 +16,14 @@ const deriveWaitlistName = (email = "") => {
   return normalized || "Early Host Applicant";
 };
 
-const ForHostsPage = ({ route, session, authFlow, navigate }) => {
+const ForHostsPage = ({
+  route,
+  session,
+  authFlow,
+  heroStats,
+  pendingHostApplicationsCount = 0,
+  onHostApplicationsChanged,
+}) => {
   const canSubmit = !!session?.uid && !session?.isAnonymous;
   const autoLaunchIntentRef = useRef("");
   const intakeFormRef = useRef(null);
@@ -42,6 +31,25 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
   const [requestNotice, setRequestNotice] = useState("");
   const [requestEmail, setRequestEmail] = useState(() => String(session?.email || "").trim().toLowerCase());
   const hostApplicationStatus = String(session?.applicationStatus || "").trim().toLowerCase();
+  const liveListingsCount = Math.max(0, Number(heroStats?.total || 0));
+  const queueCount = Math.max(0, Number(pendingHostApplicationsCount || 0));
+  const heroSignals = [
+    {
+      label: "Reviewed access",
+      title: queueCount > 0 ? `${queueCount} applications already in review` : "Applications are reviewed in batches",
+      copy: "Host access opens after BeauRocks reviews the account, not from a self-serve unlock.",
+    },
+    {
+      label: "Approved hosts",
+      title: "One dashboard runs the whole room",
+      copy: "Queue, TV, and join flow stay in one operating surface once access is approved.",
+    },
+    {
+      label: "Live network",
+      title: liveListingsCount > 0 ? `${liveListingsCount.toLocaleString()} live listings already running` : "Live rooms already running on BeauRocks",
+      copy: "The host queue feeds into an active network of nights that are already live for guests.",
+    },
+  ];
 
   const trackPersonaCta = (cta = "") => {
     trackEvent("mk_persona_cta_click", {
@@ -166,7 +174,8 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
         useCase: "host_application",
         source: "for_hosts_early_access_2026",
       });
-      setRequestNotice(String(payload?.message || "Application received."));
+      setRequestNotice(String(payload?.message || "You are in the review queue."));
+      onHostApplicationsChanged?.();
       trackEvent("mk_host_application_submitted", {
         source: "for_hosts_early_access_2026",
         authed: canSubmit ? 1 : 0,
@@ -176,7 +185,7 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
     } finally {
       setRequestBusy(false);
     }
-  }, [canSubmit, requestEmail]);
+  }, [canSubmit, onHostApplicationsChanged, requestEmail]);
 
   useEffect(() => {
     const intent = String(route?.params?.intent || "").trim().toLowerCase();
@@ -196,9 +205,17 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
     <PersonaPageFrame theme="host">
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-host">
         <div className="mk3-persona-simple-copy">
-          <div className="mk3-rebuild-kicker">Host applications</div>
-          <h1>Apply to host karaoke nights with BeauRocks.</h1>
-          <p>We review every host application before granting access to the real host tools.</p>
+          <div className="mk3-rebuild-kicker">For hosts</div>
+          <h1>Join the BeauRocks host waitlist.</h1>
+          <p>
+            Host access opens in reviewed batches. Approved hosts get the dashboard,
+            everyone else joins the line first.
+          </p>
+          <div className="mk3-demand-pill-row" aria-label="Host access signals">
+            <span>Approved hosts only</span>
+            <span>Reviewed access</span>
+            <span>{queueCount > 0 ? `${queueCount} in review now` : "Batch review queue"}</span>
+          </div>
           <div className="mk3-rebuild-action-row">
             <button
               type="button"
@@ -208,7 +225,7 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
                 scrollToIntake();
               }}
             >
-              Apply For Host Access
+              Join Host Waitlist
             </button>
             <button
               type="button"
@@ -225,21 +242,21 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
 
         <article ref={intakeFormRef} className="mk3-persona-simple-form-card">
           <div className="mk3-persona-simple-form-topline">
-            <span>Host application</span>
-            <b>Reviewed by hand</b>
+            <span>Host waitlist</span>
+            <b>Reviewed access</b>
           </div>
 
           {hostApplicationStatus === "pending" && (
             <div className="mk3-status">
-              <strong>Your request is already in review.</strong>
-              <span>BeauRocks admins were notified, the application is reviewed by hand, and this same email/account will unlock host sign-in if approved.</span>
+              <strong>You are already in line.</strong>
+              <span>We already have your request. If approved, this same account will open the host dashboard.</span>
             </div>
           )}
 
           {session?.hasHostWorkspaceAccess ? (
             <div className="mk3-status">
               <strong>You already have host access.</strong>
-              <span>Open the real host dashboard.</span>
+              <span>Open the host dashboard and keep going.</span>
             </div>
           ) : (
             <form className="mk3-auth-state mk3-host-application-form" onSubmit={requestEarlyHostAccess}>
@@ -261,10 +278,11 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
                 <div className="mk3-auth-hint">Signed in as {session.email}</div>
               )}
               <div className="mk3-auth-hint">
-                Next steps: we notify BeauRocks admins, review the request by hand, and if approved this same email/account can sign in on host.beaurocks.app to open Host Dashboard.
+                BeauRocks reviews each request before approving access. If approved,
+                this same account signs in on `host.beaurocks.app`.
               </div>
               <button className="mk3-rebuild-button is-primary" type="submit" disabled={requestBusy}>
-                {requestBusy ? "Submitting..." : "Apply For Host Access"}
+                {requestBusy ? "Joining..." : "Join Host Waitlist"}
               </button>
               {!!requestNotice && <div className="mk3-status">{requestNotice}</div>}
               <button
@@ -279,7 +297,7 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
                   openHostLogin();
                 }}
               >
-                {session?.hasHostWorkspaceAccess ? "Open Host Dashboard" : "Continue to Host Sign-In"}
+                {session?.hasHostWorkspaceAccess ? "Open Host Dashboard" : "Check Host Sign-In"}
               </button>
             </form>
           )}
@@ -287,41 +305,15 @@ const ForHostsPage = ({ route, session, authFlow, navigate }) => {
       </article>
 
       <section className="mk3-persona-simple-band">
-        <div className="mk3-rebuild-kicker">What approved hosts unlock</div>
+        <div className="mk3-rebuild-kicker">Why there is a waitlist</div>
         <div className="mk3-persona-simple-card-grid is-three">
-          {HOST_UNLOCKS.map((item) => (
-            <article key={item.step} className="mk3-persona-simple-card is-numbered">
-              <span>{item.step}</span>
+          {heroSignals.map((item) => (
+            <article key={item.label} className="mk3-persona-simple-card">
+              <span>{item.label}</span>
               <strong>{item.title}</strong>
               <p>{item.copy}</p>
             </article>
           ))}
-        </div>
-      </section>
-
-      <section className="mk3-persona-simple-band mk3-persona-simple-band-tight">
-        <div className="mk3-rebuild-kicker">Next step</div>
-        <div className="mk3-persona-simple-cta-row">
-          <button
-            type="button"
-            className="mk3-rebuild-button is-secondary"
-            onClick={() => {
-              trackPersonaCta("closing_demo_auto");
-              navigate("demo_auto");
-            }}
-          >
-            Open Demo
-          </button>
-          <button
-            type="button"
-            className="mk3-rebuild-button is-secondary"
-            onClick={() => {
-              trackPersonaCta("closing_discover");
-              navigate("discover");
-            }}
-          >
-            Browse Discover
-          </button>
         </div>
       </section>
     </PersonaPageFrame>

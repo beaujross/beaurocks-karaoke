@@ -1,8 +1,14 @@
 import fs from "node:fs/promises";
-import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildQaHostFixture, FIXED_QA_HOST_NOW_MS } from "../../src/apps/Host/qaHostFixtures.js";
+import {
+  DEFAULT_FIREBASE_RUNTIME_CONFIG,
+  delay,
+  ensurePlaywright,
+  runCheck,
+  startStaticDistServer,
+} from "./shared/playwrightQa.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,96 +16,6 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const DIST_DIR = path.join(repoRoot, "dist");
 const DEFAULT_PORT = 0;
 const DEFAULT_TIMEOUT_MS = 90000;
-const FIREBASE_RUNTIME_CONFIG = {
-  apiKey: "AIzaSyBmX0XXpGE0wGcR9YXw3oKOqnJE9GT6_Jc",
-  authDomain: "beaurocks-karaoke-v2.firebaseapp.com",
-  projectId: "beaurocks-karaoke-v2",
-  storageBucket: "beaurocks-karaoke-v2.firebasestorage.app",
-  messagingSenderId: "426849563936",
-  appId: "1:426849563936:web:03c1d7eefd0c66e4649345",
-  measurementId: "G-KRHWBTB7V7",
-};
-const MIME_TYPES = {
-  ".css": "text/css; charset=utf-8",
-  ".html": "text/html; charset=utf-8",
-  ".ico": "image/x-icon",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".js": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".txt": "text/plain; charset=utf-8",
-  ".webp": "image/webp",
-};
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const ensurePlaywright = async () => {
-  try {
-    return await import("playwright");
-  } catch (error) {
-    const message = String(error?.message || error);
-    throw new Error(`Playwright is not installed (${message}). Run: npm install && npm run qa:admin:prod:install`);
-  }
-};
-
-const resolveDistFilePath = async (requestPath = "/") => {
-  const normalized = decodeURIComponent(String(requestPath || "/")).split("?")[0];
-  const trimmed = normalized.replace(/^\/+/, "");
-  const joined = path.resolve(DIST_DIR, trimmed || "index.html");
-  if (!joined.startsWith(DIST_DIR)) return path.join(DIST_DIR, "index.html");
-  try {
-    const stats = await fs.stat(joined);
-    if (stats.isDirectory()) return path.join(joined, "index.html");
-    return joined;
-  } catch {
-    return path.join(DIST_DIR, "index.html");
-  }
-};
-
-const startLocalServer = async ({ port }) => {
-  await fs.access(path.join(DIST_DIR, "index.html"));
-  const server = http.createServer(async (req, res) => {
-    try {
-      const filePath = await resolveDistFilePath(req?.url || "/");
-      const body = await fs.readFile(filePath);
-      const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, {
-        "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
-        "Cache-Control": "no-store",
-      });
-      res.end(body);
-    } catch (error) {
-      res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
-      res.end(`Server error: ${String(error?.message || error)}`);
-    }
-  });
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  const actualPort = typeof address === "object" && address ? address.port : port;
-  return {
-    baseUrl: `http://127.0.0.1:${actualPort}`,
-    stop: async () => {
-      await new Promise((resolve) => server.close(() => resolve()));
-    },
-  };
-};
-
-const runCheck = async (checks, name, fn) => {
-  try {
-    const detail = await fn();
-    checks.push({ name, pass: true, detail: detail || "" });
-    return true;
-  } catch (error) {
-    checks.push({ name, pass: false, detail: String(error?.message || error) });
-    return false;
-  }
-};
 
 const main = async () => {
   const timeoutMs = Math.max(30000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
@@ -107,7 +23,7 @@ const main = async () => {
   const headless = String(process.env.QA_HEADFUL || "").trim() !== "1";
   const { chromium } = await ensurePlaywright();
 
-  const server = await startLocalServer({ port });
+  const server = await startStaticDistServer({ distDir: DIST_DIR, port });
   const browser = await chromium.launch({ headless });
   const context = await browser.newContext({ viewport: { width: 1600, height: 1100 } });
   await context.addInitScript((firebaseConfig, fixedNowMs) => {
@@ -115,7 +31,7 @@ const main = async () => {
     const originalDateNow = Date.now.bind(Date);
     const frozenNow = Number(fixedNowMs || 0);
     Date.now = () => (Number.isFinite(frozenNow) && frozenNow > 0 ? frozenNow : originalDateNow());
-  }, FIREBASE_RUNTIME_CONFIG, FIXED_QA_HOST_NOW_MS);
+  }, DEFAULT_FIREBASE_RUNTIME_CONFIG, FIXED_QA_HOST_NOW_MS);
   const page = await context.newPage();
   await page.emulateMedia({ reducedMotion: "reduce" });
 
@@ -137,35 +53,80 @@ const main = async () => {
     await delay(1500);
 
     await runCheck(checks, "host_run_of_show_panel_visible", async () => {
-      await page.locator('[aria-label="Run of Show Director"]').waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Run Of Show Director").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "panel visible";
+      await page.locator('[data-host-qa-ready="true"]').waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("RUN OF SHOW BOARD").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("SHOW STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "run-of-show board visible";
     });
 
-    await runCheck(checks, "host_next_focus_opens_details", async () => {
-      const nextItem = page.locator('[data-run-of-show-item-id="perf_next"]').first();
-      await nextItem.getByRole("button", { name: /Details/i }).click({ force: true });
-      await page.getByLabel("Run of show details for Feature Slot 1").waitFor({ state: "visible", timeout: timeoutMs });
-      return "focused next performance";
+    await runCheck(checks, "host_event_profile_branding_loaded", async () => {
+      const root = page.locator('[data-host-qa-ready="true"]').first();
+      const eventProfile = await root.getAttribute("data-host-qa-event-profile");
+      const title = await root.getAttribute("data-host-qa-brand-title");
+      const primary = await root.getAttribute("data-host-qa-brand-primary");
+      const secondary = await root.getAttribute("data-host-qa-brand-secondary");
+      const accent = await root.getAttribute("data-host-qa-brand-accent");
+      if (eventProfile !== "aahf_2026_kickoff") throw new Error(`Unexpected event profile: ${eventProfile}`);
+      if (title !== "AAHF Karaoke") throw new Error(`Unexpected audience brand title: ${title}`);
+      if (primary !== "#FF4FA3" || secondary !== "#1ED7FF" || accent !== "#FACC15") {
+        throw new Error(`Unexpected brand colors: ${primary}, ${secondary}, ${accent}`);
+      }
+      return "AAHF event profile and audience branding loaded";
     });
 
-    await runCheck(checks, "host_media_picker_selects_local_backing", async () => {
-      const nextItem = page.locator('[data-run-of-show-item-id="perf_next"]').first();
-      const localSourceButton = nextItem.getByRole("button", { name: /Select Local File backing source/i });
-      await localSourceButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await localSourceButton.click({ force: true });
-      await nextItem.locator('[data-run-of-show-open-picker="perf_next"]').click({ force: true });
-      await page.locator('[data-run-of-show-media-option-id="local:local_dreams_master"]').waitFor({ state: "visible", timeout: timeoutMs });
-      await page.locator('[data-run-of-show-media-option-id="local:local_dreams_master"]').click({ force: true });
-      await page.locator('input[value="Dreams (Local Master) - Fleetwood Mac"]').waitFor({ state: "visible", timeout: timeoutMs });
-      return "local backing selected through picker";
+    await runCheck(checks, "host_timeline_strip_opens", async () => {
+      await page.getByRole("button", { name: /OPEN BOARD/i }).click({ force: true });
+      await page.getByRole("button", { name: /COLLAPSE BOARD/i }).waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("TIMELINE ACTIONS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("FEATURE SLOT 1").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "timeline strip expands with current and next scenes";
     });
 
-    await runCheck(checks, "host_pending_submission_controls_visible", async () => {
-      await page.locator('[data-run-of-show-item-id="open_slot"]').getByRole("button", { name: /Details/i }).click({ force: true });
-      await page.getByText("Pending Submissions").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByRole("button", { name: /^Approve$/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "pending submission controls visible";
+    await runCheck(checks, "host_live_adjustments_extend_and_toggle_audio", async () => {
+      const panel = page.locator('[data-live-adjustment-panel="true"]').first();
+      await panel.waitFor({ state: "visible", timeout: timeoutMs });
+      await panel.getByText(/1:30 window/i).waitFor({ state: "visible", timeout: timeoutMs });
+      await panel.locator('[data-live-adjustment="extend-30"]').click({ force: true });
+      await panel.getByText(/2:00 window/i).waitFor({ state: "visible", timeout: timeoutMs });
+      await panel.locator('[data-live-adjustment="toggle-audio"]').click({ force: true });
+      await panel.getByRole("button", { name: /resume audio/i }).waitFor({ state: "visible", timeout: timeoutMs });
+      return "live adjustments can extend the active scene and pause takeover audio";
+    });
+
+    await runCheck(checks, "host_compact_timeline_drag_reorders", async () => {
+      const dragged = page.locator('[data-compact-timeline-item-id="open_slot"]').first();
+      const target = page.locator('[data-compact-timeline-item-id="perf_next"]').first();
+      await dragged.dragTo(target, {
+        force: true,
+        targetPosition: { x: 4, y: 28 },
+      });
+      await page.waitForFunction(() => {
+        const ids = Array.from(document.querySelectorAll('[data-compact-timeline-item-id]'))
+          .map((node) => node.getAttribute('data-compact-timeline-item-id'))
+          .filter(Boolean)
+          .slice(0, 4);
+        return ids.join(',') === 'intro_live,open_slot,perf_next,audience_vote';
+      }, null, { timeout: timeoutMs });
+      return "compact timeline supports drag reorder from the board";
+    });
+
+    await runCheck(checks, "host_issue_summary_visible", async () => {
+      await page.getByText("OPEN ISSUES").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("1 NEED PERFORMER").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("1 NEED BACKING").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("1 PENDING APPROVALS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "issue rail reflects current show blockers";
+    });
+
+    await runCheck(checks, "host_assignment_rail_fills_empty_slot", async () => {
+      await page.getByRole("button", { name: /STOP SHOW/i }).click({ force: true });
+      await page.getByRole("button", { name: /^TIMELINE$/i }).click({ force: true });
+      await page.getByText("Slot Assignment").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByRole("button", { name: /Fill Empty Slots/i }).click({ force: true });
+      await page.waitForFunction(() => document.body.innerText.includes("Filled 1 unassigned slot"), null, { timeout: timeoutMs });
+      await page.waitForFunction(() => (document.body.innerText.match(/Alex Rivers/g) || []).length >= 2, null, { timeout: timeoutMs });
+      await page.getByRole("button", { name: /Ready 1/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "assignment rail fills empty slot from approved submission";
     });
   } catch (error) {
     failure = error;

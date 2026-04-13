@@ -3,6 +3,18 @@
 Last updated: 2026-02-12
 Owner: Product/Finance
 
+## Current Note
+
+This file is still useful as a reserve-planning model, but parts of it use older unit-price assumptions and internal reserve values that are intentionally higher than true provider marginal cost.
+
+For the current operator-facing view of:
+
+- true-ish per-feature marginal cost
+- measured April 2026 room data
+- pricing guidance by mode
+
+see `docs/costs/GAME_MODE_COST_SHEET.md`.
+
 ## Purpose
 
 This file estimates cost to run one karaoke night and gives pricing guardrails for business model planning.
@@ -167,3 +179,4 @@ If selling monthly host plans, tie to expected nights/month:
 ## Change Log
 
 - 2026-02-12: Initial per-night model added for business modeling.
+- 2026-04-03: Added pointer to `GAME_MODE_COST_SHEET.md` for current per-feature operational cost guidance.

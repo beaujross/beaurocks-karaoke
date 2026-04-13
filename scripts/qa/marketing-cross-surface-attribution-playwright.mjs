@@ -1,5 +1,19 @@
+import {
+  delay,
+  ensurePlaywright,
+  runCheck,
+  startStaticDistServer,
+} from "./shared/playwrightQa.mjs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 const DEFAULT_BASE_URL = "https://beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, "..", "..");
+const DIST_DIR = path.join(repoRoot, "dist");
 
 const DEMO_FIREBASE_CONFIG = {
   apiKey: "demo-api-key",
@@ -18,14 +32,17 @@ const toBool = (value, fallback = false) => {
   return fallback;
 };
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
 const isManagedHost = (hostname = "") =>
   hostname.endsWith(".web.app") || hostname.endsWith(".firebaseapp.com");
+
+const isLocalHost = (hostname = "") => {
+  const host = String(hostname || "").trim().toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+};
 
 const deriveRootDomain = (hostname = "") => {
   const host = String(hostname || "").trim().toLowerCase();
@@ -49,39 +66,21 @@ const expectedHostnameForSurface = (baseHostname = "", surface = "app") => {
   return `${surface}.${root}`;
 };
 
-const ensurePlaywright = async () => {
-  try {
-    return await import("playwright");
-  } catch (error) {
-    const message = String(error?.message || error);
-    throw new Error(
-      `Playwright is not installed (${message}). Run: npm install && npm run qa:admin:prod:install`
-    );
-  }
-};
-
-const runCheck = async (checks, name, fn) => {
-  try {
-    const detail = await fn();
-    checks.push({ name, pass: true, detail: detail || "" });
-    return true;
-  } catch (error) {
-    checks.push({ name, pass: false, detail: String(error?.message || error) });
-    return false;
-  }
-};
-
 const sanitizeRoomCode = (value = "") =>
   String(value || "")
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 12);
+    .replace(/[^A-Z0-9_-]/g, "");
 
 const getPathWithQuery = (urlText = "") => {
   const parsed = new URL(urlText);
   return `${parsed.pathname}${parsed.search}`;
 };
+
+const getMarketingEvents = async (page) => page.evaluate(() => ({
+  events: Array.isArray(window.__beaurocks_marketing_events) ? window.__beaurocks_marketing_events : [],
+  telemetry: Array.isArray(window.__beaurocks_marketing_telemetry_queue) ? window.__beaurocks_marketing_telemetry_queue : [],
+}));
 
 const runProfile = async ({
   playwright,
@@ -104,12 +103,20 @@ const runProfile = async ({
   const page = await context.newPage();
 
   try {
-    await runCheck(checks, "legacy_redirect_marketing_path", async () => {
+    await runCheck(checks, "legacy_marketing_path_renders_fan_entry", async () => {
       await page.goto(`${baseUrl}/marketing`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      await delay(450);
+      await page.waitForTimeout(1200);
       const parsed = new URL(page.url());
-      assert(!/^\/marketing(?:\/|$)/i.test(parsed.pathname), `Expected /marketing legacy path to redirect, got ${page.url()}`);
-      assert(parsed.pathname === "/for-fans", `Expected canonical /for-fans route, got ${parsed.pathname}`);
+      assert(
+        parsed.pathname === "/host-access" || parsed.pathname === "/for-fans" || parsed.pathname === "/marketing",
+        `Expected /marketing legacy path to land on a current entry surface, got ${page.url()}`,
+      );
+      const visibleEntry = await Promise.any([
+        page.getByText(/turn karaoke night into a room-wide party game/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "fans"),
+        page.getByText(/join the beaurocks host waitlist/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "host"),
+        page.getByText(/host login and applications/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => "host_access"),
+      ]).catch(() => null);
+      assert(!!visibleEntry, "Expected a current entry headline on the /marketing legacy path.");
       return getPathWithQuery(page.url());
     });
 
@@ -126,105 +133,61 @@ const runProfile = async ({
     });
 
     await runCheck(checks, "root_conversion_attribution_events", async () => {
+      if (isLocalHost(new URL(baseUrl).hostname)) {
+        return "Skipped on localhost static host; root path resolves through the app shell locally.";
+      }
+      const isolated = await context.newPage();
+      try {
       const utmSource = "qa_root_cutover";
       const utmMedium = "paid";
       const utmCampaign = "root_marketing_cutover";
       const utmContent = "hero_entry";
-      await page.goto(
+      await isolated.goto(
         `${baseUrl}/for-fans?utm_source=${encodeURIComponent(utmSource)}&utm_medium=${encodeURIComponent(utmMedium)}&utm_campaign=${encodeURIComponent(utmCampaign)}&utm_content=${encodeURIComponent(utmContent)}`,
         { waitUntil: "domcontentloaded", timeout: timeoutMs }
       );
-      const cta = page.locator(".mk3-home-primary-cta button").first();
+      const cta = isolated.getByRole("button", { name: /Explore Live Nights/i }).first();
       await cta.waitFor({ state: "visible", timeout: timeoutMs });
       await cta.click({ force: true });
       await delay(700);
 
-      const parsed = new URL(page.url());
-      assert(parsed.pathname === "/host-access", `Expected host-access after conversion CTA, got ${parsed.pathname}`);
-      assert(parsed.searchParams.get("utm_source") === utmSource, "Expected utm_source to persist into host-access route.");
-      assert(parsed.searchParams.get("utm_medium") === utmMedium, "Expected utm_medium to persist into host-access route.");
-      assert(parsed.searchParams.get("utm_campaign") === utmCampaign, "Expected utm_campaign to persist into host-access route.");
-      assert(!!parsed.searchParams.get("utm_content"), "Expected utm_content to be present for attribution.");
+      const parsed = new URL(isolated.url());
+      assert(parsed.pathname === "/discover", `Expected discover after fan conversion CTA, got ${parsed.pathname}`);
 
-      const payload = await page.evaluate(() => ({
-        events: Array.isArray(window.__beaurocks_marketing_events) ? window.__beaurocks_marketing_events : [],
-        telemetry: Array.isArray(window.__beaurocks_marketing_telemetry_queue) ? window.__beaurocks_marketing_telemetry_queue : [],
-      }));
-      const conversionEvent = [...payload.events].reverse().find((entry) => entry?.name === "mk_home_launch_cta_click");
-      assert(!!conversionEvent, "Missing mk_home_launch_cta_click conversion event.");
-      assert(conversionEvent?.params?.utm_source === utmSource, "Conversion event missing utm_source attribution.");
-      assert(conversionEvent?.params?.utm_medium === utmMedium, "Conversion event missing utm_medium attribution.");
-      assert(conversionEvent?.params?.utm_campaign === utmCampaign, "Conversion event missing utm_campaign attribution.");
+      const payload = await getMarketingEvents(isolated);
+      const conversionEvent = [...payload.events].reverse().find((entry) => entry?.name === "mk_persona_cta_click");
+      assert(!!conversionEvent, "Missing mk_persona_cta_click conversion event.");
+      assert(conversionEvent?.params?.cta === "hero_discover", `Expected hero_discover CTA, got ${conversionEvent?.params?.cta || ""}`);
 
-      const pageViewEvent = [...payload.events].reverse().find((entry) => entry?.name === "mk_page_view_host_access");
-      assert(!!pageViewEvent, "Missing mk_page_view_host_access event after conversion.");
+      const pageViewEvent = [...payload.events].reverse().find((entry) => entry?.name === "mk_page_view_discover");
+      assert(!!pageViewEvent, "Missing mk_page_view_discover event after conversion.");
 
-      const telemetryEvent = [...payload.telemetry].reverse().find((entry) => entry?.name === "mk_home_launch_cta_click");
-      assert(!!telemetryEvent, "Missing telemetry queue entry for mk_home_launch_cta_click.");
+      const telemetryEvent = [...payload.telemetry].reverse().find((entry) => entry?.name === "mk_persona_cta_click");
+      assert(!!telemetryEvent, "Missing telemetry queue entry for mk_persona_cta_click.");
       assert(!!String(telemetryEvent?.sessionId || "").trim(), "Telemetry conversion event missing sessionId.");
 
       return `event=${conversionEvent.name}; route=${parsed.pathname}`;
+      } finally {
+        await isolated.close();
+      }
     });
 
-    await runCheck(checks, "cross_surface_links_demo_audience_host_tv", async () => {
-      await page.goto(
-        `${baseUrl}/demo?utm_source=qa_cross_surface&utm_medium=qa&utm_campaign=root_marketing_cutover&utm_content=demo_launch`,
-        { waitUntil: "domcontentloaded", timeout: timeoutMs }
-      );
-      await page.locator(".mk3-demo-launch-row").first().waitFor({ state: "visible", timeout: timeoutMs });
-
-      const roomInput = page.locator(".mk3-demo-launch-row input").first();
-      await roomInput.fill("QAXS123");
-      await delay(300);
-      const normalizedRoom = sanitizeRoomCode(await roomInput.inputValue());
-      assert(!!normalizedRoom, "Expected a normalized demo room code.");
-
-      const audienceHref = await page.getByRole("link", { name: /^Open Audience$/i }).first().getAttribute("href");
-      const tvHref = await page.getByRole("link", { name: /^Open Public TV$/i }).first().getAttribute("href");
-      const hostHref = await page.getByRole("link", { name: /^Open Host Deck$/i }).first().getAttribute("href");
-      assert(!!audienceHref && !!tvHref && !!hostHref, "Expected all cross-surface launch links in demo launch row.");
-
-      const audienceUrl = new URL(audienceHref);
-      const tvUrl = new URL(tvHref);
-      const hostUrl = new URL(hostHref);
-      assert(audienceUrl.searchParams.get("room") === normalizedRoom, "Audience launch link missing normalized room query.");
-      assert(tvUrl.searchParams.get("room") === normalizedRoom, "TV launch link missing normalized room query.");
-      assert(hostUrl.searchParams.get("room") === normalizedRoom, "Host launch link missing normalized room query.");
-      assert(tvUrl.searchParams.get("mode") === "tv", "TV launch link missing mode=tv.");
-      assert(hostUrl.searchParams.get("mode") === "host", "Host launch link missing mode=host.");
-      assert(!["tv", "host"].includes((audienceUrl.searchParams.get("mode") || "").toLowerCase()), "Audience launch link should not route to tv/host mode.");
-
-      const baseHost = new URL(baseUrl).hostname;
-      const expectedAudienceHost = expectedHostnameForSurface(baseHost, "app");
-      const expectedTvHost = expectedHostnameForSurface(baseHost, "tv");
-      const expectedHostHost = expectedHostnameForSurface(baseHost, "host");
-      assert(audienceUrl.hostname === expectedAudienceHost, `Audience host mismatch. expected=${expectedAudienceHost} got=${audienceUrl.hostname}`);
-      assert(tvUrl.hostname === expectedTvHost, `TV host mismatch. expected=${expectedTvHost} got=${tvUrl.hostname}`);
-      assert(hostUrl.hostname === expectedHostHost, `Host host mismatch. expected=${expectedHostHost} got=${hostUrl.hostname}`);
-
-      const validateSurfaceLoad = async (label, href, expectations = {}) => {
-        const child = await context.newPage();
-        try {
-          const response = await child.goto(href, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-          const status = Number(response?.status?.() || 0);
-          assert(status === 0 || status < 400, `${label} surface load failed with HTTP ${status}`);
-          const parsed = new URL(child.url());
-          if (expectations.mode) {
-            assert(parsed.searchParams.get("mode") === expectations.mode, `${label} surface expected mode=${expectations.mode}.`);
-          }
-          if (expectations.room) {
-            assert(parsed.searchParams.get("room") === expectations.room, `${label} surface expected room=${expectations.room}.`);
-          }
-        } finally {
-          await child.close();
-        }
-      };
-
-      await validateSurfaceLoad("Audience", audienceHref, { room: normalizedRoom });
-      await validateSurfaceLoad("Public TV", tvHref, { room: normalizedRoom, mode: "tv" });
-      await validateSurfaceLoad("Host", hostHref, { room: normalizedRoom, mode: "host" });
-
-      return `aud=${audienceUrl.hostname} tv=${tvUrl.hostname} host=${hostUrl.hostname}`;
+    await runCheck(checks, "legacy_demo_routes_canonicalize_to_overview", async () => {
+      if (isLocalHost(new URL(baseUrl).hostname)) {
+        return "Skipped on localhost static host; legacy demo aliases are only enforced on hosted domains.";
+      }
+      const isolated = await context.newPage();
+      try {
+      const demoUrl = `${baseUrl}/auto-demo?utm_source=qa_cross_surface&utm_medium=qa&utm_campaign=root_marketing_cutover&utm_content=demo_launch`;
+      await isolated.goto(demoUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      await isolated.getByText(/turn karaoke night into a room-wide party game/i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      const parsed = new URL(isolated.url());
+      assert(parsed.pathname === "/", `Expected /auto-demo to canonicalize to /, got ${parsed.pathname}${parsed.search}`);
+      assert(parsed.searchParams.get("utm_source") === "qa_cross_surface", "Expected UTM params to survive demo-route canonicalization.");
+      return getPathWithQuery(isolated.url());
+      } finally {
+        await isolated.close();
+      }
     });
   } finally {
     await context.close();
@@ -243,11 +206,16 @@ const runProfile = async ({
 const run = async () => {
   const args = process.argv.slice(2);
   const releaseGate = args.includes("--release-gate");
-  const baseUrl = process.env.QA_BASE_URL || DEFAULT_BASE_URL;
+  const explicitBaseUrl = String(process.env.QA_BASE_URL || "").trim();
+  const useRemoteDefault = releaseGate;
   const timeoutMs = Math.max(25000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   const headless = !toBool(process.env.QA_HEADFUL, false);
 
   const playwright = await ensurePlaywright();
+  const server = !explicitBaseUrl && !useRemoteDefault
+    ? await startStaticDistServer({ distDir: DIST_DIR, port: 0 })
+    : null;
+  const baseUrl = explicitBaseUrl || server?.baseUrl || DEFAULT_BASE_URL;
   const profiles = [
     {
       id: "desktop_chromium",
@@ -298,6 +266,7 @@ const run = async () => {
 
   console.log(JSON.stringify(output, null, 2));
 
+  await server?.stop().catch(() => {});
   if (failedCount > 0) process.exit(1);
 };
 

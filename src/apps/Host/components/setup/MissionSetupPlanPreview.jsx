@@ -11,9 +11,9 @@ const MissionSetupPlanPreview = ({
     planImpactItems = []
 }) => (
     <>
-        <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Tonight&apos;s Plan</div>
+        <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Setup Summary</div>
         <div className="mt-2 rounded-2xl border border-cyan-500/30 bg-zinc-900/80 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">Canonical Summary</div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-cyan-200">What You Picked</div>
             <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Archetype:</span> {missionPresetLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Constraint:</span> {flowRuleLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Host Style:</span> {assistLabel}</div>
@@ -26,7 +26,7 @@ const MissionSetupPlanPreview = ({
         </div>
 
         <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">What This Changes</div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">What Changes</div>
             <div className="mt-2 space-y-1.5">
                 {planImpactItems.map((item) => (
                     <div key={`plan-impact-${item.label}`} className="flex items-start justify-between gap-3 text-xs text-zinc-200">
@@ -38,13 +38,13 @@ const MissionSetupPlanPreview = ({
         </div>
 
         <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Readiness</div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Before You Save</div>
             <div className="text-white font-bold mt-1">{readinessScore}%</div>
             <div className="h-2 rounded-full bg-zinc-800 overflow-hidden mt-2">
                 <div className="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all" style={{ width: `${readinessScore}%` }}></div>
             </div>
             {readinessMissing.length > 0 && (
-                <div className="text-[11px] text-zinc-400 mt-2">Missing: {readinessMissing.join(', ')}</div>
+                <div className="text-[11px] text-zinc-400 mt-2">Still missing: {readinessMissing.join(', ')}</div>
             )}
         </div>
     </>

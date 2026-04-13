@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { callFunction } from '../../../lib/firebase';
 
 const useQueueMediaTools = ({
+    roomCode,
     ytIndex,
     setYtIndex,
     persistYtIndex,
@@ -51,12 +52,16 @@ const useQueueMediaTools = ({
         const id = parseYouTubeId(url);
         if (!id) return null;
         try {
-            const data = await callFunction('youtubeDetails', { ids: [id] });
+            const data = await callFunction('youtubeDetails', {
+                ids: [id],
+                roomCode,
+                usageContext: { source: 'host_queue_media_duration_lookup' }
+            });
             return data?.items?.[0]?.durationSec || null;
         } catch {
             return null;
         }
-    }, [parseYouTubeId]);
+    }, [parseYouTubeId, roomCode]);
 
     const resolveDurationForUrl = useCallback(async (url, audioOnly = false) => {
         if (!url) return null;
@@ -69,7 +74,11 @@ const useQueueMediaTools = ({
         const ids = videoIds.filter(Boolean);
         if (!ids.length) return;
         try {
-            const data = await callFunction('youtubeStatus', { ids });
+            const data = await callFunction('youtubeStatus', {
+                ids,
+                roomCode,
+                usageContext: { source: 'host_queue_media_embed_status' }
+            });
             const statusMap = new Map();
             (data?.items || []).forEach(item => {
                 statusMap.set(item.id, item.embeddable ? 'ok' : 'fail');
@@ -84,7 +93,7 @@ const useQueueMediaTools = ({
         } catch (e) {
             console.error('Embed status fetch failed', e);
         }
-    }, [setEmbedCache]);
+    }, [roomCode, setEmbedCache]);
 
     const searchYouTubeIndex = useCallback((query) => {
         const q = query.trim().toLowerCase();
@@ -114,7 +123,13 @@ const useQueueMediaTools = ({
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Search timed out.')), 8000));
             const data = await Promise.race([
-                callFunction('youtubeSearch', { query: `${query} karaoke`, maxResults: 10, playableOnly: true }),
+                callFunction('youtubeSearch', {
+                    query: `${query} karaoke`,
+                    maxResults: 10,
+                    playableOnly: true,
+                    roomCode,
+                    usageContext: { source: 'host_queue_media_search' }
+                }),
                 timeout
             ]);
             const results = (data?.items || []).map(item => ({
@@ -176,6 +191,7 @@ const useQueueMediaTools = ({
         setYtLoading,
         setYtResults,
         setYtSearchError,
+        roomCode,
         ytIndex,
         ytSearchQ
     ]);

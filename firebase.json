@@ -77,8 +77,18 @@
         "type": 301
       },
       {
+        "source": "/demo",
+        "destination": "/",
+        "type": 301
+      },
+      {
+        "source": "/auto-demo",
+        "destination": "/",
+        "type": 301
+      },
+      {
         "source": "/demo-auto",
-        "destination": "/auto-demo",
+        "destination": "/",
         "type": 301
       }
     ],

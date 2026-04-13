@@ -1007,12 +1007,14 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
   };
 };
 const getNormalizedRoomRunOfShowPolicy = (roomData = {}) => normalizeRunOfShowPolicy(roomData?.runOfShowPolicy || {});
-const getNormalizedRoomRunOfShowRoles = (roomData = {}) => normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
-const getNormalizedRoomRunOfShowTemplateMeta = (roomData = {}) => normalizeRunOfShowTemplateMeta(roomData?.runOfShowTemplateMeta || {});
+const _getNormalizedRoomRunOfShowRoles = (roomData = {}) => normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
+const _getNormalizedRoomRunOfShowTemplateMeta = (roomData = {}) => normalizeRunOfShowTemplateMeta(roomData?.runOfShowTemplateMeta || {});
 const ROOM_EVENT_CREDIT_CONFIGS_COLLECTION = "room_event_credit_configs";
 const ROOM_EVENT_CREDIT_GRANTS_COLLECTION = "room_event_credit_grants";
 const ROOM_PROMO_REDEMPTIONS_COLLECTION = "room_promo_redemptions";
 const EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION = "event_attendee_entitlements";
+const SUPPORT_PURCHASE_EVENTS_COLLECTION = "support_purchase_events";
+const MONEYBAGS_BADGE_LABEL = "Moneybags";
 const buildDefaultRoomEventCredits = () => ({
   enabled: false,
   presetId: "custom_event_credits",
@@ -1025,6 +1027,13 @@ const buildDefaultRoomEventCredits = () => ({
   skipLineBonusPoints: 0,
   websiteCheckInPoints: 0,
   socialPromoPoints: 0,
+  supportProvider: "",
+  supportLabel: "",
+  supportUrl: "",
+  supportEmbedUrl: "",
+  supportCampaignCode: "",
+  supportPoints: 0,
+  supportBadge: true,
   promoCampaigns: [],
 });
 const normalizeRoomEventCreditCode = (value = "") =>
@@ -1080,6 +1089,13 @@ const normalizeRoomEventCredits = (input = {}) => {
     skipLineBonusPoints: clampNumber(source.skipLineBonusPoints ?? defaults.skipLineBonusPoints, 0, 100000, 0),
     websiteCheckInPoints: clampNumber(source.websiteCheckInPoints ?? defaults.websiteCheckInPoints, 0, 100000, 0),
     socialPromoPoints: clampNumber(source.socialPromoPoints ?? defaults.socialPromoPoints, 0, 100000, 0),
+    supportProvider: normalizeDirectoryToken(source.supportProvider || defaults.supportProvider, 40),
+    supportLabel: safeDirectoryString(source.supportLabel || defaults.supportLabel, 120),
+    supportUrl: normalizeDirectoryOptionalUrl(source.supportUrl || defaults.supportUrl),
+    supportEmbedUrl: normalizeDirectoryOptionalUrl(source.supportEmbedUrl || defaults.supportEmbedUrl),
+    supportCampaignCode: normalizeRoomEventCreditCode(source.supportCampaignCode || defaults.supportCampaignCode),
+    supportPoints: clampNumber(source.supportPoints ?? defaults.supportPoints, 0, 100000, 0),
+    supportBadge: source.supportBadge !== false,
     promoCampaigns: normalizeRoomPromoCampaignList(source.promoCampaigns || defaults.promoCampaigns),
   };
 };
@@ -1111,6 +1127,13 @@ const buildRoomEventCreditPublicSummary = (config = {}) => {
     skipLineBonusPoints: normalized.skipLineBonusPoints,
     websiteCheckInPoints: normalized.websiteCheckInPoints,
     socialPromoPoints: normalized.socialPromoPoints,
+    supportProvider: normalized.supportProvider,
+    supportLabel: normalized.supportLabel,
+    supportUrl: normalized.supportUrl,
+    supportEmbedUrl: normalized.supportEmbedUrl,
+    supportCampaignCode: normalized.supportCampaignCode,
+    supportPoints: normalized.supportPoints,
+    supportBadge: normalized.supportBadge,
     promoCampaignCount: normalized.promoCampaigns.length,
     promoCampaigns: normalized.promoCampaigns
       .filter((campaign) => campaign.enabled)
@@ -1128,6 +1151,65 @@ const buildRoomEventCreditPublicSummary = (config = {}) => {
         validUntilMs: campaign.validUntilMs,
       })),
   };
+};
+const buildRoomPurchaseCelebrationPayload = ({
+  id = "",
+  buyerName = "",
+  label = "",
+  points = 0,
+  badgeAwarded = false,
+  sourceProvider = "",
+  rewardScope = "room",
+  amountCents = 0,
+} = {}) => {
+  const safeBuyerName = normalizeOptionalName(buyerName || "Guest", "Guest");
+  const safeLabel = safeDirectoryString(label || "Room Boost", 120) || "Room Boost";
+  const safePoints = clampNumber(points, 0, 100000, 0);
+  const safeAmountCents = clampNumber(amountCents, 0, 100000000, 0);
+  return {
+    id: normalizeDirectoryToken(id || `${Date.now()}`, 180) || `${Date.now()}`,
+    buyerName: safeBuyerName,
+    by: safeBuyerName,
+    title: `${safeBuyerName} just boosted the room`,
+    label: safeLabel,
+    subtitle: badgeAwarded
+      ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
+      : safeLabel,
+    subLabel: badgeAwarded
+      ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
+      : safeLabel,
+    points: safePoints,
+    badgeAwarded: !!badgeAwarded,
+    badgeLabel: MONEYBAGS_BADGE_LABEL,
+    sourceProvider: normalizeDirectoryToken(sourceProvider || "", 40),
+    rewardScope: normalizeDirectoryToken(rewardScope || "room", 40) || "room",
+    amountCents: safeAmountCents,
+    createdAtMs: Date.now(),
+  };
+};
+const extractGivebutterAmountCents = (payload = {}) => {
+  const source = extractGivebutterPayloadSubject(payload);
+  const candidates = [
+    source.amount_cents,
+    source.amountCents,
+    source.total_amount_cents,
+    source.totalAmountCents,
+    source.purchase?.amount_cents,
+    source.purchase?.amountCents,
+    source.purchase?.total_amount_cents,
+    source.purchase?.totalAmountCents,
+    source.amount,
+    source.total_amount,
+    source.purchase?.amount,
+    source.purchase?.total_amount,
+  ];
+  for (const candidate of candidates) {
+    const numeric = Number(candidate);
+    if (!Number.isFinite(numeric) || numeric <= 0) continue;
+    if (numeric >= 1000) return Math.round(numeric);
+    return Math.round(numeric * 100);
+  }
+  return 0;
 };
 const resolveRoomEventCreditGrant = (config = {}, grantType = "") => {
   const safeType = normalizeDirectoryToken(grantType, 40);
@@ -1328,6 +1410,7 @@ const buildProvisionedRoomData = ({
   coHostUids = [],
   presetId = "custom",
   eventCredits = {},
+  roomPlan = {},
 } = {}) => {
   const presetOverrides = resolveProvisionPresetOverrides(presetId);
   const resolvedHostName = normalizeOptionalName(hostName, "Host");
@@ -1338,6 +1421,8 @@ const buildProvisionedRoomData = ({
   const resolvedRoomName = String(roomName || "").trim().slice(0, 120);
   const resolvedCoHostUids = normalizeProvisionCoHostUids(hostUid, coHostUids);
   const resolvedHostUids = [hostUid, ...resolvedCoHostUids].filter(Boolean);
+  const roomStartsAtMs = Math.max(0, Number(roomPlan?.startsAtMs || 0) || 0);
+  const roomStartsAtLocal = String(roomPlan?.startsAtLocal || "").trim().slice(0, 64);
   const baseData = {
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     activeMode: "karaoke",
@@ -1362,6 +1447,10 @@ const buildProvisionedRoomData = ({
     roomName: resolvedRoomName || `${resolvedHostName} Room`,
     orgId: orgId || null,
     orgName: resolvedOrgName,
+    roomPlan: {
+      startsAtMs: roomStartsAtMs,
+      startsAtLocal: roomStartsAtLocal,
+    },
     logoUrl: resolvedLogoUrl || null,
     lobbyOrbSkinUrl: null,
     autoDj: false,
@@ -1389,6 +1478,7 @@ const buildProvisionedRoomData = ({
     reduceMotionFx: false,
     showLyricsSinger: false,
     hideCornerOverlay: false,
+    hideJoinOverlay: false,
     howToPlay: { active: false, id: nowMs() },
     gameRulesId: 0,
     showScoring: true,
@@ -1480,6 +1570,30 @@ const parseRoomCodeEnvSet = (value = "") =>
       .filter(Boolean)
   );
 const LYRICS_TIMED_ADAPTER_ROOM_CODES = parseRoomCodeEnvSet(process.env.LYRICS_TIMED_ADAPTER_ROOM_CODES || "");
+const ROOM_REQUEST_MODES = Object.freeze({
+  canonicalOpen: "canonical_open",
+  playableOnly: "playable_only",
+  guestBackingOptional: "guest_backing_optional",
+});
+const ROOM_AUDIENCE_BACKING_MODES = Object.freeze({
+  canonicalOnly: "canonical_only",
+  canonicalPlusApprovedBackings: "canonical_plus_approved_backings",
+  canonicalPlusAudienceYoutube: "canonical_plus_audience_youtube",
+});
+const ROOM_UNKNOWN_BACKING_POLICIES = Object.freeze({
+  requireReview: "require_review",
+  autoQueueUnverified: "auto_queue_unverified",
+  blockUnknown: "block_unknown",
+});
+const VALID_ROOM_REQUEST_MODES = new Set(Object.values(ROOM_REQUEST_MODES));
+const VALID_ROOM_AUDIENCE_BACKING_MODES = new Set(Object.values(ROOM_AUDIENCE_BACKING_MODES));
+const VALID_ROOM_UNKNOWN_BACKING_POLICIES = new Set(Object.values(ROOM_UNKNOWN_BACKING_POLICIES));
+const ROOM_REQUEST_POLICY_KEYS = new Set([
+  "requestMode",
+  "allowSingerTrackSelect",
+  "audienceBackingMode",
+  "unknownBackingPolicy",
+]);
 const HOST_UPDATE_OP_FIELD = "__hostOp";
 const HOST_UPDATE_SERVER_TIMESTAMP = "serverTimestamp";
 const HOST_UPDATE_MAX_DEPTH = 8;
@@ -1509,6 +1623,8 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "archivedAt",
   "archivedBy",
   "archivedStatus",
+  "audienceBackingMode",
+  "audienceBrandTheme",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
@@ -1564,6 +1680,9 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "doodleOke",
   "doodleOkeConfig",
   "doodleOkeIndex",
+  "eventProfileId",
+  "eventProfileLabel",
+  "eventProfileVersion",
   "eventCredits",
   "featuredPhotoId",
   "gameData",
@@ -1577,6 +1696,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "guitarVictory",
   "guitarWinner",
   "hideCornerOverlay",
+  "hideJoinOverlay",
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
@@ -1613,6 +1733,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "readyCheckDurationSec",
   "readyCheckRewardPoints",
   "requestMode",
+  "roomPlan",
   "reduceMotionFx",
   "recap",
   "recapPreview",
@@ -1649,6 +1770,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "tipQrUrl",
   "tipUrl",
   "triviaQuestion",
+  "unknownBackingPolicy",
   "updatedAt",
   "tvPresentationProfile",
   "videoPlaying",
@@ -1678,6 +1800,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "chatEnabled",
   "chatShowOnTv",
   "hideCornerOverlay",
+  "hideJoinOverlay",
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
@@ -1711,6 +1834,7 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "closedAt",
   "currentApplauseLevel",
   "doodleOkeIndex",
+  "eventProfileVersion",
   "gamePreviewAt",
   "gameRulesId",
   "guitarSessionId",
@@ -1746,6 +1870,7 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "appleMusicAutoPlaylistTitle",
   "archivedBy",
   "archivedStatus",
+  "audienceBackingMode",
   "audienceVideoMode",
   "audienceShellVariant",
   "bgMusicUrl",
@@ -1772,10 +1897,13 @@ const HOST_ROOM_STRING_ROOT_KEYS = new Set([
   "mediaUrl",
   "programMode",
   "requestMode",
+  "eventProfileId",
+  "eventProfileLabel",
   "stormPhase",
   "tipQrUrl",
   "tipUrl",
   "tvPresentationProfile",
+  "unknownBackingPolicy",
   "visualizerMode",
   "visualizerPreset",
   "visualizerSource",
@@ -1800,6 +1928,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "doodleOke",
   "doodleOkeConfig",
   "eventCredits",
+  "audienceBrandTheme",
   "gameData",
   "gameDefaults",
   "guitarVictory",
@@ -2005,6 +2134,102 @@ const decodeHostRoomUpdateValue = (value) => {
     next[key] = decodeHostRoomUpdateValue(child);
   });
   return next;
+};
+
+const normalizeHostRoomRequestMode = (value = "", allowSingerTrackSelect = false) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (VALID_ROOM_REQUEST_MODES.has(normalized)) return normalized;
+  return allowSingerTrackSelect
+    ? ROOM_REQUEST_MODES.guestBackingOptional
+    : ROOM_REQUEST_MODES.canonicalOpen;
+};
+
+const deriveHostAudienceBackingMode = ({
+  audienceBackingMode = "",
+  requestMode = "",
+  allowSingerTrackSelect = false,
+} = {}) => {
+  const normalizedAudienceBackingMode = String(audienceBackingMode || "").trim().toLowerCase();
+  if (VALID_ROOM_AUDIENCE_BACKING_MODES.has(normalizedAudienceBackingMode)) return normalizedAudienceBackingMode;
+  const normalizedRequestMode = normalizeHostRoomRequestMode(requestMode, allowSingerTrackSelect);
+  if (normalizedRequestMode === ROOM_REQUEST_MODES.playableOnly) {
+    return ROOM_AUDIENCE_BACKING_MODES.canonicalPlusApprovedBackings;
+  }
+  if (normalizedRequestMode === ROOM_REQUEST_MODES.guestBackingOptional) {
+    return ROOM_AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube;
+  }
+  return ROOM_AUDIENCE_BACKING_MODES.canonicalOnly;
+};
+
+const deriveHostUnknownBackingPolicy = ({
+  audienceBackingMode = "",
+  unknownBackingPolicy = "",
+  requestMode = "",
+  allowSingerTrackSelect = false,
+} = {}) => {
+  const normalizedAudienceBackingMode = deriveHostAudienceBackingMode({
+    audienceBackingMode,
+    requestMode,
+    allowSingerTrackSelect,
+  });
+  if (normalizedAudienceBackingMode === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusApprovedBackings) {
+    return ROOM_UNKNOWN_BACKING_POLICIES.blockUnknown;
+  }
+  if (normalizedAudienceBackingMode === ROOM_AUDIENCE_BACKING_MODES.canonicalOnly) {
+    return ROOM_UNKNOWN_BACKING_POLICIES.requireReview;
+  }
+  const normalizedUnknownBackingPolicy = String(unknownBackingPolicy || "").trim().toLowerCase();
+  if (VALID_ROOM_UNKNOWN_BACKING_POLICIES.has(normalizedUnknownBackingPolicy)) return normalizedUnknownBackingPolicy;
+  return ROOM_UNKNOWN_BACKING_POLICIES.requireReview;
+};
+
+const deriveLegacyRequestModeFromAudienceBackingMode = (audienceBackingMode = "") => {
+  const normalizedAudienceBackingMode = deriveHostAudienceBackingMode({ audienceBackingMode });
+  if (normalizedAudienceBackingMode === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusApprovedBackings) {
+    return ROOM_REQUEST_MODES.playableOnly;
+  }
+  if (normalizedAudienceBackingMode === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube) {
+    return ROOM_REQUEST_MODES.guestBackingOptional;
+  }
+  return ROOM_REQUEST_MODES.canonicalOpen;
+};
+
+const deriveLegacyAllowSingerTrackSelect = (audienceBackingMode = "") => (
+  deriveHostAudienceBackingMode({ audienceBackingMode }) === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube
+);
+
+const syncHostRoomRequestPolicyUpdates = ({ roomData = {}, updates = {} } = {}) => {
+  const touchedPolicyKey = Object.keys(updates).some((key) => ROOM_REQUEST_POLICY_KEYS.has(key));
+  if (!touchedPolicyKey) return updates;
+
+  const mergedPolicyState = {
+    requestMode: Object.prototype.hasOwnProperty.call(updates, "requestMode")
+      ? updates.requestMode
+      : roomData?.requestMode,
+    allowSingerTrackSelect: Object.prototype.hasOwnProperty.call(updates, "allowSingerTrackSelect")
+      ? updates.allowSingerTrackSelect
+      : roomData?.allowSingerTrackSelect,
+    audienceBackingMode: Object.prototype.hasOwnProperty.call(updates, "audienceBackingMode")
+      ? updates.audienceBackingMode
+      : roomData?.audienceBackingMode,
+    unknownBackingPolicy: Object.prototype.hasOwnProperty.call(updates, "unknownBackingPolicy")
+      ? updates.unknownBackingPolicy
+      : roomData?.unknownBackingPolicy,
+  };
+
+  const audienceBackingMode = deriveHostAudienceBackingMode(mergedPolicyState);
+  const unknownBackingPolicy = deriveHostUnknownBackingPolicy({
+    ...mergedPolicyState,
+    audienceBackingMode,
+  });
+
+  return {
+    ...updates,
+    requestMode: deriveLegacyRequestModeFromAudienceBackingMode(audienceBackingMode),
+    allowSingerTrackSelect: deriveLegacyAllowSingerTrackSelect(audienceBackingMode),
+    audienceBackingMode,
+    unknownBackingPolicy,
+  };
 };
 
 const normalizeHostRoomUpdates = (rawUpdates = {}) => {
@@ -3029,6 +3254,10 @@ const mergeDirectoryDiscoverDuplicateListings = (existing = {}, candidate = {}) 
     ? candidate
     : existing;
   const secondary = primary === existing ? candidate : existing;
+  const preserveSecondarySessionId = primary?.sourceType === "official_registry"
+    && String(primary?.listingType || "").trim().toLowerCase() === "room_session"
+    && String(secondary?.listingType || "").trim().toLowerCase() === "room_session"
+    && safeDirectoryString(secondary?.id || "", 180);
   const pickUrl = (...values) => {
     for (const entry of values) {
       const normalized = normalizeDirectoryOptionalUrl(entry || "");
@@ -3046,6 +3275,7 @@ const mergeDirectoryDiscoverDuplicateListings = (existing = {}, candidate = {}) 
   return {
     ...secondary,
     ...primary,
+    id: preserveSecondarySessionId || safeDirectoryString(primary?.id || secondary?.id || "", 180),
     hostUid: safeDirectoryString(primary?.hostUid || secondary?.hostUid || "", 180),
     ownerUid: safeDirectoryString(primary?.ownerUid || secondary?.ownerUid || "", 180),
     venueId: safeDirectoryString(primary?.venueId || secondary?.venueId || "", 180),
@@ -3490,6 +3720,9 @@ const buildDirectoryPublicListing = (docSnap, forcedType = "") => {
     visibility: normalizeDirectoryVisibility(data.visibility || "public", "public"),
     virtualOnly: !!data.virtualOnly || !!data.isVirtualOnly,
     sessionMode: safeDirectoryString(data.sessionMode || "", 40),
+    supportProvider: normalizeDirectoryToken(data.supportProvider || "", 40),
+    supportLabel: safeDirectoryString(data.supportLabel || "", 120),
+    supportsAudienceFunding: data.supportsAudienceFunding === true || !!safeDirectoryString(data.supportProvider || "", 40),
     sourceType: normalizeDirectoryToken(data.sourceType || "", 20),
     imageUrl: primaryImageUrl,
     photoUrl,
@@ -4137,6 +4370,9 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
   const beauRocksCapabilities = normalizeDirectoryTokenArray(payload?.beauRocksCapabilities || [], 10, 60);
   const scheduleVerifiedAtMs = Math.max(0, Number(payload?.scheduleVerifiedAtMs || 0) || 0);
   const lastActiveAtMs = Math.max(0, Number(payload?.lastActiveAtMs || 0) || 0);
+  const supportProvider = normalizeDirectoryToken(payload?.supportProvider || "", 40);
+  const supportLabel = safeDirectoryString(payload?.supportLabel || "", 120);
+  const supportsAudienceFunding = payload?.supportsAudienceFunding === true || !!supportProvider;
 
   const base = {
     listingType,
@@ -4200,6 +4436,9 @@ const normalizeDirectoryListingPayload = (listingType = "", payload = {}, caller
       roomCode: normalizeRoomCode(payload?.roomCode || ""),
       venueName: safeDirectoryString(payload?.venueName || "", 120),
       sessionMode: safeDirectoryString(payload?.sessionMode || "karaoke", 40),
+      supportProvider,
+      supportLabel,
+      supportsAudienceFunding,
       isPublicRoom: visibility === "public",
     };
   }
@@ -4535,6 +4774,7 @@ const reserveOrganizationUsageUnits = async ({
   entitlements = null,
   meterId = "",
   units = 1,
+  source = "",
 }) => {
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Organization is not initialized.");
@@ -4553,6 +4793,7 @@ const reserveOrganizationUsageUnits = async ({
   const usageRef = orgsCollection().doc(orgId).collection("usage").doc(periodKey);
   const now = admin.firestore.FieldValue.serverTimestamp();
   const db = admin.firestore();
+  const safeSource = sanitizeSecurityToken(source, 96);
 
   const nextUsed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(usageRef);
@@ -4580,6 +4821,11 @@ const reserveOrganizationUsageUnits = async ({
       [`meters.${meterId}.billableUnitRateCents`]: quota.billableUnitRateCents,
       [`meters.${meterId}.updatedAt`]: now,
     };
+    if (safeSource) {
+      const currentSourceUsed = toWholeNumber(data?.meters?.[meterId]?.sources?.[safeSource]?.used, 0);
+      patch[`meters.${meterId}.sources.${safeSource}.used`] = currentSourceUsed + safeUnits;
+      patch[`meters.${meterId}.sources.${safeSource}.updatedAt`] = now;
+    }
     if (!snap.exists) {
       patch.createdAt = now;
     }
@@ -4593,6 +4839,57 @@ const reserveOrganizationUsageUnits = async ({
     quota,
     periodKey,
   });
+};
+
+const resolveUsageSource = (value = "", fallback = "unknown") =>
+  sanitizeSecurityToken(value || fallback, 96) || sanitizeSecurityToken(fallback, 96) || "unknown";
+
+const trackOrganizationUsageAnalytics = async ({
+  orgId = "",
+  signalId = "",
+  units = 1,
+  source = "",
+}) => {
+  const safeOrgId = String(orgId || "").trim();
+  const safeSignalId = sanitizeSecurityToken(signalId, 64);
+  if (!safeOrgId || !safeSignalId) return false;
+  const safeUnits = Math.max(1, toWholeNumber(units, 1));
+  const safeSource = sanitizeSecurityToken(source, 96);
+  const periodKey = getUsagePeriodKey();
+  const usageRef = orgsCollection().doc(safeOrgId).collection("usage").doc(periodKey);
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const db = admin.firestore();
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(usageRef);
+    const data = snap.data() || {};
+    const currentUsed = toWholeNumber(data?.analytics?.[safeSignalId]?.used, 0);
+    const patch = {
+      orgId: safeOrgId,
+      period: periodKey,
+      updatedAt: now,
+      [`analytics.${safeSignalId}.used`]: currentUsed + safeUnits,
+      [`analytics.${safeSignalId}.updatedAt`]: now,
+    };
+    if (safeSource) {
+      const currentSourceUsed = toWholeNumber(data?.analytics?.[safeSignalId]?.sources?.[safeSource]?.used, 0);
+      patch[`analytics.${safeSignalId}.sources.${safeSource}.used`] = currentSourceUsed + safeUnits;
+      patch[`analytics.${safeSignalId}.sources.${safeSource}.updatedAt`] = now;
+    }
+    if (!snap.exists) {
+      patch.createdAt = now;
+    }
+    tx.set(usageRef, patch, { merge: true });
+  });
+
+  return true;
+};
+
+const resolveUsageOrgIdFromRoomCode = async (roomCode = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeRoomCode) return "";
+  const roomSnap = await getRootRef().collection("rooms").doc(safeRoomCode).get();
+  return String(roomSnap.data()?.orgId || "").trim();
 };
 
 const ensureOrganizationForUser = async ({ uid, orgName = "" }) => {
@@ -6732,6 +7029,7 @@ const processPopTriviaForSong = async ({
       entitlements: aiAccess.aiMeterEntitlements || aiAccess.entitlements,
       meterId: "ai_generate_content",
       units: 1,
+      source: "auto_pop_trivia_song",
     });
   }
 
@@ -6854,6 +7152,11 @@ const toMillisSafe = (value) => {
 };
 
 const normalizeTrackApprovalState = (value = "") => String(value || "").trim().toLowerCase();
+const normalizeTrackFeedbackState = (value = "") => {
+  const safeValue = String(value || "").trim().toLowerCase();
+  if (["suppressed", "observing", "healthy"].includes(safeValue)) return safeValue;
+  return "";
+};
 
 const normalizeTrustedCatalogMap = (value = {}) => (
   value && typeof value === "object" && !Array.isArray(value) ? value : {}
@@ -6878,7 +7181,7 @@ const readRoomHostLibrary = async (roomCode = "") => {
   }
 };
 
-const readRoomTrustedCatalog = async (roomCode = "") => {
+const _readRoomTrustedCatalog = async (roomCode = "") => {
   const library = await readRoomHostLibrary(roomCode);
   return library.trustedCatalog || {};
 };
@@ -6931,7 +7234,7 @@ const scoreTrack = (track = {}, trustedSongEntry = null) => {
   return sourceScore + backingScore + layerScore + usageScore;
 };
 
-const pickBestTrack = (tracks = [], trustedSongEntry = null) => {
+const _pickBestTrack = (tracks = [], trustedSongEntry = null) => {
   if (!Array.isArray(tracks) || !tracks.length) return null;
   return tracks
     .slice()
@@ -6961,6 +7264,8 @@ const buildTrackCandidateSummary = (track = {}, trustedSongEntry = null) => ({
   successCount: Number(track.successCount || 0),
   usageCount: Number(track.usageCount || 0),
   failureCount: Number(track.failureCount || 0),
+  avoidRoomCount: Math.max(0, Number(track.globalAvoidRoomCount || 0)),
+  globalFeedbackState: normalizeTrackFeedbackState(track.globalFeedbackState),
   layer: getTrackLayer(track, trustedSongEntry),
   score: scoreTrack(track, trustedSongEntry),
 });
@@ -7247,6 +7552,22 @@ exports.itunesSearch = onCall({ cors: true }, async (request) => {
   const term = request.data?.term || "";
   ensureString(term, "term");
   const limit = clampNumber(request.data?.limit || 6, 1, 25, 6);
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "itunes_search");
+  const usageRoomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (usageRoomCode) {
+    try {
+      const orgId = await resolveUsageOrgIdFromRoomCode(usageRoomCode);
+      if (orgId) {
+        await trackOrganizationUsageAnalytics({
+          orgId,
+          signalId: "itunes_search",
+          source: usageSource,
+        });
+      }
+    } catch (error) {
+      console.warn("itunesSearch usage analytics failed", error?.message || error);
+    }
+  }
   const url = `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=${limit}`;
   const res = await fetch(url);
   if (!res.ok) {
@@ -7304,6 +7625,198 @@ exports.ensureTrack = onCall({ cors: true }, async (request) => {
     qualityScore: data.qualityScore ?? null,
   });
   return { trackId: res?.trackId || null };
+});
+
+exports.recordTrackFeedback = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "record_track_feedback", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "record_track_feedback");
+  const { uid } = await requireCatalogContributor(request, {
+    deniedMessage: "Host or moderator access required to record track feedback.",
+  });
+  const data = request.data || {};
+  const rating = String(data.rating || "").trim().toLowerCase();
+  if (!["up", "down"].includes(rating)) {
+    throw new HttpsError("invalid-argument", "rating must be 'up' or 'down'.");
+  }
+
+  const songTitle = String(data.songTitle || data.title || "").trim();
+  const artist = String(data.artist || "Unknown").trim() || "Unknown";
+  const mediaUrl = String(data.mediaUrl || "").trim();
+  const appleMusicId = String(data.appleMusicId || "").trim();
+  const sourceGuess = String(data.source || data.trackSource || "").trim().toLowerCase()
+    || (appleMusicId ? "apple" : extractYouTubeId(mediaUrl) ? "youtube" : "custom");
+  const canonicalMatch = await resolveCanonicalTrackIdentityInternal({
+    songId: data.songId || "",
+    title: songTitle,
+    artist,
+    source: sourceGuess,
+    mediaUrl,
+    appleMusicId,
+  });
+  const canonicalTitle = String(canonicalMatch?.title || songTitle).trim() || songTitle;
+  const canonicalArtist = String(canonicalMatch?.artist || artist).trim() || artist;
+  const songResult = canonicalTitle
+    ? await ensureSongAdmin({
+      title: canonicalTitle,
+      artist: canonicalArtist,
+      artworkUrl: data.albumArtUrl || "",
+      verifyMeta: false,
+      verifiedBy: data.verifiedBy || uid || "host_feedback",
+    })
+    : null;
+  const songId = String(
+    canonicalMatch?.songId
+    || data.songId
+    || songResult?.songId
+    || buildSongKey(canonicalTitle || "Unknown", canonicalArtist || "Unknown")
+  ).trim();
+  if (!songId) {
+    throw new HttpsError("invalid-argument", "songTitle/title or songId is required.");
+  }
+
+  let trackId = String(canonicalMatch?.trackId || data.trackId || "").trim();
+  if (!trackId && (mediaUrl || appleMusicId)) {
+    const trackResult = await ensureTrackAdmin({
+      songId,
+      source: sourceGuess,
+      mediaUrl,
+      appleMusicId,
+      label: data.label || null,
+      duration: data.duration ?? null,
+      audioOnly: !!data.audioOnly,
+      backingOnly: !!data.backingOnly,
+      addedBy: uid || data.hostName || "Host",
+      approvalState: data.approvalState || "",
+      qualityScore: data.qualityScore ?? null,
+    });
+    trackId = String(trackResult?.trackId || "").trim();
+  }
+  if (!trackId) {
+    throw new HttpsError("invalid-argument", "trackId or backing media is required.");
+  }
+
+  const trackRef = admin.firestore().collection("tracks").doc(trackId);
+  const roomCode = normalizeRoomCode(data.roomCode || "");
+  const now = admin.firestore.FieldValue.serverTimestamp();
+
+  if (rating === "up") {
+    await trackRef.set({
+      updatedAt: now,
+      lastPositiveFeedbackAt: now,
+      lastPositiveFeedbackRoomCode: roomCode || null,
+    }, { merge: true });
+    return { trackId, songId, recorded: true, rating };
+  }
+
+  await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(trackRef);
+    const existing = snap.data() || {};
+    const existingAvoidRoomCodes = Array.isArray(existing?.avoidRoomCodes)
+      ? existing.avoidRoomCodes.map((entry) => normalizeRoomCode(entry)).filter(Boolean)
+      : [];
+    const hasRoomEvidence = !!roomCode && existingAvoidRoomCodes.includes(roomCode);
+    const nextAvoidRoomCodes = roomCode && !hasRoomEvidence
+      ? [...existingAvoidRoomCodes, roomCode].slice(-20)
+      : existingAvoidRoomCodes;
+    const distinctAvoidRoomCount = roomCode ? nextAvoidRoomCodes.length : existingAvoidRoomCodes.length;
+    const nextFeedbackState = distinctAvoidRoomCount >= 2
+      ? "suppressed"
+      : distinctAvoidRoomCount >= 1
+        ? "observing"
+        : normalizeTrackFeedbackState(existing?.globalFeedbackState) || "healthy";
+    const currentApprovalState = normalizeTrackApprovalState(existing?.approvalState || data.approvalState || "candidate") || "candidate";
+    const qualityScore = Math.max(0, Number(existing?.qualityScore || 0));
+    const updates = {
+      songId,
+      source: sourceGuess || existing?.source || null,
+      mediaUrl: mediaUrl || existing?.mediaUrl || null,
+      appleMusicId: appleMusicId || existing?.appleMusicId || null,
+      updatedAt: now,
+      lastAvoidedAt: now,
+      lastAvoidedRoomCode: roomCode || null,
+      globalAvoidRoomCount: distinctAvoidRoomCount,
+      globalFeedbackState: nextFeedbackState,
+    };
+    if (!snap.exists) {
+      updates.createdAt = now;
+    }
+    if (roomCode && !hasRoomEvidence) {
+      updates.avoidRoomCodes = admin.firestore.FieldValue.arrayUnion(roomCode);
+      updates.failureCount = admin.firestore.FieldValue.increment(1);
+    }
+    if (distinctAvoidRoomCount >= 2) {
+      updates.approvalState = currentApprovalState === "approved" ? "candidate" : currentApprovalState;
+      updates.qualityScore = Math.max(0, qualityScore - 10);
+      updates.globalSuppressedAt = now;
+    }
+    tx.set(trackRef, updates, { merge: true });
+  });
+
+  return { trackId, songId, recorded: true, rating };
+});
+
+exports.getTrackDiagnostics = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "get_track_diagnostics", { perMinute: 60, perHour: 360 });
+  enforceAppCheckIfEnabled(request, "get_track_diagnostics");
+  await requireCatalogContributor(request, {
+    deniedMessage: "Host or moderator access required to inspect track diagnostics.",
+  });
+  const data = request.data || {};
+  const mediaUrl = String(data.mediaUrl || "").trim();
+  const appleMusicId = String(data.appleMusicId || "").trim();
+  const source = String(data.source || "").trim().toLowerCase()
+    || (appleMusicId ? "apple" : extractYouTubeId(mediaUrl) ? "youtube" : "");
+  const canonicalMatch = await resolveCanonicalTrackIdentityInternal({
+    trackId: data.trackId || "",
+    songId: data.songId || "",
+    title: data.title || "",
+    artist: data.artist || "Unknown",
+    source,
+    mediaUrl,
+    appleMusicId,
+  });
+  const trackId = String(canonicalMatch?.trackId || data.trackId || "").trim();
+  if (!trackId) {
+    return {
+      found: false,
+      trackId: "",
+      songId: String(canonicalMatch?.songId || data.songId || "").trim(),
+      diagnostics: null,
+    };
+  }
+
+  const trackSnap = await admin.firestore().collection("tracks").doc(trackId).get();
+  if (!trackSnap.exists) {
+    return {
+      found: false,
+      trackId,
+      songId: String(canonicalMatch?.songId || data.songId || "").trim(),
+      diagnostics: null,
+    };
+  }
+  const track = trackSnap.data() || {};
+  return {
+    found: true,
+    trackId,
+    songId: String(track.songId || canonicalMatch?.songId || data.songId || "").trim(),
+    diagnostics: {
+      source: String(track.source || source || "").trim().toLowerCase() || null,
+      mediaUrl: String(track.mediaUrl || mediaUrl || "").trim(),
+      appleMusicId: String(track.appleMusicId || appleMusicId || "").trim(),
+      approvalState: normalizeTrackApprovalState(track.approvalState),
+      qualityScore: Math.max(0, Number(track.qualityScore || 0)),
+      successCount: Math.max(0, Number(track.successCount || 0)),
+      usageCount: Math.max(0, Number(track.usageCount || 0)),
+      failureCount: Math.max(0, Number(track.failureCount || 0)),
+      globalAvoidRoomCount: Math.max(0, Number(track.globalAvoidRoomCount || 0)),
+      globalFeedbackState: normalizeTrackFeedbackState(track.globalFeedbackState) || "healthy",
+      lastSuccessfulRoomCode: String(track.lastSuccessfulRoomCode || "").trim() || null,
+      lastAvoidedRoomCode: String(track.lastAvoidedRoomCode || "").trim() || null,
+      updatedAt: track.updatedAt || null,
+      lastSuccessfulAt: track.lastSuccessfulAt || null,
+      lastAvoidedAt: track.lastAvoidedAt || null,
+    },
+  };
 });
 
 exports.resolveCanonicalTrackIdentity = onCall({ cors: true }, async (request) => {
@@ -7854,6 +8367,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   ensureString(query, "query");
   const maxResults = clampNumber(request.data?.maxResults || 10, 1, 10, 10);
   const playableOnly = request.data?.playableOnly !== false;
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_search");
   const normalizedQuery = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
   const cacheKey = `${normalizedQuery}|${maxResults}|${playableOnly ? "playable" : "all"}`;
   const cachedItems = readYoutubeSearchCache(cacheKey);
@@ -7869,6 +8383,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     entitlements,
     meterId: "youtube_data_request",
     units: 1,
+    source: `${usageSource}_search_list`,
   });
   const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=relevance`;
   const res = await fetch(url);
@@ -7892,6 +8407,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     entitlements,
     meterId: "youtube_data_request",
     units: 1,
+    source: `${usageSource}_videos_list`,
   });
   const ids = baseItems.map((item) => item.id).slice(0, 50);
   const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
@@ -7947,6 +8463,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_playlist");
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -7961,6 +8478,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
       entitlements,
       meterId: "youtube_data_request",
       units: 1,
+      source: `${usageSource}_playlist_items`,
     });
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&part=snippet&maxResults=${batchSize}&playlistId=${playlistId}${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const res = await fetch(url);
@@ -7989,6 +8507,7 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_status");
   if (!ids.length) return { items: [] };
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
@@ -7999,6 +8518,7 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     entitlements,
     meterId: "youtube_data_request",
     units: 1,
+    source: `${usageSource}_videos_status`,
   });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status&id=${sliced.join(",")}`;
@@ -8094,6 +8614,7 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
   const { entitlements } = await requireCapability(request, "api.youtube_data");
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_details");
   if (!ids.length) return { items: [] };
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
@@ -8104,6 +8625,7 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
     entitlements,
     meterId: "youtube_data_request",
     units: 1,
+    source: `${usageSource}_videos_details`,
   });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=contentDetails&id=${sliced.join(",")}`;
@@ -8125,6 +8647,9 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
   await checkDurableRateLimit(request.rawRequest, "gemini", { perMinute: 10, perHour: 120 });
   const uid = requireAuth(request);
   const entitlements = await resolveUserEntitlements(uid);
+  const type = request.data?.type || "";
+  ensureString(type, "type");
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, `gemini_${type}`);
   let aiDemoBypass = false;
   if (!entitlements.capabilities?.["ai.generate_content"]) {
     const bypass = await resolveAiDemoBypassForRoomHost({ request, uid });
@@ -8143,10 +8668,9 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
       entitlements,
       meterId: "ai_generate_content",
       units: 1,
+      source: usageSource,
     });
   }
-  const type = request.data?.type || "";
-  ensureString(type, "type");
   const prompt = buildGeminiPrompt(type, request.data?.context);
   const apiKey = GEMINI_API_KEY.value();
   if (!apiKey) {
@@ -8233,6 +8757,21 @@ const cacheSongLyricsFromQueueDoc = async (data = {}, verifiedBy = "queue") => {
   };
 };
 
+const buildAiLyricsUsagePayload = (aiUsage = null) => {
+  if (!aiUsage || typeof aiUsage !== "object") return null;
+  const pricing = getGeminiModelPricing(aiUsage.model);
+  return {
+    model: String(aiUsage.model || GEMINI_DEFAULT_MODEL),
+    promptTokens: Math.max(0, Number(aiUsage.promptTokens || 0)),
+    outputTokens: Math.max(0, Number(aiUsage.outputTokens || 0)),
+    totalTokens: Math.max(0, Number(aiUsage.totalTokens || 0)),
+    estimatedCostUsd: Math.max(0, Number(aiUsage.estimatedCostUsd || 0)),
+    inputUsdPer1M: Math.max(0, Number(aiUsage.inputUsdPer1M || pricing.inputUsdPer1M)),
+    outputUsdPer1M: Math.max(0, Number(aiUsage.outputUsdPer1M || pricing.outputUsdPer1M)),
+    generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+};
+
 const runLyricsResolverForQueueSong = async ({
   songData = {},
   roomCode = "",
@@ -8255,6 +8794,7 @@ const runLyricsResolverForQueueSong = async ({
       appleMusicId: "",
       providerTrace: [],
       providerMeta: null,
+      aiUsage: null,
       aiCapabilityBlocked: false,
     };
   }
@@ -8310,6 +8850,7 @@ const runLyricsResolverForQueueSong = async ({
           entitlements: aiMeterEntitlements || entitlements,
           meterId: "ai_generate_content",
           units: 1,
+          source: "lyrics_resolver_ai_fallback",
         });
         aiMeterReserved = true;
       } catch (error) {
@@ -8360,6 +8901,7 @@ const runLyricsResolverForQueueSong = async ({
         detail: String(error?.message || error?.code || "resolver_failed").slice(0, 120),
       }],
       providerMeta: null,
+      aiUsage: null,
       aiCapabilityBlocked,
     };
   }
@@ -8394,6 +8936,7 @@ const applyLyricsResolutionToQueueSong = async ({
   const providerTrace = compactLyricsProviderTrace(resolved?.providerTrace || []);
   const resolutionToken = String(resolved?.resolution || "").trim() || "no_match";
   const needsUserToken = !!resolved?.needsUserToken;
+  const nextAiLyricsUsage = buildAiLyricsUsagePayload(resolved?.aiUsage);
 
   const txResult = await admin.firestore().runTransaction(async (tx) => {
     const latestSnap = await tx.get(songRef);
@@ -8425,6 +8968,9 @@ const applyLyricsResolutionToQueueSong = async ({
       lyricsGenerationUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
       lyricsProviderTrace: providerTrace,
     };
+    if (!latest?.aiLyricsUsage && nextAiLyricsUsage) {
+      updates.aiLyricsUsage = nextAiLyricsUsage;
+    }
     if (shouldWriteLyrics) updates.lyrics = normalizedResolvedLyrics;
     if (shouldWriteTimed) updates.lyricsTimed = normalizedResolvedTimed;
     if ((shouldWriteLyrics || shouldWriteTimed) && !String(latest?.lyricsSource || "").trim() && resolvedSource) {
@@ -8442,6 +8988,7 @@ const applyLyricsResolutionToQueueSong = async ({
       ...(shouldWriteTimed ? { lyricsTimed: normalizedResolvedTimed } : {}),
       ...(updates.lyricsSource ? { lyricsSource: updates.lyricsSource } : {}),
       ...(updates.appleMusicId ? { appleMusicId: updates.appleMusicId } : {}),
+      ...(updates.aiLyricsUsage ? { aiLyricsUsage: updates.aiLyricsUsage } : {}),
       lyricsGenerationStatus: status,
       lyricsGenerationResolution: resolutionToken,
       lyricsProviderTrace: providerTrace,
@@ -8541,6 +9088,9 @@ exports.resolveSongCatalog = onCall({ cors: true }, async (request) => {
       qualityScore: Number(bestTrack.qualityScore || 0),
       successCount: Number(bestTrack.successCount || 0),
       usageCount: Number(bestTrack.usageCount || 0),
+      failureCount: Number(bestTrack.failureCount || 0),
+      avoidRoomCount: Math.max(0, Number(bestTrack.avoidRoomCount || 0)),
+      globalFeedbackState: normalizeTrackFeedbackState(bestTrack.globalFeedbackState),
     } : null,
     resolutionLayer: bestTrack?.resolutionLayer || bestTrack?.layer || "unresolved",
     candidates,
@@ -8663,6 +9213,7 @@ exports.appleMusicLyrics = onCall(
       entitlements,
       meterId: "apple_music_request",
       units: 1,
+      source: "apple_music_search",
     });
     const searchUrl = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
       term
@@ -8717,6 +9268,7 @@ exports.appleMusicLyrics = onCall(
       entitlements,
       meterId: "apple_music_request",
       units: 1,
+      source: "apple_music_lyrics",
     });
     const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${appleSongId}/lyrics`;
     const lyricsRes = await fetch(lyricsUrl, {
@@ -9029,19 +9581,10 @@ exports.autoAppleLyrics = onDocumentCreated(
       if (appleMusicId) {
         nextPayload.appleMusicId = String(appleMusicId);
       }
-        if (aiUsage && typeof aiUsage === "object") {
-          const pricing = getGeminiModelPricing(aiUsage.model);
-          nextPayload.aiLyricsUsage = {
-            model: String(aiUsage.model || GEMINI_DEFAULT_MODEL),
-            promptTokens: Math.max(0, Number(aiUsage.promptTokens || 0)),
-            outputTokens: Math.max(0, Number(aiUsage.outputTokens || 0)),
-            totalTokens: Math.max(0, Number(aiUsage.totalTokens || 0)),
-            estimatedCostUsd: Math.max(0, Number(aiUsage.estimatedCostUsd || 0)),
-            inputUsdPer1M: Math.max(0, Number(aiUsage.inputUsdPer1M || pricing.inputUsdPer1M)),
-            outputUsdPer1M: Math.max(0, Number(aiUsage.outputUsdPer1M || pricing.outputUsdPer1M)),
-            generatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          };
-        }
+      const usagePayload = buildAiLyricsUsagePayload(aiUsage);
+      if (usagePayload) {
+        nextPayload.aiLyricsUsage = usagePayload;
+      }
       await event.data.ref.set(nextPayload, { merge: true });
       await cacheSongLyricsFromQueueDoc({
         ...data,
@@ -9149,6 +9692,7 @@ exports.autoAppleLyrics = onDocumentCreated(
         entitlements: aiMeterContext.entitlements,
         meterId: "ai_generate_content",
         units: 1,
+        source: "auto_lyrics_ai_fallback",
       });
     } catch (err) {
       const code = String(err?.code || "").toLowerCase();
@@ -10417,6 +10961,20 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     nextListingInput.sessionMode || (virtualOnly ? "virtual" : "karaoke"),
     40
   ) || (virtualOnly ? "virtual" : "karaoke");
+  const roomEventCredits = normalizeRoomEventCredits(roomData.eventCredits || {});
+  const supportProvider = normalizeDirectoryToken(
+    nextListingInput.supportProvider || roomEventCredits.supportProvider || "",
+    40
+  );
+  const supportLabel = safeDirectoryString(
+    nextListingInput.supportLabel || roomEventCredits.supportLabel || "",
+    120
+  );
+  const supportsAudienceFunding = !!supportProvider && !!(
+    normalizeDirectoryOptionalUrl(roomEventCredits.supportUrl || "")
+    || normalizeDirectoryOptionalUrl(roomEventCredits.supportEmbedUrl || "")
+    || normalizeRoomEventCreditCode(roomEventCredits.supportCampaignCode || "")
+  );
 
   const basePayload = {
     title,
@@ -10449,6 +11007,9 @@ const upsertHostRoomDiscoveryListingInternal = async ({
     isPublicRoom: publicRoom,
     virtualOnly,
     isVirtualOnly: virtualOnly,
+    supportProvider,
+    supportLabel,
+    supportsAudienceFunding,
     externalSources: nextListingInput.externalSources && typeof nextListingInput.externalSources === "object"
       ? nextListingInput.externalSources
       : {},
@@ -11472,7 +12033,11 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
 
   const filtered = hydrated.filter((item) => {
     if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
-    if (listingTypeFilter !== "all" && item.listingType !== listingTypeFilter) return false;
+    if (
+      listingTypeFilter !== "all"
+      && item.listingType !== listingTypeFilter
+      && !(listingTypeFilter === "event" && item.isOfficialBeauRocksListing && item.listingType === "room_session")
+    ) return false;
     if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;
     if (officialRoomOnly && !item.isOfficialBeauRocksListing) return false;
     if (!matchesDirectoryDiscoverSearch(item, searchToken)) return false;
@@ -11744,7 +12309,11 @@ exports.searchHostVenueAutocomplete = onCall({ cors: true }, async (request) => 
       return String(a.title || "").localeCompare(String(b.title || ""));
     })
     .slice(0, limit)
-    .map(({ score, ...venue }) => venue);
+    .map((venue) => {
+      const nextVenue = { ...venue };
+      delete nextVenue.score;
+      return nextVenue;
+    });
 
   return { ok: true, items };
 });
@@ -11931,6 +12500,101 @@ exports.sendBeauRocksEmailSignInLink = onCall({ cors: true }, async (request) =>
   };
 });
 
+const DEFAULT_AUDIENCE_AVATAR = String.fromCodePoint(0x1F600);
+const AUDIENCE_AVATAR_CATALOG = Object.freeze([
+  Object.freeze({ id: "smile", emoji: DEFAULT_AUDIENCE_AVATAR, unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "cool", emoji: String.fromCodePoint(0x1F60E), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "cowboy", emoji: String.fromCodePoint(0x1F920), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "alien", emoji: String.fromCodePoint(0x1F47D), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "robot", emoji: String.fromCodePoint(0x1F916), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "ghost", emoji: String.fromCodePoint(0x1F47B), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "unicorn", emoji: String.fromCodePoint(0x1F984), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "tiger", emoji: String.fromCodePoint(0x1F42F), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "dog", emoji: String.fromCodePoint(0x1F436), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "mic", emoji: String.fromCodePoint(0x1F3A4), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "headphones", emoji: String.fromCodePoint(0x1F3A7), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "notes", emoji: String.fromCodePoint(0x1F3B6), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "piano", emoji: String.fromCodePoint(0x1F3B9), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "drums", emoji: String.fromCodePoint(0x1F941), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "sax", emoji: String.fromCodePoint(0x1F3B7), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "trumpet", emoji: String.fromCodePoint(0x1F3BA), unlock: Object.freeze({ type: "free" }) }),
+  Object.freeze({ id: "cat", emoji: String.fromCodePoint(0x1F431), unlock: Object.freeze({ type: "fame", level: 2 }) }),
+  Object.freeze({ id: "panda", emoji: String.fromCodePoint(0x1F43C), unlock: Object.freeze({ type: "fame", level: 2 }) }),
+  Object.freeze({ id: "penguin", emoji: String.fromCodePoint(0x1F427), unlock: Object.freeze({ type: "fame", level: 3 }) }),
+  Object.freeze({ id: "owl", emoji: String.fromCodePoint(0x1F989), unlock: Object.freeze({ type: "fame", level: 3 }) }),
+  Object.freeze({ id: "raccoon", emoji: String.fromCodePoint(0x1F99D), unlock: Object.freeze({ type: "fame", level: 4 }) }),
+  Object.freeze({ id: "dolphin", emoji: String.fromCodePoint(0x1F42C), unlock: Object.freeze({ type: "fame", level: 4 }) }),
+  Object.freeze({ id: "octopus", emoji: String.fromCodePoint(0x1F419), unlock: Object.freeze({ type: "fame", level: 5 }) }),
+  Object.freeze({ id: "whale", emoji: String.fromCodePoint(0x1F433), unlock: Object.freeze({ type: "fame", level: 5 }) }),
+  Object.freeze({ id: "shark", emoji: String.fromCodePoint(0x1F988), unlock: Object.freeze({ type: "fame", level: 6 }) }),
+  Object.freeze({ id: "fox", emoji: String.fromCodePoint(0x1F98A), unlock: Object.freeze({ type: "points", cost: 60 }) }),
+  Object.freeze({ id: "bear", emoji: String.fromCodePoint(0x1F43B), unlock: Object.freeze({ type: "points", cost: 60 }) }),
+  Object.freeze({ id: "koala", emoji: String.fromCodePoint(0x1F428), unlock: Object.freeze({ type: "points", cost: 70 }) }),
+  Object.freeze({ id: "lion", emoji: String.fromCodePoint(0x1F981), unlock: Object.freeze({ type: "points", cost: 80 }) }),
+  Object.freeze({ id: "sparkles", emoji: String.fromCodePoint(0x2728), unlock: Object.freeze({ type: "points", cost: 100 }) }),
+  Object.freeze({ id: "star", emoji: String.fromCodePoint(0x2B50), unlock: Object.freeze({ type: "points", cost: 150 }) }),
+  Object.freeze({ id: "party", emoji: String.fromCodePoint(0x1F389), unlock: Object.freeze({ type: "points", cost: 120 }) }),
+  Object.freeze({ id: "sparkheart", emoji: String.fromCodePoint(0x1F496), unlock: Object.freeze({ type: "points", cost: 180 }) }),
+  Object.freeze({ id: "rainbow", emoji: String.fromCodePoint(0x1F308), unlock: Object.freeze({ type: "points", cost: 220 }) }),
+  Object.freeze({ id: "dragon", emoji: String.fromCodePoint(0x1F409), unlock: Object.freeze({ type: "points", cost: 200 }) }),
+  Object.freeze({ id: "phoenix", emoji: String.fromCodePoint(0x1F986), unlock: Object.freeze({ type: "points", cost: 250 }) }),
+  Object.freeze({ id: "twilight_bat", emoji: String.fromCodePoint(0x1F987), unlock: Object.freeze({ type: "points", cost: 100 }) }),
+  Object.freeze({ id: "twilight_apple", emoji: String.fromCodePoint(0x1F34E), unlock: Object.freeze({ type: "points", cost: 150 }) }),
+  Object.freeze({ id: "twilight_moon", emoji: String.fromCodePoint(0x1F319), unlock: Object.freeze({ type: "points", cost: 200 }) }),
+  Object.freeze({ id: "twilight_fullmoon", emoji: String.fromCodePoint(0x1F315), unlock: Object.freeze({ type: "points", cost: 300 }) }),
+  Object.freeze({ id: "twilight_wolf", emoji: String.fromCodePoint(0x1F43A), unlock: Object.freeze({ type: "first_performance" }) }),
+  Object.freeze({ id: "twilight_book", emoji: String.fromCodePoint(0x1F4DA), unlock: Object.freeze({ type: "first_performance" }) }),
+  Object.freeze({ id: "rocket", emoji: String.fromCodePoint(0x1F680), unlock: Object.freeze({ type: "first_performance" }) }),
+  Object.freeze({ id: "guitar_glow", emoji: String.fromCodePoint(0x1F3B8), unlock: Object.freeze({ type: "guitar_winner" }) }),
+  Object.freeze({ id: "twilight_vamp_f", emoji: String.fromCodePoint(0x1F9DB, 0x200D, 0x2640, 0xFE0F), unlock: Object.freeze({ type: "vip" }) }),
+  Object.freeze({ id: "twilight_vamp_m", emoji: String.fromCodePoint(0x1F9DB, 0x200D, 0x2642, 0xFE0F), unlock: Object.freeze({ type: "vip" }) }),
+  Object.freeze({ id: "twilight_sparkle", emoji: String.fromCodePoint(0x1F48E), unlock: Object.freeze({ type: "vip" }) }),
+  Object.freeze({ id: "crown", emoji: String.fromCodePoint(0x1F451), unlock: Object.freeze({ type: "vip" }) }),
+  Object.freeze({ id: "moonface", emoji: String.fromCodePoint(0x1F31A), unlock: Object.freeze({ type: "vip" }) }),
+]);
+const AUDIENCE_AVATAR_BY_EMOJI = new Map(AUDIENCE_AVATAR_CATALOG.map((item) => [item.emoji, item]));
+const getAudienceAvatarRecord = (avatar = "") => AUDIENCE_AVATAR_BY_EMOJI.get(String(avatar || "").trim()) || null;
+const getAudienceAvatarSelectionState = (avatar = "", userData = {}) => {
+  const avatarRecord = getAudienceAvatarRecord(avatar);
+  if (!avatarRecord) return { allowed: false, reason: "unknown" };
+  const unlock = avatarRecord.unlock || {};
+  const unlocked = Array.isArray(userData.unlockedEmojis)
+    ? userData.unlockedEmojis.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
+  const fameLevel = Math.max(0, Number(userData.currentLevel ?? userData.fameLevel ?? 0) || 0);
+  if (unlock.type === "free") return { allowed: true, reason: "free" };
+  if (unlock.type === "vip") return { allowed: vipLevel > 0, reason: "vip" };
+  if (unlock.type === "fame") return { allowed: fameLevel >= Math.max(0, Number(unlock.level || 0) || 0), reason: "fame" };
+  if (unlock.type === "first_performance") return { allowed: !!userData.firstPerformanceUnlocked || unlocked.includes(avatarRecord.id), reason: "first_performance" };
+  if (unlock.type === "guitar_winner") return { allowed: unlocked.includes(avatarRecord.id), reason: "guitar_winner" };
+  if (unlock.type === "points") return { allowed: unlocked.includes(avatarRecord.id), reason: "points" };
+  return { allowed: false, reason: "unsupported" };
+};
+const sanitizeAudienceAvatar = (avatar = "", userData = {}) => {
+  const avatarRecord = getAudienceAvatarRecord(avatar);
+  if (!avatarRecord) return DEFAULT_AUDIENCE_AVATAR;
+  return getAudienceAvatarSelectionState(avatarRecord.emoji, userData).allowed
+    ? avatarRecord.emoji
+    : DEFAULT_AUDIENCE_AVATAR;
+};
+const buildAudienceVipProfilePatch = (input = null, previous = {}) => {
+  if (!input || typeof input !== "object") return null;
+  const location = String(input.location || "").trim().slice(0, 120);
+  const birthMonth = String(input.birthMonth || "").trim().slice(0, 32);
+  const birthDay = String(input.birthDay || "").trim().slice(0, 32);
+  const smsOptIn = input.smsOptIn === true;
+  const tosAccepted = input.tosAccepted === true;
+  return {
+    location,
+    birthMonth,
+    birthDay,
+    smsOptIn,
+    tosAccepted,
+    tosAcceptedAt: tosAccepted ? (previous?.tosAcceptedAt || admin.firestore.FieldValue.serverTimestamp()) : null,
+  };
+};
+
 exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "join_room_audience", { perMinute: 50, perHour: 300 });
   enforceAppCheckIfEnabled(request, "join_room_audience");
@@ -11942,8 +12606,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
 
   const rawName = String(request.data?.name || "").trim();
   const safeName = rawName.slice(0, 18) || "Guest";
-  const rawAvatar = String(request.data?.avatar || "").trim();
-  const safeAvatar = rawAvatar || String.fromCodePoint(0x1F600);
+  const requestedAvatar = String(request.data?.avatar || "").trim();
   const callerEmail = normalizeEmailToken(request.auth?.token?.email || "");
 
   const db = admin.firestore();
@@ -11952,6 +12615,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
   const userRef = db.collection("users").doc(callerUid);
   const serverNow = admin.firestore.FieldValue.serverTimestamp();
+  let resolvedAvatar = DEFAULT_AUDIENCE_AVATAR;
   const roomSnap = await roomRef.get();
   if (!roomSnap.exists) {
     throw new HttpsError("not-found", "Room code not found.");
@@ -11971,6 +12635,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
     ]);
     const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
     const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    resolvedAvatar = sanitizeAudienceAvatar(requestedAvatar, userData);
     const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
     const totalFamePoints = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
     const fameLevel = Math.max(
@@ -12084,7 +12749,7 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
       roomCode,
       uid: callerUid,
       name: safeName,
-      avatar: safeAvatar,
+      avatar: resolvedAvatar,
       isVip: vipLevel > 0,
       vipLevel,
       fameLevel,
@@ -12106,6 +12771,166 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
     ok: true,
     roomCode,
     uid: callerUid,
+    avatar: resolvedAvatar,
+  };
+});
+
+exports.updateAudienceIdentity = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "update_audience_identity", { perMinute: 40, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "update_audience_identity");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rawName = String(request.data?.name || "").trim();
+  const safeName = rawName.slice(0, 18) || "Guest";
+  const requestedAvatar = String(request.data?.avatar || "").trim();
+  const vipProfileInput = request.data?.vipProfile && typeof request.data.vipProfile === "object"
+    ? request.data.vipProfile
+    : null;
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const userRef = db.collection("users").doc(callerUid);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+  let resolvedAvatar = DEFAULT_AUDIENCE_AVATAR;
+  await db.runTransaction(async (tx) => {
+    const [roomUserSnap, userSnap] = await Promise.all([
+      tx.get(roomUserRef),
+      tx.get(userRef),
+    ]);
+    const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const userData = userSnap.exists ? (userSnap.data() || {}) : {};
+    const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
+    const fameLevel = Math.max(0, Number(userData.currentLevel ?? userData.fameLevel ?? 0) || 0);
+    const totalFamePoints = Math.max(0, Number(userData.totalFamePoints || 0) || 0);
+    resolvedAvatar = sanitizeAudienceAvatar(requestedAvatar, userData);
+    const previousName = String(userData.name || roomUserData.name || "").trim();
+    const previousAvatar = String(userData.avatar || roomUserData.avatar || DEFAULT_AUDIENCE_AVATAR).trim() || DEFAULT_AUDIENCE_AVATAR;
+    const identityChanged = safeName !== previousName || resolvedAvatar !== previousAvatar;
+    const userPatch = {
+      uid: callerUid,
+      name: safeName,
+      avatar: resolvedAvatar,
+      updatedAt: serverNow,
+    };
+    if (identityChanged) {
+      userPatch.nameEmojiChangeCount = admin.firestore.FieldValue.increment(1);
+    }
+    const vipProfilePatch = vipLevel > 0 ? buildAudienceVipProfilePatch(vipProfileInput, userData.vipProfile || {}) : null;
+    if (vipProfilePatch) {
+      userPatch.vipProfile = vipProfilePatch;
+    }
+    tx.set(userRef, userPatch, { merge: true });
+    tx.set(roomUserRef, {
+      roomCode,
+      uid: callerUid,
+      name: safeName,
+      avatar: resolvedAvatar,
+      isVip: vipLevel > 0,
+      vipLevel,
+      fameLevel,
+      totalFamePoints,
+      lastActiveAt: serverNow,
+      lastSeen: serverNow,
+    }, { merge: true });
+  });
+
+  return {
+    ok: true,
+    roomCode,
+    uid: callerUid,
+    name: safeName,
+    avatar: resolvedAvatar,
+  };
+});
+
+exports.uploadAudienceRoomPhoto = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "upload_audience_room_photo", { perMinute: 24, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "upload_audience_room_photo");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rawSuffix = String(request.data?.suffix || "selfie").trim().toLowerCase();
+  const safeSuffix = rawSuffix.replace(/[^a-z0-9_-]/g, "").slice(0, 32) || "selfie";
+  const rawMimeType = String(request.data?.mimeType || "image/jpeg").trim().toLowerCase();
+  const base64Input = String(request.data?.imageBase64 || "").trim();
+  if (!base64Input) {
+    throw new HttpsError("invalid-argument", "imageBase64 is required.");
+  }
+
+  let mimeType = rawMimeType || "image/jpeg";
+  let base64Payload = base64Input;
+  const dataUrlMatch = base64Input.match(/^data:([^;,]+);base64,(.+)$/i);
+  if (dataUrlMatch) {
+    mimeType = String(dataUrlMatch[1] || mimeType).trim().toLowerCase() || mimeType;
+    base64Payload = String(dataUrlMatch[2] || "").trim();
+  }
+  if (!mimeType.startsWith("image/")) {
+    throw new HttpsError("invalid-argument", "mimeType must be an image.");
+  }
+
+  let imageBuffer = null;
+  try {
+    imageBuffer = Buffer.from(base64Payload, "base64");
+  } catch (_error) {
+    throw new HttpsError("invalid-argument", "imageBase64 could not be decoded.");
+  }
+  if (!imageBuffer || !imageBuffer.length) {
+    throw new HttpsError("invalid-argument", "imageBase64 is empty.");
+  }
+  if (imageBuffer.length > 8 * 1024 * 1024) {
+    throw new HttpsError("invalid-argument", "image payload too large.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const [roomSnap, roomUserSnap] = await Promise.all([roomRef.get(), roomUserRef.get()]);
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  if (!roomUserSnap.exists) {
+    throw new HttpsError("permission-denied", "Join the room before uploading a photo.");
+  }
+
+  const bucket = admin.storage().bucket();
+  const bucketName = String(bucket?.name || "").trim();
+  if (!bucketName) {
+    throw new HttpsError("failed-precondition", "Storage bucket is unavailable.");
+  }
+
+  const token = crypto.randomUUID();
+  const storagePath = `room_photos/${roomCode}/${callerUid}/${nowMs()}_${safeSuffix}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+  await bucket.file(storagePath).save(imageBuffer, {
+    resumable: false,
+    metadata: {
+      contentType: mimeType,
+      cacheControl: "public,max-age=604800",
+      metadata: {
+        firebaseStorageDownloadTokens: token,
+      },
+    },
+  });
+
+  return {
+    ok: true,
+    roomCode,
+    uid: callerUid,
+    storagePath,
+    url: `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`,
   };
 });
 
@@ -14012,6 +14837,9 @@ exports.provisionHostRoom = onCall(
     ) || "custom";
     const coHostUids = normalizeProvisionCoHostUids(callerUid, payload.coHostUids || payload.coHosts || []);
     const eventCreditsConfig = normalizeRoomEventCreditConfigRecord(payload.eventCredits || {});
+    const roomPlanInput = payload.roomPlan && typeof payload.roomPlan === "object"
+      ? payload.roomPlan
+      : {};
     const listingInput = payload.discoveryListing && typeof payload.discoveryListing === "object"
       ? payload.discoveryListing
       : (payload.listing && typeof payload.listing === "object" ? payload.listing : {});
@@ -14055,6 +14883,7 @@ exports.provisionHostRoom = onCall(
       coHostUids,
       presetId,
       eventCredits: eventCreditsConfig,
+      roomPlan: roomPlanInput,
     });
     const provisioning = await db.runTransaction(async (tx) => {
       if (jobRef) {
@@ -14699,7 +15528,7 @@ exports.manageRunOfShowTemplate = onCall({ cors: true }, async (request) => {
           currentTemplateId: action === "save" ? templateId : roomData?.runOfShowTemplateMeta?.currentTemplateId || "",
           currentTemplateName: action === "save" ? templateName : roomData?.runOfShowTemplateMeta?.currentTemplateName || "",
           lastArchiveId: archiveId || roomData?.runOfShowTemplateMeta?.lastArchiveId || "",
-          archivedAtMs: action === "archive_current" ? nowMsValue : Number(roomData?.runOfShowTemplateMeta?.archivedAtMs || 0),
+          archivedAtMs: action === "archive_current" ? Date.now() : Number(roomData?.runOfShowTemplateMeta?.archivedAtMs || 0),
         }),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true }),
@@ -14738,29 +15567,33 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   const callerUid = requireAuth(request);
   const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
   ensureString(roomCode, "roomCode");
-  const updates = normalizeHostRoomUpdates(request.data?.updates || {});
+  const rawUpdates = normalizeHostRoomUpdates(request.data?.updates || {});
 
   const db = admin.firestore();
   const rootRef = getRootRef();
   const result = await db.runTransaction(async (tx) => {
-    const { roomRef, roomCode: safeRoomCode } = await ensureRoomHostAccess({
+    const { roomRef, roomData, roomCode: safeRoomCode } = await ensureRoomHostAccess({
       tx,
       rootRef,
       roomCode,
       callerUid,
       deniedMessage: "Only room hosts can update room controls.",
     });
+    const updates = syncHostRoomRequestPolicyUpdates({
+      roomData,
+      updates: rawUpdates,
+    });
     tx.update(roomRef, updates);
-    return { roomCode: safeRoomCode };
+    return { roomCode: safeRoomCode, updates };
   });
 
-  if (Object.prototype.hasOwnProperty.call(updates, "eventCredits")) {
+  if (Object.prototype.hasOwnProperty.call(result.updates, "eventCredits")) {
     const secureConfigRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(result.roomCode);
     const secureConfigSnap = await secureConfigRef.get();
     const existingConfig = secureConfigSnap.exists
       ? normalizeRoomEventCreditConfigRecord(secureConfigSnap.data() || {})
       : normalizeRoomEventCreditConfigRecord({});
-    const nextPublicConfig = normalizeRoomEventCreditConfigRecord(updates.eventCredits || {});
+    const nextPublicConfig = normalizeRoomEventCreditConfigRecord(result.updates.eventCredits || {});
     await secureConfigRef.set({
       ...existingConfig,
       ...nextPublicConfig,
@@ -14775,7 +15608,7 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   return {
     ok: true,
     roomCode: result.roomCode,
-    updatedKeys: Object.keys(updates),
+    updatedKeys: Object.keys(result.updates),
   };
 });
 
@@ -15214,6 +16047,78 @@ exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => 
   });
 
   return { ok: true, approved };
+});
+
+exports.moderateCrowdSelfieSubmission = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "crowd_selfie_approval", { perMinute: 40, perHour: 400 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+  const submissionId = String(request.data?.submissionId || "").trim();
+  ensureString(submissionId, "submissionId");
+  const action = String(request.data?.action || "").trim().toLowerCase();
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpsError("invalid-argument", "Action must be approve or reject.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const submissionRef = rootRef.collection("crowd_selfie_submissions").doc(submissionId);
+
+  await db.runTransaction(async (tx) => {
+    const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can moderate crowd selfies.",
+    });
+    const submissionSnap = await tx.get(submissionRef);
+    if (!submissionSnap.exists) {
+      throw new HttpsError("not-found", "Crowd selfie submission not found.");
+    }
+    const submission = submissionSnap.data() || {};
+    const submissionRoomCode = normalizeRoomCode(submission.roomCode || "");
+    if (submissionRoomCode !== safeRoomCode) {
+      throw new HttpsError("permission-denied", "Submission does not belong to this room.");
+    }
+    const targetUid = typeof submission.uid === "string" ? submission.uid.trim() : "";
+    if (!targetUid) {
+      throw new HttpsError("failed-precondition", "Submission is missing a user.");
+    }
+
+    tx.update(submissionRef, {
+      approved: action === "approve",
+      status: action === "approve" ? "approved" : "rejected",
+      moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      moderatedBy: callerUid,
+    });
+
+    if (action === "approve") {
+      const approvedAt = admin.firestore.FieldValue.serverTimestamp();
+      tx.set(db.collection("users").doc(targetUid), {
+        crowdSelfieUrl: submission.url || null,
+        crowdSelfieStoragePath: submission.storagePath || null,
+        crowdSelfieStatus: "approved",
+        crowdSelfieApprovedAt: approvedAt,
+        crowdSelfieSourceRoomCode: safeRoomCode,
+        crowdSelfieSubmissionId: submissionId,
+        crowdSelfieConsentAcceptedAt: submission.consentAcceptedAt || approvedAt,
+      }, { merge: true });
+
+      tx.set(rootRef.collection("room_users").doc(`${safeRoomCode}_${targetUid}`), {
+        crowdSelfieUrl: submission.url || null,
+        crowdSelfieStatus: "approved",
+        crowdSelfieApprovedAt: approvedAt,
+      }, { merge: true });
+    }
+  });
+
+  return { ok: true, action };
 });
 
 exports.deleteRoomReaction = onCall({ cors: true }, async (request) => {
@@ -15714,6 +16619,18 @@ exports.stripeWebhook = onRequest(
             { merge: true }
           );
         }
+        await rootRef.collection("rooms").doc(roomCode).set({
+          purchaseCelebration: buildRoomPurchaseCelebrationPayload({
+            id: eventId,
+            buyerName,
+            label,
+            points,
+            badgeAwarded: awardBadge,
+            sourceProvider: "stripe",
+            rewardScope,
+            amountCents: session.amount_total || 0,
+          }),
+        }, { merge: true });
       }
 
       const amount = session.amount_total
@@ -15895,16 +16812,106 @@ exports.givebutterWebhook = onRequest(
     }
 
     const db = admin.firestore();
+    const supportEventRef = db.collection(SUPPORT_PURCHASE_EVENTS_COLLECTION).doc(
+      buildEventAttendeeEntitlementDocId({
+        sourceProvider: "givebutter_support",
+        externalId: normalized.externalId,
+      })
+    );
+    const [eventConfigQuery, supportConfigQuery] = await Promise.all([
+      db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION)
+        .where("sourceProvider", "==", "givebutter")
+        .limit(50)
+        .get(),
+      db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION)
+        .where("supportProvider", "==", "givebutter")
+        .limit(50)
+        .get(),
+    ]);
+    const matchingSupportConfig = supportConfigQuery.docs
+      .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+      .find((entry) => {
+        const config = normalizeRoomEventCreditConfigRecord(entry);
+        if (!config.supportProvider || config.supportProvider !== "givebutter") return false;
+        if (normalized.sourceCampaignCode && config.supportCampaignCode && config.supportCampaignCode === normalized.sourceCampaignCode) return true;
+        if (!config.supportCampaignCode && normalized.eventId && config.eventId === normalized.eventId) return true;
+        return false;
+      });
+    if (matchingSupportConfig) {
+      const existingSupport = await supportEventRef.get();
+      if (existingSupport.exists) {
+        res.json({ received: true, duplicate: true, supportPurchase: true });
+        return;
+      }
+      const supportConfig = normalizeRoomEventCreditConfigRecord(matchingSupportConfig);
+      const roomCode = normalizeRoomCode(matchingSupportConfig.roomCode || matchingSupportConfig.id || "");
+      const pointsGranted = clampNumber(supportConfig.supportPoints, 0, 100000, 0);
+      const label = safeDirectoryString(supportConfig.supportLabel || supportConfig.eventLabel || "Room Support", 120) || "Room Support";
+      const amountCents = extractGivebutterAmountCents(payload);
+      if (roomCode && pointsGranted > 0) {
+        const usersSnap = await getRootRef()
+          .collection("room_users")
+          .where("roomCode", "==", roomCode)
+          .get();
+        if (!usersSnap.empty) {
+          const batch = db.batch();
+          usersSnap.docs.forEach((docSnap) => {
+            batch.update(docSnap.ref, {
+              points: admin.firestore.FieldValue.increment(pointsGranted),
+            });
+          });
+          await batch.commit();
+        }
+      }
+      if (roomCode) {
+        await getRootRef().collection("rooms").doc(roomCode).set({
+          purchaseCelebration: buildRoomPurchaseCelebrationPayload({
+            id: normalized.externalId,
+            buyerName: normalized.attendeeName || "Supporter",
+            label,
+            points: pointsGranted,
+            badgeAwarded: supportConfig.supportBadge !== false,
+            sourceProvider: "givebutter",
+            rewardScope: "room",
+            amountCents,
+          }),
+        }, { merge: true });
+        await getRootRef().collection("activities").add({
+          roomCode,
+          user: normalized.attendeeName || "SUPPORTER",
+          text: `${normalized.attendeeName || "A supporter"} unlocked ${label}${pointsGranted > 0 ? ` - everyone +${pointsGranted} pts` : ""}`,
+          icon: "$",
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      await supportEventRef.set({
+        sourceProvider: "givebutter",
+        roomCode: roomCode || null,
+        normalizedEmail: normalized.purchaserEmail,
+        attendeeName: normalized.attendeeName,
+        sourceCampaignCode: normalized.sourceCampaignCode || supportConfig.supportCampaignCode,
+        label,
+        pointsGranted,
+        amountCents,
+        externalId: normalized.externalId,
+        rawPayload: payload,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      res.json({
+        received: true,
+        supportPurchase: true,
+        roomCode: roomCode || null,
+      });
+      return;
+    }
+
     const entitlementRef = db.collection(EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION).doc(
       buildEventAttendeeEntitlementDocId({
         sourceProvider: "givebutter",
         externalId: normalized.externalId,
       })
     );
-    const eventConfigQuery = await db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION)
-      .where("sourceProvider", "==", "givebutter")
-      .limit(50)
-      .get();
     const matchingConfig = eventConfigQuery.docs
       .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
       .find((entry) => {

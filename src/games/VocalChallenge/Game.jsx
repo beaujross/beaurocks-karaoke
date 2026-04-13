@@ -30,14 +30,20 @@ const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.lo
 const VOCAL_ASSIST_DEFAULT_MS = 4500;
 const VOCAL_ASSIST_BANNER_MS = 2400;
 
-const difficultyConfig = (difficulty) => {
+const difficultyConfig = (difficulty, { crowdMode = false } = {}) => {
     if (difficulty === 'easy') {
-        return { intervalMs: 1550, holdMs: 220, minConfidence: 0.42, minStability: 0.38 };
+        return crowdMode
+            ? { intervalMs: 1900, holdMs: 120, minConfidence: 0.26, minStability: 0.16 }
+            : { intervalMs: 1700, holdMs: 140, minConfidence: 0.32, minStability: 0.24 };
     }
     if (difficulty === 'hard') {
-        return { intervalMs: 980, holdMs: 150, minConfidence: 0.58, minStability: 0.54 };
+        return crowdMode
+            ? { intervalMs: 1320, holdMs: 130, minConfidence: 0.4, minStability: 0.28 }
+            : { intervalMs: 1080, holdMs: 150, minConfidence: 0.5, minStability: 0.38 };
     }
-    return { intervalMs: 1250, holdMs: 180, minConfidence: 0.5, minStability: 0.46 };
+    return crowdMode
+        ? { intervalMs: 1700, holdMs: 130, minConfidence: 0.3, minStability: 0.18 }
+        : { intervalMs: 1450, holdMs: 160, minConfidence: 0.42, minStability: 0.3 };
 };
 
 const buildMelody = (length, difficulty) => {
@@ -64,7 +70,13 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
     const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput);
+    const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, {
+        smoothingFactor: 0.48,
+        confidenceThreshold: isRoomControlled ? 0.42 : 0.48,
+        singingThreshold: 0.04,
+        stableNoteMs: 240,
+        noiseGateMultiplier: 1.45
+    });
 
     const [localState, setLocalState] = useState(null);
     const [remoteVoice, setRemoteVoice] = useState({ note: '-', confidence: 0, volumeNormalized: 0, stableNote: '-', stability: 0 });
@@ -89,7 +101,11 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const mode = data.mode || (data.inputSource === 'ambient' ? 'crowd' : 'turns');
     const isTurnsMode = mode === 'turns';
     const summaryDurationMs = 2500;
-    const { intervalMs, holdMs, minConfidence, minStability } = useMemo(() => difficultyConfig(difficulty), [difficulty]);
+    const crowdMode = isRoomControlled && mode === 'crowd';
+    const { intervalMs, holdMs, minConfidence, minStability } = useMemo(
+        () => difficultyConfig(difficulty, { crowdMode }),
+        [difficulty, crowdMode]
+    );
 
     const writeState = useCallback(async (payload) => {
         await updateDoc(
@@ -111,7 +127,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             lastAward: null,
             sequence,
             targetIndex: 0,
-            nextNoteAt: Date.now() + intervalMs,
+            nextNoteAt: Date.now() + Math.max(intervalMs + 350, crowdMode ? 2200 : 1800),
             detectedNote: '-',
             targetNote: sequence[0],
             turnEndsAt: Date.now() + turnDurationMs,
@@ -123,7 +139,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         stateRef.current = init;
         setLocalState(init);
         writeState(init);
-    }, [isController, difficulty, data, intervalMs, turnDurationMs, writeState]);
+    }, [isController, difficulty, data, intervalMs, turnDurationMs, writeState, crowdMode]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -228,20 +244,20 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     const nextIndex = (state.targetIndex + 1) % state.sequence.length;
                     state.targetIndex = nextIndex;
                     state.targetNote = state.sequence[nextIndex];
-                    state.nextNoteAt = now + intervalMs + Math.floor((Math.random() * 140) - 70) + (assistActive ? 180 : 0);
+                    state.nextNoteAt = now + intervalMs + Math.floor((Math.random() * 120) - 40) + (assistActive ? 220 : 0);
                     state.lastTargetChangeAt = now;
                 }
 
                 const targetNote = state.sequence[state.targetIndex];
                 const targetFreq = NOTE_FREQ[targetNote] || 0;
                 const centsOff = targetFreq ? centsBetween(pitchRef.current || 0, targetFreq) : 9999;
-                const inTune = Math.abs(centsOff) <= (assistActive ? 145 : 118);
-                const nearTune = Math.abs(centsOff) <= (assistActive ? 220 : 185);
+                const inTune = Math.abs(centsOff) <= (assistActive ? 175 : crowdMode ? 155 : 130);
+                const nearTune = Math.abs(centsOff) <= (assistActive ? 260 : crowdMode ? 230 : 195);
                 const exactNote = (displayNote === targetNote) || (stableNote === targetNote);
-                const relaxedConfidence = Math.max(0.34, minConfidence - (assistActive ? 0.24 : 0.18));
-                const relaxedStability = Math.max(0.24, minStability - (assistActive ? 0.26 : 0.2));
-                const nearConfidence = Math.max(0.32, relaxedConfidence - 0.1);
-                const nearStability = Math.max(0.18, relaxedStability - 0.12);
+                const relaxedConfidence = Math.max(crowdMode ? 0.24 : 0.3, minConfidence - (assistActive ? 0.28 : crowdMode ? 0.2 : 0.14));
+                const relaxedStability = Math.max(crowdMode ? 0.12 : 0.18, minStability - (assistActive ? 0.28 : crowdMode ? 0.18 : 0.12));
+                const nearConfidence = Math.max(crowdMode ? 0.2 : 0.26, relaxedConfidence - 0.08);
+                const nearStability = Math.max(crowdMode ? 0.08 : 0.12, relaxedStability - 0.1);
                 const fullMatch = isSinging
                     && confidence >= relaxedConfidence
                     && stability >= relaxedStability
@@ -252,9 +268,9 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                     && stability >= nearStability
                     && nearTune;
                 const matchQuality = fullMatch ? 'full' : (nearMatch ? 'near' : 'none');
-                const requiredHoldMs = Math.max(90, matchQuality === 'full'
-                    ? Math.round(holdMs * (assistActive ? 0.72 : 1))
-                    : Math.round(holdMs * (assistActive ? 1.02 : 1.22)));
+                const requiredHoldMs = Math.max(80, matchQuality === 'full'
+                    ? Math.round(holdMs * (assistActive ? 0.62 : crowdMode ? 0.72 : 0.9))
+                    : Math.round(holdMs * (assistActive ? 0.82 : crowdMode ? 0.96 : 1.08)));
 
                 if (matchQuality !== 'none') {
                     if (matchRef.current.note !== targetNote || matchRef.current.quality !== matchQuality) {
@@ -264,12 +280,12 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                         if (matchQuality === 'full') {
                             state.streak = (state.streak || 0) + 1;
                             const bonus = Math.min(50, state.streak * 6);
-                            awardPoints = 25 + bonus;
+                            awardPoints = 28 + bonus;
                             state.score = (state.score || 0) + awardPoints;
                         } else {
                             // Partial credit keeps beginners engaged even if pitch is slightly off.
-                            state.streak = Math.max(0, (state.streak || 0) - 1);
-                            awardPoints = 10;
+                            state.streak = crowdMode ? Math.max(0, state.streak || 0) : Math.max(0, (state.streak || 0) - 1);
+                            awardPoints = 12;
                             state.score = (state.score || 0) + awardPoints;
                         }
                         state.lastAward = {
@@ -302,7 +318,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             cancelled = true;
             clearInterval(loop);
         };
-    }, [isController, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState]);
+    }, [isController, stableNote, note, confidence, stability, isSinging, intervalMs, holdMs, minConfidence, minStability, volumeNormalized, writeState, crowdMode]);
 
     useEffect(() => {
         if (!localState || !guideTone) return;

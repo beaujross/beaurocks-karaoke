@@ -164,6 +164,68 @@ const ensureTrack = async ({
   }
 };
 
+const recordTrackFeedback = async ({
+  rating,
+  roomCode,
+  songId,
+  title,
+  artist,
+  mediaUrl,
+  appleMusicId,
+  trackId,
+  source,
+  label,
+  duration,
+  audioOnly,
+  backingOnly,
+  approvalState,
+  qualityScore,
+  albumArtUrl,
+  verifiedBy
+} = {}) => {
+  const res = await callFunction('recordTrackFeedback', {
+    rating: rating || '',
+    roomCode: roomCode || '',
+    songId: songId || '',
+    title: title || '',
+    artist: artist || '',
+    mediaUrl: mediaUrl || '',
+    appleMusicId: appleMusicId || '',
+    trackId: trackId || '',
+    source: source || '',
+    label: label || null,
+    duration: duration ?? null,
+    audioOnly: !!audioOnly,
+    backingOnly: !!backingOnly,
+    approvalState: approvalState || '',
+    qualityScore: Number.isFinite(Number(qualityScore)) ? Number(qualityScore) : null,
+    albumArtUrl: albumArtUrl || '',
+    verifiedBy: verifiedBy || 'host'
+  });
+  return res || null;
+};
+
+const getTrackDiagnostics = async ({
+  trackId,
+  songId,
+  title,
+  artist,
+  mediaUrl,
+  appleMusicId,
+  source
+} = {}) => {
+  const res = await callFunction('getTrackDiagnostics', {
+    trackId: trackId || '',
+    songId: songId || '',
+    title: title || '',
+    artist: artist || '',
+    mediaUrl: mediaUrl || '',
+    appleMusicId: appleMusicId || '',
+    source: source || ''
+  });
+  return res || null;
+};
+
 const resolveSongCatalog = async ({ songId, title, artist, roomCode } = {}) => {
   const payload = {};
   if (songId) payload.songId = songId;
@@ -239,6 +301,8 @@ export {
   setCatalogWriteAccess,
   ensureSong,
   ensureTrack,
+  recordTrackFeedback,
+  getTrackDiagnostics,
   resolveSongCatalog,
   resolveCanonicalTrackIdentity,
   resolveCanonicalTrackIdentityBatch,

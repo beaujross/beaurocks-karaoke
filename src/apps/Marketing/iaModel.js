@@ -158,26 +158,14 @@ export const MARKETING_ROUTE_OWNERSHIP = Object.freeze({
 export const MARKETING_NAV_CONFIG = Object.freeze({
   publicPrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.demoAuto, "Demo"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
-  publicSecondary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.demo, "How It Works"),
-    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
-    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
-    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
-  ]),
+  publicSecondary: Object.freeze([]),
   homePrimary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.discover, "Discover"),
-    navItem(MARKETING_ROUTE_PAGES.demoAuto, "Demo"),
     navItem(MARKETING_ROUTE_PAGES.join, "Join"),
   ]),
-  homeSecondary: Object.freeze([
-    navItem(MARKETING_ROUTE_PAGES.demo, "How It Works"),
-    navItem(MARKETING_ROUTE_PAGES.forHosts, "For Hosts"),
-    navItem(MARKETING_ROUTE_PAGES.forVenues, "For Venues"),
-    navItem(MARKETING_ROUTE_PAGES.forPerformers, "For Performers"),
-  ]),
+  homeSecondary: Object.freeze([]),
   authenticatedSecondary: Object.freeze([
     navItem(MARKETING_ROUTE_PAGES.profile, "Dashboard"),
   ]),
@@ -185,7 +173,7 @@ export const MARKETING_NAV_CONFIG = Object.freeze({
     navItem(MARKETING_ROUTE_PAGES.admin, "Marketing Admin"),
   ]),
   ctas: Object.freeze({
-    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.forHosts, label: "Request Access" }),
+    startHosting: Object.freeze({ id: MARKETING_ROUTE_PAGES.forHosts, label: "Join Waitlist" }),
     openHostDashboard: Object.freeze({ id: "host_dashboard", label: "Host Dashboard" }),
   }),
 });

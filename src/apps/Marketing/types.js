@@ -59,6 +59,8 @@
  * @property {string} hostUid
  * @property {string} venueId
  * @property {string} roomCode
+ * @property {string} supportProvider
+ * @property {boolean} supportsAudienceFunding
  * @property {string[]} experienceTags
  * @property {string[]} beauRocksCapabilities
  */

@@ -5,18 +5,18 @@ import { PersonaPageFrame, PersonaSurfaceMock } from "./PersonaMarketingBlocks";
 const VENUE_SIGNAL_CARDS = [
   {
     label: "Ownership",
-    title: "Claim the listing",
-    copy: "Control the venue page and the core facts.",
+    title: "Claim your listing",
+    copy: "Update the venue page and the basic details.",
   },
   {
     label: "Schedule",
-    title: "Post the real night",
-    copy: "Guests should know exactly when karaoke is on.",
+    title: "Post the real schedule",
+    copy: "People should know when karaoke is actually happening.",
   },
   {
     label: "Trust",
-    title: "Show who runs it",
-    copy: "Host, venue, and schedule should match in one glance.",
+    title: "Make the listing trustworthy",
+    copy: "The host, venue, and schedule should match at a glance.",
   },
 ];
 
@@ -50,8 +50,8 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
           <div className="mk3-rebuild-kicker">For venues</div>
-          <h1>Turn karaoke into a night people can plan for.</h1>
-          <p>Claim the venue, post the schedule, and make the night easy to trust.</p>
+          <h1>Make karaoke night easy to find and easy to trust.</h1>
+          <p>Claim the venue, post the schedule, and keep the listing current.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button type="button" className="mk3-rebuild-button is-primary" onClick={openClaimFlow}>
               Claim Your Venue
@@ -73,15 +73,15 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
           <PersonaSurfaceMock
             type="schedule"
             label="Venue schedule"
-            title="The listing should explain the night immediately."
-            copy="Reliable karaoke beats random hype."
+            title="The listing should tell people what the night is."
+            copy="Clear details beat vague hype."
             className="mk3-persona-simple-surface-main"
           />
         </div>
       </article>
 
       <section className="mk3-persona-simple-band">
-        <div className="mk3-rebuild-kicker">Why it works</div>
+        <div className="mk3-rebuild-kicker">What good listings do</div>
         <div className="mk3-persona-simple-card-grid is-three">
           {VENUE_SIGNAL_CARDS.map((item) => (
             <article key={item.title} className="mk3-persona-simple-card">
@@ -103,11 +103,11 @@ const ForVenuesPage = ({ navigate, session, authFlow }) => {
             type="button"
             className="mk3-rebuild-button is-secondary"
             onClick={() => {
-              trackPersonaCta("closing_demo_auto");
-              navigate("demo_auto");
+              trackPersonaCta("closing_overview");
+              navigate("for_fans");
             }}
           >
-            Open Demo
+            Open Overview
           </button>
         </div>
       </section>

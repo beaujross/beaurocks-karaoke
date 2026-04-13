@@ -6,17 +6,17 @@ const PERFORMER_SIGNALS = [
   {
     label: "Discovery",
     title: "See which rooms are worth trying",
-    copy: "Host, schedule, and room fit should be obvious.",
+    copy: "The host, schedule, and room style should be easy to read.",
   },
   {
     label: "Planning",
-    title: "Build a weekly rotation",
-    copy: "Good rooms should be easy to come back to.",
+    title: "Build a weekly routine",
+    copy: "Good rooms should be easy to find again.",
   },
   {
     label: "Join flow",
-    title: "Get in fast once you arrive",
-    copy: "Phone join should feel quick and current.",
+    title: "Join quickly when you get there",
+    copy: "Phone join should be simple and current.",
   },
 ];
 
@@ -34,8 +34,8 @@ const ForPerformersPage = ({ navigate }) => {
       <article className="mk3-persona-simple-hero mk3-persona-simple-hero-center">
         <div className="mk3-persona-simple-copy is-center">
           <div className="mk3-rebuild-kicker">For performers</div>
-          <h1>Find karaoke nights worth making part of your week.</h1>
-          <p>Skip the guesswork. Find rooms with a real crowd and a clear schedule.</p>
+          <h1>Find karaoke nights you will actually want to come back to.</h1>
+          <p>Skip the guesswork. Look for rooms with a real crowd and a clear schedule.</p>
           <div className="mk3-rebuild-action-row is-centered">
             <button
               type="button"
@@ -51,11 +51,11 @@ const ForPerformersPage = ({ navigate }) => {
               type="button"
               className="mk3-rebuild-button is-secondary"
               onClick={() => {
-                trackPersonaCta("hero_demo_auto");
-                navigate("demo_auto");
+                trackPersonaCta("hero_overview");
+                navigate("for_fans");
               }}
             >
-              Open Demo
+              Open Overview
             </button>
           </div>
         </div>
@@ -65,7 +65,7 @@ const ForPerformersPage = ({ navigate }) => {
             type="radar"
             label="Live radar"
             title="Start with discovery that feels current."
-            copy="A better room should be easier to find."
+            copy="Good rooms should not be hard to find."
             className="mk3-persona-simple-surface-main"
           />
         </div>

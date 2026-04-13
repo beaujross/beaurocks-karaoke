@@ -7,22 +7,22 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
     <button
       type="button"
       onClick={() => {
+        trackEvent("mk_persona_cta_click", { persona: "all", cta: "rail_overview" });
+        trackGoldenPathEntry({ pathId: "overview_entry", workstream: "overview", source: "golden_rail" });
+        navigate(MARKETING_ROUTE_PAGES.forFans);
+      }}
+    >
+      Overview
+    </button>
+    <button
+      type="button"
+      onClick={() => {
         trackEvent("mk_persona_cta_click", { persona: "host", cta: "rail_for_hosts" });
         trackGoldenPathEntry({ pathId: "host_entry", workstream: "host_growth", source: "golden_rail" });
         navigate(MARKETING_ROUTE_PAGES.forHosts);
       }}
     >
-      Host Crown
-    </button>
-    <button
-      type="button"
-      onClick={() => {
-        trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "rail_for_venues" });
-        trackGoldenPathEntry({ pathId: "venue_entry", workstream: "venue_growth", source: "golden_rail" });
-        navigate(MARKETING_ROUTE_PAGES.forVenues);
-      }}
-    >
-      Venue Prestige
+      For Hosts
     </button>
     <button
       type="button"
@@ -32,27 +32,27 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.forPerformers);
       }}
     >
-      Performer Spotlight
+      For Performers
     </button>
     <button
       type="button"
       onClick={() => {
-        trackEvent("mk_persona_cta_click", { persona: "fan", cta: "rail_for_fans" });
-        trackGoldenPathEntry({ pathId: "fan_entry", workstream: "fan_growth", source: "golden_rail" });
-        navigate(MARKETING_ROUTE_PAGES.forFans);
+        trackEvent("mk_persona_cta_click", { persona: "venue_owner", cta: "rail_for_venues" });
+        trackGoldenPathEntry({ pathId: "venue_entry", workstream: "venue_growth", source: "golden_rail" });
+        navigate(MARKETING_ROUTE_PAGES.forVenues);
       }}
     >
-      Guest Pass
+      For Venues
     </button>
     <button
       type="button"
       onClick={() => {
-        trackEvent("mk_persona_cta_click", { persona: "all", cta: "rail_try_demo" });
-        trackGoldenPathEntry({ pathId: "demo_entry", workstream: "demo", source: "golden_rail" });
-        navigate(MARKETING_ROUTE_PAGES.demo);
+        trackEvent("mk_persona_cta_click", { persona: "fan", cta: "rail_discover" });
+        trackGoldenPathEntry({ pathId: "discover_entry", workstream: "discover", source: "golden_rail" });
+        navigate(MARKETING_ROUTE_PAGES.discover);
       }}
     >
-      Live Demo
+      Discover
     </button>
     <button
       type="button"
@@ -62,7 +62,7 @@ const GoldenPathRail = ({ navigate, muted = false }) => (
         navigate(MARKETING_ROUTE_PAGES.join);
       }}
     >
-      Invite Code
+      Join By Code
     </button>
   </aside>
 );

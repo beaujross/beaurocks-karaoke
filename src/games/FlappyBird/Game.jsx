@@ -9,15 +9,18 @@ import VoiceHud from '../../components/VoiceHud';
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 
-const FLAP_THRESHOLD = 0.34;
-const FLAP_RESET_THRESHOLD = 0.18;
-const SPIKE_THRESHOLD = 0.08;
-const GLIDE_THRESHOLD = 0.22;
-const SHIELD_THRESHOLD = 0.62;
-const BASE_GRAVITY = 0.24;
-const FLAP_FORCE = -4.2;
-const MIN_SPAWN_MS = 1300;
-const START_GRACE_MS = 1400;
+const FLAP_THRESHOLD = 0.28;
+const FLAP_RESET_THRESHOLD = 0.12;
+const SPIKE_THRESHOLD = 0.05;
+const GLIDE_THRESHOLD = 0.15;
+const SHIELD_THRESHOLD = 0.52;
+const BASE_GRAVITY = 0.18;
+const FLAP_FORCE = -4.8;
+const MIN_SPAWN_MS = 1550;
+const START_GRACE_MS = 2600;
+const START_COUNTDOWN_MS = 1800;
+const WARMUP_FLIGHT_MS = 2200;
+const FIRST_OBSTACLE_DELAY_MS = 3200;
 const HOST_ASSIST_DEFAULT_MS = 3200;
 const HOST_ASSIST_BANNER_MS = 2200;
 const HOST_ASSIST_LIFT = 8;
@@ -28,7 +31,13 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
     const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, { smoothingFactor: 0.5 }); 
+    const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, {
+        smoothingFactor: 0.42,
+        confidenceThreshold: 0.46,
+        singingThreshold: 0.04,
+        stableNoteMs: 220,
+        noiseGateMultiplier: 1.4
+    }); 
     const startsPlaying = isRoomControlled;
     
     // Create profiler instance
@@ -85,7 +94,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
 
     useEffect(() => {
         if (!isController || gameStateLocal !== 'ready' || !startsPlaying) return;
-        const t = setTimeout(() => setGameStateLocal('playing'), 0);
+        const t = setTimeout(() => setGameStateLocal('playing'), START_COUNTDOWN_MS);
         return () => clearTimeout(t);
     }, [isController, gameStateLocal, startsPlaying]);
 
@@ -243,7 +252,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             const voiceMark = profilerRef.current.markStart('voiceProcess');
             
             const voice = voiceRef.current;
-            const stableBoost = voice.volumeNormalized >= 0.55;
+            const stableBoost = voice.volumeNormalized >= 0.48;
             const shieldActive = voice.volumeNormalized >= SHIELD_THRESHOLD;
             const hostAssistShieldActive = hostAssistShieldUntilRef.current > Date.now();
 
@@ -251,6 +260,8 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
 
             // Physics
             const now = performance.now();
+            const roundElapsedMs = roundStartedAtRef.current ? now - roundStartedAtRef.current : 0;
+            const warmupFlightActive = roundElapsedMs < WARMUP_FLIGHT_MS;
             const vol = voice.volumeNormalized || 0;
             const delta = vol - prevVolRef.current;
             prevVolRef.current = vol;
@@ -266,10 +277,11 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 lastFlapRef.current = now;
                 voiceGateRef.current = true;
             }
-            const glideAssist = voiceActive ? clamp((vol - GLIDE_THRESHOLD) * 0.22, 0, 0.14) : 0;
-            const sustainedLift = voiceActive ? clamp((vol - FLAP_THRESHOLD) * 0.34, 0, 0.18) : 0;
-            const gravity = clamp(BASE_GRAVITY - glideAssist, 0.1, BASE_GRAVITY);
-            velocityRef.current = clamp(velocityRef.current + gravity - sustainedLift, -4.4, 4);
+            const glideAssist = voiceActive ? clamp((vol - GLIDE_THRESHOLD) * 0.28, 0, 0.18) : 0;
+            const sustainedLift = voiceActive ? clamp((vol - FLAP_THRESHOLD) * 0.42, 0, 0.24) : 0;
+            const warmupLift = warmupFlightActive ? (isRoomControlled ? 0.12 : 0.08) : 0;
+            const gravity = clamp((warmupFlightActive ? BASE_GRAVITY * 0.45 : BASE_GRAVITY) - glideAssist, 0.05, BASE_GRAVITY);
+            velocityRef.current = clamp(velocityRef.current + gravity - sustainedLift - warmupLift, -4.9, warmupFlightActive ? 2.4 : 3.8);
             let targetY = birdYRef.current + velocityRef.current;
 
             targetY = clamp(targetY, 0, 100); 
@@ -281,8 +293,8 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             if (!lastObstacleSpawnAtRef.current) {
                 lastObstacleSpawnAtRef.current = now;
             }
-            if (now - lastObstacleSpawnAtRef.current >= MIN_SPAWN_MS) { 
-                const gapHeight = Math.random() * 10 + 32; 
+            if (roundElapsedMs >= FIRST_OBSTACLE_DELAY_MS && now - lastObstacleSpawnAtRef.current >= MIN_SPAWN_MS) { 
+                const gapHeight = Math.random() * 12 + 38; 
                 const gapTop = Math.random() * (100 - gapHeight - 16) + 8; 
                 const obstacleId = now;
                 obstaclesRef.current.push({ x: 100, gapTop, gapHeight, id: obstacleId }); 
@@ -291,7 +303,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             }
 
             // Movement
-            speedRef.current = stableBoost ? 0.42 : 0.52;
+            speedRef.current = stableBoost ? 0.34 : 0.44;
             obstaclesRef.current = obstaclesRef.current.map(o => ({...o, x: o.x - speedRef.current})).filter(o => o.x > -20);
             coinsRef.current = coinsRef.current.map(c => ({...c, x: c.x - speedRef.current})).filter(c => c.x > -20);
             
@@ -315,9 +327,10 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
             // Collision: Obstacles
             if (!invincible && !shieldActive && !hostAssistShieldActive && now - roundStartedAtRef.current > START_GRACE_MS) { 
                 let hit = false; 
+                const gapForgiveness = isRoomControlled ? 5 : 3;
                 obstaclesRef.current.forEach(o => { 
                     if (o.x < 20 && o.x > 0) { 
-                        if (targetY < o.gapTop || targetY > o.gapTop + o.gapHeight) hit = true; 
+                        if (targetY < o.gapTop - gapForgiveness || targetY > o.gapTop + o.gapHeight + gapForgiveness) hit = true; 
                     } 
                 }); 
                 if (hit) { 
@@ -329,6 +342,9 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                             setScore(scoreRef.current);
                             if(onGameOver) onGameOver(scoreRef.current); 
                         } else { 
+                            birdYRef.current = 50;
+                            velocityRef.current = -2.6;
+                            setBirdY(50);
                             setInvincible(true); 
                             setTimeout(() => setInvincible(false), 2000); 
                         } 
@@ -398,7 +414,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-[min(86vw,980px)]">
                     <div className="rounded-2xl border border-white/20 bg-black/58 px-5 py-3 shadow-[0_0_30px_rgba(0,0,0,0.4)]">
                         <div className="text-[clamp(1rem,1.5vw,1.45rem)] uppercase tracking-[0.14em] text-cyan-100 text-center">
-                            Louder voice gives lift | Burst above {flapThresholdPct}% to flap | Hold above {shieldThresholdPct}% for shield assist
+                            Keep an "ahhh" going for lift | Burst above {flapThresholdPct}% to flap | Hold above {shieldThresholdPct}% for shield assist
                         </div>
                         <div className="mt-2 h-3 rounded-full bg-white/10 border border-white/20 relative overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-cyan-300 via-emerald-300 to-yellow-300 transition-all duration-120" style={{ width: `${displayedVolume}%` }} />
@@ -441,7 +457,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
                 <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-4">
                     <h1 className="text-5xl md:text-7xl text-yellow-400 mb-5">{isRoomControlled ? 'CROWD MIC CONTROL' : 'SOLO CONTROL'}</h1>
                     <div className="max-w-4xl rounded-3xl border border-white/15 bg-black/45 px-8 py-6 space-y-3">
-                        <p className="text-2xl md:text-3xl">1. Keep your voice going to lighten gravity and stay afloat.</p>
+                        <p className="text-2xl md:text-3xl">1. Keep a loud "ahhh" going to keep the bird floating.</p>
                         <p className="text-2xl md:text-3xl">2. Burst above <span className="text-cyan-300 font-black">{flapThresholdPct}%</span> to get a strong flap up.</p>
                         <p className="text-2xl md:text-3xl">3. Hold strong voice above <span className="text-yellow-300 font-black">{shieldThresholdPct}%</span> for shield assist.</p>
                         <p className="text-xl md:text-2xl text-zinc-200">{view === 'tv' ? 'You can also click or press Space to flap.' : 'Tap screen to flap at any time.'}</p>

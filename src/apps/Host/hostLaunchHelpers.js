@@ -19,6 +19,7 @@ export const buildHostProvisionRequestId = (prefix = 'host_launch') => {
 export const DEFAULT_QUICK_LAUNCH_DISCOVERY = Object.freeze({
     publicRoom: false,
     virtualOnly: false,
+    roomStartsAtLocal: '',
     title: '',
     venueName: '',
     venueId: '',
@@ -44,6 +45,13 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     skipLineBonusPoints: 0,
     websiteCheckInPoints: 0,
     socialPromoPoints: 0,
+    supportProvider: '',
+    supportLabel: '',
+    supportUrl: '',
+    supportEmbedUrl: '',
+    supportCampaignCode: '',
+    supportPoints: 0,
+    supportBadge: true,
     promoCampaigns: [],
     claimCodes: {
         vip: '',
@@ -70,6 +78,13 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 0,
             websiteCheckInPoints: 0,
             socialPromoPoints: 0,
+            supportProvider: '',
+            supportLabel: '',
+            supportUrl: '',
+            supportEmbedUrl: '',
+            supportCampaignCode: '',
+            supportPoints: 0,
+            supportBadge: true,
             promoCampaigns: [],
         },
     },
@@ -89,6 +104,13 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 0,
             websiteCheckInPoints: 0,
             socialPromoPoints: 0,
+            supportProvider: '',
+            supportLabel: '',
+            supportUrl: '',
+            supportEmbedUrl: '',
+            supportCampaignCode: '',
+            supportPoints: 0,
+            supportBadge: true,
             promoCampaigns: [],
         },
     },
@@ -108,6 +130,13 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 300,
             websiteCheckInPoints: 100,
             socialPromoPoints: 150,
+            supportProvider: '',
+            supportLabel: '',
+            supportUrl: '',
+            supportEmbedUrl: '',
+            supportCampaignCode: '',
+            supportPoints: 0,
+            supportBadge: true,
             promoCampaigns: [],
         },
     },
@@ -127,6 +156,13 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 0,
             websiteCheckInPoints: 0,
             socialPromoPoints: 150,
+            supportProvider: '',
+            supportLabel: '',
+            supportUrl: '',
+            supportEmbedUrl: '',
+            supportCampaignCode: '',
+            supportPoints: 0,
+            supportBadge: true,
             promoCampaigns: [
                 {
                     id: 'promo_drop',
@@ -162,6 +198,13 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 0,
             websiteCheckInPoints: 0,
             socialPromoPoints: 0,
+            supportProvider: '',
+            supportLabel: '',
+            supportUrl: '',
+            supportEmbedUrl: '',
+            supportCampaignCode: '',
+            supportPoints: 0,
+            supportBadge: true,
             promoCampaigns: [],
         },
     },
@@ -208,6 +251,13 @@ export const createEventCreditsDraft = (draft = {}) => {
             ...DEFAULT_EVENT_CREDITS_CONFIG.claimCodes,
             ...claimCodes,
         },
+        supportProvider: String(source.supportProvider || '').trim().toLowerCase(),
+        supportLabel: String(source.supportLabel || '').trim(),
+        supportUrl: String(source.supportUrl || '').trim(),
+        supportEmbedUrl: String(source.supportEmbedUrl || '').trim(),
+        supportCampaignCode: String(source.supportCampaignCode || '').trim(),
+        supportPoints: clampWholeNumber(source.supportPoints ?? 0),
+        supportBadge: source.supportBadge !== false,
     };
 };
 
@@ -250,6 +300,13 @@ export const buildProvisionEventCreditsPayload = (draft = {}) => {
         skipLineBonusPoints: clampWholeNumber(nextDraft.skipLineBonusPoints),
         websiteCheckInPoints: clampWholeNumber(nextDraft.websiteCheckInPoints),
         socialPromoPoints: clampWholeNumber(nextDraft.socialPromoPoints),
+        supportProvider: sanitizeEventCode(nextDraft.supportProvider || '').toLowerCase(),
+        supportLabel: String(nextDraft.supportLabel || '').trim().slice(0, 120),
+        supportUrl: normalizeLaunchHttpUrl(nextDraft.supportUrl || ''),
+        supportEmbedUrl: normalizeLaunchHttpUrl(nextDraft.supportEmbedUrl || ''),
+        supportCampaignCode: sanitizeEventCode(nextDraft.supportCampaignCode || ''),
+        supportPoints: clampWholeNumber(nextDraft.supportPoints),
+        supportBadge: nextDraft.supportBadge !== false,
         promoCampaigns: nextDraft.promoCampaigns.map((campaign, index) => ({
             id: sanitizeEventCode(campaign?.id || `promo_${index + 1}`) || `promo_${index + 1}`,
             label: String(campaign?.label || `Promo ${index + 1}`).trim().slice(0, 120) || `Promo ${index + 1}`,
@@ -277,7 +334,8 @@ export const buildProvisionEventCreditsPayload = (draft = {}) => {
 export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
     const nextDraft = createQuickLaunchDiscoveryDraft(draft);
     const roomName = String(options?.roomName || '').trim();
-    const startsAtMs = fromDateTimeLocalInput(nextDraft?.startsAtLocal);
+    const startsAtLocal = String(nextDraft?.startsAtLocal || '').trim() || String(nextDraft?.roomStartsAtLocal || '').trim();
+    const startsAtMs = fromDateTimeLocalInput(startsAtLocal);
     const lat = Number(nextDraft?.lat);
     const lng = Number(nextDraft?.lng);
     const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
@@ -295,7 +353,7 @@ export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
         venueSource: venueSource || (venueId ? 'selected' : (venueName ? 'freeform' : '')),
         description: String(nextDraft?.description || '').trim(),
         startsAtMs: startsAtMs || 0,
-        startsAtLocal: String(nextDraft?.startsAtLocal || '').trim(),
+        startsAtLocal,
         address1: virtualOnly ? '' : String(nextDraft?.address1 || '').trim(),
         city: String(nextDraft?.city || '').trim(),
         state: String(nextDraft?.state || '').trim(),
@@ -303,6 +361,16 @@ export const buildProvisionDiscoveryPayload = (draft = {}, options = {}) => {
         lng: String(nextDraft?.lng || '').trim(),
         location: hasCoords ? { lat, lng } : {},
         sessionMode: virtualOnly ? 'virtual' : 'karaoke',
+    };
+};
+
+export const buildProvisionRoomPlanPayload = (draft = {}) => {
+    const nextDraft = createQuickLaunchDiscoveryDraft(draft);
+    const startsAtLocal = String(nextDraft?.roomStartsAtLocal || '').trim();
+    const startsAtMs = fromDateTimeLocalInput(startsAtLocal);
+    return {
+        startsAtLocal,
+        startsAtMs: startsAtMs || 0,
     };
 };
 

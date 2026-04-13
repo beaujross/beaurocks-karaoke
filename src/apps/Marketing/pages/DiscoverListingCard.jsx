@@ -37,7 +37,6 @@ const DiscoverListingCard = ({
   entry,
   detailsHref = "#",
   isSelected = false,
-  isMobileViewport = false,
   mapsLoaded = false,
   registerCardRef = null,
   onImageError = null,
@@ -52,18 +51,19 @@ const DiscoverListingCard = ({
   const badgeImageUrl = entry?.officialBadgeImageUrl || MARKETING_BRAND_BADGE_URL;
   const isRoomSession = entry?.listingType === "room_session";
   const isJoinableRoomSession = isRoomSession && !!cleanText(entry?.roomCode);
+  const roomSupportBadge = entry?.roomSupportBadge || null;
   const highlightBadges = Array.from(new Set([
     ...(Array.isArray(experience?.capabilityBadges) ? experience.capabilityBadges : []),
     ...(Array.isArray(experience?.funBadges) ? experience.funBadges : []),
     ...(Array.isArray(entry?.cadenceBadges) ? entry.cadenceBadges : []),
     ...(entry?.virtualOnly ? ["Virtual"] : []),
-  ])).filter(Boolean).slice(0, 2);
+  ])).filter(Boolean).slice(0, 1);
   const roomCode = cleanText(entry?.roomCode);
   const subtitle = cleanText(entry?.subtitle);
   const hostName = cleanText(entry?.hostName);
   const timeLabel = cleanText(entry?.timeLabel);
   const distanceLabel = cleanText(entry?.distanceLabel);
-  const storyLine = summarizeText(experience?.storyLine, 116);
+  const storyLine = summarizeText(experience?.storyLine, 96);
   const detailTokens = splitDetailTokens(entry?.detailLine).filter((token) => {
     const normalized = token.toLowerCase();
     if (roomCode && normalized === roomCode.toLowerCase()) return false;
@@ -71,14 +71,14 @@ const DiscoverListingCard = ({
     if (subtitle && normalized === subtitle.toLowerCase()) return false;
     return true;
   });
-  const detailLine = summarizeText(detailTokens.join(" | "), 116);
+  const detailLine = summarizeText(detailTokens.join(" | "), 92);
   const metaLine = uniqueTexts([timeLabel, distanceLabel]).join(" | ");
   const supportLine = (() => {
     if (isRoomSession) {
       return summarizeText(uniqueTexts([
         hostName ? `Hosted by ${hostName}` : "",
         detailLine,
-      ]).join(" | "), 116) || storyLine;
+      ]).join(" | "), 92) || storyLine;
     }
     if (entry?.listingType === "venue") return storyLine || detailLine;
     return detailLine || storyLine;
@@ -151,6 +151,12 @@ const DiscoverListingCard = ({
                   />
                 )}
                 <span>{beauRocksBadgeLabel}</span>
+              </div>
+            )}
+            {roomSupportBadge && (
+              <div className="mk3-chip mk3-chip-powered">
+                <i className={`fa-solid ${roomSupportBadge.icon || "fa-hand-holding-dollar"}`} aria-hidden="true"></i>
+                <span>{roomSupportBadge.label}</span>
               </div>
             )}
           </div>

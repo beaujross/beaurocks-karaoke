@@ -6,6 +6,7 @@ import {
     buildProvisionEventCreditsPayload,
     buildHostProvisionRequestId,
     buildProvisionDiscoveryPayload,
+    buildProvisionRoomPlanPayload,
     createEventCreditsDraft,
     createQuickLaunchDiscoveryDraft,
     normalizeProvisionLaunchUrls,
@@ -65,6 +66,7 @@ const useHostLaunchFlow = ({
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
         const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
         const roomNameOverride = typeof options?.roomName === 'string' ? options.roomName.trim() : '';
+        const preferredRoomCode = typeof options?.preferredRoomCode === 'string' ? options.preferredRoomCode.trim().toUpperCase() : '';
         const coHostUids = Array.from(new Set((Array.isArray(options?.coHostUids) ? options.coHostUids : [])
             .map((entry) => String(entry || '').trim())
             .filter(Boolean)));
@@ -97,12 +99,14 @@ const useHostLaunchFlow = ({
                 hostName: nextHostName,
                 orgName: nextOrgName,
                 logoUrl: nextLogoUrl,
+                preferredRoomCode,
                 roomName: nextRoomName,
                 coHostUids,
                 nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
                 discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft, {
                     roomName: discoveryDraft.publicRoom ? nextRoomName : '',
                 }),
+                roomPlan: buildProvisionRoomPlanPayload(discoveryDraft),
                 eventCredits: buildProvisionEventCreditsPayload(eventCreditsDraft),
             });
             const nextRoomCode = String(result?.roomCode || '').trim().toUpperCase();

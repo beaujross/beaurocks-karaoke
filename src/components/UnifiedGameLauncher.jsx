@@ -379,7 +379,7 @@ const UnifiedGameLauncher = ({
     // Vocal challenge state
     const [vocalParticipants, setVocalParticipants] = useState([]);
     const [vocalDurationSec, setVocalDurationSec] = useState(30);
-    const [vocalDifficulty, setVocalDifficulty] = useState('standard');
+    const [vocalDifficulty, setVocalDifficulty] = useState('easy');
     const [vocalGuideTone, setVocalGuideTone] = useState(true);
 
     const participantConfigs = useMemo(() => ({
@@ -1980,7 +1980,12 @@ const BingoManager = ({
         if (Date.now() < itunesBackoffUntil.current || itunesLoadingRef.current) return '';
         itunesLoadingRef.current = true;
         try {
-            const data = await callFunction('itunesSearch', { term: `${title} ${artist || ''}`, limit: 1 });
+            const data = await callFunction('itunesSearch', {
+                term: `${title} ${artist || ''}`,
+                limit: 1,
+                roomCode,
+                usageContext: { source: 'host_bingo_artwork_lookup' }
+            });
             const art = data?.results?.[0]?.artworkUrl100?.replace('100x100', '600x600') || '';
             return art;
         } catch {

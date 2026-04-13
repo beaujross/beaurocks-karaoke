@@ -19,7 +19,8 @@ const cloneDirectorWithItems = (director = {}, items = []) => normalizeRunOfShow
 });
 
 export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-console', roomCode = 'DEMOAAHF' }) {
-    const fixture = useMemo(() => buildQaHostFixture(fixtureId, { roomCode, nowMs: Date.now() }) || {}, [fixtureId, roomCode]);
+    const [fixtureNowMs] = useState(() => Date.now());
+    const fixture = useMemo(() => buildQaHostFixture(fixtureId, { roomCode, nowMs: fixtureNowMs }) || {}, [fixtureId, fixtureNowMs, roomCode]);
     const initialRoom = fixture.room || {};
     const [programMode, setProgramMode] = useState(initialRoom.programMode || RUN_OF_SHOW_PROGRAM_MODES.runOfShow);
     const [enabled, setEnabled] = useState(initialRoom.runOfShowEnabled === true);
@@ -29,6 +30,7 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta(initialRoom.runOfShowTemplateMeta || {}));
     const [runOfShowTemplates, setRunOfShowTemplates] = useState(Array.isArray(fixture.runOfShowTemplates) ? fixture.runOfShowTemplates : []);
     const [submissions, setSubmissions] = useState(Array.isArray(fixture.runOfShowSubmissions) ? fixture.runOfShowSubmissions : []);
+    const [songs, setSongs] = useState(Array.isArray(fixture.songs) ? fixture.songs : []);
     const [previewActiveId, setPreviewActiveId] = useState(String(initialRoom?.tvPreviewOverlay?.itemId || ''));
     const operatorRole = RUN_OF_SHOW_OPERATOR_ROLES.host;
     const operatorCapabilities = getRunOfShowRoleCapabilities(operatorRole);
@@ -41,7 +43,15 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
 
     return (
         <div className="min-h-screen bg-zinc-950 px-4 py-6 text-white">
-            <div className="mx-auto max-w-[1480px] space-y-4">
+            <div
+                className="mx-auto max-w-[1480px] space-y-4"
+                data-host-qa-ready="true"
+                data-host-qa-event-profile={String(initialRoom.eventProfileId || '').trim()}
+                data-host-qa-brand-title={String(initialRoom.audienceBrandTheme?.appTitle || '').trim()}
+                data-host-qa-brand-primary={String(initialRoom.audienceBrandTheme?.primaryColor || '').trim()}
+                data-host-qa-brand-secondary={String(initialRoom.audienceBrandTheme?.secondaryColor || '').trim()}
+                data-host-qa-brand-accent={String(initialRoom.audienceBrandTheme?.accentColor || '').trim()}
+            >
                 <div className="rounded-3xl border border-white/10 bg-black/30 p-4">
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Host QA Harness</div>
                     <div className="mt-2 text-2xl font-bold text-white">Run-of-show console fixture</div>
@@ -57,6 +67,7 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
                     runOfShowTemplateMeta={runOfShowTemplateMeta}
                     runOfShowTemplates={runOfShowTemplates}
                     submissions={submissions}
+                    queueSongs={songs}
                     roomUsers={Array.isArray(fixture.users) ? fixture.users : []}
                     localLibrary={Array.isArray(fixture.localLibrary) ? fixture.localLibrary : []}
                     ytIndex={Array.isArray(fixture.ytIndex) ? fixture.ytIndex : []}
@@ -113,6 +124,37 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
                     onReviewSubmission={(submissionId, status) => {
                         setSubmissions((prev) => prev.map((entry) => (
                             entry.id === submissionId ? { ...entry, submissionStatus: status } : entry
+                        )));
+                    }}
+                    onAssignQueueSongToItem={(songId, itemId) => {
+                        const queueSong = (songs || []).find((entry) => entry.id === songId);
+                        if (!queueSong) return;
+                        patchItem(itemId, {
+                            performerMode: 'assigned',
+                            assignedPerformerUid: String(queueSong.singerUid || '').trim(),
+                            assignedPerformerName: String(queueSong.singerName || '').trim(),
+                            songId: String(queueSong.songId || '').trim(),
+                            songTitle: String(queueSong.songTitle || '').trim(),
+                            artistName: String(queueSong.artist || '').trim(),
+                            preparedQueueSongId: String(queueSong.id || '').trim(),
+                            queueLinkState: 'linked',
+                            backingPlan: (() => {
+                                const hasPlaybackSource = String(queueSong.mediaUrl || queueSong.appleMusicId || queueSong.trackId || '').trim().length > 0;
+                                return {
+                                sourceType: String(queueSong.appleMusicId || '').trim() ? 'apple_music' : (String(queueSong.mediaUrl || '').trim() ? 'youtube' : 'canonical_default'),
+                                label: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' | '),
+                                mediaUrl: String(queueSong.mediaUrl || '').trim(),
+                                youtubeId: String(queueSong.youtubeId || '').trim(),
+                                appleMusicId: String(queueSong.appleMusicId || '').trim(),
+                                trackId: String(queueSong.trackId || '').trim(),
+                                approvalStatus: 'approved',
+                                playbackReady: hasPlaybackSource,
+                                resolutionStatus: hasPlaybackSource ? 'ready' : 'needs_selection',
+                            };
+                            })(),
+                        });
+                        setSongs((prev) => prev.map((entry) => (
+                            entry.id === songId ? { ...entry, status: 'assigned', runOfShowItemId: itemId } : entry
                         )));
                     }}
                     onUpdatePolicy={(patch) => setRunOfShowPolicy((prev) => normalizeRunOfShowPolicy({ ...(prev || {}), ...(patch || {}) }))}

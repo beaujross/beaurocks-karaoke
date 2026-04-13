@@ -9,7 +9,11 @@ const PANEL_LAYOUT_DEFAULTS = {
     vibeSyncOpen: true,
     automationOpen: true,
     showAddForm: true,
-    showQueueList: true
+    showQueueList: true,
+    reviewQueueOpen: true,
+    pendingQueueOpen: true,
+    readyQueueOpen: true,
+    assignedQueueOpen: true
 };
 
 const PANEL_LAYOUT_KEYS = Object.keys(PANEL_LAYOUT_DEFAULTS);
@@ -98,6 +102,10 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [automationOpen, setAutomationOpen] = useState(PANEL_LAYOUT_DEFAULTS.automationOpen);
     const [showAddForm, setShowAddForm] = useState(PANEL_LAYOUT_DEFAULTS.showAddForm);
     const [showQueueList, setShowQueueList] = useState(PANEL_LAYOUT_DEFAULTS.showQueueList);
+    const [reviewQueueOpen, setReviewQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.reviewQueueOpen);
+    const [pendingQueueOpen, setPendingQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.pendingQueueOpen);
+    const [readyQueueOpen, setReadyQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.readyQueueOpen);
+    const [assignedQueueOpen, setAssignedQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.assignedQueueOpen);
     const [activeWorkspace, setActiveWorkspace] = useState('default');
 
     const [searchQ, setSearchQ] = useState(() => getInitialDemoSearchQuery());
@@ -177,7 +185,11 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         vibeSyncOpen,
         automationOpen,
         showAddForm,
-        showQueueList
+        showQueueList,
+        reviewQueueOpen,
+        pendingQueueOpen,
+        readyQueueOpen,
+        assignedQueueOpen
     }), [
         stagePanelOpen,
         tvControlsOpen,
@@ -187,7 +199,11 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         vibeSyncOpen,
         automationOpen,
         showAddForm,
-        showQueueList
+        showQueueList,
+        reviewQueueOpen,
+        pendingQueueOpen,
+        readyQueueOpen,
+        assignedQueueOpen
     ]);
 
     const applyPanelLayout = (nextLayout = {}) => {
@@ -201,6 +217,10 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setAutomationOpen(!!resolved.automationOpen);
         setShowAddForm(!!resolved.showAddForm);
         setShowQueueList(!!resolved.showQueueList);
+        setReviewQueueOpen(!!resolved.reviewQueueOpen);
+        setPendingQueueOpen(!!resolved.pendingQueueOpen);
+        setReadyQueueOpen(!!resolved.readyQueueOpen);
+        setAssignedQueueOpen(!!resolved.assignedQueueOpen);
     };
 
     const applyWorkspacePreset = (workspaceId = 'default') => {
@@ -289,6 +309,14 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setShowAddForm,
         showQueueList,
         setShowQueueList,
+        reviewQueueOpen,
+        setReviewQueueOpen,
+        pendingQueueOpen,
+        setPendingQueueOpen,
+        readyQueueOpen,
+        setReadyQueueOpen,
+        assignedQueueOpen,
+        setAssignedQueueOpen,
         panelLayout,
         activeWorkspace,
         setActiveWorkspace,

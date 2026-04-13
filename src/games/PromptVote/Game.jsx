@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { db, collection, addDoc, serverTimestamp, query, where, getDocs } from '../../lib/firebase';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { db, collection, addDoc, serverTimestamp, query, where, getDocs, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 
 const DEFAULT_EMOJI = String.fromCodePoint(0x1f600);
@@ -192,6 +192,66 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
     };
 
     const totalVotes = votes.length;
+    const rewardedWyrQuestionIdsRef = useRef(new Set());
+    const wyrVoteSummary = useMemo(() => {
+        if (!isWyr) {
+            return {
+                votesA: [],
+                votesB: [],
+                total: 0,
+                perA: 50,
+                winningSide: '',
+                winners: [],
+                rewardPoints: 0
+            };
+        }
+        const votesA = votes.filter((vote) => vote?.val === 'A');
+        const votesB = votes.filter((vote) => vote?.val === 'B');
+        const total = votesA.length + votesB.length;
+        const perA = total ? Math.round((votesA.length / total) * 100) : 50;
+        const winningSide = total && votesA.length !== votesB.length
+            ? (votesA.length > votesB.length ? 'A' : 'B')
+            : '';
+        const rewardPoints = Math.max(0, Number(gameState?.points || 50));
+        const winnerSource = winningSide === 'A' ? votesA : winningSide === 'B' ? votesB : [];
+        const seenUids = new Set();
+        const winners = winnerSource
+            .map((vote) => ({
+                uid: String(vote?.uid || '').trim(),
+                userName: String(vote?.userName || 'Player').trim() || 'Player',
+                avatar: String(vote?.avatar || DEFAULT_EMOJI).trim() || DEFAULT_EMOJI
+            }))
+            .filter((entry) => {
+                if (!entry.uid || seenUids.has(entry.uid)) return false;
+                seenUids.add(entry.uid);
+                return true;
+            });
+        return { votesA, votesB, total, perA, winningSide, winners, rewardPoints };
+    }, [gameState?.points, isWyr, votes]);
+
+    useEffect(() => {
+        rewardedWyrQuestionIdsRef.current = new Set();
+    }, [roomCode]);
+
+    useEffect(() => {
+        if (isPlayer || !isWyr || !isReveal) return;
+        const safeQuestionId = String(questionId || '').trim();
+        if (!roomCode || !safeQuestionId || !wyrVoteSummary.winningSide || !wyrVoteSummary.rewardPoints) return;
+        if (!wyrVoteSummary.winners.length) return;
+        if (rewardedWyrQuestionIdsRef.current.has(safeQuestionId)) return;
+        rewardedWyrQuestionIdsRef.current.add(safeQuestionId);
+        void callFunction('awardRoomPoints', {
+            roomCode,
+            awardKey: `wyr_${roomCode}_${safeQuestionId}_${wyrVoteSummary.winningSide}`,
+            source: 'wyr',
+            awards: wyrVoteSummary.winners.map((entry) => ({
+                uid: entry.uid,
+                points: wyrVoteSummary.rewardPoints
+            }))
+        }).catch(() => {
+            rewardedWyrQuestionIdsRef.current.delete(safeQuestionId);
+        });
+    }, [isPlayer, isReveal, isWyr, questionId, roomCode, wyrVoteSummary]);
 
     // --- RENDER ---
 
@@ -384,6 +444,12 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
     // --- WYR MODE ---
     if (isWyr) {
+        const votesA = wyrVoteSummary.votesA;
+        const votesB = wyrVoteSummary.votesB;
+        const perA = wyrVoteSummary.perA;
+        const majoritySide = wyrVoteSummary.winningSide;
+        const rewardPoints = wyrVoteSummary.rewardPoints;
+        const myVoteWonMajority = hasVoted && majoritySide && myVote === majoritySide;
         if (isPlayer) {
             return (
                 <div data-prompt-vote-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
@@ -405,8 +471,22 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                                 </>
                             ) : (
                                 <>
-                                    <div className="text-2xl font-bold">VOTE CAST!</div>
-                                    <div className="text-sm mt-2 opacity-75">Check the big screen!</div>
+                                    <div className="text-2xl font-bold">
+                                        {isReveal
+                                            ? (majoritySide
+                                                ? (myVoteWonMajority ? 'MAJORITY PICK!' : 'RESULTS ARE IN')
+                                                : 'DEAD HEAT')
+                                            : 'VOTE CAST!'}
+                                    </div>
+                                    <div className="text-sm mt-2 opacity-75">
+                                        {isReveal
+                                            ? (majoritySide
+                                                ? (myVoteWonMajority
+                                                    ? `You backed the winning side. +${rewardPoints} pts.`
+                                                    : `Most guests picked ${majoritySide}.`)
+                                                : 'The room split evenly, so there was no bonus side.')
+                                            : 'Check the big screen!'}
+                                    </div>
                                 </>
                             )}
                         </div>
@@ -439,10 +519,6 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         }
 
         // TV View
-        const votesA = votes.filter(v => v.val === 'A');
-        const votesB = votes.filter(v => v.val === 'B');
-        const total = votesA.length + votesB.length || 1;
-        const perA = Math.round((votesA.length / total) * 100);
         const wyrPrompt = String(gameState?.question || '').trim();
 
         const topRailPadding = wyrPrompt ? 'clamp(260px, 34vh, 430px)' : 'clamp(150px, 20vh, 250px)';
@@ -525,6 +601,19 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                 {!isReveal && (
                     <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-[clamp(1.4rem,2.5vw,3rem)] font-black animate-pulse text-[#EC4899] bg-black/88 px-10 py-3 rounded-full z-50 border-2 border-[#EC4899] shadow-[0_0_30px_rgba(236,72,153,0.45)]">
                         VOTE NOW ON YOUR PHONES!
+                    </div>
+                )}
+                {isReveal && (
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 rounded-full border border-white/15 bg-black/82 px-8 py-3 text-center shadow-[0_0_30px_rgba(0,0,0,0.45)]">
+                        <div className="text-xs uppercase tracking-[0.24em] text-zinc-400">Result</div>
+                        <div className="mt-1 text-[clamp(1.2rem,2vw,2rem)] font-black text-white">
+                            {majoritySide ? `Majority picked ${majoritySide}` : 'Dead heat'}
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-300">
+                            {majoritySide
+                                ? `Everyone on the ${majoritySide} side earns +${rewardPoints} pts.`
+                                : 'No side earned bonus points this round.'}
+                        </div>
                     </div>
                 )}
             </div>

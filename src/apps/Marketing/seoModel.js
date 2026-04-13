@@ -79,6 +79,8 @@ const DETAIL_PAGE_LABELS = Object.freeze({
 });
 
 const NOINDEX_PAGES = new Set([
+  MARKETING_ROUTE_PAGES.demo,
+  MARKETING_ROUTE_PAGES.demoAuto,
   MARKETING_ROUTE_PAGES.hostAccess,
   MARKETING_ROUTE_PAGES.profile,
   MARKETING_ROUTE_PAGES.submit,

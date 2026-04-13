@@ -159,6 +159,67 @@ async function run() {
       assert.equal((snap.get("runOfShowDirector")?.items || [])[0]?.title, "Introductions");
     }],
 
+    ["legacy request mode updates backfill normalized backing policy fields", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        requestMode: "playable_only",
+        allowSingerTrackSelect: false,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "requestMode",
+          "allowSingerTrackSelect",
+          "audienceBackingMode",
+          "unknownBackingPolicy",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("requestMode"), "playable_only");
+      assert.equal(snap.get("allowSingerTrackSelect"), false);
+      assert.equal(snap.get("audienceBackingMode"), "canonical_plus_approved_backings");
+      assert.equal(snap.get("unknownBackingPolicy"), "block_unknown");
+    }],
+
+    ["new backing policy updates backfill legacy compatibility fields", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceBackingMode: "canonical_plus_audience_youtube",
+        unknownBackingPolicy: "auto_queue_unverified",
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "requestMode",
+          "allowSingerTrackSelect",
+          "audienceBackingMode",
+          "unknownBackingPolicy",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("requestMode"), "guest_backing_optional");
+      assert.equal(snap.get("allowSingerTrackSelect"), true);
+      assert.equal(snap.get("audienceBackingMode"), "canonical_plus_audience_youtube");
+      assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
+    }],
+
+    ["approved-only backing mode coerces unknown policy to block unknown", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceBackingMode: "canonical_plus_approved_backings",
+      }));
+
+      assert.equal(result.ok, true);
+      const snap = await roomRef.get();
+      assert.equal(snap.get("requestMode"), "playable_only");
+      assert.equal(snap.get("allowSingerTrackSelect"), false);
+      assert.equal(snap.get("audienceBackingMode"), "canonical_plus_approved_backings");
+      assert.equal(snap.get("unknownBackingPolicy"), "block_unknown");
+    }],
+
     ["host can archive and restore room metadata", async () => {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         archivedAt: { __hostOp: "serverTimestamp" },

@@ -14,6 +14,7 @@ export const buildModerationQueueSnapshot = ({
     approvedUids = [],
     doodleSubmissions = [],
     selfieSubmissions = [],
+    crowdSelfieSubmissions = [],
     bingoSuggestions = {},
     bingoRevealed = {}
 } = {}) => {
@@ -24,6 +25,8 @@ export const buildModerationQueueSnapshot = ({
     const pendingSelfies = selfieRequireApproval
         ? (Array.isArray(selfieSubmissions) ? selfieSubmissions : []).filter((submission) => !submission?.approved)
         : [];
+    const pendingCrowdSelfies = (Array.isArray(crowdSelfieSubmissions) ? crowdSelfieSubmissions : [])
+        .filter((submission) => String(submission?.status || '').trim().toLowerCase() === 'pending');
     const pendingBingoSuggestions = Object.entries(bingoSuggestions || {})
         .map(([rawIdx, suggestion]) => ({
             idx: Number(rawIdx),
@@ -52,6 +55,15 @@ export const buildModerationQueueSnapshot = ({
         image: submission?.url || null,
         submission
     }));
+    const crowdSelfieItems = pendingCrowdSelfies.map((submission) => ({
+        key: `crowd-selfie-${submission.id}`,
+        type: 'crowd_selfie',
+        timestamp: toMs(submission?.timestamp),
+        title: submission?.userName || submission?.name || 'Guest selfie',
+        subtitle: 'Crowd selfie awaiting approval for TV moments and recap',
+        image: submission?.url || null,
+        submission
+    }));
     const bingoItems = pendingBingoSuggestions.map((suggestion) => ({
         key: `bingo-${suggestion.idx}`,
         type: 'bingo',
@@ -60,7 +72,7 @@ export const buildModerationQueueSnapshot = ({
         subtitle: `${suggestion.count} vote${suggestion.count === 1 ? '' : 's'} from audience`,
         suggestion
     }));
-    const queueItems = [...doodleItems, ...selfieItems, ...bingoItems]
+    const queueItems = [...doodleItems, ...selfieItems, ...crowdSelfieItems, ...bingoItems]
         .sort((a, b) => b.timestamp - a.timestamp)
         .slice(0, 24);
 
@@ -76,9 +88,9 @@ export const buildModerationQueueSnapshot = ({
     return {
         queueItems,
         counts: {
-            totalPending: pendingDoodles.length + pendingSelfies.length + pendingBingoSuggestions.length,
+            totalPending: pendingDoodles.length + pendingSelfies.length + pendingCrowdSelfies.length + pendingBingoSuggestions.length,
             doodlePending: pendingDoodles.length,
-            selfiePending: pendingSelfies.length,
+            selfiePending: pendingSelfies.length + pendingCrowdSelfies.length,
             bingoPending: pendingBingoSuggestions.length
         },
         oldestPendingAt

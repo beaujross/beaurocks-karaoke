@@ -5,6 +5,7 @@ import {
     normalizeBackingChoice,
     resolveStageMediaUrl
 } from '../../../lib/playbackSource';
+import { requiresBackingHostReview } from '../../../lib/requestModes';
 
 const formatWaitTime = (seconds) => {
     if (!seconds) return '0m';
@@ -15,53 +16,45 @@ const formatWaitTime = (seconds) => {
     return `${mins}m`;
 };
 
+export const partitionQueueSongsByResolution = (songs = []) => {
+    const safeSongs = Array.isArray(songs) ? songs : [];
+    return {
+        reviewRequired: safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                return ['requested', 'pending'].includes(status) && requiresBackingHostReview(song?.resolutionStatus);
+            })
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        queue: safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                return status === 'requested' && !requiresBackingHostReview(song?.resolutionStatus);
+            })
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        assigned: safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                return status === 'assigned' && !requiresBackingHostReview(song?.resolutionStatus);
+            })
+            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        pending: safeSongs.filter((song) => {
+            const status = String(song?.status || '').trim().toLowerCase();
+            return status === 'pending' && !requiresBackingHostReview(song?.resolutionStatus);
+        }),
+    };
+};
+
 const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
     const safeSongs = useMemo(() => (Array.isArray(songs) ? songs : []), [songs]);
     const safeUsers = useMemo(() => (Array.isArray(users) ? users : []), [users]);
+    const partitionedSongs = useMemo(() => partitionQueueSongsByResolution(safeSongs), [safeSongs]);
 
     const current = useMemo(
         () => safeSongs.find(s => s.status === 'performing'),
         [safeSongs]
     );
     const hasLyrics = !!current?.lyrics || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
-    const reviewRequired = useMemo(
-        () => safeSongs
-            .filter((song) => {
-                const status = String(song?.status || '').trim().toLowerCase();
-                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
-                return ['requested', 'pending'].includes(status) && resolutionStatus === 'review_required';
-            })
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
-        [safeSongs]
-    );
-    const queue = useMemo(
-        () => safeSongs
-            .filter((song) => {
-                const status = String(song?.status || '').trim().toLowerCase();
-                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
-                return status === 'requested' && resolutionStatus !== 'review_required';
-            })
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
-        [safeSongs]
-    );
-    const assigned = useMemo(
-        () => safeSongs
-            .filter((song) => {
-                const status = String(song?.status || '').trim().toLowerCase();
-                const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
-                return status === 'assigned' && resolutionStatus !== 'review_required';
-            })
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
-        [safeSongs]
-    );
-    const pending = useMemo(
-        () => safeSongs.filter((song) => {
-            const status = String(song?.status || '').trim().toLowerCase();
-            const resolutionStatus = String(song?.resolutionStatus || '').trim().toLowerCase();
-            return status === 'pending' && resolutionStatus !== 'review_required';
-        }),
-        [safeSongs]
-    );
+    const { reviewRequired, queue, assigned, pending } = partitionedSongs;
     const lobbyCount = safeUsers.length;
     const queueCount = queue.length;
     const waitTimeSec = useMemo(() => queue.reduce((sum, s) => {

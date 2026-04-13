@@ -67,6 +67,47 @@ it('increments room recent usage and success', () => {
   expect(next.updatedAtMs).toBe(1234);
 });
 
+it('penalizes failure-heavy candidates in ranking', () => {
+  const ranked = rankSongRequestCandidates({
+    request: {
+      songId: 'flowers__miley cyrus',
+      songTitle: 'Flowers',
+      artist: 'Miley Cyrus'
+    },
+    catalogCandidates: [
+      {
+        trackId: 'clean_pick',
+        mediaUrl: 'https://youtube.com/watch?v=clean_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'global_catalog',
+        qualityScore: 30,
+        successCount: 2,
+        usageCount: 2,
+        failureCount: 0
+      },
+      {
+        trackId: 'avoided_pick',
+        mediaUrl: 'https://youtube.com/watch?v=avoided_pick',
+        source: 'youtube',
+        title: 'Flowers Karaoke',
+        artist: 'Miley Cyrus',
+        layer: 'global_catalog',
+        qualityScore: 30,
+        successCount: 0,
+        usageCount: 1,
+        failureCount: 3
+      }
+    ]
+  });
+
+  expect(ranked[0]?.trackId).toBe('clean_pick');
+  expect(ranked.find((entry) => entry.trackId === 'avoided_pick')?.score).toBeLessThan(
+    ranked.find((entry) => entry.trackId === 'clean_pick')?.score || 0
+  );
+});
+
 it('only pairs opted-in singers on the same canonical song', () => {
   const suggestions = buildCollaborationSuggestionMap({
     songs: [
@@ -121,5 +162,38 @@ it('only pairs opted-in singers on the same canonical song', () => {
   expect(suggestions.request_a[0].requestId).toBe('request_b');
   expect(suggestions.request_a[0].tight15Overlap).toBe(true);
   expect(Boolean(suggestions.request_c)).toBe(false);
+});
+
+it('excludes rejected backing aliases from collaboration pairing', () => {
+  const suggestions = buildCollaborationSuggestionMap({
+    songs: [
+      {
+        id: 'request_a',
+        songId: 'shallow__lady gaga',
+        songTitle: 'Shallow',
+        artist: 'Lady Gaga',
+        singerUid: 'u_a',
+        singerName: 'Alex',
+        collabOpen: true,
+        status: 'requested',
+        resolutionStatus: 'rejected'
+      },
+      {
+        id: 'request_b',
+        songId: 'shallow__lady gaga',
+        songTitle: 'Shallow',
+        artist: 'Lady Gaga',
+        singerUid: 'u_b',
+        singerName: 'Blair',
+        collabOpen: true,
+        status: 'requested',
+        resolutionStatus: 'rejected_backing'
+      }
+    ],
+    users: []
+  });
+
+  expect(Boolean(suggestions.request_a)).toBe(false);
+  expect(Boolean(suggestions.request_b)).toBe(false);
 });
 });

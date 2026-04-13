@@ -1,4 +1,6 @@
 export const FIXED_QA_TV_NOW_MS = 1763503200000;
+const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
+const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
 
 export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
     {
@@ -9,12 +11,12 @@ export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
     {
         id: 'preview-wyr',
         roomCode: 'DEMOAAHF',
-        expectedTexts: ['Preview Mode', 'Would You Rather Break', 'Pick A Side'],
+        expectedTexts: ['Preview Mode', 'Pick A Side', 'WYR'],
     },
     {
         id: 'live-announcement',
         roomCode: 'DEMOAAHF',
-        expectedTexts: ['House Announcement', 'Talent Showcase Starts In Five', 'Live room takeover'],
+        expectedTexts: ['House Announcement', 'Talent Showcase Starts In Five', 'Show graphics live on Public TV'],
     },
     {
         id: 'live-closing',
@@ -27,6 +29,16 @@ const buildBaseRoom = (roomCode = 'DEMOAAHF') => ({
     activeMode: 'karaoke',
     hostName: 'AAHF Host',
     roomCode,
+    eventProfileId: AAHF_EVENT_PROFILE_ID,
+    eventProfileLabel: 'AAHF Kick-Off',
+    eventProfileVersion: 1,
+    logoUrl: AAHF_LOGO_URL,
+    audienceBrandTheme: {
+        appTitle: 'AAHF Karaoke',
+        primaryColor: '#FF4FA3',
+        secondaryColor: '#1ED7FF',
+        accentColor: '#FACC15',
+    },
 });
 
 export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_TV_NOW_MS } = {}) => {

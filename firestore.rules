@@ -88,6 +88,29 @@ service cloud.firestore {
         || !nextData.keys().hasAny(['phone']);
     }
 
+    function isDefaultAudienceAvatar(value) {
+      return value is string && value == "\uD83D\uDE00";
+    }
+
+    function avatarCreateSafe(data) {
+      return !data.keys().hasAny(['avatar'])
+        || isDefaultAudienceAvatar(data.avatar);
+    }
+
+    function avatarUnchanged(prevData, nextData) {
+      return !nextData.diff(prevData).affectedKeys().hasAny(['avatar'])
+        || (
+          (
+            prevData.keys().hasAny(['avatar'])
+            && nextData.avatar == prevData.avatar
+          )
+          || (
+            !prevData.keys().hasAny(['avatar'])
+            && isDefaultAudienceAvatar(nextData.avatar)
+          )
+        );
+    }
+
     function roomUserCreateAllowedKeys() {
       return [
         'uid',
@@ -113,14 +136,15 @@ service cloud.firestore {
         'strobeTaps',
         'stormLayerHits',
         'lastStormLayer',
-        'lastVibeAt'
+        'lastVibeAt',
+        'crowdSelfieUrl',
+        'crowdSelfieStatus'
       ];
     }
 
     function roomUserSelfWritableKeys() {
       return [
         'name',
-        'avatar',
         'isVip',
         'vipLevel',
         'fameLevel',
@@ -144,7 +168,9 @@ service cloud.firestore {
         'requestIntentUpdatedAt',
         'isReady',
         'visits',
-        'bingoVotesBySession'
+        'bingoVotesBySession',
+        'crowdSelfieUrl',
+        'crowdSelfieStatus'
       ];
     }
 
@@ -553,12 +579,14 @@ service cloud.firestore {
           )
         )
         && !request.resource.data.keys().hasAny(userPrivilegeManagedKeys())
+        && avatarCreateSafe(request.resource.data)
         && hasSafeClientSubscriptionDefaults(request.resource.data)
         && hasSafeClientOrganizationDefaults(request.resource.data);
       allow update: if isAuthed()
         && request.auth.uid == uid
         && !request.resource.data.diff(resource.data).changedKeys().hasAny(['subscription', 'organization'])
         && !request.resource.data.diff(resource.data).changedKeys().hasAny(userPrivilegeManagedKeys())
+        && avatarUnchanged(resource.data, request.resource.data)
         && userPrivilegeFieldsUnchanged(resource.data, request.resource.data);
       allow delete: if false;
     }
@@ -847,6 +875,7 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && roomExists(request.resource.data.roomCode)
           && request.resource.data.keys().hasOnly(roomUserCreateAllowedKeys())
+          && avatarCreateSafe(request.resource.data)
           && roomUserPrivilegeProjectionWithinAccount(request.auth.uid, request.resource.data)
           && !request.resource.data.keys().hasAny(['phone']);
 
@@ -856,6 +885,7 @@ service cloud.firestore {
           && request.resource.data.roomCode == resource.data.roomCode
           && request.resource.data.uid == resource.data.uid
           && roomUserPhoneNotIntroducedOrModified(resource.data, request.resource.data)
+          && avatarUnchanged(resource.data, request.resource.data)
           && (
             (
               request.auth.uid == resource.data.uid
@@ -925,6 +955,32 @@ service cloud.firestore {
           && isAuthed()
           && request.resource.data.roomCode is string
           && request.resource.data.uid == request.auth.uid;
+        allow read: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            resource.data.uid == request.auth.uid
+            || isRoomHost(resource.data.roomCode)
+          );
+        allow update: if false;
+        allow delete: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            isRoomHost(resource.data.roomCode)
+            || resource.data.uid == request.auth.uid
+          );
+      }
+
+      match /crowd_selfie_submissions/{docId} {
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && request.resource.data.uid == request.auth.uid;
+        allow read: if isBrossApp(appId)
+          && isAuthed()
+          && (
+            resource.data.uid == request.auth.uid
+            || isRoomHost(resource.data.roomCode)
+          );
         allow update: if false;
         allow delete: if isBrossApp(appId)
           && isAuthed()

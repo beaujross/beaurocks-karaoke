@@ -168,7 +168,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
         bingoAutoApprovePct: Math.max(10, Math.min(100, toNumber(presetSettings.bingoAutoApprovePct, 50))),
         bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
         autoLyricsOnQueue: !!presetSettings.autoLyricsOnQueue,
-        popTriviaEnabled: presetSettings.popTriviaEnabled !== false,
+        popTriviaEnabled: presetSettings.popTriviaEnabled === true,
         gamePreviewId: spotlightMode === 'karaoke' ? null : spotlightMode,
         gameDefaults: {
             triviaRoundSec: Math.max(5, toNumber(gameDefaults.triviaRoundSec, 20)),

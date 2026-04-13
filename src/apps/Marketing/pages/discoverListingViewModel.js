@@ -95,6 +95,32 @@ const sanitizeMediaUrl = (value = "") => {
   return "";
 };
 
+const formatSupportProviderLabel = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (!token) return "";
+  if (token === "givebutter") return "Givebutter";
+  if (token === "stripe") return "Stripe";
+  return token
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const buildRoomSupportBadge = (entry = {}, listingType = "") => {
+  if (listingType !== "room_session") return null;
+  const provider = String(entry?.supportProvider || "").trim().toLowerCase();
+  const enabled = entry?.supportsAudienceFunding === true || !!provider;
+  if (!enabled) return null;
+  const providerLabel = formatSupportProviderLabel(provider) || "Support";
+  return {
+    provider,
+    label: providerLabel,
+    shortLabel: `${providerLabel} support`,
+    icon: provider === "stripe" ? "fa-credit-card" : "fa-hand-holding-dollar",
+  };
+};
+
 export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options = {}) => {
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
@@ -155,6 +181,7 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
   const isOfficialBeauRocksListing = !!entry?.isOfficialBeauRocksListing || !!entry?.isOfficialBeauRocksRoom;
   const isOfficialBeauRocksRoom = listingType === "room_session" && !!entry?.isOfficialBeauRocksRoom;
+  const roomSupportBadge = buildRoomSupportBadge(entry, listingType);
   const hasBeauRocksHostAccount = !!entry?.hasBeauRocksHostAccount;
   const hostLeaderboardRank = Math.max(0, Number(entry?.hostLeaderboardRank || 0) || 0);
   const hostLeaderboardScore = Math.max(0, Number(entry?.hostLeaderboardScore || 0) || 0);
@@ -244,6 +271,7 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     location,
     roomCode,
     virtualOnly,
+    roomSupportBadge,
     recurringRule,
     karaokeNightsLabel,
     isRecurringEvent,

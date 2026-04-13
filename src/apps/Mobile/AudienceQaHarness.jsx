@@ -150,7 +150,17 @@ export default function AudienceQaHarness({ fixtureId = 'classic-home', roomCode
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_24%),linear-gradient(180deg,#020617_0%,#0f172a_58%,#020617_100%)] px-4 py-6 text-white">
-            <div className="mx-auto max-w-[430px]" data-audience-qa-ready="true" data-audience-qa-fixture={fixtureId}>
+            <div
+                className="mx-auto max-w-[430px]"
+                data-audience-qa-ready="true"
+                data-audience-qa-fixture={fixtureId}
+                data-audience-qa-shell-variant={shellVariant}
+                data-audience-qa-event-profile={String(room.eventProfileId || '').trim()}
+                data-audience-qa-brand-title={String(room.audienceBrandTheme?.appTitle || '').trim()}
+                data-audience-qa-brand-primary={String(room.audienceBrandTheme?.primaryColor || '').trim()}
+                data-audience-qa-brand-secondary={String(room.audienceBrandTheme?.secondaryColor || '').trim()}
+                data-audience-qa-brand-accent={String(room.audienceBrandTheme?.accentColor || '').trim()}
+            >
                 <div className="mb-4 rounded-[28px] border border-white/10 bg-black/25 px-4 py-3 backdrop-blur-xl">
                     <div className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/75">Audience UX</div>
                     <div className="mt-1 flex items-center justify-between gap-3">
