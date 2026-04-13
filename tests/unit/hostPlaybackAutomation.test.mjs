@@ -65,3 +65,21 @@ test('getAutoEndSchedule prefers captured performance duration over stale reques
         delayMs: 226000
     });
 });
+
+test('getAutoEndSchedule prefers longer resolved media duration for video playback', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'song_resolved',
+        activeMode: 'karaoke',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        capturedDurationSec: 150,
+        currentDurationSec: 220,
+        now: 1000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'song_resolved:1000:220',
+        delayMs: 226000
+    });
+});

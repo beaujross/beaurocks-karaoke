@@ -8914,7 +8914,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 Collapse
                                             </button>
                                         )}
-                                        {room?.hostName && (
+                                        {room?.hostName && !isStreamlinedAudienceShell && (
                                             <button
                                                 onClick={() => { setTab('social'); setSocialTab('host'); }}
                                                 className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full leading-none hover:bg-white/10"
@@ -9261,7 +9261,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 Collapse
                                             </button>
                                         )}
-                                        {room?.hostName && (
+                                        {room?.hostName && !isStreamlinedAudienceShell && (
                                             <button
                                                 onClick={() => { setTab('social'); setSocialTab('host'); }}
                                                 className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full leading-none hover:bg-white/10"
@@ -9278,10 +9278,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                        <button onClick={() => { setTab('social'); setSocialTab('lobby'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
-                                            <i className="fa-solid fa-users stage-icon text-white/70"></i>
-                                            {allUsers.length || 0}
-                                        </button>
+                                        {isStreamlinedAudienceShell ? (
+                                            <div className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
+                                                <i className="fa-solid fa-users stage-icon text-white/70"></i>
+                                                {allUsers.length || 0}
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => { setTab('social'); setSocialTab('lobby'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
+                                                <i className="fa-solid fa-users stage-icon text-white/70"></i>
+                                                {allUsers.length || 0}
+                                            </button>
+                                        )}
                                         <button onClick={() => { setTab('request'); setSongsTab('queue'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
                                             <i className="fa-solid fa-list stage-icon text-white/70"></i>
                                             {queueSongsView.length}

@@ -53,7 +53,10 @@ export const getAutoEndSchedule = ({
             Number(capturedDurationSec || 0),
             Number(currentDurationSec || 0)
         ) || 0)
-        : Number(capturedDurationSec || currentDurationSec || 0);
+        : Number(Math.max(
+            Number(capturedDurationSec || 0),
+            Number(currentDurationSec || 0)
+        ) || 0);
 
     if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
     if (!Number.isFinite(durationSec) || durationSec < 20) return null;

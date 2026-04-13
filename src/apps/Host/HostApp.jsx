@@ -4684,8 +4684,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             appleDurationSec: room?.currentPerformanceMeta?.durationSec || room?.appleMusicPlayback?.durationSec,
             videoPlaying: room?.videoPlaying,
             videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
-            capturedDurationSec: room?.currentPerformanceMeta?.durationSec || current?.performanceStartedDurationSec,
-            currentDurationSec: current?.performanceStartedDurationSec || room?.currentPerformanceMeta?.durationSec || current?.duration,
+            capturedDurationSec: Math.max(
+                0,
+                Number(room?.currentPerformanceMeta?.durationSec || 0),
+                Number(current?.performanceStartedDurationSec || 0)
+            ),
+            currentDurationSec: Math.max(
+                0,
+                Number(current?.duration || 0),
+                Number(current?.performanceStartedDurationSec || 0),
+                Number(room?.currentPerformanceMeta?.durationSec || 0)
+            ),
             now: nowMs()
         });
         if (!schedule) return;
