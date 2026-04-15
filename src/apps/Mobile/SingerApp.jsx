@@ -105,7 +105,7 @@ import {
     getAudienceTakeoverLabel,
     normalizeAudienceShellVariant
 } from './audienceShellVariant';
-import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
+import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
 import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
 
@@ -579,7 +579,7 @@ const AVATAR_CATALOG = [
 const AVATAR_BY_EMOJI = new Map(AVATAR_CATALOG.map((item) => [item.emoji, item]));
 const getAvatarCatalogItemByEmoji = (value = '') => AVATAR_BY_EMOJI.get(String(value || '').trim()) || null;
 
-const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgePadding }) => {
+const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgePadding, brandTheme = null }) => {
     const listRef = useRef(null);
     const [itemSize, setItemSize] = useState(108);
     const [containerWidth, setContainerWidth] = useState(0);
@@ -595,6 +595,7 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         : edgePadding === 'center'
             ? Math.max(0, ((containerWidth || visibleWidth) - itemWidth) / 2)
             : Math.max(0, (visibleWidth - itemWidth) / 2);
+    const normalizedBrandTheme = normalizeAudienceBrandTheme(brandTheme || {});
     const [activeIndex, setActiveIndex] = useState(0);
     const scrollRafRef = useRef(null);
     const scrollToIndex = (idx, behavior = 'smooth') => {
@@ -720,15 +721,19 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
         const step = (itemWidth + itemGap) * 2;
         el.scrollBy({ left: dir * step, behavior: 'smooth' });
     };
+    const navButtonStyle = {
+        borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.32),
+        boxShadow: `0 0 24px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.14)}`,
+    };
 
     return (
         <div className="w-full relative mx-auto overflow-visible" style={{ maxWidth: '100%', width: '100%' }}>
             {showArrows && (
                 <>
-                    <button type="button" onClick={() => scrollByDir(-1)} className="emoji-nav-btn left-2" aria-label="Scroll left">
+                    <button type="button" onClick={() => scrollByDir(-1)} className="emoji-nav-btn left-2" style={navButtonStyle} aria-label="Scroll left">
                         <i className="fa-solid fa-chevron-left"></i>
                     </button>
-                    <button type="button" onClick={() => scrollByDir(1)} className="emoji-nav-btn right-2" aria-label="Scroll right">
+                    <button type="button" onClick={() => scrollByDir(1)} className="emoji-nav-btn right-2" style={navButtonStyle} aria-label="Scroll right">
                         <i className="fa-solid fa-chevron-right"></i>
                     </button>
                 </>
@@ -748,11 +753,18 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
                     const status = getStatus(item);
                     const isSelected = value === item.emoji;
                     const isLockedSelected = isSelected && status.locked;
-                    const glowClass = item.id === 'guitar_glow' ? 'drop-shadow-[0_0_18px_rgba(0,196,217,0.9)]' : '';
+                    const glowStyle = item.id === 'guitar_glow'
+                        ? { filter: `drop-shadow(0 0 18px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.9)})` }
+                        : undefined;
                     const delta = Math.abs(idx - activeIndex);
                     const dist = Math.min(delta, looped.length - delta);
                     const scale = dist === 0 ? 1.18 : dist === 1 ? 1.08 : 1;
                     const opacity = dist <= 2 ? 1 : 0.7;
+                    const unlockedSelectedTileStyle = isSelected && !isLockedSelected ? {
+                        borderColor: normalizedBrandTheme.primaryColor,
+                        backgroundColor: 'rgb(39 39 42 / 0.96)',
+                        boxShadow: `0 0 28px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.5)}, 0 0 0 4px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.32)}`,
+                    } : null;
                     return (
                         <button
                             key={`${item.id}-${idx}`}
@@ -766,15 +778,36 @@ const AvatarCoverflow = ({ items, value, onSelect, getStatus, loop = true, edgeP
                                 isSelected
                                     ? (isLockedSelected
                                         ? 'border-zinc-500 bg-zinc-800/70 shadow-[0_0_20px_rgba(113,113,122,0.45)] ring-4 ring-zinc-500/40'
-                                        : 'border-[#00C4D9] bg-zinc-800 shadow-[0_0_28px_rgba(0,196,217,0.6)] ring-4 ring-[#00C4D9]/45')
+                                        : 'bg-zinc-800')
                                     : 'border-zinc-700 bg-zinc-900/60'
                             } transition-all duration-300 ease-out`}
-                            style={{ width: itemWidth, height: itemWidth, transform: `translateZ(0) scale(${scale})`, opacity, willChange: 'transform', backfaceVisibility: 'hidden' }}
+                            style={{
+                                width: itemWidth,
+                                height: itemWidth,
+                                transform: `translateZ(0) scale(${scale})`,
+                                opacity,
+                                willChange: 'transform',
+                                backfaceVisibility: 'hidden',
+                                ...unlockedSelectedTileStyle,
+                            }}
                         >
                             {isSelected && !isLockedSelected ? (
-                                <span className="absolute -inset-2 rounded-[28px] bg-[#00C4D9]/20 blur-lg -z-10"></span>
+                                <span
+                                    className="absolute -inset-2 rounded-[28px] blur-lg -z-10"
+                                    style={{ backgroundColor: withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.22) }}
+                                ></span>
                             ) : null}
-                            <div className={`font-emoji ${glowClass} ${status.locked ? 'opacity-40' : 'opacity-100'} select-none`} style={{ fontSize: Math.round(itemWidth * 0.55), transform: 'translateZ(0)', backfaceVisibility: 'hidden' }}>{item.emoji}</div>
+                            <div
+                                className={`font-emoji ${status.locked ? 'opacity-40' : 'opacity-100'} select-none`}
+                                style={{
+                                    fontSize: Math.round(itemWidth * 0.55),
+                                    transform: 'translateZ(0)',
+                                    backfaceVisibility: 'hidden',
+                                    ...glowStyle,
+                                }}
+                            >
+                                {item.emoji}
+                            </div>
                             {status.locked && (
                                 <div className="absolute inset-0 bg-black/60 rounded-3xl flex items-center justify-center text-xs text-zinc-300 font-bold">
                                     LOCKED
@@ -6924,7 +6957,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
                 <div className="w-screen -mx-6 px-0 relative">
-                    <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" />
+                    <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
                 </div>
                 <div
                     className="w-full max-w-sm mt-1 rounded-3xl border p-2.5 text-center shadow-[0_14px_40px_rgba(0,0,0,0.4)]"
@@ -8392,21 +8425,50 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
                             <div className="logo-rays join-rays profile-rays" style={{ '--ray-inner': '130px', left: '50%', top: '50%' }}></div>
                         </div>
-                        <div className="party-lights"></div>
-                        <div className="party-lights alt"></div>
-                        <div className="party-lights third"></div>
-                        <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji || user.avatar} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} />
+                        <div className="party-lights z-[1]">
+                            {Array.from({ length: 10 }).map((_, idx) => (
+                                <span key={`profile-a-${idx}`} className={`spotlight s${idx + 1}`} />
+                            ))}
+                        </div>
+                        <div className="party-lights alt z-[1]">
+                            {Array.from({ length: 10 }).map((_, idx) => (
+                                <span key={`profile-b-${idx}`} className={`spotlight s${idx + 1}`} />
+                            ))}
+                        </div>
+                        <div className="party-lights third z-[1]">
+                            {Array.from({ length: 10 }).map((_, idx) => (
+                                <span key={`profile-c-${idx}`} className={`spotlight s${idx + 1}`} />
+                            ))}
+                        </div>
+                        <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji || user.avatar} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} />
                     </div>
-                    <div className="rounded-3xl p-5 text-center bg-gradient-to-br from-[#1e1c2f] via-[#151827] to-[#101421] border border-fuchsia-300/20 shadow-[0_12px_35px_rgba(0,0,0,0.45)]">
-                        <div className="text-6xl mb-2 drop-shadow-[0_0_18px_rgba(236,72,153,0.5)]">{form.emoji || user.avatar}</div>
-                        <div className="text-3xl font-black text-[#00C4D9] drop-shadow">{selectedAvatar?.label}</div>
+                    <div
+                        className="rounded-3xl p-5 text-center shadow-[0_12px_35px_rgba(0,0,0,0.45)]"
+                        style={{
+                            background: `linear-gradient(145deg, ${withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.16)} 0%, rgba(21,24,39,0.96) 42%, ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.12)} 100%)`,
+                            border: `1px solid ${withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.24)}`,
+                        }}
+                    >
+                        <div
+                            className="text-6xl mb-2"
+                            style={{ filter: `drop-shadow(0 0 18px ${withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.5)})` }}
+                        >
+                            {form.emoji || user.avatar}
+                        </div>
+                        <div className="text-3xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                         {selectedAvatarStatus?.locked ? (
                             <div className="text-lg font-bold text-zinc-200 mt-2">Unlock: {selectedAvatarUnlock}</div>
                         ) : (
                             <div className="text-lg font-bold text-zinc-200 mt-2">{selectedAvatar?.flavor}</div>
                         )}
                     </div>
-                    <div className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-center">
+                    <div
+                        className="rounded-2xl px-4 py-3 text-center"
+                        style={{
+                            border: `1px solid ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.3)}`,
+                            backgroundColor: withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.1),
+                        }}
+                    >
                         <div className="text-sm text-zinc-200">
                             Points: <span className="text-white font-black">{Math.max(0, getEffectivePoints())}</span>
                         </div>

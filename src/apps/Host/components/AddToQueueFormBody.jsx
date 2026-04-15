@@ -155,8 +155,8 @@ const AddToQueueFormBody = ({
                                                         {r.source === 'itunes' ? 'Apple lookup' : r.source === 'youtube' ? 'Karaoke backing' : 'Local library'}
                                                     </span>
                                                     {r.source === 'youtube' ? (
-                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${r.playable === false ? 'border-rose-300/40 bg-rose-500/10 text-rose-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                                            {r.playable === false ? 'Needs review' : 'Stage ready'}
+                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${r.playable === false || r.backingAudioOnly ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
+                                                            {r.playable === false || r.backingAudioOnly ? 'External window' : 'Embeds on TV'}
                                                         </span>
                                                     ) : null}
                                                 </div>

@@ -18,6 +18,64 @@ export const normalizeAudienceBrandColor = (value = '', fallback = DEFAULT_PRIMA
     return match ? `#${match[1].toUpperCase()}` : safeFallback;
 };
 
+const AUDIENCE_BRAND_THEME_PRESET_DEFS = Object.freeze([
+    {
+        id: 'beaurocks',
+        label: 'BeauRocks Default',
+        description: 'Original BeauRocks karaoke neon.',
+        primaryColor: DEFAULT_PRIMARY_COLOR,
+        secondaryColor: DEFAULT_SECONDARY_COLOR,
+        accentColor: DEFAULT_ACCENT_COLOR,
+    },
+    {
+        id: 'festival_sunburst',
+        label: 'Festival Sunburst',
+        description: 'Warm headliner marquee colors.',
+        primaryColor: '#E05A44',
+        secondaryColor: '#F4C94A',
+        accentColor: '#8F2D2A',
+    },
+    {
+        id: 'evergreen_stage',
+        label: 'Evergreen Stage',
+        description: 'Fresh outdoor festival greens.',
+        primaryColor: '#0EA5A4',
+        secondaryColor: '#A3E635',
+        accentColor: '#FACC15',
+    },
+    {
+        id: 'sunset_lights',
+        label: 'Sunset Lights',
+        description: 'Golden-hour oranges with a pink punch.',
+        primaryColor: '#F97316',
+        secondaryColor: '#FB7185',
+        accentColor: '#FDBA74',
+    },
+    {
+        id: 'night_market',
+        label: 'Night Market',
+        description: 'Electric blue and magenta after-dark mix.',
+        primaryColor: '#38BDF8',
+        secondaryColor: '#FB7185',
+        accentColor: '#A78BFA',
+    },
+]);
+
+export const AUDIENCE_BRAND_THEME_PRESETS = Object.freeze(
+    AUDIENCE_BRAND_THEME_PRESET_DEFS.map((preset) => Object.freeze({
+        id: String(preset.id || '').trim().toLowerCase(),
+        label: String(preset.label || '').trim() || 'Theme',
+        description: String(preset.description || '').trim(),
+        primaryColor: normalizeAudienceBrandColor(preset.primaryColor, DEFAULT_PRIMARY_COLOR),
+        secondaryColor: normalizeAudienceBrandColor(preset.secondaryColor, DEFAULT_SECONDARY_COLOR),
+        accentColor: normalizeAudienceBrandColor(preset.accentColor, DEFAULT_ACCENT_COLOR),
+    }))
+);
+
+const AUDIENCE_BRAND_THEME_PRESET_MAP = new Map(
+    AUDIENCE_BRAND_THEME_PRESETS.map((preset) => [preset.id, preset])
+);
+
 export const normalizeAudienceBrandTheme = (value = null) => {
     const source = value && typeof value === 'object' ? value : {};
     return {
@@ -26,6 +84,30 @@ export const normalizeAudienceBrandTheme = (value = null) => {
         secondaryColor: normalizeAudienceBrandColor(source.secondaryColor, DEFAULT_SECONDARY_COLOR),
         accentColor: normalizeAudienceBrandColor(source.accentColor, DEFAULT_ACCENT_COLOR),
     };
+};
+
+export const getAudienceBrandThemePreset = (presetId = 'beaurocks', overrides = null) => {
+    const safePresetId = String(presetId || '').trim().toLowerCase();
+    const preset = AUDIENCE_BRAND_THEME_PRESET_MAP.get(safePresetId)
+        || AUDIENCE_BRAND_THEME_PRESET_MAP.get('beaurocks')
+        || AUDIENCE_BRAND_THEME_PRESETS[0]
+        || DEFAULT_AUDIENCE_BRAND_THEME;
+    const source = overrides && typeof overrides === 'object' ? overrides : {};
+    return normalizeAudienceBrandTheme({
+        appTitle: source.appTitle,
+        primaryColor: preset.primaryColor,
+        secondaryColor: preset.secondaryColor,
+        accentColor: preset.accentColor,
+    });
+};
+
+export const matchAudienceBrandThemePreset = (value = null) => {
+    const theme = normalizeAudienceBrandTheme(value);
+    return AUDIENCE_BRAND_THEME_PRESETS.find((preset) => (
+        preset.primaryColor === theme.primaryColor
+        && preset.secondaryColor === theme.secondaryColor
+        && preset.accentColor === theme.accentColor
+    )) || null;
 };
 
 const hexToRgb = (value = '') => {

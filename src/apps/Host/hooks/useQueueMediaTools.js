@@ -72,7 +72,7 @@ const useQueueMediaTools = ({
 
     const fetchEmbedStatuses = useCallback(async (videoIds = []) => {
         const ids = videoIds.filter(Boolean);
-        if (!ids.length) return;
+        if (!ids.length) return {};
         try {
             const data = await callFunction('youtubeStatus', {
                 ids,
@@ -86,12 +86,28 @@ const useQueueMediaTools = ({
             setEmbedCache(prev => {
                 const next = { ...prev };
                 ids.forEach(id => {
-                    if (statusMap.has(id)) next[id] = statusMap.get(id);
+                    if (statusMap.has(id)) {
+                        next[id] = statusMap.get(id);
+                    } else if (next[id] === 'testing') {
+                        delete next[id];
+                    }
                 });
                 return next;
             });
+            return ids.reduce((acc, id) => {
+                if (statusMap.has(id)) acc[id] = statusMap.get(id);
+                return acc;
+            }, {});
         } catch (e) {
             console.error('Embed status fetch failed', e);
+            setEmbedCache(prev => {
+                const next = { ...prev };
+                ids.forEach(id => {
+                    if (next[id] === 'testing') delete next[id];
+                });
+                return next;
+            });
+            return null;
         }
     }, [roomCode, setEmbedCache]);
 
@@ -139,7 +155,7 @@ const useQueueMediaTools = ({
                 thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
                 url: `https://www.youtube.com/watch?v=${item.id}`,
                 playable: item.playable !== false,
-                sourceDetail: 'Verified YouTube playable track.'
+                sourceDetail: 'YouTube karaoke search result.'
             }));
             setYtResults(results);
             if (!results.length) {
@@ -217,7 +233,8 @@ const useQueueMediaTools = ({
         parseYouTubeId,
         resolveDurationForUrl,
         searchYouTube,
-        openYtSearch
+        openYtSearch,
+        fetchEmbedStatuses
     };
 };
 

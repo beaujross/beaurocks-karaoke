@@ -36,6 +36,7 @@ const QueueSongCard = ({
     const queueUsesAppleBacking = queueBacking.usesAppleBacking;
     const queueIsYouTube = queueBacking.isYouTube;
     const queuePlaybackReady = isQueueEntryPlayable(song);
+    const queueUsesExternalWindow = !!song?.backingAudioOnly && !!queueMediaUrl;
     const songStatus = String(song?.status || '').trim().toLowerCase();
     const isAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(song?.resolutionStatus);
     const backingDecisionBusy = String(backingDecisionBusyKey || '').startsWith(`${song.id}:`);
@@ -85,6 +86,7 @@ const QueueSongCard = ({
         lyricsChipTone = ' border-sky-300/40 text-sky-100 bg-sky-500/10';
     }
     const showSupportText = isAssignedToRunOfShow
+        || queueUsesExternalWindow
         || isAudienceSelectedUnverified
         || ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus);
 
@@ -124,7 +126,7 @@ const QueueSongCard = ({
                                 <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple</span>
                             ) : queueMediaUrl ? (
                                 <span className={statusPill}>
-                                    <i className={`fa-solid ${queueIsYouTube ? 'fa-video' : 'fa-file-audio'} mr-1`}></i>
+                                    <i className={`fa-solid ${queueUsesExternalWindow ? 'fa-up-right-from-square' : (queueIsYouTube ? 'fa-video' : 'fa-file-audio')} mr-1`}></i>
                                     {queueIsYouTube ? 'YouTube' : 'Custom'}
                                 </span>
                             ) : (
@@ -133,6 +135,12 @@ const QueueSongCard = ({
                                     {queuePlaybackReady ? 'No Track' : 'Backing'}
                                 </span>
                             )}
+                            {queueUsesExternalWindow ? (
+                                <span className={`${statusPill} border-orange-300/40 text-orange-100 bg-orange-500/10`}>
+                                    <i className="fa-solid fa-window-restore mr-1"></i>
+                                    Popup
+                                </span>
+                            ) : null}
                             <span className={`${statusPill}${lyricsChipTone}`} title={lyricsResolution || 'lyrics status'}>
                                 <i className={`fa-solid ${
                                     hasTimedLyrics
@@ -158,6 +166,8 @@ const QueueSongCard = ({
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 {isAssignedToRunOfShow
                                     ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
+                                    : queueUsesExternalWindow
+                                        ? 'This backing opens in a separate window instead of the TV embed.'
                                     : isAudienceSelectedUnverified
                                         ? 'Guest-picked backing. Keep it or send it back to review.'
                                         : lyricsSupportText}

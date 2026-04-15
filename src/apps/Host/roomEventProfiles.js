@@ -8,7 +8,7 @@ import {
     resequenceRunOfShowItems,
 } from '../../lib/runOfShowDirector';
 import { REQUEST_MODES } from '../../lib/requestModes';
-import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
+import { getAudienceBrandThemePreset } from '../../lib/audienceBrandTheme';
 import { applyEventCreditsPreset } from './hostLaunchHelpers';
 
 export const AAHF_KICKOFF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
@@ -192,11 +192,8 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             logoUrl: AAHF_KICKOFF_LOGO_URL,
             lobbyOrbSkinUrl: AAHF_KICKOFF_LOGO_URL,
             audienceShellVariant: 'streamlined',
-            audienceBrandTheme: normalizeAudienceBrandTheme({
+            audienceBrandTheme: getAudienceBrandThemePreset('festival_sunburst', {
                 appTitle: 'AAHF Festival',
-                primaryColor: '#E05A44',
-                secondaryColor: '#F4C94A',
-                accentColor: '#8F2D2A',
             }),
             autoDj: false,
             autoBgMusic: false,

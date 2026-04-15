@@ -54,11 +54,16 @@ const StageNowPlayingPanel = ({
     const currentBackingDecisionBusy = currentAudienceSelectedUnverified && String(backingDecisionBusyKey || '').startsWith(`${current?.id}:`);
     const transportButtonClass = 'min-h-[72px] rounded-2xl border border-white/10 bg-black/35 px-3 py-3 text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-45';
     const feedbackChipClass = 'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-45';
-    const applauseWarmupSec = Math.max(0, Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? 5) || 5)));
-    const applauseCountdownSec = Math.max(1, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? 5) || 5)));
-    const applauseMeasureSec = Math.max(2, Math.min(10, Math.round(Number(room?.applauseMeasureSec ?? 5) || 5)));
-    const recapBreakdownMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)));
-    const recapLeaderboardMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)));
+    const normalizeTimingValue = (value, { fallback, min, max }) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return fallback;
+        return Math.max(min, Math.min(max, Math.round(numeric)));
+    };
+    const applauseWarmupSec = normalizeTimingValue(room?.applauseWarmupSec, { fallback: 5, min: 0, max: 8 });
+    const applauseCountdownSec = normalizeTimingValue(room?.applauseCountdownSec, { fallback: 5, min: 1, max: 8 });
+    const applauseMeasureSec = normalizeTimingValue(room?.applauseMeasureSec, { fallback: 5, min: 2, max: 10 });
+    const recapBreakdownMs = normalizeTimingValue(room?.performanceRecapBreakdownMs, { fallback: 7000, min: 3000, max: 12000 });
+    const recapLeaderboardMs = normalizeTimingValue(room?.performanceRecapLeaderboardMs, { fallback: 7000, min: 3000, max: 12000 });
 
     const postPerformanceTimingCard = (
         <div className="mt-3 bg-black/30 border border-white/10 rounded-lg p-3">
@@ -239,7 +244,7 @@ const StageNowPlayingPanel = ({
             <div className="relative">
                 {current.backingAudioOnly && (
                     <div className="text-[12px] text-orange-400 font-bold mb-2 bg-orange-900/30 p-1 rounded border border-orange-500/30 flex items-center justify-center gap-1">
-                        <i className="fa-solid fa-window-restore"></i> BACKING AUDIO (Opens in popup)
+                        <i className="fa-solid fa-window-restore"></i> EXTERNAL BACKING WINDOW
                     </div>
                 )}
                 <div className="flex items-start gap-3 mb-3">

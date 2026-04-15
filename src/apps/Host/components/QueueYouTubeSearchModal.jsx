@@ -1,5 +1,58 @@
 import React from 'react';
 
+const getEmbedStatusMeta = (status) => {
+    if (status === 'ok') {
+        return {
+            tone: 'border-emerald-500/50',
+            chipClass: 'text-sm text-emerald-300 font-bold',
+            chipIcon: 'fa-tv',
+            chipLabel: 'Embeds on TV',
+            helper: 'Uses the in-room player and keeps the main screen in sync.',
+            actionClass: 'bg-cyan-600 text-white hover:bg-cyan-500',
+            actionLabel: 'USE',
+            recheckClass: 'bg-emerald-900/40 text-emerald-200 hover:bg-emerald-800/50',
+            recheckLabel: 'Recheck'
+        };
+    }
+    if (status === 'fail') {
+        return {
+            tone: 'border-orange-400/50',
+            chipClass: 'text-sm text-orange-300 font-bold',
+            chipIcon: 'fa-up-right-from-square',
+            chipLabel: 'Opens externally',
+            helper: 'Host launches this backing in a separate window instead of the TV embed.',
+            actionClass: 'bg-orange-900/50 text-orange-200 hover:bg-orange-800/50',
+            actionLabel: 'USE EXTERNAL',
+            recheckClass: 'bg-orange-950/50 text-orange-200 hover:bg-orange-900/50',
+            recheckLabel: 'Recheck'
+        };
+    }
+    if (status === 'testing') {
+        return {
+            tone: 'border-yellow-500/50',
+            chipClass: 'text-sm text-yellow-300 font-bold animate-pulse',
+            chipIcon: 'fa-rotate',
+            chipLabel: 'Checking playback...',
+            helper: 'Confirming whether this result can embed on the TV screen.',
+            actionClass: 'bg-zinc-700 text-zinc-300',
+            actionLabel: 'CHECKING',
+            recheckClass: 'bg-zinc-700 text-zinc-400',
+            recheckLabel: 'Checking'
+        };
+    }
+    return {
+        tone: 'border-cyan-400/35 hover:border-cyan-300/50',
+        chipClass: 'text-sm text-cyan-200 font-bold',
+        chipIcon: 'fa-circle-question',
+        chipLabel: 'Status pending',
+        helper: 'We check whether the track embeds on TV or needs an external backing window.',
+        actionClass: 'bg-cyan-600 text-white hover:bg-cyan-500',
+        actionLabel: 'USE',
+        recheckClass: 'bg-cyan-950/50 text-cyan-200 hover:bg-cyan-900/50',
+        recheckLabel: 'Check'
+    };
+};
+
 const QueueYouTubeSearchModal = ({
     open,
     styles,
@@ -66,38 +119,39 @@ const QueueYouTubeSearchModal = ({
                         <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
                             {ytResults.map(video => {
                                 const embedStatus = embedCache[video.id];
-                                const isOk = embedStatus === 'ok';
-                                const isFail = embedStatus === 'fail';
                                 const isTesting = embedStatus === 'testing';
+                                const statusMeta = getEmbedStatusMeta(embedStatus);
 
                                 return (
-                                    <div key={video.id} className={`bg-zinc-800/50 hover:bg-zinc-700 p-3 rounded-lg border transition-all flex gap-3 items-start ${isFail ? 'border-red-500/50 opacity-60' : isOk ? 'border-green-500/50' : 'border-white/10 hover:border-cyan-400'}`}>
+                                    <div key={video.id} className={`bg-zinc-800/50 hover:bg-zinc-700 p-3 rounded-lg border transition-all flex gap-3 items-start ${statusMeta.tone}`}>
                                         <img src={video.thumbnail} className="w-24 h-16 rounded object-cover flex-shrink-0" />
                                         <div className="flex-1 min-w-0">
                                             <div className="font-bold text-white truncate">{video.title}</div>
                                             <div className="text-sm text-zinc-400 truncate">{video.channel}</div>
 
-                                            <div className="flex gap-2 mt-2 items-center">
-                                                {isTesting && <span className="text-sm text-yellow-400 animate-pulse">{emoji.refresh} Testing...</span>}
-                                                {isOk && <span className="text-sm text-green-400 font-bold">{emoji.check} Embeddable</span>}
-                                                {isFail && <span className="text-sm text-red-400 font-bold">{emoji.cross} Can't Embed</span>}
-
-                                                {!isFail && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); testEmbedVideo(video); }}
-                                                        disabled={isTesting}
-                                                        className={`text-sm px-2 py-0.5 rounded ${isTesting ? 'bg-zinc-600 text-zinc-400' : isOk ? 'bg-green-900/50 text-green-300' : 'bg-yellow-900/50 text-yellow-300 hover:bg-yellow-800/50'}`}
-                                                    >
-                                                        {emoji.test} {isOk ? 'Verified' : 'Test'}
-                                                    </button>
-                                                )}
-
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className={statusMeta.chipClass}>
+                                                    <i className={`fa-solid ${statusMeta.chipIcon} mr-1`}></i>
+                                                    {statusMeta.chipLabel}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); testEmbedVideo(video); }}
+                                                    disabled={isTesting}
+                                                    className={`text-sm px-2 py-0.5 rounded ${statusMeta.recheckClass}`}
+                                                >
+                                                    {isTesting ? emoji.refresh : emoji.test} {statusMeta.recheckLabel}
+                                                </button>
                                                 <button
                                                     onClick={() => selectYouTubeVideo(video)}
-                                                    className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${isFail ? 'bg-orange-900/50 text-orange-300 hover:bg-orange-800/50' : 'bg-cyan-600 text-white hover:bg-cyan-500'}`}
+                                                    disabled={isTesting}
+                                                    className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${statusMeta.actionClass} ${isTesting ? 'cursor-wait opacity-70' : ''}`}
                                                 >
-                                                    {isFail ? <>{emoji.radio} USE</> : <>USE</>}
+                                                    {embedStatus === 'fail' ? <i className="fa-solid fa-up-right-from-square"></i> : null}
+                                                    {statusMeta.actionLabel}
                                                 </button>
+                                            </div>
+                                            <div className="mt-1 text-[11px] text-zinc-400">
+                                                {statusMeta.helper}
                                             </div>
                                         </div>
                                     </div>
@@ -105,6 +159,12 @@ const QueueYouTubeSearchModal = ({
                             })}
                         </div>
                     )}
+                </div>
+
+                <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-400">
+                    <span className="text-emerald-300 font-semibold">Embeds on TV</span> keeps playback in the in-room player.
+                    {' '}
+                    <span className="text-orange-300 font-semibold">Opens externally</span> uses a separate host-controlled window, but the queue item and performance flow still stay in the app.
                 </div>
 
                 {ytSearchQ && ytResults.length === 0 && !ytLoading && (

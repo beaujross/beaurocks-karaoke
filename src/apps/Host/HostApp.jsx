@@ -46,7 +46,7 @@ import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
     addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
-    storage, storageRef, uploadBytesResumable, getDownloadURL, deleteObject,
+    storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject,
     auth,
     initAuth,
     trackEvent,
@@ -107,7 +107,12 @@ import {
     deriveUnknownBackingPolicy,
     normalizeRoomRequestMode
 } from '../../lib/requestModes';
-import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
+import {
+    AUDIENCE_BRAND_THEME_PRESETS,
+    getAudienceBrandThemePreset,
+    matchAudienceBrandThemePreset,
+    normalizeAudienceBrandTheme,
+} from '../../lib/audienceBrandTheme';
 import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
@@ -605,6 +610,144 @@ const detectTabletTouchViewport = () => {
     const appleTablet = /iPad/i.test(ua) || (platform === 'MacIntel' && touchPoints > 1);
     if (appleTablet && width >= 744 && width <= 1366) return true;
     return coarsePointer && width >= 768 && width <= 1180;
+};
+
+const createStageStartError = (code = 'stage_start_failed', message = 'Could not start this performance.') => {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+};
+
+const startQueueSongOnStage = async ({
+    songId = '',
+    songs = [],
+    room = {},
+    roomCode = '',
+    allowCurrentId = null,
+    resolveDurationForUrl,
+    isAudioUrl,
+    holdAutoBgDuringStageActivation,
+    playAppleMusicTrack,
+    stopAppleMusic,
+    updateRoom,
+    logActivity,
+    performanceMetaExtras = {},
+    extraRoomUpdates = {}
+} = {}) => {
+    const safeSongId = String(songId || '').trim();
+    if (!safeSongId) {
+        throw createStageStartError('queue_item_missing', 'Queued item not found');
+    }
+    const queueSongs = Array.isArray(songs) ? songs : [];
+    const safeAllowedCurrentId = String(allowCurrentId || '').trim();
+    const currentSong = queueSongs.find((entry) => entry?.status === 'performing');
+    if (currentSong && currentSong.id !== safeSongId && currentSong.id !== safeAllowedCurrentId) {
+        throw createStageStartError('stage_blocked_existing_performer', 'Another singer is already on stage');
+    }
+
+    holdAutoBgDuringStageActivation?.();
+
+    let queueSong = queueSongs.find((entry) => entry?.id === safeSongId) || null;
+    if (!queueSong) {
+        try {
+            const songSnap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId));
+            if (songSnap.exists()) {
+                queueSong = { id: safeSongId, ...songSnap.data() };
+            }
+        } catch (error) {
+            throw createStageStartError('queue_item_lookup_failed', error?.message || 'Failed to load queue item for stage start');
+        }
+    }
+    if (!queueSong) {
+        throw createStageStartError('queue_item_missing', 'Queued item not found');
+    }
+
+    const roomSnapshot = room && typeof room === 'object' ? room : {};
+    const stageMediaUrl = resolveStageMediaUrl(queueSong, roomSnapshot);
+    const effectiveBacking = normalizeBackingChoice({
+        mediaUrl: stageMediaUrl,
+        appleMusicId: queueSong?.appleMusicId
+    });
+    const songMediaUrl = effectiveBacking.mediaUrl;
+    const useAppleBacking = effectiveBacking.usesAppleBacking;
+    const performanceStartedAtMs = nowMs();
+    const measuredDuration = useAppleBacking
+        ? Math.max(0, Number(queueSong?.duration || roomSnapshot?.appleMusicPlayback?.durationSec || 0))
+        : await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
+    const performanceDurationSec = Math.max(30, Math.round(Number(measuredDuration || queueSong?.duration || 180) || 180));
+
+    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
+        status: 'performing',
+        performingStartedAt: serverTimestamp(),
+        performanceStartedDurationSec: performanceDurationSec,
+        duration: performanceDurationSec
+    });
+
+    const stageDisplayFlags = {
+        showLyricsTv: !!roomSnapshot?.showLyricsTv,
+        showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
+        showLyricsSinger: !!roomSnapshot?.showLyricsSinger
+    };
+    const autoStartMedia = !!(roomSnapshot?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
+
+    if (useAppleBacking && autoStartMedia) {
+        await playAppleMusicTrack(queueSong.appleMusicId, {
+            title: queueSong.songTitle,
+            artist: queueSong.artist,
+            duration: performanceDurationSec
+        });
+        await updateRoom({
+            activeMode: 'karaoke',
+            'announcement.active': false,
+            mediaUrl: '',
+            singAlongMode: false,
+            videoPlaying: false,
+            videoStartTimestamp: null,
+            currentPerformanceMeta: {
+                songId: safeSongId,
+                startedAtMs: performanceStartedAtMs,
+                durationSec: performanceDurationSec,
+                source: 'apple_music',
+                appleMusicId: queueSong.appleMusicId || '',
+                ...performanceMetaExtras
+            },
+            videoVolume: 100,
+            ...stageDisplayFlags,
+            ...extraRoomUpdates
+        });
+    } else {
+        await stopAppleMusic?.();
+        await updateRoom({
+            activeMode: 'karaoke',
+            'announcement.active': false,
+            mediaUrl: songMediaUrl,
+            singAlongMode: false,
+            videoPlaying: autoStartMedia && !!songMediaUrl,
+            videoStartTimestamp: autoStartMedia ? performanceStartedAtMs : null,
+            currentPerformanceMeta: {
+                songId: safeSongId,
+                startedAtMs: performanceStartedAtMs,
+                durationSec: performanceDurationSec,
+                source: songMediaUrl ? 'backing_media' : 'none',
+                mediaUrl: songMediaUrl || '',
+                ...performanceMetaExtras
+            },
+            videoVolume: 100,
+            ...stageDisplayFlags,
+            ...extraRoomUpdates,
+            appleMusicPlayback: null
+        });
+    }
+
+    logActivity?.(roomCode, queueSong.singerName, 'took the stage!', EMOJI.mic);
+    return {
+        song: queueSong,
+        performanceDurationSec,
+        performanceStartedAtMs,
+        useAppleBacking,
+        autoStartMedia,
+        songMediaUrl
+    };
 };
 
 // Background tracks and sounds imported from gameDataConstants.js
@@ -3858,12 +4001,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             ));
         }
     });
-    const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
+    const isAudioUrl = useCallback((url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || ''), []);
     const {
         parseYouTubeId,
         resolveDurationForUrl,
         searchYouTube,
-        openYtSearch
+        openYtSearch,
+        fetchEmbedStatuses
     } = useQueueMediaTools({
         roomCode,
         ytIndex,
@@ -4473,39 +4617,26 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
           setYtSearchOpen(false);
           setYtSearchQ('');
           setYtResults([]);
-          toast(isFailed ? `${EMOJI.radio} Will open as backing audio` : `${EMOJI.check} Video selected!`);
+          toast(isFailed ? `${EMOJI.radio} Opens in external backing window` : `${EMOJI.check} Embeds on TV`);
       };
 
-    const testEmbedVideo = (video) => {
-        if (embedCache[video.id]) return; // Already tested
-        
+    const testEmbedVideo = async (video) => {
+        if (!video?.id) return;
         setTestingVideoId(video.id);
         setEmbedCache(prev => ({ ...prev, [video.id]: 'testing' }));
-        
-        // Try to load iframe
-        // Use onload/onerror to detect embeddability
-        const img = new Image();
-        img.onload = () => {
-            setEmbedCache(prev => ({ ...prev, [video.id]: 'ok' }));
-            setTestingVideoId(null);
-            toast(`${EMOJI.check} Video can be embedded!`);
-        };
-        img.onerror = () => {
-            setEmbedCache(prev => ({ ...prev, [video.id]: 'fail' }));
-            setTestingVideoId(null);
-            toast(`${EMOJI.cross} Video cannot be embedded - try another`);
-        };
-        // Set a timeout for the test
-        setTimeout(() => {
-            if (embedCache[video.id] === 'testing') {
-                setEmbedCache(prev => ({ ...prev, [video.id]: 'ok' }));
-                setTestingVideoId(null);
-                toast(`${EMOJI.check} Video should work!`);
+        try {
+            const statuses = await fetchEmbedStatuses([video.id]);
+            const status = statuses?.[video.id] || '';
+            if (status === 'ok') {
+                toast(`${EMOJI.check} Embeds on the TV player`);
+            } else if (status === 'fail') {
+                toast(`${EMOJI.radio} Opens in an external backing window`);
+            } else {
+                toast(`${EMOJI.cross} Could not confirm embed status`);
             }
-        }, 2000);
-        
-        // Attempt to load a pixel from the iframe (hacky but works)
-        img.src = `https://www.youtube.com/embed/${video.id}?start=0`;
+        } finally {
+            setTestingVideoId(null);
+        }
     };
 
     const _queueBrowseSong = async (song, singerOverride) => {
@@ -4628,97 +4759,34 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     async function updateStatus(id, status, options = {}) { 
         if(status==='performing') { 
             pushAutoDjEvent(AUTO_DJ_EVENTS.START, { songId: id });
-            const current = songs.find(x => x.status === 'performing');
-            const allowedCurrentId = options?.allowCurrentId || null;
-            if (current && current.id !== id && current.id !== allowedCurrentId) {
-                toast('Another singer is already on stage');
-                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: 'stage_blocked_existing_performer' });
-                return;
-            }
-            holdAutoBgDuringStageActivation();
-            let s = songs.find(x => x.id === id);
-            if (!s) {
-                try {
-                    const songSnap = await getDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id));
-                    if (songSnap.exists()) {
-                        s = { id, ...songSnap.data() };
-                    }
-                } catch (error) {
-                    hostLogger.warn('Failed to load queue item for stage start', error);
+            try {
+                await startQueueSongOnStage({
+                    songId: id,
+                    songs,
+                    room,
+                    roomCode,
+                    allowCurrentId: options?.allowCurrentId || null,
+                    resolveDurationForUrl,
+                    isAudioUrl,
+                    holdAutoBgDuringStageActivation,
+                    playAppleMusicTrack,
+                    stopAppleMusic,
+                    updateRoom,
+                    logActivity
+                });
+                pushAutoDjEvent(AUTO_DJ_EVENTS.STAGE_READY, { songId: id });
+            } catch (error) {
+                const errorCode = String(error?.code || '').trim().toLowerCase();
+                if (errorCode === 'stage_blocked_existing_performer') {
+                    toast('Another singer is already on stage');
+                } else if (errorCode === 'queue_item_missing') {
+                    toast('Queued item not found');
+                } else {
+                    hostLogger.warn('Failed to start queue song on stage', error);
+                    toast('Could not start this performance right now.');
                 }
+                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: error?.code || error?.message || 'stage_start_failed' });
             }
-            if (!s) {
-                pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: id, error: 'queue_item_missing' });
-                toast('Queued item not found');
-                return;
-            }
-            const stageMediaUrl = resolveStageMediaUrl(s, room);
-            const effectiveBacking = normalizeBackingChoice({
-                mediaUrl: stageMediaUrl,
-                appleMusicId: s?.appleMusicId
-            });
-            const songMediaUrl = effectiveBacking.mediaUrl;
-            const useAppleBacking = effectiveBacking.usesAppleBacking;
-            const performanceStartedAtMs = nowMs();
-            const measuredDuration = useAppleBacking
-                ? Math.max(0, Number(s?.duration || room?.appleMusicPlayback?.durationSec || 0))
-                : await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
-            const performanceDurationSec = Math.max(30, Math.round(Number(measuredDuration || s?.duration || 180) || 180));
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), {
-                status,
-                performingStartedAt: serverTimestamp(),
-                performanceStartedDurationSec: performanceDurationSec,
-                duration: performanceDurationSec
-            });
-            const roomSnapshot = room || {};
-            const stageDisplayFlags = {
-                showLyricsTv: !!roomSnapshot?.showLyricsTv,
-                showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
-                showLyricsSinger: !!roomSnapshot?.showLyricsSinger
-            };
-            const autoStartMedia = !!(room?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
-            if (useAppleBacking && autoStartMedia) {
-                await playAppleMusicTrack(s.appleMusicId, { title: s.songTitle, artist: s.artist, duration: performanceDurationSec });
-                await updateRoom({
-                    activeMode: 'karaoke',
-                    'announcement.active': false,
-                    mediaUrl: '',
-                    singAlongMode: false,
-                    videoPlaying: false,
-                    videoStartTimestamp: null,
-                    currentPerformanceMeta: {
-                        songId: id,
-                        startedAtMs: performanceStartedAtMs,
-                        durationSec: performanceDurationSec,
-                        source: 'apple_music',
-                        appleMusicId: s.appleMusicId || ''
-                    },
-                    videoVolume: 100,
-                    ...stageDisplayFlags
-                });
-            } else {
-                await stopAppleMusic?.();
-                await updateRoom({
-                    activeMode: 'karaoke',
-                    'announcement.active': false,
-                    mediaUrl: songMediaUrl,
-                    singAlongMode: false,
-                    videoPlaying: autoStartMedia && !!songMediaUrl,
-                    videoStartTimestamp: autoStartMedia ? performanceStartedAtMs : null,
-                    currentPerformanceMeta: {
-                        songId: id,
-                        startedAtMs: performanceStartedAtMs,
-                        durationSec: performanceDurationSec,
-                        source: songMediaUrl ? 'backing_media' : 'none',
-                        mediaUrl: songMediaUrl || ''
-                    },
-                    videoVolume: 100,
-                    ...stageDisplayFlags,
-                    appleMusicPlayback: null
-                });
-            }
-            logActivity(roomCode, s.singerName, `took the stage!`, EMOJI.mic);
-            pushAutoDjEvent(AUTO_DJ_EVENTS.STAGE_READY, { songId: id });
             return;
         }
         await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', id), { status }); 
@@ -5073,6 +5141,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         current?.duration,
         current?.appleMusicId,
         current?.mediaUrl,
+        isAudioUrl,
         room,
         room?.activeMode,
         room?.mediaUrl,
@@ -5927,6 +5996,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const match = String(url || '').match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
         return match ? match[1] : '';
     }, []);
+    const resolveHostDurationForUrl = useCallback(async (url = '', audioOnly = false) => {
+        if (!url) return null;
+        const youtubeId = parseYouTubeId(url);
+        if (youtubeId) {
+            try {
+                const data = await callFunction('youtubeDetails', {
+                    ids: [youtubeId],
+                    roomCode,
+                    usageContext: { source: 'host_stage_duration_lookup' }
+                });
+                return data?.items?.[0]?.durationSec || null;
+            } catch {
+                return null;
+            }
+        }
+        if (typeof document === 'undefined') return null;
+        return new Promise((resolve) => {
+            const media = document.createElement(audioOnly ? 'audio' : 'video');
+            media.preload = 'metadata';
+            media.crossOrigin = 'anonymous';
+            const cleanup = () => {
+                media.removeAttribute('src');
+                media.load();
+            };
+            const timeout = setTimeout(() => {
+                cleanup();
+                resolve(null);
+            }, 4000);
+            media.onloadedmetadata = () => {
+                clearTimeout(timeout);
+                const duration = Number.isFinite(media.duration) ? Math.round(media.duration) : null;
+                cleanup();
+                resolve(duration);
+            };
+            media.onerror = () => {
+                clearTimeout(timeout);
+                cleanup();
+                resolve(null);
+            };
+            media.src = url;
+        });
+    }, [parseYouTubeId, roomCode]);
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -6364,7 +6475,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             proven: provenCount,
         };
     }, [ytIndex]);
-    const isAudioUrl = (url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || '');
+    const isAudioUrl = useCallback((url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || ''), []);
     const roomUploadLibraryItems = useMemo(() => (
         (Array.isArray(localLibrary) ? localLibrary : [])
             .filter((item) => item?._local || item?._cloud)
@@ -6388,7 +6499,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     : 'Uploaded room media backup.'
             }))
             .filter((item) => item.url)
-    ), [localLibrary]);
+    ), [isAudioUrl, localLibrary]);
     const roomLibraryItems = useMemo(() => {
         const merged = mergeUniqueQueueSearchResults(
             roomUploadLibraryItems,
@@ -6681,6 +6792,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [unknownBackingPolicy, setUnknownBackingPolicy] = useState(UNKNOWN_BACKING_POLICIES.requireReview);
     const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
+    const audienceBrandThemePresetMatch = useMemo(
+        () => matchAudienceBrandThemePreset(audienceBrandTheme),
+        [audienceBrandTheme]
+    );
+    const audienceBrandThemePresetId = audienceBrandThemePresetMatch?.id || 'custom';
+    const applyAudienceBrandThemePresetSelection = useCallback((presetId = 'beaurocks') => {
+        const safePresetId = String(presetId || '').trim().toLowerCase();
+        if (!safePresetId || safePresetId === 'custom') return;
+        setAudienceBrandTheme((prev) => getAudienceBrandThemePreset(safePresetId, {
+            appTitle: prev?.appTitle || '',
+        }));
+    }, []);
     const [programMode, setProgramMode] = useState(RUN_OF_SHOW_PROGRAM_MODES.standard);
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
@@ -9546,48 +9669,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
         const next = queued[0];
         if (!next) return;
-        holdAutoBgDuringStageActivation();
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', next.id), {
-            status: 'performing',
-            performingStartedAt: serverTimestamp()
+        await startQueueSongOnStage({
+            songId: next.id,
+            songs: list,
+            room: activeRoom,
+            roomCode,
+            resolveDurationForUrl: resolveHostDurationForUrl,
+            isAudioUrl,
+            holdAutoBgDuringStageActivation,
+            playAppleMusicTrack,
+            stopAppleMusic,
+            updateRoom,
+            logActivity
         });
-        const queuePlayback = resolveQueuePlayback(next, activeRoom?.autoPlayMedia !== false);
-        const nextMediaUrl = queuePlayback.mediaUrl;
-        const useAppleBacking = queuePlayback.usesAppleBacking;
-        const autoStartMedia = queuePlayback.autoStartMedia;
-        const stageDisplayFlags = {
-            showLyricsTv: !!activeRoom?.showLyricsTv,
-            showVisualizerTv: !!activeRoom?.showVisualizerTv,
-            showLyricsSinger: !!activeRoom?.showLyricsSinger
-        };
-        if (useAppleBacking && autoStartMedia) {
-            await playAppleMusicTrack(next.appleMusicId, { title: next.songTitle, artist: next.artist, duration: next.duration });
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: '',
-                singAlongMode: false,
-                videoPlaying: false,
-                videoStartTimestamp: null,
-                videoVolume: 100,
-                ...stageDisplayFlags
-            });
-        } else {
-            await stopAppleMusic();
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: nextMediaUrl,
-                singAlongMode: false,
-                videoPlaying: autoStartMedia && !!nextMediaUrl,
-                videoStartTimestamp: autoStartMedia ? nowMs() : null,
-                videoVolume: 100,
-                ...stageDisplayFlags,
-                appleMusicPlayback: null
-            });
-        }
-        logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
-    }, [appleMusicAuthorized, holdAutoBgDuringStageActivation, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
+    }, [appleMusicAuthorized, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -9691,11 +9786,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const activeMode = String(room?.activeMode || '').trim().toLowerCase();
         if (activeMode && activeMode !== 'karaoke') return;
         const lastPerfTs = getTimestampMs(room?.lastPerformance?.timestamp);
-        if (lastPerfTs && nowMs() - lastPerfTs < 12000) return;
+        const configuredDelaySec = Math.max(2, Math.min(45, Number(room?.autoDjDelaySec || 10) || 10));
+        const configuredDelayMs = configuredDelaySec * 1000;
+        if (lastPerfTs && nowMs() - lastPerfTs < configuredDelayMs) return;
         if (performingCount > 0 || autoDjPlayableQueueCount <= 0) return;
         const next = autoDjNextPlayableQueueSong;
         if (!next?.id) return;
-        const kickoffKey = `${next.id}:${autoDjPlayableQueueCount}`;
+        const kickoffKey = `${next.id}:${autoDjPlayableQueueCount}:${lastPerfTs}:${configuredDelayMs}`;
         if (autoDjKickoffRef.current === kickoffKey) return;
         autoDjKickoffRef.current = kickoffKey;
         const timer = setTimeout(() => {
@@ -9704,7 +9801,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }, 450);
         return () => clearTimeout(timer);
-    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
+    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, room?.autoDjDelaySec, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
     useEffect(() => {
         if (!room?.autoDj) return;
         if (queuedCount > 0 || performingCount > 0) return;
@@ -9925,6 +10022,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const {
         creatingRoom,
         createRoom: provisionRoom,
+        launchRequestedRoomCode,
+        setLaunchRequestedRoomCode,
         quickLaunchDiscovery,
         setQuickLaunchDiscovery,
         eventCreditsConfig,
@@ -11778,18 +11877,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .slice(0, 60);
             const storagePath = `room_branding/${roomCode}/${nowMs()}-${stem}.${ext}`;
             const fileRef = storageRef(storage, storagePath);
-            const task = uploadBytesResumable(fileRef, file, {
+            await uploadBytes(fileRef, file, {
                 contentType: file.type,
                 cacheControl: 'public,max-age=604800'
             });
-            await new Promise((resolve, reject) => {
-                task.on('state_changed', (snap) => {
-                    const progress = snap.totalBytes
-                        ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
-                        : 0;
-                    setLogoUploadProgress(progress);
-                }, reject, resolve);
-            });
+            setLogoUploadProgress(100);
             const url = await getDownloadURL(fileRef);
             setLogoUrl(url);
             await persistLogoLibrary([url, ...logoLibrary]);
@@ -11830,18 +11922,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .slice(0, 60);
             const storagePath = `room_branding/${roomCode}/orb-skins/${nowMs()}-${stem}.${ext}`;
             const fileRef = storageRef(storage, storagePath);
-            const task = uploadBytesResumable(fileRef, file, {
+            await uploadBytes(fileRef, file, {
                 contentType: file.type,
                 cacheControl: 'public,max-age=604800'
             });
-            await new Promise((resolve, reject) => {
-                task.on('state_changed', (snap) => {
-                    const progress = snap.totalBytes
-                        ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100)
-                        : 0;
-                    setOrbSkinUploadProgress(progress);
-                }, reject, resolve);
-            });
+            setOrbSkinUploadProgress(100);
             const url = await getDownloadURL(fileRef);
             setOrbSkinUrl(url);
             await persistOrbSkinLibrary([url, ...orbSkinLibrary]);
@@ -12105,47 +12190,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const activateQueueSong = async (song, roomSnapshot = roomRef.current) => {
         if (!song?.id) return;
-        holdAutoBgDuringStageActivation();
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
-            status: 'performing',
-            performingStartedAt: serverTimestamp()
+        await startQueueSongOnStage({
+            songId: song.id,
+            songs: songsRef.current || songs,
+            room: roomSnapshot || roomRef.current || room,
+            roomCode,
+            resolveDurationForUrl: resolveHostDurationForUrl,
+            isAudioUrl,
+            holdAutoBgDuringStageActivation,
+            playAppleMusicTrack,
+            stopAppleMusic,
+            updateRoom,
+            logActivity
         });
-        const queuePlayback = resolveQueuePlayback(song, roomSnapshot?.autoPlayMedia !== false);
-        const nextMediaUrl = queuePlayback.mediaUrl;
-        const useAppleBacking = queuePlayback.usesAppleBacking;
-        const autoStartMedia = queuePlayback.autoStartMedia;
-        const stageDisplayFlags = {
-            showLyricsTv: !!roomSnapshot?.showLyricsTv,
-            showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
-            showLyricsSinger: !!roomSnapshot?.showLyricsSinger
-        };
-        if (useAppleBacking && autoStartMedia) {
-            await playAppleMusicTrack(song.appleMusicId, { title: song.songTitle, artist: song.artist, duration: song.duration });
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: '',
-                singAlongMode: false,
-                videoPlaying: false,
-                videoStartTimestamp: null,
-                videoVolume: 100,
-                ...stageDisplayFlags
-            });
-        } else {
-            await stopAppleMusic();
-            await updateRoom({
-                activeMode: 'karaoke',
-                'announcement.active': false,
-                mediaUrl: nextMediaUrl,
-                singAlongMode: false,
-                videoPlaying: autoStartMedia && !!nextMediaUrl,
-                videoStartTimestamp: autoStartMedia ? nowMs() : null,
-                videoVolume: 100,
-                ...stageDisplayFlags,
-                appleMusicPlayback: null
-            });
-        }
-        logActivity(roomCode, song.singerName, 'took the stage!', EMOJI.mic);
     };
 
     const loadYouTubePlaylist = async () => {
@@ -12815,6 +12872,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         handleLaunchVenueInputChange,
         handleStartLauncherRoom,
         hasLaunchRoomCode,
+        hasRequestedLaunchRoomCode,
         hasSelectedVenue,
         landingListingDetailsOpen,
         launchAccessPending,
@@ -12825,6 +12883,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         recentRoomSnapshot,
         resolvedLaunchPresetId,
         retryLastHostAction,
+        requestedLaunchRoomCodeCandidate,
         selectLaunchVenueMatch,
         selectedLaunchPreset,
         setDiscoveryListingMode,
@@ -12846,6 +12905,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostLogger,
         joiningRoom,
         joinRoom,
+        launchRequestedRoomCode,
         launchCoHostUids,
         launchRoomName,
         openOnboardingWizard,
@@ -15261,6 +15321,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 openOnboardingWizard={openOnboardingWizard}
                 launchRoomName={launchRoomName}
                 setLaunchRoomName={setLaunchRoomName}
+                launchRequestedRoomCode={launchRequestedRoomCode}
+                setLaunchRequestedRoomCode={setLaunchRequestedRoomCode}
                 presets={Object.values(HOST_NIGHT_PRESETS)}
                 resolvedLaunchPresetId={resolvedLaunchPresetId}
                 setHostNightPreset={setHostNightPreset}
@@ -15308,6 +15370,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setRoomCodeInput={setRoomCodeInput}
                 launchRoomCodeCandidate={launchRoomCodeCandidate}
                 hasLaunchRoomCode={hasLaunchRoomCode}
+                requestedLaunchRoomCodeCandidate={requestedLaunchRoomCodeCandidate}
+                hasRequestedLaunchRoomCode={hasRequestedLaunchRoomCode}
                 runLandingRoomCleanup={runLandingRoomCleanup}
                 setRoomPlannedStart={setRoomPlannedStart}
                 setRoomDiscoverability={setRoomDiscoverability}
@@ -17608,78 +17672,119 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 )}
                             </div>
                             <div className="pt-2">
-                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
-                                <div className="host-form-helper mt-2">Recolor the audience app for this room and optionally replace the default app title.</div>
-                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                                <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                                    <label className="space-y-2">
-                                        <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Audience app title</div>
-                                        <input
-                                            data-host-audience-brand-title
-                                            value={audienceBrandTheme.appTitle}
-                                            onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
-                                                ...prev,
-                                                appTitle: event.target.value,
-                                            }))}
-                                            className={STYLES.input}
-                                            placeholder="AAHF Night"
-                                        />
-                                    </label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {[
-                                            { key: 'primaryColor', label: 'Primary' },
-                                            { key: 'secondaryColor', label: 'Secondary' },
-                                            { key: 'accentColor', label: 'Accent' },
-                                        ].map((field) => (
-                                            <label key={field.key} className="space-y-2">
-                                                <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{field.label}</div>
-                                                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-950/70 px-2 py-2">
-                                                    <input
-                                                        type="color"
-                                                        data-host-audience-brand-color={field.key}
-                                                        value={audienceBrandTheme[field.key]}
-                                                        onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
-                                                            ...prev,
-                                                            [field.key]: event.target.value,
-                                                        }))}
-                                                        className="h-9 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
-                                                    />
-                                                    <input
-                                                        data-host-audience-brand-hex={field.key}
-                                                        value={audienceBrandTheme[field.key]}
-                                                        onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
-                                                            ...prev,
-                                                            [field.key]: event.target.value,
-                                                        }))}
-                                                        className="min-w-0 flex-1 bg-transparent text-xs font-semibold uppercase tracking-[0.12em] text-white outline-none"
-                                                        placeholder="#00C4D9"
-                                                    />
-                                                </div>
-                                            </label>
-                                        ))}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
+                                    <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                                        audienceBrandThemePresetId === 'custom'
+                                            ? 'border-amber-300/30 bg-amber-500/10 text-amber-100'
+                                            : 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
+                                    }`}>
+                                        {audienceBrandThemePresetMatch?.label || 'Custom mix'}
+                                    </span>
+                                </div>
+                                <div className="host-form-helper mt-2">Recolor the audience app for this room and carry the same palette into Public TV run-of-show announcements. The room title stays editable below.</div>
+                                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Theme selector</div>
+                                        <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5">
+                                            {AUDIENCE_BRAND_THEME_PRESETS.map((preset) => {
+                                                const active = audienceBrandThemePresetId === preset.id;
+                                                return (
+                                                    <button
+                                                        key={preset.id}
+                                                        type="button"
+                                                        onClick={() => applyAudienceBrandThemePresetSelection(preset.id)}
+                                                        className={`rounded-2xl border px-3 py-3 text-left transition ${
+                                                            active
+                                                                ? 'border-cyan-300/55 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.14)]'
+                                                                : 'border-white/10 bg-zinc-950/55 hover:border-white/20 hover:bg-zinc-900/60'
+                                                        }`}
+                                                    >
+                                                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-white">{preset.label}</div>
+                                                        <div className="mt-1 min-h-[2.5rem] text-[11px] leading-5 text-zinc-400">{preset.description}</div>
+                                                        <div className="mt-3 flex items-center gap-2">
+                                                            {[preset.primaryColor, preset.secondaryColor, preset.accentColor].map((value) => (
+                                                                <span
+                                                                    key={`${preset.id}_${value}`}
+                                                                    className="h-5 w-5 rounded-full border border-white/15 shadow-[0_0_14px_rgba(0,0,0,0.22)]"
+                                                                    style={{ backgroundColor: value }}
+                                                                ></span>
+                                                            ))}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                        <label className="space-y-2">
+                                            <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Audience app title</div>
+                                            <input
+                                                data-host-audience-brand-title
+                                                value={audienceBrandTheme.appTitle}
+                                                onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                    ...prev,
+                                                    appTitle: event.target.value,
+                                                }))}
+                                                className={STYLES.input}
+                                                placeholder="AAHF Night"
+                                            />
+                                        </label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {[
+                                                { key: 'primaryColor', label: 'Primary' },
+                                                { key: 'secondaryColor', label: 'Secondary' },
+                                                { key: 'accentColor', label: 'Accent' },
+                                            ].map((field) => (
+                                                <label key={field.key} className="space-y-2">
+                                                    <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">{field.label}</div>
+                                                    <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-zinc-950/70 px-2 py-2">
+                                                        <input
+                                                            type="color"
+                                                            data-host-audience-brand-color={field.key}
+                                                            value={audienceBrandTheme[field.key]}
+                                                            onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                                ...prev,
+                                                                [field.key]: event.target.value,
+                                                            }))}
+                                                            className="h-9 w-10 cursor-pointer rounded border border-white/10 bg-transparent p-0"
+                                                        />
+                                                        <input
+                                                            data-host-audience-brand-hex={field.key}
+                                                            value={audienceBrandTheme[field.key]}
+                                                            onChange={(event) => setAudienceBrandTheme((prev) => normalizeAudienceBrandTheme({
+                                                                ...prev,
+                                                                [field.key]: event.target.value,
+                                                            }))}
+                                                            className="min-w-0 flex-1 bg-transparent text-xs font-semibold uppercase tracking-[0.12em] text-white outline-none"
+                                                            placeholder="#00C4D9"
+                                                        />
+                                                    </div>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 flex flex-wrap items-center gap-3">
+                                        <div
+                                            className="rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white"
+                                            style={{
+                                                borderColor: `${audienceBrandTheme.primaryColor}66`,
+                                                background: `${audienceBrandTheme.primaryColor}26`,
+                                            }}
+                                        >
+                                            {audienceBrandTheme.appTitle || 'Audience app'}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {[audienceBrandTheme.primaryColor, audienceBrandTheme.secondaryColor, audienceBrandTheme.accentColor].map((value) => (
+                                                <span
+                                                    key={value}
+                                                    className="h-6 w-6 rounded-full border border-white/15 shadow-[0_0_18px_rgba(0,0,0,0.24)]"
+                                                    style={{ backgroundColor: value }}
+                                                ></span>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="mt-4 flex flex-wrap items-center gap-3">
-                                    <div
-                                        className="rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-[0.18em] text-white"
-                                        style={{
-                                            borderColor: `${audienceBrandTheme.primaryColor}66`,
-                                            background: `${audienceBrandTheme.primaryColor}26`,
-                                        }}
-                                    >
-                                        {audienceBrandTheme.appTitle || 'Audience app'}
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        {[audienceBrandTheme.primaryColor, audienceBrandTheme.secondaryColor, audienceBrandTheme.accentColor].map((value) => (
-                                            <span
-                                                key={value}
-                                                className="h-6 w-6 rounded-full border border-white/15 shadow-[0_0_18px_rgba(0,0,0,0.24)]"
-                                                style={{ backgroundColor: value }}
-                                            ></span>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
                             </div>
                             </div>
                             </div>

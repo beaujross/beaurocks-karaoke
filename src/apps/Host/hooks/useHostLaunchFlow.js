@@ -47,6 +47,7 @@ const useHostLaunchFlow = ({
 }) => {
     const roomProvisionRequestIdRef = useRef('');
     const [creatingRoom, setCreatingRoom] = useState(false);
+    const [launchRequestedRoomCode, setLaunchRequestedRoomCode] = useState('');
     const [quickLaunchDiscovery, setQuickLaunchDiscovery] = useState(() => createQuickLaunchDiscoveryDraft());
     const [eventCreditsConfig, setEventCreditsConfig] = useState(() => createEventCreditsDraft());
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
@@ -146,6 +147,7 @@ const useHostLaunchFlow = ({
             setTab('stage');
             setView('panel');
             setShowOnboardingWizard(false);
+            setLaunchRequestedRoomCode('');
             setQuickLaunchDiscovery(createQuickLaunchDiscoveryDraft());
             setEventCreditsConfig(createEventCreditsDraft());
             roomProvisionRequestIdRef.current = '';
@@ -312,6 +314,8 @@ const useHostLaunchFlow = ({
     return {
         creatingRoom,
         createRoom,
+        launchRequestedRoomCode,
+        setLaunchRequestedRoomCode,
         quickLaunchDiscovery,
         setQuickLaunchDiscovery,
         eventCreditsConfig,

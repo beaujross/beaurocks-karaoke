@@ -18,6 +18,7 @@ const useHostLandingLaunchpad = ({
     joiningRoom = false,
     joinRoom,
     launchCoHostUids = [],
+    launchRequestedRoomCode = '',
     launchRoomName = '',
     openOnboardingWizard,
     orgContext,
@@ -95,7 +96,15 @@ const useHostLandingLaunchpad = ({
             .replace(/[^A-Z0-9]/g, '')
     ), [roomCode, roomCodeInput]);
 
+    const requestedLaunchRoomCodeCandidate = useMemo(() => (
+        String(launchRequestedRoomCode || '')
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '')
+    ), [launchRequestedRoomCode]);
+
     const hasLaunchRoomCode = launchRoomCodeCandidate.length >= 4 && launchRoomCodeCandidate.length <= 10;
+    const hasRequestedLaunchRoomCode = requestedLaunchRoomCodeCandidate.length >= 4 && requestedLaunchRoomCodeCandidate.length <= 10;
     const authPending = !uid && !authError;
     const launchAccessPending = (authPending || (!!uid && orgContext?.loading) || billingActionLoading || !!subscriptionActionLoading) && !authError;
     const primaryLaunchDisabled = creatingRoom || joiningRoom || !!roomManagerBusyCode || launchAccessPending;
@@ -224,6 +233,11 @@ const useHostLandingLaunchpad = ({
             setEntryError('Add a room name before starting.');
             return;
         }
+        if (String(launchRequestedRoomCode || '').trim() && !hasRequestedLaunchRoomCode) {
+            toast('Requested room code must be 4 to 10 letters or numbers.');
+            setEntryError('Requested room code must be 4 to 10 letters or numbers.');
+            return;
+        }
         if (!canQuickStartRoom) {
             if (canUseWorkspaceOnboarding) {
                 toast('Finish host setup first, then start the room.');
@@ -238,7 +252,7 @@ const useHostLandingLaunchpad = ({
             roomName: launchRoomNameValue,
             coHostUids: launchCoHostUids,
             nightPresetId: resolvedLaunchPresetId,
-            preferredRoomCode: hasLaunchRoomCode ? launchRoomCodeCandidate : '',
+            preferredRoomCode: hasRequestedLaunchRoomCode ? requestedLaunchRoomCodeCandidate : '',
             openNightSetup,
         });
         if (!result?.roomCode || openNightSetup) return;
@@ -255,9 +269,10 @@ const useHostLandingLaunchpad = ({
         canQuickStartRoom,
         canUseWorkspaceOnboarding,
         createRoom,
-        hasLaunchRoomCode,
+        hasRequestedLaunchRoomCode,
         launchCoHostUids,
-        launchRoomCodeCandidate,
+        launchRequestedRoomCode,
+        requestedLaunchRoomCodeCandidate,
         launchRoomNameValue,
         openOnboardingWizard,
         primaryLaunchDisabled,
@@ -307,12 +322,14 @@ const useHostLandingLaunchpad = ({
         landingListingDetailsOpen,
         launchAccessPending,
         launchRoomCodeCandidate,
+        hasRequestedLaunchRoomCode,
         launchState,
         launchStateHelp,
         launchStateTone,
         recentRoomSnapshot,
         resolvedLaunchPresetId,
         retryLastHostAction,
+        requestedLaunchRoomCodeCandidate,
         selectLaunchVenueMatch,
         selectedLaunchPreset,
         setDiscoveryListingMode,

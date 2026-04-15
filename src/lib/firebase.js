@@ -67,6 +67,7 @@ import {
 import {
   getStorage,
   ref as storageRef,
+  uploadBytes,
   uploadBytesResumable,
   getDownloadURL,
   deleteObject
@@ -1103,6 +1104,7 @@ export {
   rtdb, 
   storage,
   storageRef,
+  uploadBytes,
   uploadBytesResumable,
   getDownloadURL,
   deleteObject,

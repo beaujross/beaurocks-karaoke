@@ -74,7 +74,7 @@ import {
     SUPPORT_CELEBRATION_STYLES,
     normalizePurchaseCelebration,
 } from '../../lib/roomMonetization';
-import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
+import { normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -701,44 +701,43 @@ const seededUnit = (seed) => {
     return x - Math.floor(x);
 };
 
-const RUN_OF_SHOW_TAKEOVER_THEMES = {
-    cyan: {
-        accentClass: 'from-cyan-300 via-sky-200 to-blue-300',
-        chipClass: 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100',
-        panelClass: 'border-cyan-300/18 bg-cyan-400/[0.07]',
-        glowClass: 'from-cyan-300/18 via-sky-300/12 to-transparent',
-        lineClass: 'from-cyan-300/65 via-sky-200/50 to-white/0',
-        spotlightClass: 'from-cyan-400/28 via-sky-400/16 to-transparent'
-    },
-    pink: {
-        accentClass: 'from-pink-400 via-fuchsia-300 to-rose-300',
-        chipClass: 'border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100',
-        panelClass: 'border-fuchsia-300/18 bg-fuchsia-400/[0.07]',
-        glowClass: 'from-fuchsia-300/18 via-pink-300/12 to-transparent',
-        lineClass: 'from-fuchsia-300/65 via-pink-200/50 to-white/0',
-        spotlightClass: 'from-fuchsia-400/30 via-rose-400/14 to-transparent'
-    },
-    amber: {
-        accentClass: 'from-amber-300 via-yellow-200 to-orange-300',
-        chipClass: 'border-amber-300/35 bg-amber-500/12 text-amber-100',
-        panelClass: 'border-amber-300/18 bg-amber-400/[0.07]',
-        glowClass: 'from-amber-300/18 via-yellow-300/12 to-transparent',
-        lineClass: 'from-amber-300/65 via-yellow-200/50 to-white/0',
-        spotlightClass: 'from-amber-300/28 via-orange-300/16 to-transparent'
-    },
-    emerald: {
-        accentClass: 'from-emerald-300 via-teal-200 to-cyan-300',
-        chipClass: 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100',
-        panelClass: 'border-emerald-300/18 bg-emerald-400/[0.07]',
-        glowClass: 'from-emerald-300/18 via-teal-300/12 to-transparent',
-        lineClass: 'from-emerald-300/65 via-teal-200/50 to-white/0',
-        spotlightClass: 'from-emerald-300/28 via-teal-300/16 to-transparent'
-    }
-};
+const RUN_OF_SHOW_TAKEOVER_THEME_COLOR_ORDERS = Object.freeze({
+    cyan: ['primaryColor', 'secondaryColor', 'accentColor'],
+    pink: ['secondaryColor', 'primaryColor', 'accentColor'],
+    amber: ['accentColor', 'secondaryColor', 'primaryColor'],
+    emerald: ['primaryColor', 'accentColor', 'secondaryColor'],
+    fuchsia: ['secondaryColor', 'accentColor', 'primaryColor'],
+    violet: ['accentColor', 'primaryColor', 'secondaryColor'],
+});
 
-const getRunOfShowTakeoverTheme = (accentTheme = 'cyan') => {
+const getRunOfShowTakeoverTheme = (accentTheme = 'cyan', brandTheme = null) => {
+    const normalizedBrandTheme = normalizeAudienceBrandTheme(brandTheme || {});
     const key = String(accentTheme || '').trim().toLowerCase();
-    return RUN_OF_SHOW_TAKEOVER_THEMES[key] || RUN_OF_SHOW_TAKEOVER_THEMES.cyan;
+    const order = RUN_OF_SHOW_TAKEOVER_THEME_COLOR_ORDERS[key] || RUN_OF_SHOW_TAKEOVER_THEME_COLOR_ORDERS.cyan;
+    const [primaryColor, secondaryColor, accentColor] = order.map((field) => normalizedBrandTheme[field] || normalizedBrandTheme.primaryColor);
+    return {
+        primaryColor,
+        secondaryColor,
+        accentColor,
+        chipStyle: {
+            borderColor: withAudienceBrandAlpha(primaryColor, 0.4),
+            backgroundColor: withAudienceBrandAlpha(primaryColor, 0.14),
+            color: '#F8FAFC',
+            boxShadow: `0 0 32px ${withAudienceBrandAlpha(primaryColor, 0.14)}`,
+        },
+        lineStyle: {
+            backgroundImage: `linear-gradient(90deg, ${withAudienceBrandAlpha(primaryColor, 0.72)} 0%, ${withAudienceBrandAlpha(secondaryColor, 0.54)} 55%, rgba(255,255,255,0) 100%)`,
+        },
+        headlineStyle: {
+            backgroundImage: `linear-gradient(90deg, ${secondaryColor} 0%, ${primaryColor} 52%, ${accentColor} 100%)`,
+        },
+        spotlightStyle: {
+            background: `radial-gradient(circle, ${withAudienceBrandAlpha(primaryColor, 0.28)} 0%, ${withAudienceBrandAlpha(secondaryColor, 0.14)} 42%, transparent 72%)`,
+        },
+        progressStyle: {
+            backgroundImage: `linear-gradient(90deg, ${secondaryColor} 0%, ${primaryColor} 50%, ${accentColor} 100%)`,
+        },
+    };
 };
 
 const RUN_OF_SHOW_TAKEOVER_SCENES = {
@@ -881,11 +880,12 @@ const RunOfShowTakeoverOverlay = ({
     overlay = {},
     roomCode = '',
     logoUrl = '',
+    brandTheme = null,
     zClass = 'z-[195]',
     preview = false,
     nowValue = 0
 }) => {
-    const theme = getRunOfShowTakeoverTheme(overlay?.accentTheme || 'cyan');
+    const theme = getRunOfShowTakeoverTheme(overlay?.accentTheme || 'cyan', brandTheme);
     const sceneKey = String(overlay?.takeoverScene || overlay?.type || 'default').trim().toLowerCase();
     const scene = getRunOfShowTakeoverScene(sceneKey);
     const headline = String(overlay?.headline || overlay?.title || 'Run Of Show').trim() || 'Run Of Show';
@@ -924,7 +924,7 @@ const RunOfShowTakeoverOverlay = ({
             } : undefined}
         >
             <div className={`absolute -left-[12vw] top-[-12vh] h-[46vw] w-[46vw] rounded-full blur-3xl ${scene.orbClass}`}></div>
-            <div className={`absolute right-[-10vw] top-[20vh] h-[34vw] w-[34vw] rounded-full blur-3xl ${theme.spotlightClass}`}></div>
+            <div className="absolute right-[-10vw] top-[20vh] h-[34vw] w-[34vw] rounded-full blur-3xl" style={theme.spotlightStyle}></div>
             <div className="tv-takeover-ray-field"></div>
             <div className="tv-takeover-ray-field tv-takeover-ray-field-alt"></div>
             <div className={`absolute inset-0 bg-gradient-to-br ${scene.stripeClass}`}></div>
@@ -945,7 +945,10 @@ const RunOfShowTakeoverOverlay = ({
                             <img src={brandLogoUrl} alt="Room brand" className="h-11 w-11 rounded-2xl object-contain" />
                             <span className="text-sm font-black uppercase tracking-[0.28em] text-white/80">{roomLabel}</span>
                         </div>
-                        <div className={`rounded-full border px-6 py-3.5 text-[0.95rem] font-black uppercase tracking-[0.3em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : theme.chipClass}`}>
+                        <div
+                            className={`rounded-full border px-6 py-3.5 text-[0.95rem] font-black uppercase tracking-[0.3em] ${preview ? 'border-violet-300/35 bg-violet-500/14 text-violet-100' : ''}`}
+                            style={preview ? undefined : theme.chipStyle}
+                        >
                             {preview ? 'Preview Mode' : scene.eyebrow}
                         </div>
                         {soundtrackLabel ? (
@@ -963,12 +966,13 @@ const RunOfShowTakeoverOverlay = ({
                 <div className="relative flex min-h-0 flex-1 items-center">
                     <div className="max-w-[1520px]">
                         <div className={`mb-7 inline-flex items-center gap-4 rounded-full border border-white/12 bg-black/24 px-6 py-3 text-[0.95rem] font-black uppercase tracking-[0.26em] text-white/72 backdrop-blur`}>
-                            <span className={`h-3 w-20 rounded-full bg-gradient-to-r ${theme.lineClass}`}></span>
+                            <span className="h-3 w-20 rounded-full" style={theme.lineStyle}></span>
                             <span>{detailModeLabel}</span>
                         </div>
                         <div
                             data-tv-takeover-headline
-                            className={`bg-gradient-to-r ${theme.accentClass} bg-clip-text text-[clamp(7rem,16vw,18rem)] font-bebas leading-[0.82] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]`}
+                            className="bg-clip-text text-[clamp(7rem,16vw,18rem)] font-bebas leading-[0.82] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
+                            style={theme.headlineStyle}
                         >
                             {headline}
                         </div>
@@ -1005,7 +1009,7 @@ const RunOfShowTakeoverOverlay = ({
                                     <span className="text-white/88">{formatRunOfShowCountdown(remainingMs)}</span>
                                 </div>
                                 <div className="mt-3 h-4 overflow-hidden rounded-full border border-white/10 bg-white/8">
-                                    <div className={`h-full rounded-full bg-gradient-to-r ${theme.accentClass}`} style={{ width: `${progressPct}%` }}></div>
+                                    <div className="h-full rounded-full" style={{ ...theme.progressStyle, width: `${progressPct}%` }}></div>
                                 </div>
                             </>
                         ) : (
@@ -5289,7 +5293,7 @@ const PublicTV = ({ roomCode }) => {
         ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
         : true;
     if (tvPreviewOverlay && !tvPreviewExpired) {
-        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
+        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
     }
     if (room?.activeScreen === 'leaderboard') {
         return (
@@ -5337,7 +5341,7 @@ const PublicTV = ({ roomCode }) => {
     }
     if (room?.announcement?.active) {
         const announcement = room.announcement || {};
-        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} zClass="z-[195]" nowValue={takeoverNowMs} />;
+        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
     }
     if (chatTvFullscreenActive) {
         return (

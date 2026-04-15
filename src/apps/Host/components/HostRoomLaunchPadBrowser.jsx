@@ -14,13 +14,13 @@ const HostRoomLaunchPadBrowser = ({
     setRoomCodeInput,
     hasLaunchRoomCode,
     launchRoomCodeCandidate,
+    hasRequestedLaunchRoomCode,
+    requestedLaunchRoomCodeCandidate,
     openExistingRoomWorkspace,
     joiningRoom,
     activeRoomBucket,
     roomBrowserBuckets,
     setRoomBrowserFilter,
-    featuredRoom,
-    featuredRecommendedAction,
     setSelectedRoomCode,
     roomBrowserSearch,
     setRoomBrowserSearch,
@@ -53,6 +53,8 @@ const HostRoomLaunchPadBrowser = ({
     launchDisabled,
     launchRoomName,
     setLaunchRoomName,
+    launchRequestedRoomCode,
+    setLaunchRequestedRoomCode,
     quickLaunchDiscovery,
     setQuickLaunchDiscovery,
     setDiscoveryListingMode,
@@ -66,7 +68,6 @@ const HostRoomLaunchPadBrowser = ({
     eventCreditsConfig,
     setEventCreditsConfig,
     handleStartLauncherRoom,
-    LAUNCH_TARGET_META,
     PRESET_UI_META,
     creatingRoom,
     entryError,
@@ -83,9 +84,9 @@ const HostRoomLaunchPadBrowser = ({
                         </div>
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-100/68">BeauRocks Host Rooms</div>
-                            <div className="mt-1 text-2xl font-black text-white md:text-[2rem]">Browse rooms like a workspace, then open the one you want.</div>
+                            <div className="mt-1 text-2xl font-black text-white md:text-[2rem]">Create a new room or reopen an existing one.</div>
                             <div className="mt-1 max-w-4xl text-sm text-cyan-100/74">
-                                The room browser keeps open, upcoming, cleanup, and archived rooms in one view so you can manage them without the old split layout.
+                                New rooms stay on the right with one primary create action. Existing rooms stay in the browser below so reopening and cleanup are separate from creation.
                             </div>
                         </div>
                     </div>
@@ -106,26 +107,8 @@ const HostRoomLaunchPadBrowser = ({
                             <span className="font-semibold text-white">{item.value}</span>
                         </div>
                     ))}
-                    <div className="ml-auto flex min-w-full flex-col gap-2 sm:min-w-[360px] sm:flex-row xl:min-w-[420px]">
-                        <input
-                            value={roomCodeInput}
-                            onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && hasLaunchRoomCode) {
-                                    openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run');
-                                }
-                            }}
-                            placeholder="Open by room code"
-                            className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run')}
-                            disabled={!hasLaunchRoomCode || joiningRoom}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                        >
-                            Open Room
-                        </button>
+                    <div className="ml-auto text-sm text-cyan-100/66">
+                        Use <span className="font-semibold text-white">Existing room</span> to reopen by code or manage older rooms.
                     </div>
                 </div>
             </div>
@@ -135,7 +118,7 @@ const HostRoomLaunchPadBrowser = ({
                     <div className="px-2">
                         <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Folders</div>
                         <div className="mt-1 text-lg font-black text-white">Room browser</div>
-                        <div className="mt-1 text-sm text-cyan-100/68">Switch folders, then create, open, or remove rooms from the main workspace.</div>
+                        <div className="mt-1 text-sm text-cyan-100/68">Ready and upcoming rooms stay separate. Closed and archived rooms live together under Past.</div>
                     </div>
                     <div className="mt-3 space-y-1.5">
                         {roomBrowserBuckets.map((bucket) => {
@@ -160,23 +143,6 @@ const HostRoomLaunchPadBrowser = ({
                             );
                         })}
                     </div>
-                    {featuredRoom ? (
-                        <div className="mt-4 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Suggested room</div>
-                            <div className="mt-1 text-sm font-semibold text-white">{featuredRoom.roomName || featuredRoom.code}</div>
-                            <div className="mt-1 text-xs text-cyan-100/66">{featuredRecommendedAction?.label || 'Open Host Panel'}</div>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setRoomBrowserFilter('all');
-                                    setSelectedRoomCode(featuredRoom.code);
-                                }}
-                                className="mt-3 inline-flex rounded-lg border border-cyan-300/25 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100"
-                            >
-                                Focus this room
-                            </button>
-                        </div>
-                    ) : null}
                 </aside>
 
                 <section className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-2 xl:row-start-2">
@@ -284,7 +250,7 @@ const HostRoomLaunchPadBrowser = ({
                             );
                         }) : (
                             <div className="px-4 py-12 text-center text-sm text-cyan-100/68">
-                                No rooms match this filter yet. Create a room above or switch folders.
+                                No rooms match this filter yet. Use Create New Room or switch folders.
                             </div>
                         )}
                     </div>
@@ -293,6 +259,31 @@ const HostRoomLaunchPadBrowser = ({
                 <aside className="space-y-4 xl:col-start-2 xl:row-start-1">
                     <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-4">
                         <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Existing room</div>
+                        <div className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</div>
+                            <div className="mt-1 text-sm text-cyan-100/72">Use this when you already know the room code and want the live host panel immediately.</div>
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <input
+                                    value={roomCodeInput}
+                                    onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && hasLaunchRoomCode) {
+                                            openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run');
+                                        }
+                                    }}
+                                    placeholder="Open by room code"
+                                    className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run')}
+                                    disabled={!hasLaunchRoomCode || joiningRoom}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    Open Room
+                                </button>
+                            </div>
+                        </div>
                         {selectedRoom ? (
                             <>
                                 <div className="mt-1 text-xl font-black text-white">{selectedRoom.roomName || selectedRoom.code}</div>
@@ -362,8 +353,8 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
 
                                 <div className="mt-4 rounded-xl border border-rose-300/20 bg-rose-500/8 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-rose-100/70">Remove or clean up</div>
-                                    <div className="mt-1 text-sm text-rose-50/88">Archive finished rooms fast, restore them from archive, or fully clear them when needed.</div>
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-rose-100/70">Room lifecycle</div>
+                                    <div className="mt-1 text-sm text-rose-50/88">Archive rooms you want to keep, reset closed rooms you want to reuse, or permanently delete archived rooms you no longer need.</div>
                                     <div className="mt-3 flex flex-wrap gap-2">
                                         <button
                                             type="button"
@@ -445,13 +436,13 @@ const HostRoomLaunchPadBrowser = ({
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">New room</div>
-                                <div className="mt-1 text-xl font-black text-white">Create a room</div>
+                                <div className="mt-1 text-xl font-black text-white">Create New Room</div>
                             </div>
                             <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
                                 {launchDisabled ? 'Needs input' : 'Ready'}
                             </span>
                         </div>
-                        <div className="mt-2 text-sm text-cyan-100/68">Fill this out first, then pick where to open the new room.</div>
+                        <div className="mt-2 text-sm text-cyan-100/68">Step 1: name the room and optional code. Step 2: click <span className="font-semibold text-white">Create + Open Host Panel</span>.</div>
 
                         {shouldShowSetupCard ? (
                             <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-500/10 px-3 py-3">
@@ -471,15 +462,32 @@ const HostRoomLaunchPadBrowser = ({
                         ) : null}
 
                         <div className="mt-4 space-y-3">
-                            <label className="block">
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room name</div>
-                                <input
-                                    value={launchRoomName}
-                                    onChange={(e) => setLaunchRoomName(e.target.value)}
-                                    placeholder="Friday Karaoke"
-                                    className={inputClass}
-                                />
-                            </label>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <label className="block">
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room name</div>
+                                    <input
+                                        value={launchRoomName}
+                                        onChange={(e) => setLaunchRoomName(e.target.value)}
+                                        placeholder="Friday Karaoke"
+                                        className={inputClass}
+                                    />
+                                </label>
+                                <label className="block">
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Requested room code</div>
+                                    <input
+                                        value={launchRequestedRoomCode}
+                                        onChange={(e) => setLaunchRequestedRoomCode(e.target.value.toUpperCase())}
+                                        placeholder="Optional"
+                                        maxLength={10}
+                                        className={`${inputClass} uppercase tracking-[0.18em]`}
+                                    />
+                                    <div className="mt-2 text-xs text-cyan-100/58">
+                                        {hasRequestedLaunchRoomCode
+                                            ? `We'll try to reserve ${requestedLaunchRoomCodeCandidate}. If another active room already has it, creation will stop so you can retry.`
+                                            : 'Leave blank to auto-assign a room code.'}
+                                    </div>
+                                </label>
+                            </div>
 
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <label className="block">
@@ -539,6 +547,7 @@ const HostRoomLaunchPadBrowser = ({
 
                             <div className="rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100/74">
                                 <div className="font-semibold text-white">{String(launchRoomName || '').trim() || 'Untitled room'}</div>
+                                <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
                                 <div className="mt-1">Starts {launchStartSummary}</div>
                                 <div className="mt-1">{discoveryListingEnabled ? 'Listed in Discover' : 'Private join only'}</div>
                                 <div className="mt-1">{selectedLaunchPreset?.label || 'No preset selected'}: {selectedPresetMeta.summary}</div>
@@ -556,26 +565,36 @@ const HostRoomLaunchPadBrowser = ({
                             </details>
 
                             <div className="grid gap-2">
-                                {LAUNCH_TARGET_META.map((target) => (
+                                <button
+                                    type="button"
+                                    data-host-create-room-primary="true"
+                                    onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage' })}
+                                    disabled={launchDisabled}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                                >
+                                    {creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}
+                                </button>
+                                <div className="grid gap-2 sm:grid-cols-2">
                                     <button
-                                        key={target.id}
                                         type="button"
-                                        onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: target.id })}
+                                        onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show' })}
                                         disabled={launchDisabled}
-                                        className={`rounded-xl border px-4 py-3 text-left transition ${target.accentClass} ${launchDisabled ? 'cursor-not-allowed opacity-60' : 'hover:border-cyan-300/35 hover:bg-white/[0.04]'}`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                                     >
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{target.eyebrow}</div>
-                                                <div className="mt-1 text-sm font-semibold text-white">{creatingRoom ? 'Creating room...' : target.title}</div>
-                                                <div className="mt-1 text-xs text-cyan-100/70">{target.copy}</div>
-                                            </div>
-                                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/66">
-                                                {target.chip}
-                                            </span>
-                                        </div>
+                                        Create + Open Show Plan
                                     </button>
-                                ))}
+                                    <button
+                                        type="button"
+                                        onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'settings' })}
+                                        disabled={launchDisabled}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                                    >
+                                        Create + Open Room Settings
+                                    </button>
+                                </div>
+                                <div className="text-xs text-cyan-100/58">
+                                    Use the host panel path for most nights. Show Plan and Room Settings are there when you need to prep before guests arrive.
+                                </div>
                             </div>
                         </div>
                     </div>

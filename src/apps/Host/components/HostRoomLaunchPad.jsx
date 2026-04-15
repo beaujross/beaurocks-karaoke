@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { ASSETS } from '../../../lib/assets';
-import EventCreditsConfigPanel from './EventCreditsConfigPanel';
 import HostRoomLaunchPadBrowser from './HostRoomLaunchPadBrowser';
 
 const PRESET_UI_META = {
@@ -29,33 +27,6 @@ const PRESET_UI_META = {
         accentClass: 'border-fuchsia-300/22 bg-fuchsia-500/8'
     }
 };
-
-const LAUNCH_TARGET_META = Object.freeze([
-    {
-        id: 'stage',
-        eyebrow: 'Go live',
-        title: 'Open the host panel',
-        copy: 'Create the room and jump straight into the live host board.',
-        chip: 'Fastest path',
-        accentClass: 'border-cyan-300/28 bg-[linear-gradient(135deg,rgba(0,196,217,0.16),rgba(236,72,153,0.1))]'
-    },
-    {
-        id: 'show',
-        eyebrow: 'Plan first',
-        title: 'Open the show plan',
-        copy: 'Create the room and land in the show workspace before guests arrive.',
-        chip: 'Best before doors',
-        accentClass: 'border-fuchsia-300/24 bg-fuchsia-500/8'
-    },
-    {
-        id: 'settings',
-        eyebrow: 'Set details',
-        title: 'Open room settings',
-        copy: 'Create the room and go straight to setup, policies, and room details.',
-        chip: 'Best for admin work',
-        accentClass: 'border-white/12 bg-white/5'
-    }
-]);
 
 const normalizeLaunchSearchToken = (value = '') =>
     String(value || '')
@@ -519,6 +490,8 @@ const HostRoomLaunchPad = ({
     openOnboardingWizard,
     launchRoomName,
     setLaunchRoomName,
+    launchRequestedRoomCode,
+    setLaunchRequestedRoomCode,
     presets,
     resolvedLaunchPresetId,
     setHostNightPreset,
@@ -545,6 +518,8 @@ const HostRoomLaunchPad = ({
     setRoomCodeInput,
     launchRoomCodeCandidate,
     hasLaunchRoomCode,
+    requestedLaunchRoomCodeCandidate,
+    hasRequestedLaunchRoomCode,
     runLandingRoomCleanup,
     setRoomDiscoverability,
     setRoomArchivedState,
@@ -561,6 +536,7 @@ const HostRoomLaunchPad = ({
     const activeRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) <= 0);
     const cleanupRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) > 0);
     const archivedRooms = recentHostRooms.filter((roomItem) => roomItem.archived);
+    const pastRooms = [...cleanupRooms, ...archivedRooms];
     const upcomingRooms = activeRooms.filter((roomItem) => Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000));
     const tonightRooms = activeRooms.filter((roomItem) => !upcomingRooms.some((entry) => entry.code === roomItem.code));
     const featuredRoom = [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom)
@@ -570,20 +546,17 @@ const HostRoomLaunchPad = ({
         || archivedRooms[0]
         || null;
     const launchDisabled = creatingRoom || !canStartLauncherRoom;
-    const featuredRecommendedAction = featuredRoom ? getRecommendedRoomAction(featuredRoom) : null;
     const selectedPresetMeta = PRESET_UI_META[resolvedLaunchPresetId] || PRESET_UI_META.casual;
     const launchStartSummary = formatLaunchStartDraft(String(quickLaunchDiscovery?.roomStartsAtLocal || ''));
     const launchOverviewStats = [
         { label: 'Tonight', value: tonightRooms.length },
         { label: 'Upcoming', value: upcomingRooms.length },
-        { label: 'Cleanup', value: cleanupRooms.length },
-        { label: 'Archive', value: archivedRooms.length }
+        { label: 'Past', value: pastRooms.length }
     ];
     const roomBrowserBuckets = [
         { id: 'ready', label: 'Ready', detail: 'Rooms you can run now', rooms: tonightRooms },
         { id: 'upcoming', label: 'Upcoming', detail: 'Scheduled ahead of time', rooms: upcomingRooms },
-        { id: 'cleanup', label: 'Cleanup', detail: 'Closed rooms to reset', rooms: cleanupRooms },
-        { id: 'archived', label: 'Archive', detail: 'Stored rooms', rooms: archivedRooms },
+        { id: 'past', label: 'Past', detail: 'Closed and archived rooms', rooms: pastRooms },
         { id: 'all', label: 'All rooms', detail: 'Everything in your workspace', rooms: recentHostRooms }
     ];
     const activeRoomBucket = roomBrowserBuckets.find((bucket) => bucket.id === roomBrowserFilter) || roomBrowserBuckets[0];
@@ -666,13 +639,13 @@ const HostRoomLaunchPad = ({
             setRoomCodeInput={setRoomCodeInput}
             hasLaunchRoomCode={hasLaunchRoomCode}
             launchRoomCodeCandidate={launchRoomCodeCandidate}
+            hasRequestedLaunchRoomCode={hasRequestedLaunchRoomCode}
+            requestedLaunchRoomCodeCandidate={requestedLaunchRoomCodeCandidate}
             openExistingRoomWorkspace={openExistingRoomWorkspace}
             joiningRoom={joiningRoom}
             activeRoomBucket={activeRoomBucket}
             roomBrowserBuckets={roomBrowserBuckets}
             setRoomBrowserFilter={setRoomBrowserFilter}
-            featuredRoom={featuredRoom}
-            featuredRecommendedAction={featuredRecommendedAction}
             setSelectedRoomCode={setSelectedRoomCode}
             roomBrowserSearch={roomBrowserSearch}
             setRoomBrowserSearch={setRoomBrowserSearch}
@@ -705,6 +678,8 @@ const HostRoomLaunchPad = ({
             launchDisabled={launchDisabled}
             launchRoomName={launchRoomName}
             setLaunchRoomName={setLaunchRoomName}
+            launchRequestedRoomCode={launchRequestedRoomCode}
+            setLaunchRequestedRoomCode={setLaunchRequestedRoomCode}
             quickLaunchDiscovery={quickLaunchDiscovery}
             setQuickLaunchDiscovery={setQuickLaunchDiscovery}
             setDiscoveryListingMode={setDiscoveryListingMode}
@@ -718,7 +693,6 @@ const HostRoomLaunchPad = ({
             eventCreditsConfig={eventCreditsConfig}
             setEventCreditsConfig={setEventCreditsConfig}
             handleStartLauncherRoom={handleStartLauncherRoom}
-            LAUNCH_TARGET_META={LAUNCH_TARGET_META}
             PRESET_UI_META={PRESET_UI_META}
             creatingRoom={creatingRoom}
             entryError={entryError}
