@@ -75,31 +75,28 @@ service firebase.storage {
         && request.resource.contentType.matches('^image/.*$');
     }
 
-    match /room_uploads/{roomCode}/{fileName} {
+    match /room_uploads/{roomCode}/{fileName=**} {
       allow read: if isRoomHost(roomCode);
-      allow create: if isRoomHost(roomCode) && isAllowedMediaUpload();
+      allow create, update: if isRoomHost(roomCode) && isAllowedMediaUpload();
       allow delete: if isRoomHost(roomCode);
-      allow update: if false;
     }
 
-    match /room_branding/{roomCode}/{fileName} {
+    match /room_branding/{roomCode}/{fileName=**} {
       allow read: if isRoomHost(roomCode);
-      allow create: if isRoomHost(roomCode) && isAllowedLogoUpload();
+      allow create, update: if isRoomHost(roomCode) && isAllowedLogoUpload();
       allow delete: if isRoomHost(roomCode);
-      allow update: if false;
     }
 
-    match /room_photos/{roomCode}/{uploaderUid}/{fileName} {
+    match /room_photos/{roomCode}/{uploaderUid}/{fileName=**} {
       allow read: if isRoomHost(roomCode)
         || isRoomParticipant(roomCode)
         || (isAuthed() && uploaderUid == request.auth.uid);
-      allow create: if isAuthed()
+      allow create, update: if isAuthed()
         && uploaderUid == request.auth.uid
         && firestore.exists(roomDocPath(roomCode))
         && isRoomParticipant(roomCode)
         && isAllowedPhotoUpload();
       allow delete: if isRoomHost(roomCode) || uploaderUid == request.auth.uid;
-      allow update: if false;
     }
 
     match /{allPaths=**} {

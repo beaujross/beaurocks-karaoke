@@ -904,6 +904,25 @@ async function run() {
       );
     }],
 
+    ["storage: host can overwrite branding image at same path", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_branding/${ROOM_CODE}/logo.png`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+      await assertSucceeds(
+        ref.putString("def", "raw", { contentType: "image/png" })
+      );
+    }],
+
+    ["storage: host can upload nested branding image paths", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_branding/${ROOM_CODE}/orb-skins/logo.png`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
     ["storage: audience participant can upload room photo", async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
@@ -918,6 +937,26 @@ async function run() {
       const ref = storage.ref(`room_photos/${ROOM_CODE}/${GUEST_UID}/snap.jpg`);
       await assertSucceeds(
         ref.putString("abc", "raw", { contentType: "image/jpeg" })
+      );
+    }],
+
+    ["storage: audience participant can overwrite own room photo", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "😀",
+        });
+      });
+      const storage = anonymousContext(GUEST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_photos/${ROOM_CODE}/${GUEST_UID}/snap.jpg`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/jpeg" })
+      );
+      await assertSucceeds(
+        ref.putString("def", "raw", { contentType: "image/jpeg" })
       );
     }],
 
