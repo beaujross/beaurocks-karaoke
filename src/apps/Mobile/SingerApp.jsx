@@ -31,7 +31,9 @@ import { DEFAULT_TIP_CRATES, TOP100_SEED } from '../Host/hostAppData';
 import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/songCatalog';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import {
+    AUDIENCE_ACCESS_MODES,
     MONEYBAGS_BADGE_LABEL,
+    normalizeAudienceExperience,
     buildAudienceSupportOffer,
     normalizePurchaseCelebration,
 } from '../../lib/roomMonetization';
@@ -105,6 +107,7 @@ import {
 } from './audienceShellVariant';
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
+import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
 
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 
@@ -425,7 +428,7 @@ const VIP_TOS_SUMMARY = [
     'Keep it fun: no harassment, threats, hate speech, or illegal content.',
     'Only share content you own or have permission to use.',
     'We can remove content that breaks the rules or disrupts the party.',
-    'VIP profile details help the room celebrate you without slowing down the night.'
+    'Profile details help the room celebrate you without slowing down the night.'
 ];
 
 const VIP_BIRTH_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -475,9 +478,9 @@ const normalizeVipForm = (vip = {}) => ({
 
 const getVipProfileValidationError = (vip = {}) => {
     const normalized = normalizeVipForm(vip);
-    if (!normalized.location) return 'Add your location to complete VIP profile.';
-    if (!normalized.birthMonth || !normalized.birthDay) return 'Add your birthday month and day to complete VIP profile.';
-    if (!normalized.tosAccepted) return 'Please accept the VIP House Rules.';
+    if (!normalized.location) return 'Add your location to complete your profile.';
+    if (!normalized.birthMonth || !normalized.birthDay) return 'Add your birthday month and day to complete your profile.';
+    if (!normalized.tosAccepted) return 'Please accept the house rules.';
     return '';
 };
 
@@ -568,7 +571,7 @@ const AVATAR_CATALOG = [
     { id: 'guitar_glow', emoji: emoji(0x1F3B8), label: 'Neon Guitar', flavor: 'Guitar solo MVP.', unlock: { type: 'guitar_winner' } },
     { id: 'twilight_vamp_f', emoji: emoji(0x1F9DB, 0x200D, 0x2640, 0xFE0F), label: 'Vampire', flavor: 'Midnight vocals.', unlock: { type: 'vip' } },
     { id: 'twilight_vamp_m', emoji: emoji(0x1F9DB, 0x200D, 0x2642, 0xFE0F), label: 'Vampire', flavor: 'Night shift crooner.', unlock: { type: 'vip' } },
-    { id: 'twilight_sparkle', emoji: emoji(0x1F48E), label: 'Sparkle', flavor: 'VIP shine.', unlock: { type: 'vip' } },
+    { id: 'twilight_sparkle', emoji: emoji(0x1F48E), label: 'Sparkle', flavor: 'Headliner shine.', unlock: { type: 'vip' } },
     { id: 'crown', emoji: emoji(0x1F451), label: 'Crown', flavor: 'Royal ad-lib.', unlock: { type: 'vip' } },
     { id: 'moonface', emoji: emoji(0x1F31A), label: 'Moon Face', flavor: 'Night set glow.', unlock: { type: 'vip' } }
 ];
@@ -819,6 +822,31 @@ const SingerApp = ({ roomCode, uid }) => {
         [audienceBrandTheme]
     );
     const audienceBrandTitle = audienceBrandTheme.appTitle || 'BeauRocks Karaoke';
+    const isCustomAudienceBrand = String(audienceBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
+    const poweredByBeauRocksLabel = isCustomAudienceBrand ? 'Powered by: BeauRocks Karaoke' : '';
+    const accessBrandLabel = isCustomAudienceBrand ? `${audienceBrandTitle} Access` : 'BeauRocks Access';
+    const premiumAccessLabel = isCustomAudienceBrand ? 'Festival Pass' : 'VIP';
+    const premiumBadgeShortLabel = isCustomAudienceBrand ? 'PASS' : 'VIP';
+    const premiumPerksLabel = isCustomAudienceBrand ? 'festival pass perks' : 'VIP perks';
+    const premiumProfileLabel = isCustomAudienceBrand ? 'Festival Profile' : 'VIP Profile';
+    const premiumRulesLabel = isCustomAudienceBrand ? `${audienceBrandTitle} House Rules` : 'VIP House Rules';
+    const premiumBenefitsLabel = isCustomAudienceBrand ? 'Festival Pass Benefits' : 'VIP Benefits';
+    const premiumLoungeLabel = isCustomAudienceBrand ? 'Backstage Lounge' : 'VIP Lounge';
+    const premiumLevelLabel = isCustomAudienceBrand ? 'Pass Level' : 'VIP Level';
+    const premiumAccessChipLabel = isCustomAudienceBrand ? `${premiumAccessLabel.toUpperCase()} ACCESS` : 'VIP ACCESS';
+    const premiumActiveChipLabel = isCustomAudienceBrand ? `${premiumAccessLabel.toUpperCase()} ACTIVE` : 'VIP ACTIVE';
+    const premiumUnlockedHeadline = isCustomAudienceBrand ? `You have ${premiumAccessLabel}` : 'You are VIP';
+    const premiumUnlockHeadline = isCustomAudienceBrand ? `Unlock ${premiumAccessLabel} with Email` : 'Unlock VIP with Email';
+    const premiumWelcomeLabel = isCustomAudienceBrand ? `Welcome to ${audienceBrandTitle}` : 'Welcome VIP';
+    const premiumProfileHeadline = isCustomAudienceBrand ? `Build Your ${premiumProfileLabel}` : 'Build Your VIP Profile';
+    const selfieBrandLabel = isCustomAudienceBrand ? `${audienceBrandTitle} selfie` : 'BeauRocks selfie';
+    const selfieBrandSlug = (
+        (isCustomAudienceBrand ? audienceBrandTitle : 'beaurocks')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+        || 'selfie'
+    );
     const audienceBrandLogoUrl = useMemo(
         () => String(room?.logoUrl || BRAND_ICON || ASSETS.logo || '').trim() || ASSETS.logo,
         [room?.logoUrl]
@@ -848,17 +876,25 @@ const SingerApp = ({ roomCode, uid }) => {
     const [_showLogoTitle, setShowLogoTitle] = useState(true);
     const [authReadyUid, setAuthReadyUid] = useState(null);
     const activeUid = useMemo(
-        () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
+        () => resolveAudienceSessionUid({
+            authCurrentUid: auth.currentUser?.uid,
+            authReadyUid,
+            routeUid: uid
+        }),
         [authReadyUid, uid]
     );
     const accountProfileUid = useMemo(
-        () => String(auth.currentUser?.uid || authReadyUid || uid || '').trim(),
+        () => resolveAudienceSessionUid({
+            authCurrentUid: auth.currentUser?.uid,
+            authReadyUid,
+            routeUid: uid
+        }),
         [authReadyUid, uid]
     );
     const waitForJoinAuthUid = useCallback(async (timeoutMs = 2500) => {
         const currentUid = String(auth.currentUser?.uid || '').trim();
         if (currentUid) return currentUid;
-        let observedUid = String(authReadyUid || '').trim();
+        let observedUid = resolveAudienceSessionUid({ authReadyUid, routeUid: uid });
         if (typeof auth?.authStateReady === 'function') {
             try {
                 await Promise.race([
@@ -898,14 +934,45 @@ const SingerApp = ({ roomCode, uid }) => {
             }
             setTimeout(() => finish(), timeoutMs);
         });
-        return String(auth.currentUser?.uid || observedUid || authReadyUid || '').trim();
-    }, [authReadyUid]);
+        return resolveAudienceSessionUid({
+            authCurrentUid: auth.currentUser?.uid,
+            authReadyUid: observedUid || authReadyUid,
+            routeUid: uid
+        });
+    }, [authReadyUid, uid]);
     const isMarketingDemoEmbed = useMemo(() => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
+    const isQaAudienceFixture = !!initialAudienceDemoFixture;
     const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
+    const isAudienceFixtureMode = (isMarketingDemoEmbed || isQaAudienceFixture) && !!demoFixture;
+    useEffect(() => {
+        if (!initialAudienceDemoFixture) return;
+        const fixture = initialAudienceDemoFixture;
+        setDemoFixture(fixture);
+        if (fixture.room !== undefined) setRoom(fixture.room || null);
+        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
+        if (Array.isArray(fixture.allUsers)) setAllUsers(fixture.allUsers);
+        if (fixture.user !== undefined) setUser(fixture.user || null);
+        if (fixture.profile !== undefined) setProfile(fixture.profile || null);
+        if (fixture.tab) setTab(fixture.tab);
+        if (fixture.songsTab) setSongsTab(fixture.songsTab);
+        if (fixture.socialTab) setSocialTab(fixture.socialTab);
+        if (fixture.profileSubTab) setProfileSubTab(fixture.profileSubTab);
+        if (typeof fixture.catalogSearchOpen === 'boolean') setCatalogSearchOpen(fixture.catalogSearchOpen);
+        if (typeof fixture.manualRequestComposerOpen === 'boolean') setManualRequestComposerOpen(fixture.manualRequestComposerOpen);
+        if (typeof fixture.showReturningPrompt === 'boolean') setShowReturningPrompt(fixture.showReturningPrompt);
+        if (fixture.returningProfile !== undefined) setReturningProfile(fixture.returningProfile || null);
+        if (typeof fixture.termsAccepted === 'boolean') setTermsAccepted(fixture.termsAccepted);
+        if (typeof fixture.showPhoneModal === 'boolean') setShowPhoneModal(fixture.showPhoneModal);
+        if (typeof fixture.showAbout === 'boolean') setShowAbout(fixture.showAbout);
+        if (fixture.form && typeof fixture.form === 'object') {
+            setForm((prev) => ({ ...prev, ...fixture.form }));
+            setIsFormInitialized(true);
+        }
+    }, [initialAudienceDemoFixture]);
     const demoGuestProfile = useMemo(() => {
         const audienceNames = ['Alex', 'Jordan', 'Taylor', 'Casey', 'Riley', 'Morgan', 'Harper', 'Kai'];
         const seed = String(activeUid || roomCode || 'demo')
@@ -970,7 +1037,7 @@ const SingerApp = ({ roomCode, uid }) => {
         const fameLevel = getLevelFromFame(profile?.totalFamePoints || 0);
 
         if (item.unlock.type === 'free') return { locked: false, note: 'FREE' };
-        if (item.unlock.type === 'vip') return { locked: !isVipAccount, note: 'VIP' };
+        if (item.unlock.type === 'vip') return { locked: !isVipAccount, note: premiumBadgeShortLabel };
         if (item.unlock.type === 'fame') return { locked: fameLevel < item.unlock.level, note: `LV ${item.unlock.level}` };
         if (item.unlock.type === 'first_performance') {
             const unlockedByPerformance = !!profile?.firstPerformanceUnlocked;
@@ -979,16 +1046,16 @@ const SingerApp = ({ roomCode, uid }) => {
         if (item.unlock.type === 'guitar_winner') return { locked: !unlocked.includes(item.id), note: 'WIN SOLO' };
         if (item.unlock.type === 'points') return { locked: !unlocked.includes(item.id), note: `${item.unlock.cost} PTS` };
         return { locked: false, note: '' };
-    }, [isVipAccount, profile]);
+    }, [isVipAccount, premiumBadgeShortLabel, profile]);
 
     const getUnlockHint = useCallback((item) => {
-        if (item.unlock.type === 'vip') return 'VIP only - verify to unlock.';
+        if (item.unlock.type === 'vip') return `${premiumAccessLabel} only - verify to unlock.`;
         if (item.unlock.type === 'fame') return `Reach Fame Level ${item.unlock.level} to unlock.`;
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
         if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
         if (item.unlock.type === 'points') return `Unlock for ${item.unlock.cost} points.`;
         return '';
-    }, []);
+    }, [premiumAccessLabel]);
 
     // Keep this before getRoomUserProjection() so React never evaluates the
     // memo dependency array before the avatar resolver exists.
@@ -1106,13 +1173,18 @@ const SingerApp = ({ roomCode, uid }) => {
     const [dismissedPopTriviaCardKey, setDismissedPopTriviaCardKey] = useState('');
 
     // Email-link account + VIP state
-    const [showPhoneModal, setShowPhoneModal] = useState(false);
+    const [showPhoneModal, setShowPhoneModal] = useState(!!initialAudienceDemoFixture?.showPhoneModal);
     const [avatarUnlockModal, setAvatarUnlockModal] = useState(null);
     const [accountEmail, setAccountEmail] = useState('');
     const [emailLinkSent, setEmailLinkSent] = useState(false);
     const [accountAuthLoading, setAccountAuthLoading] = useState(false);
     const audienceEmailLinkAttemptRef = useRef({ href: '', phase: 'idle', email: '' });
-    const [showAbout, setShowAbout] = useState(false);
+    const openEmailAccessModal = useCallback(() => {
+        setAccountEmail((current) => current || auth.currentUser?.email || profile?.email || '');
+        setEmailLinkSent(false);
+        setShowPhoneModal(true);
+    }, [profile?.email]);
+    const [showAbout, setShowAbout] = useState(!!initialAudienceDemoFixture?.showAbout);
     const [showFeedbackForm, setShowFeedbackForm] = useState(false);
     const [feedbackSending, setFeedbackSending] = useState(false);
     const [feedbackForm, setFeedbackForm] = useState({
@@ -1151,11 +1223,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const [crowdSelfieMomentOptIn, setCrowdSelfieMomentOptIn] = useState(false);
     const [showRulesModal, setShowRulesModal] = useState(false);
     const [pendingJoin, setPendingJoin] = useState(null);
-    const openVipUpgrade = () => {
-        setAccountEmail((current) => current || auth.currentUser?.email || profile?.email || '');
-        setEmailLinkSent(false);
-        setShowPhoneModal(true);
-    };
     const [nameFocused, setNameFocused] = useState(false);
     const joinContainerRef = useRef(null);
     const joinRayStageRef = useRef(null);
@@ -1327,7 +1394,6 @@ const SingerApp = ({ roomCode, uid }) => {
             ? 'Audience relay is live between singers.'
             : 'Audience check-in is live before the next singer.');
     const _vipCount = useMemo(() => allUsers.filter(u => u.isVip || (u.vipLevel || 0) > 0).length, [allUsers]);
-    const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !isVipAccount;
     const tipCrates = useMemo(() => (Array.isArray(room?.tipCrates) ? room.tipCrates : []), [room?.tipCrates]);
     const availableTipCrates = useMemo(() => (tipCrates.length ? tipCrates : DEFAULT_TIP_CRATES), [tipCrates]);
     const personalPointOffers = useMemo(() => {
@@ -2345,6 +2411,8 @@ const SingerApp = ({ roomCode, uid }) => {
             supportCampaignCode: String(source.supportCampaignCode || '').trim(),
             supportPoints: Math.max(0, Number(source.supportPoints || 0) || 0),
             supportBadge: source.supportBadge !== false,
+            audienceAccessMode: String(source.audienceAccessMode || '').trim().toLowerCase(),
+            supportCelebrationStyle: String(source.supportCelebrationStyle || '').trim().toLowerCase(),
             promoCampaignCount: Math.max(0, Number(source.promoCampaignCount || 0) || 0),
             promoCampaigns: Array.isArray(source.promoCampaigns)
                 ? source.promoCampaigns.map((campaign) => ({
@@ -2372,11 +2440,64 @@ const SingerApp = ({ roomCode, uid }) => {
         };
     }, [activeEventCredits]);
     const roomSupportOffer = useMemo(() => buildAudienceSupportOffer(activeEventCredits), [activeEventCredits]);
+    const audienceExperience = useMemo(
+        () => normalizeAudienceExperience(activeEventCredits),
+        [activeEventCredits]
+    );
+    const supporterAccessLabel = isCustomAudienceBrand ? 'Festival Supporter' : 'VIP';
+    const supportCtaLabel = roomSupportOffer?.label
+        || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
+    const isDonationFirstAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.donation;
+    const allowsEmailFallbackAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.email
+        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
+        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account;
+    const allowsDonationAccess = !!roomSupportOffer
+        && (
+            isDonationFirstAccess
+            || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
+        );
+    const hasSupporterAccess = allowsDonationAccess
+        && (
+            !!user?.roomBoostBadge
+            || !!user?.roomBoosted
+            || (Number(user?.roomBoosts || 0) > 0)
+        );
+    const hasPremiumRoomAccess = isVipAccount || hasSupporterAccess;
+    const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
+    const accessActionLabel = allowsDonationAccess
+        ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
+        : (isCustomAudienceBrand ? `Continue with ${audienceBrandTitle}` : 'Continue with Email');
+    const accessConnectedLabel = hasSupporterAccess && !isVipAccount
+        ? `${supporterAccessLabel} Ready`
+        : (isCustomAudienceBrand ? `${audienceBrandTitle} Access Ready` : 'Email Access Ready');
+    const audienceAccessHeadline = allowsDonationAccess
+        ? (isDonationFirstAccess ? `Support ${audienceBrandTitle}` : `Support ${audienceBrandTitle} or continue with email`)
+        : 'Continue with Email';
+    const audienceAccessBody = allowsDonationAccess
+        ? (
+            isDonationFirstAccess
+                ? `Givebutter support can unlock ${supporterAccessLabel.toLowerCase()} perks, featured reactions, and room moments without interrupting the night.`
+                : `You can unlock ${supporterAccessLabel.toLowerCase()} perks by supporting the fundraiser, or keep the standard email path for profile sync and cross-room history.`
+        )
+        : `Enter your email and we will send a secure sign-in link. Open the link on this device to reconnect, unlock ${premiumPerksLabel}, and carry your history forward.`;
+    const openVipUpgrade = useCallback((preferredPath = 'auto') => {
+        const wantsEmail = preferredPath === 'email';
+        if (!wantsEmail && allowsDonationAccess) {
+            setSupportEmbedOpen(!!roomSupportOffer?.supportEmbedUrl);
+            setShowPoints(true);
+            setShowPointsShop(true);
+            if (!roomSupportOffer?.supportEmbedUrl && roomSupportOffer?.supportUrl) {
+                window.open(roomSupportOffer.supportUrl, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+        openEmailAccessModal();
+    }, [allowsDonationAccess, openEmailAccessModal, roomSupportOffer]);
     const eventCreditsSummary = useMemo(() => {
         if (!roomCode) {
             return {
                 title: 'Room points',
-                body: 'You are seeing the standard BeauRocks points wallet right now.',
+                body: 'You are seeing the standard room points wallet right now.',
                 tone: 'cyan',
                 showClaims: false,
             };
@@ -2384,7 +2505,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!activeEventCredits.enabled) {
             return {
                 title: 'No event bonuses on this room',
-                body: 'This room is using the standard BeauRocks points view right now. No custom credits or promo campaigns are configured here yet.',
+                body: 'This room is using the standard points view right now. No custom credits or promo campaigns are configured here yet.',
                 tone: 'zinc',
                 showClaims: false,
             };
@@ -3190,7 +3311,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     // Listeners
     useEffect(() => {
-        if (isMarketingDemoFixture) return () => {};
+        if (isAudienceFixtureMode) return () => {};
         setUser(null);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => setRoom(s.data()));
 
@@ -3246,7 +3367,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         
         return () => { unsubRoom(); unsubUser(); unsubAllUsers(); unsubSongs(); };
-    }, [roomCode, activeUid, isFormInitialized, isMarketingDemoFixture, profile?.isVip, profile?.vipLevel, vipUnlockPending, resolveAllowedAvatarEmoji]);
+    }, [roomCode, activeUid, isFormInitialized, isAudienceFixtureMode, profile?.isVip, profile?.vipLevel, vipUnlockPending, resolveAllowedAvatarEmoji]);
     useEffect(() => {
         if (uid && uid !== authReadyUid) {
             setAuthReadyUid(uid);
@@ -3258,17 +3379,35 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         return () => unsub();
     }, [uid]);
+    useEffect(() => {
+        if (isAudienceFixtureMode) return undefined;
+        let cancelled = false;
+        initAuth().then(() => {
+            if (cancelled) return;
+            const bootUid = resolveAudienceSessionUid({
+                authCurrentUid: auth.currentUser?.uid,
+                authReadyUid,
+                routeUid: uid
+            });
+            if (bootUid) {
+                setAuthReadyUid(bootUid);
+            }
+        }).catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [authReadyUid, isAudienceFixtureMode, uid]);
 
     useEffect(() => {
-        if (!roomCode || isMarketingDemoFixture) return;
+        if (!roomCode || isAudienceFixtureMode) return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
             if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
         });
         return () => unsub();
-    }, [roomCode, isMarketingDemoFixture]);
+    }, [roomCode, isAudienceFixtureMode]);
     useEffect(() => {
-        if (!roomCode || isMarketingDemoFixture) return;
+        if (!roomCode || isAudienceFixtureMode) return;
         const unsub = onSnapshot(
             query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)),
             (snap) => {
@@ -3276,7 +3415,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         );
         return () => unsub();
-    }, [roomCode, isMarketingDemoFixture]);
+    }, [roomCode, isAudienceFixtureMode]);
     useEffect(() => {
         if (!roomCode) return () => {};
         const lobbyVolleySceneActive = isVolleyOrbSceneActive({
@@ -3980,7 +4119,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setCrowdSelfieMomentOptIn(true);
     }, [crowdSelfieMomentArmKey, hasApprovedCrowdSelfie, hasPendingCrowdSelfie]);
 
-    const startCamera = async () => {
+    const startCamera = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
             if (videoRef.current) {
@@ -3996,7 +4135,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setCameraError('Camera permission is blocked. Enable it to continue.');
             setCameraActive(false);
         }
-    };
+    }, []);
 
     // Selfie Cam / Selfie Challenge
     useEffect(() => {
@@ -4013,7 +4152,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             setCameraActive(false);
         }
-    }, [isAudienceSelfieCam, room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, uid]);
+    }, [isAudienceSelfieCam, room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, startCamera, uid]);
 
     useEffect(() => {
         const videoEl = videoRef.current;
@@ -4048,7 +4187,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             clearTimeout(t);
             canceled = true;
         };
-    }, [searchQ]);
+    }, [roomCode, searchQ]);
 
     const getAudienceCatalogResultKey = useCallback((result = {}) => (
         buildSongKey(
@@ -4365,7 +4504,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             clearTimeout(t);
             canceled = true;
         };
-    }, [tight15SearchQ]);
+    }, [roomCode, tight15SearchQ]);
 
     useEffect(() => {
         if (room?.lightMode !== 'guitar') {
@@ -4506,6 +4645,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         try {
             markActive();
+            await initAuth().catch(() => ({ ok: false }));
             let activeUid = await waitForJoinAuthUid();
             if (!activeUid) {
                 toast('Session is still connecting. Try again.');
@@ -4515,7 +4655,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             await ensureAppCheckToken(false).catch(() => false);
 
             try {
-                await writeJoinProjection();
+                const joinResult = await writeJoinProjection();
+                const joinedUid = resolveAudienceSessionUid({
+                    authCurrentUid: auth.currentUser?.uid,
+                    authReadyUid,
+                    joinResultUid: joinResult?.uid,
+                    routeUid: uid
+                });
+                if (joinedUid) {
+                    setAuthReadyUid(joinedUid);
+                    activeUid = joinedUid;
+                }
             } catch (error) {
                 const retryable = (
                     isQueuePermissionDeniedError(error)
@@ -4532,7 +4682,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const retryUid = String(auth.currentUser?.uid || '').trim();
                 if (!retryUid) throw error;
                 activeUid = retryUid;
-                await writeJoinProjection();
+                const retryJoinResult = await writeJoinProjection();
+                const joinedUid = resolveAudienceSessionUid({
+                    authCurrentUid: auth.currentUser?.uid,
+                    authReadyUid: retryUid,
+                    joinResultUid: retryJoinResult?.uid,
+                    routeUid: uid
+                });
+                if (joinedUid) {
+                    setAuthReadyUid(joinedUid);
+                    activeUid = joinedUid;
+                }
             }
 
             if (typeof window !== 'undefined') {
@@ -4578,8 +4738,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!message) return;
         if (!roomCode || !user) return;
         if (isAnon) {
-            toast('Create or log in to your BeauRocks account to use chat.');
-            setShowPhoneModal(true);
+            toast(
+                allowsDonationAccess
+                    ? `Support the room or continue with email to use chat.`
+                    : `Open ${accessBrandLabel} to use chat.`
+            );
+            openVipUpgrade();
             return;
         }
         const senderUid = String(auth.currentUser?.uid || uid || '').trim();
@@ -4598,8 +4762,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
         const isLounge = socialTab !== 'host';
-        if (isLounge && room?.chatAudienceMode === 'vip' && !isVipAccount) {
-            toast('VIP-only chat is live. Create or verify your BeauRocks account to unlock access.');
+        if (isLounge && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess) {
+            toast(
+                allowsDonationAccess
+                    ? `${supporterAccessLabel} chat is live. Support the fundraiser or continue with email to unlock it.`
+                    : `${premiumAccessLabel} chat is live. Verify your email access to unlock it.`
+            );
             return;
         }
         if (user?.chatMuted) {
@@ -4723,7 +4891,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         showRewardToast(`READY! +${rewardPoints} PTS`, rewardPoints);
     };
 
-    const captureSelfieCanvas = ({ cropMode = 'full' } = {}) => {
+    const captureSelfieCanvas = useCallback(({ cropMode = 'full' } = {}) => {
         if (!videoRef.current) return null;
         const sourceWidth = videoRef.current.videoWidth || 0;
         const sourceHeight = videoRef.current.videoHeight || 0;
@@ -4750,9 +4918,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!ctx) return null;
         ctx.drawImage(videoRef.current, 0, 0);
         return canvas;
-    };
+    }, []);
 
-    const waitForCameraFrame = (timeoutMs = 2200) => new Promise((resolve) => {
+    const waitForCameraFrame = useCallback((timeoutMs = 2200) => new Promise((resolve) => {
         const video = videoRef.current;
         if (!video) {
             resolve(false);
@@ -4784,7 +4952,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         video.addEventListener('loadedmetadata', onReady);
         video.addEventListener('canplay', onReady);
         onReady();
-    });
+    }), []);
 
     const canvasToJpegBlob = (canvas, quality = 0.6) => new Promise((resolve, reject) => {
         if (!canvas) {
@@ -4854,7 +5022,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return { blob, previewUrl };
     };
 
-    const uploadSelfieBlob = async (blob, suffix = 'selfie', { uploadMode = 'direct' } = {}) => {
+    const uploadSelfieBlob = useCallback(async (blob, suffix = 'selfie', { uploadMode = 'direct' } = {}) => {
         if (!blob || !roomCode) throw new Error('Missing selfie payload');
         const blobToBase64 = (sourceBlob) => new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -5052,9 +5220,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             throw err;
         }
         throw lastErr || new Error('Selfie upload failed');
-    };
+    }, [activeUid, authReadyUid, form.name, roomCode, uid, user?.name, user?.uid, waitForJoinAuthUid]);
 
-    const captureAndUploadSelfie = async ({ quality = 0.6, suffix = 'selfie', cropMode = 'full', uploadMode = 'direct' } = {}) => {
+    const captureAndUploadSelfie = useCallback(async ({ quality = 0.6, suffix = 'selfie', cropMode = 'full', uploadMode = 'direct' } = {}) => {
         let canvas = captureSelfieCanvas({ cropMode });
         if (!canvas) {
             if (!cameraActive || !videoRef.current?.srcObject) {
@@ -5066,7 +5234,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!canvas) throw new Error('Camera frame unavailable');
         const blob = await canvasToJpegBlob(canvas, quality);
         return uploadSelfieBlob(blob, suffix, { uploadMode });
-    };
+    }, [cameraActive, captureSelfieCanvas, startCamera, uploadSelfieBlob, waitForCameraFrame]);
 
     const resolveSelfieErrorMessage = (error, fallback = 'Selfie upload failed') => {
         const code = String(error?.code || '').toLowerCase();
@@ -5869,7 +6037,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
         await setDoc(doc(db, 'users', accountProfileUid), updates, { merge: true });
         setShowVipOnboarding(false);
-        toast('VIP profile saved');
+        toast(`${premiumProfileLabel} saved`);
     };
 
     const getNameEmojiChangeCost = () => {
@@ -6109,7 +6277,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!composedPhoto) return;
         const link = document.createElement('a');
         link.href = composedPhoto;
-        link.download = `bross-selfie-${Date.now()}.jpg`;
+        link.download = `${selfieBrandSlug}-selfie-${Date.now()}.jpg`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -6120,11 +6288,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (!navigator.share) return toast('Sharing not available');
         try {
             const blob = dataUrlToBlob(composedPhoto);
-            const file = new File([blob], 'bross-selfie.jpg', { type: blob.type });
+            const file = new File([blob], `${selfieBrandSlug}-selfie.jpg`, { type: blob.type });
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({ files: [file], title: 'BROSS selfie', text: 'My BROSS selfie' });
+                await navigator.share({ files: [file], title: selfieBrandLabel, text: `My ${selfieBrandLabel}` });
             } else {
-                await navigator.share({ title: 'BROSS selfie', text: 'My BROSS selfie' });
+                await navigator.share({ title: selfieBrandLabel, text: `My ${selfieBrandLabel}` });
             }
         } catch (e) {
             console.error(e);
@@ -6144,7 +6312,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return 'That email link expired. Send a fresh one and try again.';
         }
         if (code.includes('user-disabled')) return 'This account is disabled.';
-        if (code.includes('email-already-in-use')) return 'That email already has a BeauRocks account. Use the sign-in link from that inbox.';
+        if (code.includes('email-already-in-use')) return 'That email already has access set up. Use the sign-in link from that inbox.';
         if (code.includes('resource-exhausted')) return 'Too many email link attempts. Wait a minute and try again.';
         if (code.includes('failed-precondition') && message.includes('app check')) return 'Security token expired. Refresh and try again.';
         if (code.includes('network-request-failed') || message.includes('network')) return 'Network issue while verifying. Try again.';
@@ -6161,17 +6329,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
-    const buildAudienceEmailLinkTarget = () => {
+    const buildAudienceEmailLinkTarget = useCallback(() => {
         if (typeof window === 'undefined') return '';
         const url = new URL(window.location.href);
         ['oobCode', 'mode', 'apiKey', 'lang', 'continueUrl'].forEach((key) => url.searchParams.delete(key));
         return url.toString();
-    };
+    }, []);
 
-    const stripEmailLinkParamsFromUrl = () => {
+    const stripEmailLinkParamsFromUrl = useCallback(() => {
         if (typeof window === 'undefined') return;
         window.history.replaceState({}, document.title, buildAudienceEmailLinkTarget());
-    };
+    }, [buildAudienceEmailLinkTarget]);
 
     const completeAudienceAccountUpgrade = useCallback(async ({ verifiedUser, sourceUid, roomUserSeed = null, email, source = 'audience_email_verify' }) => {
         const linkedUid = String(verifiedUser?.uid || auth.currentUser?.uid || activeUid || '').trim();
@@ -6185,7 +6353,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const migratedPoints = Math.max(0, Number(roomUserSeed?.points || 0));
         const migratedEmojiTotal = Math.max(0, Number(roomUserSeed?.totalEmojis || 0));
         await ensureUserProfile(linkedUid, {
-            name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'BeauRocks User'),
+            name: profile?.name || user?.name || form.name || (normalizedEmail.split('@')[0] || 'Guest'),
             avatar: profile?.avatar || user?.avatar || form.emoji || DEFAULT_EMOJI
         });
         const roomUserProjection = getRoomUserProjection({
@@ -6226,8 +6394,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setShowVipOnboarding(true);
         setTab('request');
         setSongsTab('tight15');
-        showRewardToast('BeauRocks account verified by email - VIP perks unlocked! +5000 PTS', 5000, { durationMs: 3600 });
-    }, [activeUid, form.emoji, form.name, getRoomUserProjection, profile?.avatar, profile?.name, roomCode, user?.avatar, user?.name]);
+        showRewardToast(`Email verified. ${premiumAccessLabel} perks unlocked! +5000 PTS`, 5000, { durationMs: 3600 });
+    }, [activeUid, form.emoji, form.name, getRoomUserProjection, premiumAccessLabel, profile?.avatar, profile?.name, roomCode, showRewardToast, user?.avatar, user?.name]);
 
     const sendAccountEmailLink = async () => {
         const normalizedEmail = normalizeAccountEmail(accountEmail);
@@ -6254,7 +6422,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             setAccountEmail(normalizedEmail);
             setEmailLinkSent(true);
-            toast('Check your inbox for the BeauRocks sign-in link.');
+            toast('Check your inbox for the secure sign-in link.');
         } catch (error) {
             console.error('email link send error', error);
             toast(getAccountEmailErrorMessage(error));
@@ -6380,7 +6548,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return () => {
             cancelled = true;
         };
-    }, [activeUid, accountEmail, completeAudienceAccountUpgrade, roomCode, toast]);
+    }, [activeUid, accountEmail, completeAudienceAccountUpgrade, roomCode, stripEmailLinkParamsFromUrl, toast]);
 
     const feedbackOptions = {
         moments: ['the crowd hype', 'the stage vibe', 'the song pick', 'the reactions', 'the games', 'the DJ flow'],
@@ -6607,24 +6775,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         <div className="fixed inset-0 bg-black/70 z-[150] flex items-center justify-center p-6 font-saira">
             <div className="bg-gradient-to-br from-zinc-800 via-zinc-900 to-[#231426] p-7 rounded-3xl w-full max-w-md border border-pink-400/30 text-left shadow-[0_0_60px_rgba(255,103,182,0.35)]">
                 <div className="flex items-center gap-4 mb-5">
-                    <img src={room?.logoUrl || ASSETS.logo} className="h-24 drop-shadow-[0_0_18px_rgba(255,103,182,0.7)]" alt="BEAUROCKS KARAOKE" />
+                    <img src={room?.logoUrl || ASSETS.logo} className="h-24 drop-shadow-[0_0_18px_rgba(255,103,182,0.7)]" alt={audienceBrandTitle} />
                     <div>
-                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">About</div>
-                        <div className="text-2xl font-black text-white">BEAUROCKS KARAOKE</div>
+                        <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{isCustomAudienceBrand ? 'About this room' : 'About'}</div>
+                        <div className="text-2xl font-black text-white">{isCustomAudienceBrand ? audienceBrandTitle : 'BEAUROCKS KARAOKE'}</div>
+                        {poweredByBeauRocksLabel ? (
+                            <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-zinc-400">{poweredByBeauRocksLabel}</div>
+                        ) : null}
                     </div>
                 </div>
                 <div className="bg-black/30 border border-pink-400/40 rounded-2xl p-5 mb-4">
-                    <div className="text-lg font-extrabold text-white mb-2">A game from BROSS Marketing &amp; Entertainment.</div>
+                    <div className="text-lg font-extrabold text-white mb-2">
+                        {isCustomAudienceBrand ? `${audienceBrandTitle} runs on BeauRocks Karaoke.` : 'A live experience from BeauRocks Karaoke.'}
+                    </div>
                     <div className="text-base text-zinc-200 leading-relaxed">
                         Built for big nights, bold voices, and crowd energy. We blend karaoke, games, and live vibes into a shared party.
                     </div>
                 </div>
-                <button
-                    onClick={() => window.open('https://beauross.com', '_blank')}
-                    className="w-full bg-gradient-to-r from-cyan-500 to-sky-400 text-black py-3 rounded-xl font-bold transition-colors text-base tracking-wide min-h-[48px] mb-4"
-                >
-                    Visit beauross.com
-                </button>
+                {!isCustomAudienceBrand ? (
+                    <button
+                        onClick={() => window.open('https://beauross.com', '_blank')}
+                        className="w-full bg-gradient-to-r from-cyan-500 to-sky-400 text-black py-3 rounded-xl font-bold transition-colors text-base tracking-wide min-h-[48px] mb-4"
+                    >
+                        Visit beauross.com
+                    </button>
+                ) : null}
                 <div className="bg-black/30 border border-white/10 rounded-2xl p-4 mb-4">
                     <div className="text-sm uppercase tracking-widest text-zinc-300 mb-2">Feedback</div>
                     <div className="text-sm text-zinc-300 mb-3">Help us tune the night. Build a quick madlibs and send it.</div>
@@ -6741,13 +6916,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         alt={audienceBrandTitle}
                     />
                 </button>
-                {/* Removed header for tighter logo focus */}
-                <div className="text-sm text-zinc-200 mb-1">Pick the emoji that feels most you.</div>
+                {poweredByBeauRocksLabel ? (
+                    <div className="mb-2 text-[11px] font-black uppercase tracking-[0.26em]" style={{ color: `${audienceBrandTheme.secondaryColor}E6` }}>
+                        {poweredByBeauRocksLabel}
+                    </div>
+                ) : null}
+                <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
                 <div className="w-screen -mx-6 px-0 relative">
                     <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" />
                 </div>
-                <div className="w-full max-w-sm mt-1 rounded-3xl p-2.5 text-center bg-gradient-to-br from-[#252633] via-[#1b1f2a] to-[#151926] shadow-[0_14px_40px_rgba(0,0,0,0.4)]">
+                <div
+                    className="w-full max-w-sm mt-1 rounded-3xl border p-2.5 text-center shadow-[0_14px_40px_rgba(0,0,0,0.4)]"
+                    style={{
+                        borderColor: `${audienceBrandTheme.secondaryColor}66`,
+                        background: `linear-gradient(135deg, ${audienceBrandTheme.accentColor}55 0%, rgba(16, 18, 26, 0.94) 48%, ${audienceBrandTheme.primaryColor}40 100%)`,
+                        boxShadow: `0 18px 42px ${audienceBrandTheme.primaryColor}24`,
+                    }}
+                >
                     <div className="mt-1 text-xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                     {selectedAvatarStatus?.locked ? (
                         <div className="text-base font-bold text-zinc-200 mt-1.5">Unlock: {selectedAvatarUnlock}</div>
@@ -6774,7 +6960,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         }}
                         onFocus={() => setNameFocused(true)}
                         onBlur={() => setNameFocused(false)}
-                        className="w-full bg-zinc-100/90 p-3 rounded-xl text-center text-zinc-900 text-lg font-semibold placeholder:font-semibold placeholder-zinc-500 focus:ring-2 ring-pink-500 outline-none"
+                        className="w-full bg-zinc-100/90 p-3 rounded-xl text-center text-zinc-900 text-lg font-semibold placeholder:font-semibold placeholder-zinc-500 outline-none transition-shadow"
+                        style={{
+                            borderWidth: '2px',
+                            borderStyle: 'solid',
+                            borderColor: nameFocused ? audienceBrandTheme.secondaryColor : `${audienceBrandTheme.secondaryColor}55`,
+                            boxShadow: nameFocused ? `0 0 0 4px ${audienceBrandTheme.primaryColor}33` : `0 10px 28px ${audienceBrandTheme.accentColor}22`,
+                        }}
                         placeholder="Enter Your Name"
                     />
                     {nameFocused && !form.name ? (
@@ -6802,14 +6994,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </button>
                 <button
                     type="button"
-                    onClick={() => setShowPhoneModal(true)}
+                    onClick={() => openVipUpgrade()}
                     className="mt-3 w-full max-w-sm rounded-xl border px-4 py-3 text-sm font-black uppercase tracking-[0.18em] shadow-[0_0_18px_rgba(0,196,217,0.18)]"
                     style={audienceBrandPalette.primaryPillStyle}
                 >
-                    {isAnon ? 'Use BeauRocks Account' : 'BeauRocks Account Connected'}
+                    {isAnon ? accessActionLabel : accessConnectedLabel}
                 </button>
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
-                    Already have a BeauRocks account? Sign in with your email link here before or after you join the room.
+                    {allowsDonationAccess
+                        ? 'Use support or email access here anytime to reconnect, unlock room perks, and keep your profile synced.'
+                        : `Use your email link here anytime to reconnect, unlock ${premiumPerksLabel}, and keep your profile synced.`}
                 </div>
                 {returningProfile && showReturningPrompt ? (
                     <button
@@ -6826,7 +7020,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         Rejoin
                     </button>
                 ) : null}
-                <div className="mt-4 text-xs text-zinc-200 tracking-[0.12em] uppercase">(c) 2026 BROSS Entertainment. All rights reserved.</div>
+                <div className="mt-4 text-xs text-zinc-200 tracking-[0.12em] uppercase">
+                    {isCustomAudienceBrand
+                        ? `${audienceBrandTitle} live experience - Powered by BeauRocks Karaoke`
+                        : '(c) 2026 BeauRocks Karaoke. All rights reserved.'}
+                </div>
             </div>
         </div>
         {showRulesModal ? (
@@ -8054,14 +8252,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             );
         }
     }
-    
-
     if (showAccount) return (
         <div className="fixed inset-0 bg-zinc-900 z-[110] p-6 flex flex-col text-white font-saira">
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">BeauRocks Account</div>
+                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{accessBrandLabel}</div>
                     <div className="text-3xl font-bebas text-cyan-300">Your Performance History</div>
+                    {poweredByBeauRocksLabel ? (
+                        <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-zinc-500">{poweredByBeauRocksLabel}</div>
+                    ) : null}
                 </div>
                 <button onClick={() => setShowAccount(false)} className="bg-zinc-800 px-4 py-2 rounded-full text-sm font-bold">Close</button>
             </div>
@@ -8069,7 +8268,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="bg-zinc-800/70 border border-zinc-700 rounded-2xl p-4">
                     <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Account</div>
                     <div className="text-lg font-bold">{user?.name || 'Guest'}</div>
-                    <div className="text-sm text-zinc-400">VIP Level: {profile?.vipLevel || 1}</div>
+                    <div className="text-sm text-zinc-400">{premiumLevelLabel}: {profile?.vipLevel || 1}</div>
                     <div className="text-sm text-zinc-400">Account: {auth.currentUser?.email || profile?.email || profile?.phone || user?.phone || 'Not linked'}</div>
                     <div className="mt-3 flex gap-3 text-sm">
                         <div className="bg-black/30 px-3 py-2 rounded-xl">Performances: <span className="font-bold text-white">{performanceStats.total}</span></div>
@@ -8225,7 +8424,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     />
                     {isVipAccount && (
                         <div className="bg-black/40 border border-fuchsia-400/25 rounded-2xl p-4">
-                            <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-3">VIP Profile</div>
+                            <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-3">{premiumProfileLabel}</div>
                             <input
                                 value={vipForm.location}
                                 onChange={(e) => setVipForm(prev => ({ ...prev, location: e.target.value }))}
@@ -8261,13 +8460,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     disabled={vipTosAccepted}
                                     onChange={(e) => setVipForm(prev => ({ ...prev, tosAccepted: e.target.checked }))}
                                 />
-                                {vipTosAccepted ? 'VIP House Rules accepted' : 'I agree to the VIP House Rules'}
+                                {vipTosAccepted ? `${premiumRulesLabel} accepted` : `I agree to the ${premiumRulesLabel}`}
                             </label>
                         </div>
                     )}
                     {isVipAccount && (
                         <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-3 rounded-xl font-bold">
-                            BeauRocks Account & History
+                            {accessBrandLabel} & History
                         </button>
                     )}
                     <div className="flex gap-2">
@@ -8281,8 +8480,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (showVipOnboarding) return (
         <div className="fixed inset-0 bg-black/80 z-[140] flex items-center justify-center p-6 text-white font-saira">
             <div className="w-full max-w-md bg-gradient-to-br from-[#120b1a] via-[#0f1218] to-[#0a0d12] border border-cyan-500/30 rounded-3xl p-6 shadow-[0_0_40px_rgba(0,196,217,0.25)]">
-                <div className="text-xs uppercase tracking-[0.45em] text-zinc-500">Welcome VIP</div>
-                <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mb-2">Build Your VIP Profile</h2>
+                <div className="text-xs uppercase tracking-[0.45em] text-zinc-500">{premiumWelcomeLabel}</div>
+                <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] mb-2">{premiumProfileHeadline}</h2>
                 <p className="text-base text-zinc-300 mb-4">This info shows on your profile so the room can celebrate you.</p>
                 <input
                     value={vipForm.location}
@@ -8313,7 +8512,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </select>
                 </div>
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-5 mb-4">
-                    <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">VIP House Rules</div>
+                    <div className="text-xs uppercase tracking-[0.45em] text-zinc-400 mb-2">{premiumRulesLabel}</div>
                     <ul className="text-base text-zinc-200 space-y-2">
                         {VIP_TOS_SUMMARY.map(item => (
                             <li key={item} className="flex gap-2">
@@ -8328,10 +8527,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             checked={vipForm.tosAccepted}
                             onChange={(e) => setVipForm(prev => ({ ...prev, tosAccepted: e.target.checked }))}
                         />
-                        I agree to the VIP House Rules.
+                        {`I agree to the ${premiumRulesLabel}.`}
                     </label>
                 </div>
-                <button onClick={saveVipOnboarding} className="w-full bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black text-lg">Save VIP Profile</button>
+                <button onClick={saveVipOnboarding} className="w-full bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black py-3 rounded-xl font-black text-lg">Save {premiumProfileLabel}</button>
             </div>
         </div>
     );
@@ -8516,7 +8715,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     ) : null}
                     {unlockType === 'vip' ? (
                         <div className="mt-3 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/10 px-4 py-3 text-sm text-zinc-200">
-                            VIP avatars are optional. You can keep going as a guest right now and link or verify later if you want the premium pack.
+                            {premiumAccessLabel} avatars are optional. You can keep going as a guest right now and link or verify later if you want the premium pack.
                         </div>
                     ) : null}
                     <div className="mt-5 flex gap-2">
@@ -8559,7 +8758,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 }}
                                 className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
                             >
-                                View VIP Perks
+                                View {premiumAccessLabel} Perks
                             </button>
                         ) : (
                             <button
@@ -8589,16 +8788,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <div className="min-w-0">
                         <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-200/80">Audience Access</div>
                         <div className="text-xl font-black uppercase tracking-[0.08em] text-white">{audienceBrandTitle}</div>
-                        <div className="text-xs uppercase tracking-[0.22em] text-white/45">Secure account link</div>
+                        <div className="text-xs uppercase tracking-[0.22em] text-white/45">
+                            {poweredByBeauRocksLabel || 'Secure email access'}
+                        </div>
                     </div>
                 </div>
-                <h2 className="mb-2 text-2xl font-black leading-tight text-white">Sign In or Create Your Account</h2>
-                <p className="mb-4 text-sm leading-6 text-zinc-300">Enter your email and we will send a secure sign-in link. Use the same email for an existing BeauRocks account, or a new one to create it. Open the link on this device to finish automatically.</p>
+                <h2 className="mb-2 text-2xl font-black leading-tight text-white">{audienceAccessHeadline}</h2>
+                <p className="mb-4 text-sm leading-6 text-zinc-300">{audienceAccessBody}</p>
+                {allowsDonationAccess && roomSupportOffer && (
+                    <button
+                        onClick={() => {
+                            setShowPhoneModal(false);
+                            openVipUpgrade();
+                        }}
+                        className="mb-3 w-full rounded-2xl border border-emerald-300/35 bg-emerald-500/12 px-4 py-3 text-left text-emerald-100 shadow-[0_12px_30px_rgba(16,185,129,0.18)]"
+                    >
+                        <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-200">Fundraiser unlock</div>
+                        <div className="mt-1 text-lg font-bold text-white">{supportCtaLabel}</div>
+                        <div className="mt-1 text-sm text-emerald-100/80">
+                            Open the Givebutter flow and unlock {supporterAccessLabel.toLowerCase()} perks for this room.
+                        </div>
+                    </button>
+                )}
                 <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full mb-3 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-white placeholder:text-zinc-500 focus:border-cyan-300/60 focus:outline-none" />
                 {!emailLinkSent ? (
                     <div className="flex gap-2">
                         <button onClick={()=>setShowPhoneModal(false)} className="flex-1 rounded-2xl border border-white/10 bg-white/10 py-3 font-bold text-white transition hover:bg-white/15">Cancel</button>
-                        <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-cyan-500 py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Email Sign-In Link'}</button>
+                        <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-cyan-500 py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Send Email Link'}</button>
                     </div>
                 ) : (
                     <>
@@ -8726,7 +8942,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 >
                     <div className="mb-4 flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
-                            <img src={room?.logoUrl || ASSETS.logo} alt="Beaurocks Karaoke" className="h-12 w-12 rounded-2xl" />
+                            <img src={room?.logoUrl || ASSETS.logo} alt={audienceBrandTitle} className="h-12 w-12 rounded-2xl" />
                             <div className="min-w-0">
                                 <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">How to Play</div>
                                 <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
@@ -8799,7 +9015,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                         {eventPromoSummary.usesGivebutter && (
                                             <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
-                                                Givebutter attendee matching is active for this room. If your ticket email matches your BeauRocks sign-in, your VIP or entry credits can attach automatically.
+                                                Givebutter attendee matching is active for this room. If your ticket email matches your sign-in email, your {isCustomAudienceBrand ? 'festival pass' : 'VIP'} or entry credits can attach automatically.
                                             </div>
                                         )}
                                         {eventPromoSummary.promoCampaigns.length > 0 && (
@@ -8841,22 +9057,30 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
                                     <span className="text-2xl">{EMOJI.star}</span>
-                                    Sign in or create a BeauRocks account later to keep tonight&apos;s event perks, profile, and future bonuses.
+                                    {allowsDonationAccess
+                                        ? 'Support the fundraiser or link your email to keep tonight&apos;s event perks moving with you.'
+                                        : 'Link your email later to keep tonight&apos;s event perks, profile, and future bonuses.'}
                                 </div>
                                 <button
-                                    onClick={() => openVipUpgrade()}
+                                    onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
                                     className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
                                 >
-                                    Sign In / Create Account
+                                    {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
                                 </button>
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
-                                <div className="text-lg text-zinc-100">Room points power tonight&apos;s session. Linking BeauRocks later keeps your identity, event bonuses, VIP perks, and history tied to one account.</div>
+                                <div className="text-lg text-zinc-100">
+                                    {allowsDonationAccess
+                                        ? 'Room points power tonight&apos;s session. Supporter unlocks light up this room right away, and email access keeps your identity, history, and future bonuses tied together.'
+                                        : `Room points power tonight&apos;s session. Linking your email later keeps your identity, event bonuses, ${premiumPerksLabel}, and history tied together.`}
+                                </div>
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 mt-4">
-                            <button onClick={() => setShowPointsShop(true)} className="bg-gradient-to-r from-pink-600/40 to-cyan-500/40 border border-pink-400/50 px-6 py-3 rounded-xl font-bold text-white text-base tracking-wide min-h-[44px]">Add More Points</button>
+                            <button onClick={() => { setSupportEmbedOpen(allowsDonationAccess && !!roomSupportOffer?.supportEmbedUrl); setShowPointsShop(true); }} className="bg-gradient-to-r from-pink-600/40 to-cyan-500/40 border border-pink-400/50 px-6 py-3 rounded-xl font-bold text-white text-base tracking-wide min-h-[44px]">
+                                {allowsDonationAccess ? 'Open Support + Points' : 'Add More Points'}
+                            </button>
                             <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
                             <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
                         </div>
@@ -8946,6 +9170,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         ? `Completed support purchases can trigger +${roomSupportOffer.supportPoints} pts for the whole room.`
                                                         : 'Use this to support the room without leaving the audience flow.'}
                                                     {roomSupportOffer.supportBadge ? ` ${MONEYBAGS_BADGE_LABEL} spotlight included.` : ''}
+                                                    {allowsDonationAccess ? ` ${supporterAccessLabel} perks can unlock here too.` : ''}
                                                 </div>
                                             </div>
                                             <div className="text-2xl">{EMOJI.tip}</div>
@@ -8965,6 +9190,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-bold text-white"
                                                 >
                                                     Open support page
+                                                </button>
+                                            )}
+                                            {allowsEmailFallbackAccess && allowsDonationAccess && (
+                                                <button
+                                                    onClick={() => openVipUpgrade('email')}
+                                                    className="w-full rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-4 py-3 font-bold text-cyan-100"
+                                                >
+                                                    Continue with Email instead
                                                 </button>
                                             )}
                                         </div>
@@ -9411,7 +9644,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return list;
     })();
     const socialPrimaryTabs = [
-        { key: 'lounge', label: 'VIP Lounge' },
+        { key: 'lounge', label: premiumLoungeLabel },
         { key: 'host', label: 'DM Host' },
         { key: 'leaderboard', label: 'Leaderboard' },
         { key: 'lobby', label: 'Lobby' }
@@ -9464,19 +9697,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             : 'Party';
     const streamlinedPrimaryNavItems = [
         { key: 'home', label: 'Party', icon: 'fa-champagne-glasses' },
-        { key: 'request', label: 'Songs', icon: 'fa-music' },
-        { key: 'social', label: 'Social', icon: 'fa-comments' }
+        { key: 'request', label: 'Songs', icon: 'fa-music' }
     ];
     const streamlinedSongsNavItems = [
         { key: 'requests', label: 'Request', icon: 'fa-plus' },
-        { key: 'browse', label: 'Browse', icon: 'fa-compass' },
         { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         { key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }
-    ];
-    const streamlinedSocialNavItems = [
-        { key: 'lounge', label: 'Lounge', icon: 'fa-users' },
-        { key: 'host', label: 'Host', icon: 'fa-crown' },
-        { key: 'profile', label: 'Profile', icon: 'fa-user' }
     ];
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
@@ -9587,15 +9813,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const compactEmptyStageMetaHint = 'Tap to expand';
     const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
 
-    const chatTitle = socialTab === 'host' ? 'DM Host' : 'VIP Lounge';
+    const chatTitle = socialTab === 'host' ? 'DM Host' : premiumLoungeLabel;
     const chatStatusLabel = !room?.chatEnabled
         ? 'Chat paused'
         : isAnon
-            ? 'BeauRocks account required'
+            ? 'Email access required'
         : socialTab === 'host'
             ? 'Private DM'
             : room?.chatAudienceMode === 'vip'
-                ? 'VIP only'
+                ? `${premiumAccessLabel} only`
                 : 'Public lounge';
     const chatInputDisabled = room?.chatEnabled === false
         || isAnon
@@ -9637,15 +9863,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         pulseNativeUiFeedback();
         setTab('request');
         setSongsTab(nextSongsTab);
-    };
-    const openStreamlinedSocialStageTab = (nextSocialTab) => {
-        pulseNativeUiFeedback();
-        setTab('social');
-        if (nextSocialTab === 'profile') {
-            setSocialTab('profile');
-            return;
-        }
-        handleSocialTabChange(nextSocialTab);
     };
     const setStagePanelCollapsedForTab = (collapsed, targetTab = tab) => {
         if (!primaryStageTabs.includes(targetTab)) return;
@@ -9881,9 +10098,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 >
                     {isStreamlinedAudienceShell && (
                         <div className="mb-3 space-y-2">
-                            <div className="grid grid-cols-3 gap-2">
+                            <div
+                                className="grid gap-2"
+                                style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
+                            >
                                 {streamlinedPrimaryNavItems.map((item) => {
-                                    const isActive = activePrimaryStageTab === item.key;
+                                    const isActive = item.key === 'home'
+                                        ? (tab === 'home' || tab === 'social')
+                                        : activePrimaryStageTab === item.key;
                                     return (
                                         <button
                                             key={item.key}
@@ -9900,9 +10122,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/35 text-sm">
                                                     <i className={`fa-solid ${item.icon}`}></i>
                                                 </span>
-                                                {item.key === 'social' && chatUnread ? (
-                                                    <span className="h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>
-                                                ) : null}
                                                 <div className="text-xs font-black uppercase tracking-[0.16em]">
                                                     {item.label}
                                                 </div>
@@ -9913,10 +10132,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             </div>
                             <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
                                 <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
-                                    <i className="fa-solid fa-users text-[10px]"></i>
-                                    {allUsers.length || 0}
-                                </span>
-                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
                                     <i className="fa-solid fa-list text-[10px]"></i>
                                     {queueSongsView.length}
                                 </span>
@@ -9924,9 +10139,37 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <i className="fa-solid fa-clock text-[10px]"></i>
                                     {formatWaitTime(queueWaitTimeSec)}
                                 </span>
-                                <span className="ml-auto text-[10px] tracking-[0.2em] text-zinc-400">
-                                    {roomCode}
-                                </span>
+                                {room?.hostName ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            pulseNativeUiFeedback();
+                                            setTab('social');
+                                            setSocialTab('host');
+                                            const newest = getNewestRelevantChatTimestamp(dmMessages);
+                                            if (newest) chatLastSeenRef.current = newest;
+                                            setChatUnread(false);
+                                        }}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
+                                    >
+                                        <i className="fa-solid fa-crown text-[10px]"></i>
+                                        <span>Host</span>
+                                        {chatUnread ? (
+                                            <span className="h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>
+                                        ) : null}
+                                    </button>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        pulseNativeUiFeedback();
+                                        copyInviteLink();
+                                    }}
+                                    className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
+                                >
+                                    <i className="fa-solid fa-link text-[10px]"></i>
+                                    <span>Share</span>
+                                </button>
                             </div>
                             {activePrimaryStageTab === 'request' && (
                                 <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
@@ -9950,32 +10193,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-black/25 text-cyan-50' : 'bg-white/10 text-zinc-100'}`}>
                                                         {item.badge}
                                                     </span>
-                                                ) : null}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {activePrimaryStageTab === 'social' && (
-                                <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
-                                    {streamlinedSocialNavItems.map((item) => {
-                                        const isActive = socialTab === item.key;
-                                        return (
-                                            <button
-                                            key={item.key}
-                                            type="button"
-                                            onClick={() => openStreamlinedSocialStageTab(item.key)}
-                                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-all ${
-                                                isActive
-                                                    ? ''
-                                                    : 'border-white/10 bg-black/35 text-zinc-300 hover:border-white/20 hover:bg-black/45'
-                                            }`}
-                                            style={isActive ? audienceBrandPalette.secondaryPillStyle : undefined}
-                                        >
-                                                <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                                <span>{item.label}</span>
-                                                {item.key === 'lounge' && chatUnread ? (
-                                                    <span className="h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>
                                                 ) : null}
                                             </button>
                                         );
@@ -10731,22 +10948,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      }[t];
                                      const cost = REACTION_COSTS[t];
                                      return (
-                                     <button key={t} onClick={()=>isVipAccount ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${isVipAccount ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
+                                     <button key={t} onClick={()=>hasPremiumRoomAccess ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${hasPremiumRoomAccess ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
                                              <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
                                              <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
                                              <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
                                                  {cost} PTS
                                              </div>
-                                             {!isVipAccount && (
+                                             {!hasPremiumRoomAccess && (
                                                  <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
                                                      <i className="fa-solid fa-lock text-[11px]"></i>
-                                                     <span className="leading-none">VIP</span>
+                                                    <span className="leading-none">{allowsDonationAccess ? supporterAccessLabel : premiumAccessLabel}</span>
                                                  </div>
                                              )}
                                          </button>
                                      );
                                  })}</div>
-                                 {!isVipAccount && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">CREATE BEAUROCKS ACCOUNT +5000 PTS {emoji(0x1F4E7)}</button>}
+                                 {!hasPremiumRoomAccess && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
+                                     {allowsDonationAccess ? `UNLOCK ${supporterAccessLabel.toUpperCase()} PERKS` : `UNLOCK ${premiumAccessLabel.toUpperCase()} WITH EMAIL +5000 PTS ${emoji(0x1F4E7)}`}
+                                 </button>}
                              </>
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
@@ -10794,15 +11013,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                     {isAnon ? (
                                         <div className="mb-3 bg-cyan-500/10 border border-cyan-400/40 rounded-xl p-4 text-left">
-                                            <div className="text-xs uppercase tracking-widest text-cyan-200 mb-1">BeauRocks Account</div>
-                                            <div className="text-base text-zinc-100">Create or log in to your BeauRocks account to start chatting.</div>
-                                            <button onClick={() => setShowPhoneModal(true)} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Sign In / Create Account</button>
+                                            <div className="text-xs uppercase tracking-widest text-cyan-200 mb-1">{accessBrandLabel}</div>
+                                            <div className="text-base text-zinc-100">
+                                                {allowsDonationAccess
+                                                    ? `Support the fundraiser or continue with email to start chatting.`
+                                                    : 'Open email access to start chatting.'}
+                                            </div>
+                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">{accessActionLabel}</button>
                                         </div>
                                     ) : activeChatTab === 'lounge' && chatLocked ? (
                                         <div className="mb-3 bg-pink-500/10 border border-pink-400/40 rounded-xl p-4 text-left">
-                                            <div className="text-xs uppercase tracking-widest text-pink-200 mb-1">VIP Lounge</div>
-                                            <div className="text-base text-zinc-100">VIP-only chat is live. Create or verify your BeauRocks account to unlock lounge access.</div>
-                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">Sign In / Create Account</button>
+                                            <div className="text-xs uppercase tracking-widest text-pink-200 mb-1">{allowsDonationAccess ? `${supporterAccessLabel} Lounge` : premiumLoungeLabel}</div>
+                                            <div className="text-base text-zinc-100">
+                                                {allowsDonationAccess
+                                                    ? `${supporterAccessLabel} chat is live. Support the fundraiser or continue with email to unlock lounge access.`
+                                                    : `${premiumAccessLabel} chat is live. Verify your email access to unlock lounge access.`}
+                                            </div>
+                                            <button onClick={() => openVipUpgrade()} className="mt-2 w-full bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-2 rounded-lg font-bold text-sm">{accessActionLabel}</button>
                                         </div>
                                     ) : null}
                                     {!chatLocked && (
@@ -10834,7 +11061,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                             <div className="flex items-center gap-2">
                                                                 <div className="text-xs text-pink-100">{group.user || 'Guest'}</div>
                                                                 {group.isVip && (
-                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">VIP</span>
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-yellow-400 text-black font-black tracking-widest">{premiumBadgeShortLabel}</span>
                                                                 )}
                                                                 {group.isHost && (
                                                                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500 text-black font-black tracking-widest">HOST</span>
@@ -10865,7 +11092,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             }
                                         }}
                                         className="flex-1 bg-zinc-800 border border-zinc-600 rounded-xl p-3 text-sm text-white placeholder:text-zinc-300"
-                                        placeholder={isAnon ? 'Create a BeauRocks account to chat...' : (socialTab === 'host' ? 'Send a private note to the host...' : 'Say something to the VIP lounge...')}
+                                        placeholder={isAnon
+                                            ? (allowsDonationAccess ? 'Support or continue with email to chat...' : 'Open email access to chat...')
+                                            : (socialTab === 'host' ? 'Send a private note to the host...' : `Say something to the ${allowsDonationAccess ? `${supporterAccessLabel.toLowerCase()} lounge` : premiumLoungeLabel.toLowerCase()}...`)}
                                         disabled={chatInputDisabled}
                                     />
                                     <button
@@ -10969,7 +11198,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             onClick={() => setProfileSubTab(section)}
                                             className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest border transition-colors ${profileSubTab === section ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black border-transparent' : 'bg-black/30 text-zinc-300 border-white/10'}`}
                                         >
-                                            {section}
+                                            {section === 'vip' ? (isCustomAudienceBrand ? 'pass' : 'vip') : section}
                                         </button>
                                     ))}
                                 </div>
@@ -10988,7 +11217,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                     {isVipAccount && (
                                         <div className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border bg-[#00C4D9]/10 text-cyan-300 border-[#00C4D9]/40">
-                                            VIP
+                                            {premiumBadgeShortLabel}
+                                        </div>
+                                    )}
+                                    {!isVipAccount && hasSupporterAccess && (
+                                        <div className="text-[10px] uppercase tracking-widest px-2 py-1 rounded-full border bg-emerald-500/12 text-emerald-200 border-emerald-300/35">
+                                            Supporter
                                         </div>
                                     )}
                                 </div>
@@ -11023,15 +11257,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </div>
                                                 {!vipProfileComplete && (
                                                     <div className="bg-amber-500/10 border border-amber-400/30 text-amber-200 px-3 py-2 rounded-xl text-xs">
-                                                        VIP profile incomplete. Add required fields to keep your VIP profile active.
+                                                        {premiumProfileLabel} incomplete. Add required fields to keep it active.
                                                     </div>
                                                 )}
                                                 <button onClick={openEditProfile} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">
-                                                    Edit VIP Profile
+                                                    Edit {premiumProfileLabel}
                                                 </button>
                                             </div>
                                         ) : (
-                                            <div className="bg-black/30 px-3 py-2 rounded-xl">Create or verify your BeauRocks account to unlock VIP profile details.</div>
+                                            <div className="bg-black/30 px-3 py-2 rounded-xl">Verify your email access to unlock {premiumProfileLabel.toLowerCase()} details.</div>
                                         )}
                                     </div>
                                 )}
@@ -11063,10 +11297,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button onClick={openEditProfile} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Change Name/Emoji</button>
                                     <button onClick={() => openPublicProfile({ ...user, uid, isVip: isVipAccount })} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">View Public Profile</button>
                                     {isVipAccount && (
-                                        <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">BeauRocks Account & History</button>
+                                        <button onClick={() => setShowAccount(true)} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] py-2 rounded-xl text-sm font-bold">{accessBrandLabel} & History</button>
                                     )}
                                     {!isVipAccount && (
-                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">Sign In / Create Account</button>
+                                        <button onClick={() => openVipUpgrade()} className="w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl text-sm font-bold">{accessActionLabel}</button>
                                     )}
                                     <button onClick={() => { setTab('request'); setSongsTab('tight15'); }} className="w-full bg-zinc-800 border border-zinc-600 py-2 rounded-xl text-zinc-200 text-sm">Edit Tight 15</button>
                                 </div>
@@ -11132,17 +11366,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         {isAnon ? (
                             <>
                                 <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#00C4D9]/20 text-cyan-300 text-[12px] font-black tracking-[0.3em] mb-3">
-                                    VIP ACCESS
+                                    {premiumAccessChipLabel}
                                 </div>
-                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">Create Your BeauRocks Account</h3>
-                                <p className="mb-4 text-zinc-300">VIP is unlocked through your BeauRocks account. Verify once to unlock premium reactions, visuals, and account carryover perks.</p>
+                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">{premiumUnlockHeadline}</h3>
+                                <p className="mb-4 text-zinc-300">{premiumAccessLabel} is unlocked through secure email access. Verify once to unlock premium reactions, visuals, and carryover perks.</p>
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-4 text-left">
-                                    <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">VIP Benefits</div>
+                                    <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">{premiumBenefitsLabel}</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive VIP emojis + mega reaction animations.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP badge on TV, queue, and chat.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive pass emojis + mega reaction animations.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Highlight badge on TV, queue, and chat.</li>
                                         <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Instant +5000 bonus points on unlock.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP-only chat nights when enabled by the host.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> {premiumAccessLabel} chat nights when enabled by the host.</li>
                                         <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Priority spotlight moments during the party.</li>
                                     </ul>
                                 </div>
@@ -11154,7 +11388,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     ) : (
                                         <>
                                             <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                                                Check <span className="font-bold text-white">{accountEmail}</span> and open the BeauRocks sign-in link on this device.
+                                                Check <span className="font-bold text-white">{accountEmail}</span> and open the secure sign-in link on this device.
                                             </div>
                                             <div className="flex gap-2 mt-3">
                                                 <button onClick={()=>setEmailLinkSent(false)} className="flex-1 bg-zinc-700 py-3 rounded">Use Different Email</button>
@@ -11169,16 +11403,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         ) : (
                             <>
                                 <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#00C4D9]/20 text-cyan-300 text-[12px] font-black tracking-[0.3em] mb-3">
-                                    VIP ACTIVE
+                                    {premiumActiveChipLabel}
                                 </div>
-                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">You are VIP</h3>
-                                <p className="mb-4 text-zinc-300">Enjoy premium reactions, exclusive emojis, and a VIP badge everywhere.</p>
+                                <h3 className="text-2xl font-bold text-cyan-300 mb-2">{premiumUnlockedHeadline}</h3>
+                                <p className="mb-4 text-zinc-300">Enjoy premium reactions, exclusive emojis, and a highlight badge everywhere.</p>
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-5 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">Your Perks</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP reactions and animated FX.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> VIP badge on TV, queue, and chat.</li>
-                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive VIP emoji pack.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> {premiumAccessLabel} reactions and animated FX.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Highlight badge on TV, queue, and chat.</li>
+                                        <li className="flex items-start gap-2"><span className="text-cyan-300">*</span> Exclusive {premiumAccessLabel.toLowerCase()} emoji pack.</li>
                                     </ul>
                                 </div>
                                 <button onClick={()=>setTab('home')} className="w-full bg-[#00C4D9] text-black py-4 rounded-xl font-bold text-xl">Back to Party</button>
@@ -12253,7 +12487,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
 
                                 {!canSaveTight15 && (
-                                    <button onClick={()=>setShowPhoneModal(true)} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Sign In / Create Account to Save Across Rooms</button>
+                                    <button onClick={()=>openVipUpgrade('email')} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Continue with Email to Save Across Rooms</button>
                                 )}
                             </div>
                         )}
@@ -12380,5 +12614,3 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 };
 
 export default SingerApp;
-
-

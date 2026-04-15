@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  getVolleyOrbBaseAction,
   getVolleyOrbResponsiveMetrics,
+  getVolleyOrbUltimate,
   getVolleyOrbMobileMainLine,
   getVolleyOrbTvInstructionCopy,
+  isVolleyOrbUltimateType,
   isVolleyOrbSceneActive,
   isVolleyOrbTargetInteraction,
+  normalizeVolleyOrbInteractionType,
 } from "../../src/lib/volleyOrbUiState.js";
 
 test("volleyOrbUiState.test", () => {
@@ -144,6 +148,23 @@ test("volleyOrbUiState.test", () => {
     }),
     false,
   );
+  assert.equal(
+    isVolleyOrbTargetInteraction({
+      relayActive: true,
+      targetType: "any",
+      interactionId: "lobby_play_wave",
+    }),
+    true,
+  );
+
+  assert.equal(normalizeVolleyOrbInteractionType(""), "");
+  assert.equal(normalizeVolleyOrbInteractionType("  lobby_play_wave "), "wave");
+  assert.equal(getVolleyOrbBaseAction("lobby_play_confetti")?.label, "Burst");
+  assert.equal(getVolleyOrbBaseAction("unknown"), null);
+  assert.equal(getVolleyOrbUltimate("ultimate_magnet")?.label, "Catch-All");
+  assert.equal(getVolleyOrbUltimate("lobby_play_ultimate_rocket")?.durationMs, 0);
+  assert.equal(isVolleyOrbUltimateType("ultimate_feather"), true);
+  assert.equal(isVolleyOrbUltimateType("wave"), false);
 
   assert.deepEqual(
     getVolleyOrbResponsiveMetrics({
@@ -174,4 +195,15 @@ test("volleyOrbUiState.test", () => {
       participantSizePx: 22,
     },
   );
+
+  const invalidMetrics = getVolleyOrbResponsiveMetrics({
+    sceneWidth: 0,
+    sceneHeight: "bad-data",
+  });
+  assert.equal(invalidMetrics.sceneWidthPx, 0);
+  assert.equal(Number.isNaN(invalidMetrics.sceneHeightPx), true);
+  assert.equal(invalidMetrics.orbSizePx, 280);
+  assert.equal(invalidMetrics.orbScale, 0.78);
+  assert.equal(invalidMetrics.orbContentScale, 0.84);
+  assert.equal(invalidMetrics.participantSizePx, 27);
 });

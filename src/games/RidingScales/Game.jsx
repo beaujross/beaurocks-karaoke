@@ -196,13 +196,16 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         }
         nextState.lastUpdated = Date.now();
         stateRef.current = nextState;
-        setLocalState(nextState);
-        setHostAssistBanner({
-            label: hostAssist?.label || 'SCALE SAVE',
-            by: hostAssist?.by || 'Host'
-        });
-        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
-        hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), SCALE_ASSIST_BANNER_MS);
+        const commitTimer = setTimeout(() => {
+            setLocalState(nextState);
+            setHostAssistBanner({
+                label: hostAssist?.label || 'SCALE SAVE',
+                by: hostAssist?.by || 'Host'
+            });
+            if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+            hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), SCALE_ASSIST_BANNER_MS);
+        }, 0);
+        return () => clearTimeout(commitTimer);
     }, [gameData]);
 
     useEffect(() => () => {

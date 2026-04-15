@@ -65,7 +65,12 @@ import {
     VOLLEY_ORB_ULTIMATES
 } from '../../lib/volleyOrbUiState';
 import { buildQaTvFixture } from './qaTvFixtures';
-import { MONEYBAGS_BADGE_LABEL, normalizePurchaseCelebration } from '../../lib/roomMonetization';
+import {
+    MONEYBAGS_BADGE_LABEL,
+    SUPPORT_CELEBRATION_STYLES,
+    normalizePurchaseCelebration,
+} from '../../lib/roomMonetization';
+import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -393,10 +398,11 @@ const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 10;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
-const TV_REACTION_VISIBILITY_MS = 6400;
+const TV_REACTION_VISIBILITY_MS = 9200;
 const FEATURED_REACTION_SPOTLIGHT_MS = 4200;
-const SELFIE_ARRIVAL_SPOTLIGHT_MS = 5200;
+const SELFIE_ARRIVAL_SPOTLIGHT_MS = 6800;
 const SELFIE_RECENT_BADGE_MS = 18000;
+const DOODLE_RECENT_BADGE_MS = 18000;
 const GUITAR_SYNC_DECAY_PER_SECOND = 14;
 const GUITAR_SYNC_GAIN_PER_HIT = 11;
 const GUITAR_SYNC_GROUND_THRESHOLD = 12;
@@ -443,6 +449,52 @@ const toEpochMs = (ts) => {
     if (typeof ts?.toMillis === 'function') return ts.toMillis();
     if (typeof ts?.seconds === 'number') return ts.seconds * 1000;
     return 0;
+};
+
+const hashTvMotionSeed = (value = '') => {
+    const source = String(value || '');
+    let hash = 0;
+    for (let index = 0; index < source.length; index += 1) {
+        hash = ((hash << 5) - hash) + source.charCodeAt(index);
+        hash |= 0;
+    }
+    return Math.abs(hash);
+};
+
+const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) => {
+    const key = String(type || '').trim().toLowerCase();
+    const seed = hashTvMotionSeed(`${key}:${id}:${index}`);
+    const pick = (items = []) => items[seed % items.length];
+    const base = {
+        variant: 'drift-right',
+        durationMs: 8600 + (seed % 1400),
+        driftX: 24 + (seed % 44),
+        riseY: 88 + (seed % 90),
+        rotateDeg: -6 + (seed % 13),
+        scaleBoost: 1 + ((seed % 7) * 0.018),
+    };
+    if (key === 'clap') {
+        return { ...base, variant: pick(['bounce', 'hover']), durationMs: 9400 + (seed % 1200), driftX: 8 + (seed % 12), riseY: 28 + (seed % 20), rotateDeg: -4 + (seed % 9) };
+    }
+    if (key === 'heart') {
+        return { ...base, variant: 'hover', durationMs: 9800 + (seed % 1200), driftX: 10 + (seed % 16), riseY: 36 + (seed % 26), rotateDeg: -8 + (seed % 17) };
+    }
+    if (key === 'drink') {
+        return { ...base, variant: pick(['drift-left', 'drift-right']), durationMs: 9000 + (seed % 1200), driftX: 30 + (seed % 36), riseY: 54 + (seed % 34), rotateDeg: -10 + (seed % 21) };
+    }
+    if (key === 'money') {
+        return { ...base, variant: pick(['drift-left', 'sweep']), durationMs: 9600 + (seed % 1000), driftX: 46 + (seed % 46), riseY: 48 + (seed % 28), rotateDeg: -14 + (seed % 29) };
+    }
+    if (key === 'rocket') {
+        return { ...base, variant: 'sweep', durationMs: 8200 + (seed % 900), driftX: 72 + (seed % 56), riseY: 108 + (seed % 46), rotateDeg: -18 + (seed % 37), scaleBoost: 1.08 + ((seed % 5) * 0.02) };
+    }
+    if (key === 'diamond' || key === 'crown') {
+        return { ...base, variant: 'hover', durationMs: 10200 + (seed % 1200), driftX: 14 + (seed % 20), riseY: 42 + (seed % 24), rotateDeg: -6 + (seed % 13), scaleBoost: 1.04 + ((seed % 5) * 0.018) };
+    }
+    if (key === 'fire') {
+        return { ...base, variant: pick(['bounce', 'drift-right']), durationMs: 8800 + (seed % 1000), driftX: 20 + (seed % 24), riseY: 102 + (seed % 44), rotateDeg: -8 + (seed % 17), scaleBoost: 1.08 + ((seed % 5) * 0.02) };
+    }
+    return { ...base, variant: pick(['drift-left', 'drift-right', 'hover']) };
 };
 
 const getLobbyEventTimestampMs = (event) => {
@@ -1201,20 +1253,20 @@ const LeaderboardCardStack = ({
     highlightedEntryKey = '',
     rankDeltaByUid = null,
     animated = false,
-    animationKey = ''
+    animationKey = '',
+    premiumBadgeLabel = 'VIP'
 }) => {
-    const [ready, setReady] = useState(!animated);
     const stableAnimationKey = animationKey || entries.map((entry) => getLeaderboardEntryKey(entry)).join('|');
+    const animationStateKey = `${stableAnimationKey}:${String(highlightedUid || '')}:${String(highlightedEntryKey || '')}`;
+    const [renderedAnimationKey, setRenderedAnimationKey] = useState(animated ? '' : animationStateKey);
+    const ready = !animated || renderedAnimationKey === animationStateKey;
 
     useEffect(() => {
-        if (!animated) {
-            setReady(true);
-            return undefined;
-        }
-        setReady(false);
-        const frame = requestAnimationFrame(() => setReady(true));
+        const frame = requestAnimationFrame(() => {
+            setRenderedAnimationKey(animated ? animationStateKey : '');
+        });
         return () => cancelAnimationFrame(frame);
-    }, [animated, highlightedUid, highlightedEntryKey, stableAnimationKey]);
+    }, [animated, animationStateKey]);
 
     return (
         <div className="space-y-2 md:space-y-4 2xl:space-y-6 w-full max-w-5xl">
@@ -1247,7 +1299,7 @@ const LeaderboardCardStack = ({
                                 <div className="text-lg md:text-3xl 2xl:text-6xl font-bold text-white truncate flex items-center gap-2 md:gap-4">
                                     <span className="truncate">{u.name}</span>
                                     {u.isVip && (
-                                        <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">VIP</span>
+                                        <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-xs md:text-sm font-black tracking-widest bg-yellow-400 text-black shadow-[0_0_18px_rgba(253,224,71,0.6)]">{premiumBadgeLabel}</span>
                                     )}
                                     {isHighlighted && (
                                         <span className="px-2 py-0.5 md:px-3 md:py-1 rounded-full text-[10px] md:text-xs font-black tracking-[0.18em] uppercase bg-yellow-200 text-black shadow-[0_0_22px_rgba(250,204,21,0.5)]">Just sang</span>
@@ -1276,7 +1328,7 @@ const LeaderboardCardStack = ({
     );
 };
 
-const LeaderboardOverlay = ({ users, songs }) => {
+const LeaderboardOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) => {
     const [modeIndex, setModeIndex] = useState(0);
 
     useEffect(() => {
@@ -1296,7 +1348,7 @@ const LeaderboardOverlay = ({ users, songs }) => {
                 <h1 className="text-[clamp(2.5rem,10vw,6rem)] 2xl:text-9xl font-bebas text-yellow-400 tracking-[0.12em] md:tracking-widest drop-shadow-[0_0_50px_rgba(234,179,8,0.5)]">LEADERBOARD</h1>
                 <div className="text-sm md:text-2xl 2xl:text-3xl text-zinc-300 uppercase tracking-[0.24em] md:tracking-[0.4em] mt-2 md:mt-3">{activeMode.label}</div>
             </div>
-            <LeaderboardCardStack entries={leaderboard} mode={activeMode} />
+            <LeaderboardCardStack entries={leaderboard} mode={activeMode} premiumBadgeLabel={premiumBadgeLabel} />
         </div>
     );
 };
@@ -1360,17 +1412,30 @@ const TipOverlay = ({ room }) => {
     );
 };
 
-const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [], startedAtMs = 0 }) => {
+const HowToPlayOverlay = ({
+    roomCode,
+    logoUrl,
+    queueRules = [],
+    startedAtMs = 0,
+    brandEyebrow = 'BROSS Entertainment',
+    poweredByLabel = '',
+    brandTitle = ''
+}) => {
     const slides = HOW_TO_PLAY.sections || [];
     const [clockMs, setClockMs] = useState(() => nowMs());
 
     useEffect(() => {
         if (!slides.length || !startedAtMs) return undefined;
-        setClockMs(nowMs());
+        const initialTick = setTimeout(() => {
+            setClockMs(nowMs());
+        }, 0);
         const timer = setInterval(() => {
             setClockMs(nowMs());
         }, 500);
-        return () => clearInterval(timer);
+        return () => {
+            clearTimeout(initialTick);
+            clearInterval(timer);
+        };
     }, [slides.length, startedAtMs]);
 
     const elapsedMs = Math.max(0, clockMs - Number(startedAtMs || 0));
@@ -1384,9 +1449,12 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [], startedAtMs = 0 
             <div className="flex h-[95vh] w-[98vw] max-w-[1800px] flex-col rounded-[2rem] border border-cyan-500/30 bg-black/70 px-6 py-5 shadow-[0_0_90px_rgba(34,211,238,0.22)] md:px-8 md:py-6 2xl:px-10 2xl:py-8">
                 <div className="grid flex-1 grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.8fr] lg:gap-8 items-stretch">
                     <div>
-                        <div className="text-xs md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-400">BROSS Entertainment</div>
+                        <div className="text-xs md:text-sm uppercase tracking-[0.3em] md:tracking-[0.5em] text-zinc-400">{brandEyebrow}</div>
                         <div className="mt-2 text-5xl font-bebas tracking-[0.12em] text-cyan-300 md:text-7xl 2xl:text-[6.5rem]">{HOW_TO_PLAY.title}</div>
                         <div className="mb-4 text-lg text-zinc-300 md:mb-6 md:text-2xl 2xl:text-3xl">{HOW_TO_PLAY.subtitle}</div>
+                        {poweredByLabel ? (
+                            <div className="mb-4 text-sm uppercase tracking-[0.24em] text-zinc-500 md:mb-5 md:text-base">{poweredByLabel}</div>
+                        ) : null}
 
                         <div className="flex h-[calc(100%-6rem)] min-h-[420px] flex-col rounded-[2rem] border border-white/10 bg-black/55 p-6 md:min-h-[520px] md:p-8 2xl:p-10">
                             <div className="mb-5 text-4xl font-bold uppercase tracking-[0.08em] text-pink-300 md:mb-7 md:text-6xl 2xl:text-[4.75rem]">{active.title}</div>
@@ -1401,7 +1469,7 @@ const HowToPlayOverlay = ({ roomCode, logoUrl, queueRules = [], startedAtMs = 0 
                         </div>
                     </div>
                     <div className="flex h-full flex-col items-center justify-center gap-5">
-                        <img src={logoUrl || ASSETS.logo} className="h-20 object-contain md:h-28 2xl:h-32" alt="BROSS" />
+                        <img src={logoUrl || ASSETS.logo} className="h-20 object-contain md:h-28 2xl:h-32" alt={brandTitle || 'Room brand'} />
                         <div className="flex items-center gap-5">
                             <div className="flex flex-col gap-3 text-sm uppercase tracking-[0.15em] text-zinc-200 md:text-lg md:tracking-[0.22em]">
                                 {queueRules.map(rule => (
@@ -1443,7 +1511,7 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
     const youtubeFrameOrigin = 'https://www.youtube.com';
-    const [youtubeIframeReady, setYoutubeIframeReady] = useState(false);
+    const [youtubeIframeReadySrc, setYoutubeIframeReadySrc] = useState('');
     const iframeSrc = useMemo(() => {
         const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
         const pageOrigin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
@@ -1466,14 +1534,12 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
     }, [postYoutubeCommand, room, youtubeId]);
 
     useEffect(() => {
-        setYoutubeIframeReady(false);
-    }, [iframeSrc]);
-
-    useEffect(() => {
-        if (!isYoutube || !youtubeId || !room?.videoPlaying) return undefined;
-        const timer = setTimeout(() => setYoutubeIframeReady(true), 900);
+        if (!isYoutube || !youtubeId || !room?.videoPlaying || !iframeSrc) return undefined;
+        const timer = setTimeout(() => setYoutubeIframeReadySrc(iframeSrc), 900);
         return () => clearTimeout(timer);
     }, [isYoutube, youtubeId, room?.videoPlaying, iframeSrc]);
+
+    const youtubeIframeReady = !!iframeSrc && youtubeIframeReadySrc === iframeSrc;
 
     useEffect(() => {
         if (!isYoutube || !youtubeId || !room?.videoPlaying || !youtubeIframeReady || room?.videoVolume === undefined) return;
@@ -1525,7 +1591,7 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
                         allow="autoplay; encrypted-media"
                         title="YT"
                         frameBorder="0"
-                        onLoad={() => setYoutubeIframeReady(true)}
+                        onLoad={() => setYoutubeIframeReadySrc(iframeSrc)}
                     ></iframe>
                 ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-zinc-400">VIDEO PAUSED</div>
@@ -1632,6 +1698,18 @@ const PublicTV = ({ roomCode }) => {
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
     const [featuredReaction, setFeaturedReaction] = useState(null);
     const [selfieArrivalSpotlight, setSelfieArrivalSpotlight] = useState(null);
+    const tvAudienceBrandTheme = useMemo(
+        () => normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}),
+        [room?.audienceBrandTheme]
+    );
+    const tvBrandTitle = tvAudienceBrandTheme.appTitle || 'BeauRocks Karaoke';
+    const isCustomTvBrand = String(tvBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
+    const tvPoweredByLabel = isCustomTvBrand ? 'Powered by: BeauRocks Karaoke' : '';
+    const tvBrandEyebrow = isCustomTvBrand ? tvBrandTitle : 'BROSS Entertainment';
+    const tvPremiumBadgeLabel = isCustomTvBrand ? 'PASS' : 'VIP';
+    const tvChatLockedLabel = isCustomTvBrand ? 'Chat is festival-pass only right now.' : 'Chat is VIP-only right now.';
+    const tvScoreLabel = isCustomTvBrand ? `${tvBrandTitle} Score` : 'BeauRocks Score';
+    const tvLogoAlt = tvBrandTitle;
 
     useEffect(() => {
         if (!isMarketingDemoEmbed) return;
@@ -1663,7 +1741,7 @@ const PublicTV = ({ roomCode }) => {
         return () => window.removeEventListener('message', handleMessage);
     }, [isMarketingDemoEmbed]);
     useEffect(() => {
-        const previewActive = !!(room?.tvPreviewOverlay && room.tvPreviewOverlay.active);
+        const previewActive = room?.tvPreviewOverlay?.active === true;
         const announcementActive = !!room?.announcement?.active;
         const runOfShowClockActive = room?.runOfShowEnabled === true
             || (Number(room?.currentPerformanceMeta?.startedAtMs || 0) > 0 && Number(room?.currentPerformanceMeta?.durationSec || 0) > 0);
@@ -1902,6 +1980,14 @@ const PublicTV = ({ roomCode }) => {
         const approvedSet = new Set(approvedDoodleUids.filter(Boolean));
         return doodleSubmissions.filter((submission) => approvedSet.has(submission.uid));
     }, [doodleRequireReview, approvedDoodleUids, doodleSubmissions]);
+    const doodleRecentSubmissionIds = useMemo(() => {
+        const cutoff = nowMs() - DOODLE_RECENT_BADGE_MS;
+        return new Set(
+            doodleVisibleSubmissions
+                .filter((submission) => toEpochMs(submission?.timestamp) >= cutoff)
+                .map((submission) => submission.id)
+        );
+    }, [doodleVisibleSubmissions]);
     const doodlePendingReviewCount = Math.max(0, doodleSubmissions.length - doodleVisibleSubmissions.length);
     const bingoRngResults = useMemo(() => {
         const results = room?.bingoMysteryRng?.results || {};
@@ -2906,11 +2992,18 @@ const PublicTV = ({ roomCode }) => {
                               const isVip = !!d.isVip || (d.vipLevel || 0) > 0;
                               for (let i = 0; i < count; i += 1) {
                                   const left = Math.random() * 80 + 10;
+                                  const motion = getTvReactionMotionSpec({ type: d.type, id: c.doc.id, index: i });
                                   setTimeout(() => {
                                       setReactions(prev => [...prev, {
                                           id: `${c.doc.id}_${i}`,
                                           ...d,
                                           left,
+                                          motionVariant: motion.variant,
+                                          motionDurationMs: motion.durationMs,
+                                          motionDriftX: motion.driftX,
+                                          motionRiseY: motion.riseY,
+                                          motionRotateDeg: motion.rotateDeg,
+                                          motionScaleBoost: motion.scaleBoost,
                                           points,
                                           basePoints,
                                           multiplier,
@@ -4063,9 +4156,12 @@ const PublicTV = ({ roomCode }) => {
     const popTriviaRevealQuestion = showPopTriviaEndState
         ? (popTriviaRevealSnapshot?.question || null)
         : null;
-    const popTriviaRevealVotes = showPopTriviaEndState
-        ? (Array.isArray(popTriviaRevealSnapshot?.votes) ? popTriviaRevealSnapshot.votes : [])
-        : [];
+    const popTriviaRevealVotes = useMemo(
+        () => (showPopTriviaEndState
+            ? (Array.isArray(popTriviaRevealSnapshot?.votes) ? popTriviaRevealSnapshot.votes : [])
+            : []),
+        [showPopTriviaEndState, popTriviaRevealSnapshot?.votes]
+    );
     const popTriviaRevealCorrectIndex = Number.isInteger(popTriviaRevealQuestion?.correct)
         ? Number(popTriviaRevealQuestion.correct)
         : -1;
@@ -4761,8 +4857,14 @@ const PublicTV = ({ roomCode }) => {
         bgVisualizerAudioRef,
         logger: tvLogger
     });
-    // eslint-disable-next-line react-hooks/refs
-    const visualizerSourceElement = shouldUseBgMediaElement ? bgVisualizerAudioRef.current : null;
+    const [visualizerSourceElement, setVisualizerSourceElement] = useState(null);
+    useEffect(() => {
+        if (!shouldUseBgMediaElement) {
+            setVisualizerSourceElement(null);
+            return;
+        }
+        setVisualizerSourceElement(bgVisualizerAudioRef.current || null);
+    }, [shouldUseBgMediaElement, started, room?.videoStartTimestamp]);
     const guitarSessionParticipants = useMemo(
         () => (room?.guitarSessionId
             ? roomUsers
@@ -5157,11 +5259,14 @@ const PublicTV = ({ roomCode }) => {
                 <div className="absolute -top-32 -left-24 w-72 h-72 rounded-full bg-cyan-500/20 blur-3xl"></div>
                 <div className="absolute -bottom-40 -right-24 w-80 h-80 rounded-full bg-pink-500/20 blur-3xl"></div>
                 <div className="relative z-10 flex flex-col items-center gap-4 md:gap-6 px-4 text-center">
-                    <img src={room?.logoUrl || ASSETS.logo} alt="Beaurocks Karaoke" className="h-16 md:h-20 2xl:h-24 rounded-2xl drop-shadow-[0_0_30px_rgba(0,196,217,0.45)]" />
-                    <div className="text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-300">TV Dashboard</div>
+                    <img src={room?.logoUrl || ASSETS.logo} alt={tvLogoAlt} className="h-16 md:h-20 2xl:h-24 rounded-2xl drop-shadow-[0_0_30px_rgba(0,196,217,0.45)]" />
+                    <div className="text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.45em] text-zinc-300">{isCustomTvBrand ? `${tvBrandTitle} TV` : 'TV Dashboard'}</div>
                     <div className="text-3xl md:text-5xl 2xl:text-6xl font-bebas text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
                         Start the Show
                     </div>
+                    {tvPoweredByLabel ? (
+                        <div className="text-[11px] md:text-sm uppercase tracking-[0.22em] text-zinc-500">{tvPoweredByLabel}</div>
+                    ) : null}
                     <div className="text-sm md:text-lg text-zinc-300">Tap to enable audio + visuals.</div>
                     <button
                         onClick={startAudio}
@@ -5186,7 +5291,7 @@ const PublicTV = ({ roomCode }) => {
         return (
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
-                <LeaderboardOverlay users={roomUsers} songs={songs} />
+                <LeaderboardOverlay users={roomUsers} songs={songs} premiumBadgeLabel={tvPremiumBadgeLabel} />
             </>
         );
     }
@@ -5198,7 +5303,7 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
-            if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} />;
+            if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} brandEyebrow={tvBrandEyebrow} poweredByLabel={tvPoweredByLabel} brandTitle={tvBrandTitle} />;
     if (room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
@@ -5251,7 +5356,7 @@ const PublicTV = ({ roomCode }) => {
                             {room?.chatEnabled === false
                                 ? 'Chat is paused by the host.'
                                 : room?.chatAudienceMode === 'vip'
-                                    ? 'Chat is VIP-only right now.'
+                                    ? tvChatLockedLabel
                                     : 'No chat yet.'}
                         </div>
                     )}
@@ -5261,7 +5366,7 @@ const PublicTV = ({ roomCode }) => {
                                 <span className="text-2xl md:text-3xl">{group.avatar || EMOJI.sparkle}</span>
                                 <span className="font-bold text-white text-lg md:text-2xl truncate">{group.user || 'Guest'}</span>
                                 {group.isVip && (
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black tracking-[0.12em] bg-yellow-400 text-black">VIP</span>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black tracking-[0.12em] bg-yellow-400 text-black">{tvPremiumBadgeLabel}</span>
                                 )}
                                 {group.isHost && (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] md:text-xs font-black tracking-[0.12em] bg-cyan-500 text-black">HOST</span>
@@ -5327,16 +5432,24 @@ const PublicTV = ({ roomCode }) => {
                         <div className="2xl:col-span-8 bg-black/60 border border-white/10 rounded-2xl md:rounded-3xl p-3 md:p-4">
                             {submissionsSorted.length ? (
                                 <div className={`grid ${galleryCols} gap-4 w-full`}>
-                                    {submissionsSorted.slice(0, 6).map(s => (
-                                        <div key={s.id} className="bg-black/70 border border-white/10 rounded-2xl p-3 relative overflow-hidden">
+                                    {submissionsSorted.slice(0, 6).map(s => {
+                                        const isFresh = doodleRecentSubmissionIds.has(s.id);
+                                        return (
+                                        <div key={s.id} className={`doodle-wall-card bg-black/70 border rounded-2xl p-3 relative overflow-hidden ${isFresh ? 'doodle-wall-card-fresh border-cyan-300/45' : 'border-white/10'}`}>
+                                            {isFresh && (
+                                                <div className="doodle-arrival-chip absolute right-3 top-3 z-10 rounded-full border border-cyan-200/45 bg-cyan-300/16 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-cyan-100">
+                                                    Fresh ink
+                                                </div>
+                                            )}
+                                            <div className="absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),rgba(244,114,182,0.12)_48%,rgba(0,0,0,0)_80%)] pointer-events-none" />
                                             <div className="text-base md:text-lg text-zinc-300 mb-2">{s.avatar ? `${s.avatar} ` : ''}{s.name || 'Guest'}</div>
                                             <div className="aspect-square bg-zinc-950 rounded-xl overflow-hidden relative">
                                                 <img src={s.image} alt={s.name} className="w-full h-full object-contain" />
-                                                <img src={room?.logoUrl || ASSETS.logo} className="absolute top-2 right-2 md:top-3 md:right-3 w-10 md:w-16 opacity-70" alt="BROSS" />
+                                                <img src={room?.logoUrl || ASSETS.logo} className="absolute top-2 right-2 md:top-3 md:right-3 w-10 md:w-16 opacity-70" alt={tvLogoAlt} />
                                             </div>
                                             <div className="mt-2 text-base md:text-lg font-semibold text-cyan-200">{voteCounts[s.uid] || 0} votes</div>
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             ) : (
                                 <div className="text-zinc-400 text-xl md:text-4xl text-center py-10 md:py-20 font-bebas tracking-wide">
@@ -5424,7 +5537,7 @@ const PublicTV = ({ roomCode }) => {
             return (
                 <div className="absolute inset-0 bg-black flex items-center justify-center">
                     <div className="text-center">
-                        <img src={room?.logoUrl || ASSETS.logo} className="w-40 mx-auto mb-4 opacity-80" alt="BROSS" />
+                        <img src={room?.logoUrl || ASSETS.logo} className="w-40 mx-auto mb-4 opacity-80" alt={tvLogoAlt} />
                         <div className="text-3xl font-bebas text-cyan-300 mb-2">Bingo Live</div>
                         <div className="text-sm uppercase tracking-[0.4em] text-zinc-400">Check your phone to play</div>
                     </div>
@@ -5767,7 +5880,7 @@ const PublicTV = ({ roomCode }) => {
                                 <div className="relative overflow-hidden rounded-[2.2rem] border border-yellow-300/24 bg-[linear-gradient(180deg,rgba(255,214,102,0.10),rgba(255,255,255,0.03),rgba(255,255,255,0.02))] p-5 md:p-6 2xl:p-8">
                                     <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-yellow-200/60 to-transparent" />
                                     <div className="absolute right-5 top-5 rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-100">
-                                        BeauRocks Score
+                                        {tvScoreLabel}
                                     </div>
                                     <div className="text-[12px] uppercase tracking-[0.38em] text-yellow-100">Final Score</div>
                                     <div className="mt-4 text-[5.5rem] font-black leading-none text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-white to-yellow-300 md:text-[8.5rem] xl:text-[10rem] 2xl:text-[12rem]">
@@ -5798,7 +5911,7 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                         <img
                                             src={room?.logoUrl || ASSETS.logo}
-                                            alt="BeauRocks Karaoke"
+                                            alt={tvLogoAlt}
                                             className="h-14 w-auto object-contain opacity-90 drop-shadow-[0_0_24px_rgba(34,211,238,0.2)] 2xl:h-16"
                                         />
                                     </div>
@@ -6037,6 +6150,15 @@ const PublicTV = ({ roomCode }) => {
             {showAmbientFx && purchaseCelebrationBurst && (
                 <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
                     <div className="bonus-drop-burst">
+                        {purchaseCelebrationBurst.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst && (
+                            <div className="bonus-drop-moneyline">
+                                <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || '🤑'}</span>
+                                <span>💰</span>
+                                <span>💸</span>
+                                <span>💰</span>
+                                <span>🪩</span>
+                            </div>
+                        )}
                         <div className="bonus-drop-title">
                             {purchaseCelebrationBurst.title || `${purchaseCelebrationBurst.buyerName || 'Someone'} boosted the room`}
                         </div>
@@ -6044,6 +6166,9 @@ const PublicTV = ({ roomCode }) => {
                             {purchaseCelebrationBurst.points > 0 ? `+${purchaseCelebrationBurst.points} PTS` : MONEYBAGS_BADGE_LABEL}
                         </div>
                         <div className="bonus-drop-sub">
+                            {purchaseCelebrationBurst.amountCents > 0
+                                ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} • `
+                                : ''}
                             {purchaseCelebrationBurst.subtitle
                                 || (purchaseCelebrationBurst.badgeAwarded
                                     ? `${purchaseCelebrationBurst.label || 'Room support'} - ${purchaseCelebrationBurst.badgeLabel || MONEYBAGS_BADGE_LABEL}`
@@ -6655,7 +6780,7 @@ const PublicTV = ({ roomCode }) => {
                                     <div className="text-sm md:text-base text-zinc-200 tracking-[0.1em] md:tracking-[0.15em]">PERFORMANCE TOTAL</div>
                                     {currentSingerIsVip && (
                                         <div className="px-2 py-0.5 rounded-full text-sm md:text-base font-bold tracking-[0.1em] md:tracking-[0.14em] bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">
-                                            VIP
+                                            {tvPremiumBadgeLabel}
                                         </div>
                                     )}
                                 </div>
@@ -6840,7 +6965,7 @@ const PublicTV = ({ roomCode }) => {
                                                 <div className="text-sm md:text-base text-zinc-400 truncate flex items-center gap-2">
                                                     <span>{s.singerName}</span>
                                                     {vip && (
-                                                        <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
+                                                        <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">{tvPremiumBadgeLabel}</span>
                                                     )}
                                                 </div>
                                             </div>
@@ -6965,7 +7090,7 @@ const PublicTV = ({ roomCode }) => {
                                                                     <div className="mt-1 text-base md:text-xl text-zinc-300 truncate flex items-center gap-2">
                                                                         <span>{s.singerName}</span>
                                                                         {vip && (
-                                                                            <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">VIP</span>
+                                                                            <span className="px-2 py-0.5 rounded-full text-xs font-black tracking-[0.08em] bg-yellow-400 text-black">{tvPremiumBadgeLabel}</span>
                                                                         )}
                                                                     </div>
                                                                 </div>
@@ -6983,7 +7108,7 @@ const PublicTV = ({ roomCode }) => {
                                                                 {room?.chatEnabled === false
                                                                     ? 'Chat is paused by the host.'
                                                                     : room?.chatAudienceMode === 'vip'
-                                                                        ? 'Chat is VIP-only right now.'
+                                                                        ? tvChatLockedLabel
                                                                         : 'No chat yet.'}
                                                             </div>
                                                         )}
@@ -6995,7 +7120,7 @@ const PublicTV = ({ roomCode }) => {
                                                                         <div className="truncate text-lg md:text-xl">
                                                                             <span className="font-bold text-white">{group.user || 'Guest'}</span>
                                                                             {group.isVip && (
-                                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">VIP</span>
+                                                                                <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-yellow-400 text-black">{tvPremiumBadgeLabel}</span>
                                                                             )}
                                                                             {group.isHost && (
                                                                                 <span className="ml-2 px-2 py-0.5 rounded-full text-xs font-black tracking-widest bg-cyan-500 text-black">HOST</span>
@@ -7176,7 +7301,12 @@ const PublicTV = ({ roomCode }) => {
                     {selfieArrivalSpotlight && (
                         <div className="absolute inset-0 z-[130] flex items-center justify-center bg-black/55 backdrop-blur-[2px] pointer-events-none">
                             <div className="selfie-arrival-spotlight relative w-[min(92vw,920px)]">
-                                <div className="absolute inset-0 rounded-[2.4rem] bg-[radial-gradient(circle,rgba(34,211,238,0.28),rgba(236,72,153,0.2)_42%,rgba(0,0,0,0)_72%)] blur-2xl" />
+                                <div className="selfie-arrival-radiance absolute inset-[-6%] rounded-[2.8rem] bg-[radial-gradient(circle,rgba(34,211,238,0.34),rgba(236,72,153,0.24)_38%,rgba(0,0,0,0)_72%)] blur-2xl" />
+                                <div className="selfie-arrival-ring absolute inset-[-5%] rounded-[3rem] border border-cyan-200/30" />
+                                <div className="selfie-arrival-ring selfie-arrival-ring-delayed absolute inset-[-10%] rounded-[3.4rem] border border-fuchsia-200/22" />
+                                <div className="selfie-arrival-spark absolute left-[6%] top-[12%] text-4xl md:text-6xl">{emoji(0x2728)}</div>
+                                <div className="selfie-arrival-spark selfie-arrival-spark-delayed absolute right-[7%] top-[18%] text-3xl md:text-5xl">{emoji(0x1F389)}</div>
+                                <div className="selfie-arrival-spark absolute right-[12%] bottom-[18%] text-4xl md:text-5xl">{emoji(0x1F4F8)}</div>
                                 <div className="relative mx-auto w-fit max-w-full -rotate-2 rounded-[2rem] border border-white/15 bg-[#fff7ef] p-3 md:p-4 shadow-[0_28px_80px_rgba(0,0,0,0.45)]">
                                     <img src={selfieArrivalSpotlight.url} alt={selfieArrivalSpotlight.userName || 'New selfie'} className="max-h-[62vh] w-auto max-w-[82vw] rounded-[1.5rem] border border-black/8 object-cover" />
                                     <div className="absolute right-4 top-4 rounded-full bg-black/72 px-3 py-1.5 text-[10px] md:text-xs font-black uppercase tracking-[0.28em] text-cyan-200">
@@ -7232,10 +7362,14 @@ const PublicTV = ({ roomCode }) => {
             {photoOverlay && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.18),rgba(0,0,0,0)_28%),radial-gradient(circle_at_78%_20%,rgba(34,211,238,0.16),rgba(0,0,0,0)_24%),rgba(0,0,0,0.82)] animate-in fade-in duration-300">
                     <div className="absolute inset-0 selfie-flash-burst pointer-events-none" />
+                    <div className="absolute inset-0 public-moment-burst pointer-events-none" />
                     <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.04),transparent_30%,rgba(255,255,255,0.02))] pointer-events-none" />
                     <div className="relative max-w-[94vw]">
-                        <div className="absolute inset-[-24px] rounded-[2.6rem] border border-white/12 bg-white/6 blur-xl" />
-                        <div className="relative rotate-[-4deg] rounded-[2rem] border border-white/14 bg-[#fff8f1] p-3 md:p-4 pb-16 md:pb-20 shadow-[0_28px_90px_rgba(0,0,0,0.5)]">
+                        <div className="public-moment-radiance absolute inset-[-24px] rounded-[2.6rem] border border-white/12 bg-white/6 blur-xl" />
+                        <div className="public-moment-card relative rotate-[-4deg] rounded-[2rem] border border-white/14 bg-[#fff8f1] p-3 md:p-4 pb-16 md:pb-20 shadow-[0_28px_90px_rgba(0,0,0,0.5)]">
+                            <div className="public-moment-ribbon absolute -right-3 top-5 rounded-full border border-fuchsia-200/45 bg-fuchsia-400/18 px-4 py-1.5 text-[10px] md:text-xs font-black uppercase tracking-[0.26em] text-white shadow-[0_0_22px_rgba(236,72,153,0.3)]">
+                                On the big screen
+                            </div>
                             <div className="absolute left-4 top-4 inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/88 px-3 py-1.5 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-zinc-700">
                                 <span className="h-2 w-2 rounded-full bg-fuchsia-500" />
                                 {photoOverlay.mode === 'guitar_victory'
@@ -7245,7 +7379,7 @@ const PublicTV = ({ roomCode }) => {
                                         : 'Crowd Cam Drop'}
                             </div>
                             <img src={photoOverlay.url} className="max-h-[68vh] max-w-[90vw] rounded-[1.4rem] border-2 border-zinc-200 object-cover" />
-                            <img src={ASSETS.logo} className="absolute right-3 top-3 w-14 opacity-90 md:right-4 md:top-4 md:w-24" alt="BROSS" />
+                            <img src={room?.logoUrl || ASSETS.logo} className="absolute right-3 top-3 w-14 opacity-90 md:right-4 md:top-4 md:w-24" alt={tvLogoAlt} />
                             <div className="absolute inset-x-0 bottom-0 px-5 pb-5 pt-10 text-center">
                                 <div className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white/88 px-4 py-2 text-[10px] md:text-xs font-black uppercase tracking-[0.24em] text-zinc-700">
                                     <span className="text-lg">{photoOverlay.mode === 'guitar_victory' ? EMOJI.guitar : photoOverlay.mode === 'strobe_victory' ? EMOJI.bolt : EMOJI.camera}</span>
@@ -8129,7 +8263,18 @@ const PublicTV = ({ roomCode }) => {
             )}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
                 {showAmbientFx && reactions.map(r => (
-                    <div key={r.id} className="absolute bottom-0 flex flex-col items-center reaction-stack" style={{left: `${r.left}%`}}>
+                    <div
+                        key={r.id}
+                        className={`absolute bottom-0 flex flex-col items-center reaction-stack reaction-stack-${r.motionVariant || 'drift-right'}`}
+                        style={{
+                            left: `${r.left}%`,
+                            '--reaction-duration': `${Math.max(6800, Number(r.motionDurationMs || TV_REACTION_VISIBILITY_MS))}ms`,
+                            '--reaction-drift-x': `${Number(r.motionDriftX || 32)}px`,
+                            '--reaction-rise-y': `${Number(r.motionRiseY || 96)}px`,
+                            '--reaction-rotate': `${Number(r.motionRotateDeg || 0)}deg`,
+                            '--reaction-scale': Number(r.motionScaleBoost || 1),
+                        }}
+                    >
                         {r.isVip && (
                             <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30 blur-xl animate-vip-glow"></div>
                         )}
@@ -8144,7 +8289,7 @@ const PublicTV = ({ roomCode }) => {
                                 <div className={`px-4 py-2 md:px-6 md:py-3 rounded-[1.5rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/76 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/68 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
                                     <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
                                     <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
-                                    {r.isVip && <span className="text-xs font-black tracking-widest">VIP</span>}
+                                    {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
                                 </div>
                                 <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
                                     {getLobbyReactionLabel(r.type)}
@@ -8241,7 +8386,38 @@ const PublicTV = ({ roomCode }) => {
               @keyframes tv-takeover-logo-float { 0%, 100% { transform: translateY(0px) scale(1); } 50% { transform: translateY(-5px) scale(1.012); } }
               @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } } 
               @keyframes marqueeFade { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
-              @keyframes float-up { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-120px); } }
+              @keyframes reaction-drift-left {
+                0% { opacity: 0; transform: translate3d(0, 22px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.35)) scale(0.82); }
+                12% { opacity: 1; transform: translate3d(-8px, 0, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.2)) scale(calc(var(--reaction-scale, 1) * 1.06)); }
+                70% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.72), calc(var(--reaction-rise-y, 96px) * -0.64), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.7)) scale(var(--reaction-scale, 1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -1), calc(var(--reaction-rise-y, 96px) * -1), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.94)); }
+              }
+              @keyframes reaction-drift-right {
+                0% { opacity: 0; transform: translate3d(0, 18px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.35)) scale(0.84); }
+                12% { opacity: 1; transform: translate3d(10px, -3px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)) scale(calc(var(--reaction-scale, 1) * 1.07)); }
+                72% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.76), calc(var(--reaction-rise-y, 96px) * -0.68), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.72)) scale(var(--reaction-scale, 1)); }
+                100% { opacity: 0; transform: translate3d(var(--reaction-drift-x, 32px), calc(var(--reaction-rise-y, 96px) * -1), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.94)); }
+              }
+              @keyframes reaction-hover-burst {
+                0% { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.72) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
+                12% { opacity: 1; transform: translate3d(0, -4px, 0) scale(calc(var(--reaction-scale, 1) * 1.08)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
+                30% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.16), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * 0.32)); }
+                72% { opacity: 0.96; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.14), calc(var(--reaction-rise-y, 96px) * -0.28), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * -0.14)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.2), calc(var(--reaction-rise-y, 96px) * -0.42), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * 0.12)); }
+              }
+              @keyframes reaction-bounce-burst {
+                0% { opacity: 0; transform: translate3d(0, 30px, 0) scale(0.68) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
+                14% { opacity: 1; transform: translate3d(0, -12px, 0) scale(calc(var(--reaction-scale, 1) * 1.12)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
+                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.16), 0, 0) scale(calc(var(--reaction-scale, 1) * 0.98)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
+                58% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.24), calc(var(--reaction-rise-y, 96px) * -0.34), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.32)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.3), calc(var(--reaction-rise-y, 96px) * -0.56), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-side-sweep {
+                0% { opacity: 0; transform: translate3d(0, 26px, 0) scale(0.7) rotate(calc(var(--reaction-rotate, 0deg) * -0.22)); }
+                12% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), -2px, 0) scale(calc(var(--reaction-scale, 1) * 1.1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
+                60% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.46), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.72)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.3), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+              }
               @keyframes points-burst { 0% { opacity: 0; transform: translateY(10px) scale(0.6); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px) scale(1.2); } }
               @keyframes vip-glow { 0% { opacity: 0.6; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.08); } 100% { opacity: 0.6; transform: scale(0.95); } }
               @keyframes vip-jolt { 0%, 100% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-2deg) scale(1.05); } 50% { transform: rotate(2deg) scale(1.08); } 75% { transform: rotate(-1deg) scale(1.04); } }
@@ -8251,9 +8427,16 @@ const PublicTV = ({ roomCode }) => {
               @keyframes featured-reaction-sheen { 0% { transform: translateX(-120%); opacity: 0; } 18% { opacity: 0.5; } 55% { opacity: 0.18; } 100% { transform: translateX(130%); opacity: 0; } }
               @keyframes selfie-grid-sheen { 0% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } 50% { transform: translateX(4%) translateY(8%); opacity: 0.32; } 100% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } }
               @keyframes selfie-card-fresh { 0%, 100% { box-shadow: 0 0 0 rgba(34,211,238,0.0), 0 18px 60px rgba(0,0,0,0.35); } 50% { box-shadow: 0 0 36px rgba(34,211,238,0.18), 0 22px 70px rgba(0,0,0,0.42); } }
-              @keyframes selfie-arrival-enter { 0% { opacity: 0; transform: scale(0.86) rotate(-4deg); } 22% { opacity: 1; transform: scale(1.03) rotate(-1deg); } 100% { opacity: 1; transform: scale(1) rotate(-2deg); } }
+              @keyframes selfie-arrival-enter { 0% { opacity: 0; transform: translateY(36px) scale(0.72) rotate(-10deg); } 24% { opacity: 1; transform: translateY(-10px) scale(1.08) rotate(2deg); } 52% { opacity: 1; transform: translateY(2px) scale(0.98) rotate(-3deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(-2deg); } }
+              @keyframes selfie-arrival-ring { 0% { opacity: 0.75; transform: scale(0.72); } 100% { opacity: 0; transform: scale(1.16); } }
+              @keyframes selfie-arrival-spark { 0%, 100% { opacity: 0.25; transform: scale(0.84) rotate(0deg); } 40% { opacity: 1; transform: scale(1.16) rotate(8deg); } 70% { opacity: 0.72; transform: scale(1) rotate(-6deg); } }
               @keyframes selfie-cam-pulse { 0% { transform: scale(0.88); opacity: 0.52; } 70% { transform: scale(1.14); opacity: 0; } 100% { transform: scale(1.14); opacity: 0; } }
               @keyframes selfie-flash-burst { 0% { opacity: 0.95; } 30% { opacity: 0.42; } 100% { opacity: 0; } }
+              @keyframes public-moment-card-enter { 0% { opacity: 0; transform: translateY(38px) scale(0.7) rotate(-12deg); } 18% { opacity: 1; transform: translateY(-12px) scale(1.08) rotate(4deg); } 46% { opacity: 1; transform: translateY(2px) scale(0.99) rotate(-5deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(-4deg); } }
+              @keyframes public-moment-burst { 0% { opacity: 0.72; transform: scale(0.7); } 70% { opacity: 0.18; transform: scale(1.06); } 100% { opacity: 0; transform: scale(1.18); } }
+              @keyframes public-moment-ribbon { 0%, 100% { transform: translateY(0) rotate(0deg); } 45% { transform: translateY(-2px) rotate(2deg); } }
+              @keyframes doodle-card-fresh { 0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); box-shadow: 0 18px 60px rgba(0,0,0,0.35); } 28% { transform: translateY(-6px) rotate(-1.2deg) scale(1.03); box-shadow: 0 18px 60px rgba(0,0,0,0.38), 0 0 34px rgba(34,211,238,0.18); } 58% { transform: translateY(0px) rotate(0.8deg) scale(1.01); box-shadow: 0 22px 68px rgba(0,0,0,0.42), 0 0 28px rgba(244,114,182,0.14); } }
+              @keyframes doodle-arrival-chip { 0% { opacity: 0; transform: translateY(-8px) scale(0.8); } 30% { opacity: 1; transform: translateY(0) scale(1.06); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
               @keyframes tv-sweep { 0% { transform: translateX(-120%); opacity: 0; } 20% { opacity: 0.45; } 50% { opacity: 0.12; } 100% { transform: translateX(120%); opacity: 0; } }
               @keyframes bonus-pop { 0% { opacity: 0; transform: scale(0.7); } 20% { opacity: 1; transform: scale(1.02); } 100% { opacity: 0; transform: scale(1.08); } }
               @keyframes bonus-sheen { 0% { background-position: 0% 50%; } 100% { background-position: 100% 50%; } }
@@ -8335,6 +8518,8 @@ const PublicTV = ({ roomCode }) => {
                 box-shadow: 0 0 60px rgba(34,211,238,0.25), 0 0 90px rgba(236,72,153,0.25);
                 animation: bonus-pop 6s ease forwards;
               }
+              .bonus-drop-moneyline { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 14px; font-size: clamp(2rem, 4vw, 4rem); filter: drop-shadow(0 0 20px rgba(250,204,21,0.3)); }
+              .bonus-drop-avatar { display: inline-flex; align-items: center; justify-content: center; min-width: 1.4em; }
               .bonus-drop-title { font-size: clamp(1.2rem, 2vw, 2rem); letter-spacing: 0.4em; text-transform: uppercase; color: #e2e8f0; }
               .bonus-drop-points { font-size: clamp(3rem, 6vw, 7rem); font-weight: 900; text-transform: uppercase; background: linear-gradient(90deg, #22d3ee, #f472b6, #fde047); background-size: 200% 200%; -webkit-background-clip: text; color: transparent; animation: bonus-sheen 2s linear infinite; }
               .bonus-drop-sub { font-size: clamp(0.9rem, 1.8vw, 1.4rem); text-transform: uppercase; letter-spacing: 0.3em; color: #cbd5f5; }
@@ -8346,7 +8531,12 @@ const PublicTV = ({ roomCode }) => {
               .points-burst-a { top: -6px; left: 18px; }
               .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
               .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
-              .reaction-stack { animation: float-up 5.8s ease-out forwards; will-change: transform, opacity; }
+              .reaction-stack { will-change: transform, opacity; transform-origin: center bottom; }
+              .reaction-stack-drift-left { animation: reaction-drift-left var(--reaction-duration, 8600ms) cubic-bezier(0.2, 0.72, 0.22, 1) forwards; }
+              .reaction-stack-drift-right { animation: reaction-drift-right var(--reaction-duration, 8600ms) cubic-bezier(0.2, 0.72, 0.22, 1) forwards; }
+              .reaction-stack-hover { animation: reaction-hover-burst var(--reaction-duration, 9000ms) ease-out forwards; }
+              .reaction-stack-bounce { animation: reaction-bounce-burst var(--reaction-duration, 9000ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .reaction-stack-sweep { animation: reaction-side-sweep var(--reaction-duration, 8200ms) cubic-bezier(0.18, 0.7, 0.22, 1) forwards; }
               .reaction-label { animation: reaction-label-in 0.35s ease-out forwards; }
               .animate-vip-glow { animation: vip-glow 1.2s ease-in-out infinite; }
               .vip-reaction-emoji { animation: vip-jolt 0.6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.75)); }
@@ -8359,9 +8549,21 @@ const PublicTV = ({ roomCode }) => {
               .selfie-wall-card { transition: transform 450ms ease, box-shadow 450ms ease, border-color 450ms ease; }
               .selfie-wall-card-fresh { animation: selfie-card-fresh 2.8s ease-in-out infinite; }
               .selfie-arrival-spotlight { animation: selfie-arrival-enter 0.38s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+              .selfie-arrival-radiance { animation: public-moment-burst 1.25s ease-out both; }
+              .selfie-arrival-ring { animation: selfie-arrival-ring 1.3s ease-out both; }
+              .selfie-arrival-ring-delayed { animation-delay: 0.18s; }
+              .selfie-arrival-spark { animation: selfie-arrival-spark 1.6s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(255,255,255,0.45)); }
+              .selfie-arrival-spark-delayed { animation-delay: 0.25s; }
               .selfie-cam-pulse-ring { animation: selfie-cam-pulse 2.4s ease-out infinite; }
               .selfie-cam-pulse-ring-delayed { animation: selfie-cam-pulse 2.4s ease-out infinite 0.9s; }
               .selfie-flash-burst { background: radial-gradient(circle at center, rgba(255,255,255,0.36), rgba(255,255,255,0.08) 32%, rgba(255,255,255,0) 62%); animation: selfie-flash-burst 0.65s ease-out both; }
+              .public-moment-burst { background: radial-gradient(circle at center, rgba(255,255,255,0.18), rgba(34,211,238,0.12) 24%, rgba(236,72,153,0.16) 42%, rgba(255,255,255,0) 70%); animation: public-moment-burst 1.2s ease-out both; }
+              .public-moment-radiance { animation: public-moment-burst 1.4s ease-out both; }
+              .public-moment-card { animation: public-moment-card-enter 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+              .public-moment-ribbon { animation: public-moment-ribbon 2.2s ease-in-out infinite; }
+              .doodle-wall-card { transition: transform 450ms ease, box-shadow 450ms ease, border-color 450ms ease; }
+              .doodle-wall-card-fresh { animation: doodle-card-fresh 3.2s ease-in-out infinite; }
+              .doodle-arrival-chip { animation: doodle-arrival-chip 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
               .tv-light-sweep { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.12) 45%, transparent 80%); animation: tv-sweep 10s ease-in-out infinite; mix-blend-mode: screen; }
               .lobby-burst-anchor { transform: translate(-50%, -50%); }
               .lobby-burst-motion { animation: lobby-burst-rise 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }

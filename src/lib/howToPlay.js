@@ -75,11 +75,11 @@ export const HOW_TO_PLAY = {
             ]
         },
         {
-            title: 'VIP and Tips',
+            title: 'Perks and Support',
             items: [
-                'Create your BeauRocks account to unlock VIP bonus points and special reactions.',
-                'Tip the host to show support.',
-                'VIPs get extra perks and boosts.'
+                'Link your email access to unlock bonus points and special reactions.',
+                'Support the room or fundraiser when that option is available.',
+                'Unlocked passes and supporter boosts can add extra perks.'
             ]
         }
     ]

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { callFunction } from '../../../lib/firebase';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants';
 import {
@@ -203,7 +203,7 @@ const MOMENT_PACKS = Object.freeze([
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intro',
                 headline: 'AAHF Karaoke Kick-Off',
-                subhead: 'Lights up, room opens, and the first singer hits the board.',
+                subhead: 'Doors at 7, first singers up early, and explicit lyrics stay after 9 PM.',
                 accentTheme: 'fuchsia'
             }
         }
@@ -1028,6 +1028,95 @@ const SelectControl = ({ children, className = '', ...props }) => (
         </span>
     </div>
 );
+
+const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) => {
+    const isPerformance = String(item?.type || '').trim().toLowerCase() === 'performance';
+    return (
+        <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Inline scene edits</div>
+                    <div className="mt-1 text-sm text-zinc-200">Update the fields hosts touch most without leaving the scene card.</div>
+                </div>
+                <div className="rounded-full border border-cyan-300/18 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                    {getRunOfShowItemLabel(item?.type)}
+                </div>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="md:col-span-2">
+                    <FieldLabel>Title</FieldLabel>
+                    <div className="mt-1">
+                        <input
+                            value={item?.title || ''}
+                            onChange={(e) => onUpdateItem?.(item.id, { title: e.target.value })}
+                            disabled={disabled}
+                            className={textInputClass}
+                            placeholder={getRunOfShowItemLabel(item?.type)}
+                        />
+                    </div>
+                </div>
+                <div>
+                    <FieldLabel>Duration Sec</FieldLabel>
+                    <div className="mt-1">
+                        <input
+                            type="number"
+                            min="0"
+                            value={item?.plannedDurationSec || 0}
+                            onChange={(e) => onUpdateItem?.(item.id, { plannedDurationSec: Math.max(0, Number(e.target.value || 0)) })}
+                            disabled={disabled}
+                            className={textInputClass}
+                        />
+                    </div>
+                </div>
+                {isPerformance ? (
+                    <div>
+                        <FieldLabel>Singer</FieldLabel>
+                        <div className="mt-1">
+                            <input
+                                value={item?.assignedPerformerName || ''}
+                                onChange={(e) => onUpdateItem?.(item.id, { assignedPerformerName: e.target.value })}
+                                disabled={disabled}
+                                className={textInputClass}
+                                placeholder="Singer TBD"
+                            />
+                        </div>
+                    </div>
+                ) : null}
+                {isPerformance ? (
+                    <div>
+                        <FieldLabel>Song</FieldLabel>
+                        <div className="mt-1">
+                            <input
+                                value={item?.songTitle || ''}
+                                onChange={(e) => onUpdateItem?.(item.id, { songTitle: e.target.value })}
+                                disabled={disabled}
+                                className={textInputClass}
+                                placeholder="Song title"
+                            />
+                        </div>
+                    </div>
+                ) : null}
+                {isPerformance ? (
+                    <div>
+                        <FieldLabel>Artist</FieldLabel>
+                        <div className="mt-1">
+                            <input
+                                value={item?.artistName || ''}
+                                onChange={(e) => onUpdateItem?.(item.id, { artistName: e.target.value })}
+                                disabled={disabled}
+                                className={textInputClass}
+                                placeholder="Artist"
+                            />
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+            <div className="mt-3 text-xs text-zinc-400">
+                Use the full builder only for takeovers, track source, room behavior, or slot policy.
+            </div>
+        </div>
+    );
+};
 
 const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false }) => {
     const audioPlan = item?.audioPlan && typeof item.audioPlan === 'object' ? item.audioPlan : {};
@@ -2685,7 +2774,7 @@ export default function RunOfShowDirectorPanel({
         {
             id: 'aahf_kickoff',
             label: 'AAHF Kick-Off',
-            detail: 'Two rounds of performance slots, a support beat, selfie cam moment, and a clean finale push.',
+            detail: '7 PM to midnight structure with two rounds, a support beat, selfie cam, and explicit lyrics after 9 PM.',
             icon: 'fa-stars',
             toneClass: 'border-fuchsia-300/30 bg-fuchsia-500/10 text-fuchsia-100'
         }
@@ -2755,13 +2844,13 @@ export default function RunOfShowDirectorPanel({
             submissions: entries
         }));
     }, [items, pendingApprovals]);
-    const openItem = (itemId = '', options = {}) => {
+    const openItem = useCallback((itemId = '', options = {}) => {
         if (!itemId) return;
         if (!options.preserveRepair) setRepairFocus(null);
         setExpandedItemId(itemId);
         setStudioMode('build');
         setPendingSetupScrollItemId(options.scrollToSetup !== false ? itemId : '');
-    };
+    }, []);
     const liveAdjustmentTarget = liveItem || stagedItem || nextItem || null;
     const liveAdjustmentUpcomingTarget = stagedItem || nextItem || null;
     const liveAdjustmentDurationSec = Math.max(0, Number(liveAdjustmentTarget?.plannedDurationSec || 0));
@@ -2801,8 +2890,34 @@ export default function RunOfShowDirectorPanel({
             setPendingSetupScrollItemId('');
             return;
         }
-        openRepairForItem(targetItem, action === 'backing' ? 'backing' : 'setup');
-    }, [focusRequest?.action, focusRequest?.itemId, focusRequest?.token, items]);
+        if (action === 'backing') {
+            const nextSourceType = getEffectiveSuggestionSourceType(targetItem?.backingPlan?.sourceType || 'youtube');
+            setRepairFocus({ itemId: targetItem.id, action: 'backing', token: Date.now() });
+            setStudioMode('build');
+            setPendingSetupScrollItemId('');
+            if (nextSourceType !== String(targetItem?.backingPlan?.sourceType || '').trim().toLowerCase()) {
+                onUpdateItem?.(targetItem.id, {
+                    backingPlan: {
+                        ...(targetItem?.backingPlan || {}),
+                        sourceType: nextSourceType
+                    }
+                });
+            }
+            setExpandedItemId(targetItem.id);
+            setMediaPicker({
+                itemId: targetItem.id,
+                sourceType: nextSourceType,
+                query: buildMediaQuery(targetItem),
+                remoteResults: [],
+                loading: false,
+                error: ''
+            });
+            scrollPerformancePrepSectionIntoView(targetItem.id, 'track');
+            return;
+        }
+        setRepairFocus({ itemId: targetItem.id, action: 'setup', token: Date.now() });
+        openItem(targetItem.id, { preserveRepair: true, scrollToSetup: targetItem.type === 'performance' });
+    }, [focusRequest?.action, focusRequest?.itemId, focusRequest?.token, items, onUpdateItem, openItem]);
     useEffect(() => {
         if (!pendingSetupScrollItemId || studioMode !== 'build') return;
         const targetId = pendingSetupScrollItemId;
@@ -3355,7 +3470,7 @@ export default function RunOfShowDirectorPanel({
             cancelled = true;
             window.clearTimeout(timeoutId);
         };
-    }, [appleMusicAuthorized, currentPickerItem, pickerQuery, pickerSourceType]);
+    }, [appleMusicAuthorized, currentPickerItem, pickerQuery, pickerSourceType, roomCode]);
 
     const handleRunOfShowModeToggle = async () => {
         if (!isHostOperator || modeActionBusy) return;
@@ -3552,7 +3667,7 @@ export default function RunOfShowDirectorPanel({
         preflightReport: safePreflightReport,
         hasIssue: !!liveHudIssueDetail
     });
-    const liveHudPrimaryAction = useMemo(() => {
+    const liveHudPrimaryAction = (() => {
         if (liveHudActionKey === 'resume' && safeOperatorCapabilities.canPauseAutomation) {
             return {
                 label: 'Resume',
@@ -3571,7 +3686,7 @@ export default function RunOfShowDirectorPanel({
             return {
                 label: 'Fix Issue',
                 tone: 'warning',
-                onClick: () => openRepairForItem(nextItem, getRepairActionForItem(nextItem))
+                onClick: () => jumpToIssue({ itemId: nextItem.id, action: getRepairActionForItem(nextItem) })
             };
         }
         if (liveHudActionKey === 'fix_issue') {
@@ -3619,24 +3734,7 @@ export default function RunOfShowDirectorPanel({
             ...railAction,
             label: 'Advance'
         };
-    }, [
-        automationPaused,
-        focusFirstPendingApproval,
-        focusFirstCriticalPreflightIssue,
-        focusFirstRiskyPreflightItem,
-        getPrimaryActionForItem,
-        handleLaunchFromGoLive,
-        liveItem,
-        liveHudActionKey,
-        nextItem,
-        onToggleAutomationPause,
-        pendingApprovals,
-        readinessById,
-        safeOperatorCapabilities.canPauseAutomation,
-        safeOperatorCapabilities.canReviewSubmissions,
-        safePreflightReport?.criticalItems,
-        stagedItem
-    ]);
+    })();
     const focusNewestItemFromDirector = (nextDirector = null, fallbackType = '') => {
         const nextItems = Array.isArray(nextDirector?.items) ? nextDirector.items : [];
         if (!nextItems.length) return;
@@ -5152,6 +5250,13 @@ export default function RunOfShowDirectorPanel({
                                                 ) : null}
                                             </div>
                                         </button>
+                                        {isExpanded && !repairModeActive ? (
+                                            <QuickInlineSceneEditor
+                                                item={item}
+                                                onUpdateItem={onUpdateItem}
+                                                disabled={!safeOperatorCapabilities.canEditFlow}
+                                            />
+                                        ) : null}
                                         {repairModeActive ? (
                                             <div className="space-y-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
                                                 <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5">
@@ -6791,4 +6896,3 @@ export default function RunOfShowDirectorPanel({
         </section>
     );
 }
-

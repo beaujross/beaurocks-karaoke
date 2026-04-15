@@ -15,7 +15,7 @@ export const AAHF_KICKOFF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 export const AAHF_KICKOFF_STARTS_AT_LOCAL = '2026-05-01T19:00';
 export const AAHF_KICKOFF_STARTS_AT_MS = Date.parse('2026-05-01T19:00:00-07:00');
 
-const AAHF_KICKOFF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
+const AAHF_KICKOFF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
 
 export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
     Object.freeze({
@@ -24,7 +24,7 @@ export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
         version: 1,
         startsAtLocal: AAHF_KICKOFF_STARTS_AT_LOCAL,
         startsAtMs: AAHF_KICKOFF_STARTS_AT_MS,
-        description: 'AAHF branding, competition rules, event credits, and a run-of-show starter for May 1, 2026.',
+        description: 'AAHF kickoff defaults for Friday, May 1, 2026 from 7 PM to midnight, with explicit lyrics opening after 9 PM.',
     }),
 ]);
 
@@ -42,7 +42,7 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intro',
                 headline: 'AAHF Karaoke Kick-Off',
-                subhead: 'Doors open, phones out, and the room lights up for the first singer.',
+                subhead: 'Doors at 7, phones out, first singers up, and explicit lyrics stay after 9 PM.',
                 accentTheme: 'fuchsia'
             },
             audioPlan: {
@@ -62,7 +62,7 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'how_to_play',
                 headline: 'Phones out. Scan. Request.',
-                subhead: 'Quick onboarding pass for guests before the first run starts.',
+                subhead: 'Quick onboarding pass before the early set, with explicit lyrics opening after 9 PM.',
                 accentTheme: 'cyan'
             }
         }, now + 1),
@@ -193,10 +193,10 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             lobbyOrbSkinUrl: AAHF_KICKOFF_LOGO_URL,
             audienceShellVariant: 'streamlined',
             audienceBrandTheme: normalizeAudienceBrandTheme({
-                appTitle: 'AAHF Karaoke',
-                primaryColor: '#FF4FA3',
-                secondaryColor: '#1ED7FF',
-                accentColor: '#FACC15',
+                appTitle: 'AAHF Festival',
+                primaryColor: '#E05A44',
+                secondaryColor: '#F4C94A',
+                accentColor: '#8F2D2A',
             }),
             autoDj: false,
             autoBgMusic: false,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, onSnapshot, updateDoc, writeBatch } from '../../lib/firebase';
 import { APP_ID, GAME_ASSETS } from '../../lib/assets';
@@ -26,7 +26,7 @@ const HOST_ASSIST_BANNER_MS = 2200;
 const HOST_ASSIST_LIFT = 8;
 
 const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState, view = 'tv' }) => {
-    const data = playerData || gameState || {};
+    const data = useMemo(() => playerData || gameState || {}, [gameState, playerData]);
     const controlSource = data.inputSource || inputSource || 'remote';
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
@@ -363,7 +363,7 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         }; 
         raf = requestAnimationFrame(loop); 
         return () => cancelAnimationFrame(raf);
-    }, [gameStateLocal, isController, invincible, onGameOver]);
+    }, [gameStateLocal, isController, isRoomControlled, invincible, onGameOver]);
 
     const spectatorMessage = (() => {
         if (view === 'mobile' && isRoomControlled) {

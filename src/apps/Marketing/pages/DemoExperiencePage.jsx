@@ -2237,11 +2237,9 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
     [activeBeat.bullets, activeBeat.signals]
   );
 
-  useEffect(() => {
-    if (!isAutoPage || !isAutoDemoMobile || !followMobileSurfaceFocus) return undefined;
-    setActiveMobileSurface(activeSequenceStep?.surface || "tv");
-    return undefined;
-  }, [activeSequenceStep?.surface, followMobileSurfaceFocus, isAutoDemoMobile, isAutoPage]);
+  const resolvedActiveMobileSurface = isAutoPage && isAutoDemoMobile && followMobileSurfaceFocus
+    ? activeSequenceStep?.surface || "tv"
+    : activeMobileSurface;
 
   useEffect(() => {
     if (!isAutoPage || !playing) return undefined;
@@ -2696,8 +2694,8 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                       key={surface.id}
                       type="button"
                       role="tab"
-                      aria-selected={activeMobileSurface === surface.id}
-                      className={activeMobileSurface === surface.id ? "active" : ""}
+                      aria-selected={resolvedActiveMobileSurface === surface.id}
+                      className={resolvedActiveMobileSurface === surface.id ? "active" : ""}
                       onClick={() => {
                         setFollowMobileSurfaceFocus(false);
                         setActiveMobileSurface(surface.id);
@@ -2728,10 +2726,10 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
             <div
               className={`mk3-demo-shell mk3-demo-shell-testing is-focus-${activeSequenceStep?.surface || "tv"}${isAutoDemoMobile ? " is-mobile-spotlight" : ""}`}
               data-scene={activeScene.id}
-              data-mobile-surface={activeMobileSurface}
+              data-mobile-surface={resolvedActiveMobileSurface}
               data-stage-focus={activeSequenceStep?.surface || "tv"}
             >
-              <article className={`mk3-demo-surface mk3-demo-host${activeMobileSurface === "host" ? " is-mobile-active" : ""}`}>
+              <article className={`mk3-demo-surface mk3-demo-host${resolvedActiveMobileSurface === "host" ? " is-mobile-active" : ""}`}>
                 <header>
                   <span>Host Deck</span>
                   <strong>{activeScene.host.actionLabel}</strong>
@@ -2748,7 +2746,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 </div>
               </article>
 
-              <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}${activeMobileSurface === "tv" ? " is-mobile-active" : ""}`}>
+              <article className={`mk3-demo-surface mk3-demo-tv is-${tvSurfaceVariant}${resolvedActiveMobileSurface === "tv" ? " is-mobile-active" : ""}`}>
                 <header>
                   <span>Public TV</span>
                   <strong>{activeScene.tv.mode}</strong>
@@ -2766,7 +2764,7 @@ const DemoExperiencePage = ({ navigate, demoMode = "abstract" }) => {
                 </div>
               </article>
 
-              <article className={`mk3-demo-surface mk3-demo-audience${activeMobileSurface === "audience" ? " is-mobile-active" : ""}`}>
+              <article className={`mk3-demo-surface mk3-demo-audience${resolvedActiveMobileSurface === "audience" ? " is-mobile-active" : ""}`}>
                 <header>
                   <span>Audience App</span>
                   <strong>{activeScene.audience.title}</strong>

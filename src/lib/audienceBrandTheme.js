@@ -37,6 +37,11 @@ const hexToRgb = (value = '') => {
     };
 };
 
+const hexToRgbChannels = (value = '') => {
+    const { r, g, b } = hexToRgb(value);
+    return `${r}, ${g}, ${b}`;
+};
+
 export const withAudienceBrandAlpha = (value = '', alpha = 1) => {
     const { r, g, b } = hexToRgb(value);
     const safeAlpha = Math.max(0, Math.min(1, Number(alpha ?? 1)));
@@ -48,6 +53,12 @@ export const buildAudienceBrandThemePalette = (value = null) => {
     return {
         theme,
         rootStyle: {
+            '--audience-brand-primary': theme.primaryColor,
+            '--audience-brand-secondary': theme.secondaryColor,
+            '--audience-brand-accent': theme.accentColor,
+            '--audience-brand-primary-rgb': hexToRgbChannels(theme.primaryColor),
+            '--audience-brand-secondary-rgb': hexToRgbChannels(theme.secondaryColor),
+            '--audience-brand-accent-rgb': hexToRgbChannels(theme.accentColor),
             backgroundColor: '#090612',
             backgroundImage: [
                 `radial-gradient(circle at top center, ${withAudienceBrandAlpha(theme.secondaryColor, 0.2)} 0%, transparent 34%)`,

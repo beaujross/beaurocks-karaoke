@@ -264,6 +264,9 @@ const KaraokeTerms = () => (
 );
 
 const App = () => {
+    const qaAudienceFixtureId = typeof window !== 'undefined'
+        ? String(new URLSearchParams(window.location.search || '').get('qaAudienceFixture') || '').trim()
+        : '';
     const [canonicalRedirectUrl] = useState(() => {
         if (typeof window === 'undefined') return '';
         return getCanonicalManagedHostRedirectUrl(window.location)
@@ -384,10 +387,10 @@ const App = () => {
     );
     
     // Mobile View needs Toast Provider
-    if (view === 'mobile') return uid ? (
+    if (view === 'mobile') return (uid || qaAudienceFixtureId) ? (
         <Suspense fallback={<ViewLoader />}>
             <ToastProvider>
-                <SingerApp roomCode={roomCode} uid={uid} />
+                <SingerApp roomCode={roomCode} uid={uid || `qa_${qaAudienceFixtureId || 'audience'}`} />
             </ToastProvider>
         </Suspense>
     ) : <ViewLoader />;

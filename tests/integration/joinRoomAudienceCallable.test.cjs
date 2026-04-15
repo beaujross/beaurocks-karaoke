@@ -22,6 +22,7 @@ const eventConfigRef = db.doc(`room_event_credit_configs/${ROOM_CODE}`);
 const grantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_general_admission`);
 const entitlementRef = db.doc(`event_attendee_entitlements/givebutter_order123`);
 const entitlementGrantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_givebutter_order123`);
+const supportPurchaseRef = db.doc(`support_purchase_events/givebutter_support_donation123`);
 
 const requestFor = (uid, data = {}) => ({
   auth: uid ? { uid, token: data.__token || {} } : null,
@@ -34,7 +35,7 @@ const requestFor = (uid, data = {}) => ({
 });
 
 async function resetState() {
-  const docs = [roomUserRef, roomRef, userRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef];
+  const docs = [roomUserRef, roomRef, userRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef];
   for (const ref of docs) {
     try {
       await ref.delete();
@@ -225,6 +226,32 @@ async function run() {
       const grantSnap = await entitlementGrantRef.get();
       assert.equal(grantSnap.exists, true);
       assert.equal(Number(grantSnap.get("pointsGranted")), 800);
+    }],
+
+    ["audience join restores supporter unlock from prior Givebutter purchase match", async () => {
+      await supportPurchaseRef.set({
+        sourceProvider: "givebutter",
+        roomCode: ROOM_CODE,
+        normalizedEmail: "supporter@example.com",
+        attendeeName: "Supporter Guest",
+        amountCents: 2500,
+      }, { merge: true });
+
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Supporter Guest",
+        avatar: "🎤",
+        __token: { email: "supporter@example.com" },
+      }));
+
+      const roomUserSnap = await roomUserRef.get();
+      assert.equal(roomUserSnap.get("roomBoostBadge"), true);
+      assert.equal(roomUserSnap.get("roomBoosted"), true);
+      assert.equal(Number(roomUserSnap.get("lastSupportPurchaseAmountCents")), 2500);
+
+      const supportSnap = await supportPurchaseRef.get();
+      assert.equal(String(supportSnap.get("matchedUid")), USER_UID);
+      assert.equal(String(supportSnap.get("matchedRoomCode")), ROOM_CODE);
     }],
   ];
 

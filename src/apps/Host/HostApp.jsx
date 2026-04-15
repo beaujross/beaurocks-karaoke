@@ -37,7 +37,10 @@ import useHostLaunchFlow from './hooks/useHostLaunchFlow';
 import useHostEntryBootstrap from './hooks/useHostEntryBootstrap';
 import useHostLandingLaunchpad from './hooks/useHostLandingLaunchpad';
 import useHostRoomEntry from './hooks/useHostRoomEntry';
+import useHostLaunchSession from './hooks/useHostLaunchSession';
+import useHostNightSetupFlow from './hooks/useHostNightSetupFlow';
 import useHostRoomManager from './hooks/useHostRoomManager';
+import useHostWorkspaceNavigation from './hooks/useHostWorkspaceNavigation';
 import useHostWorkspaceState from './hooks/useHostWorkspaceState';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
@@ -268,7 +271,7 @@ const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intro',
                 headline: 'AAHF Karaoke Kick-Off',
-                subhead: 'Doors open, phones out, and the room lights up for the first singer.',
+                subhead: 'Doors at 7, phones out, first singers up, and explicit lyrics stay after 9 PM.',
                 accentTheme: 'fuchsia'
             },
             audioPlan: {
@@ -288,7 +291,7 @@ const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'how_to_play',
                 headline: 'Phones out. Scan. Request.',
-                subhead: 'Quick onboarding pass for guests before the first run starts.',
+                subhead: 'Quick onboarding pass before the early set, with explicit lyrics opening after 9 PM.',
                 accentTheme: 'cyan'
             }
         }, now + 1),
@@ -4030,7 +4033,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             cancelled = true;
             clearTimeout(t);
         }; 
-    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized, roomCode]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -5065,10 +5068,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             cancelled = true;
         };
     }, [
+        current,
         current?.id,
         current?.duration,
         current?.appleMusicId,
         current?.mediaUrl,
+        room,
         room?.activeMode,
         room?.mediaUrl,
         resolveDurationForUrl
@@ -5965,6 +5970,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearInterval(timer);
     }, []);
 
+    const persistAccountMusicPrefs = useCallback(async (patch = {}) => {
+        const activeUid = auth.currentUser?.uid || uid || '';
+        if (!activeUid) return;
+        const current = normalizeHostMusicPrefs(accountMusicPrefsRef.current || DEFAULT_HOST_MUSIC_PREFS);
+        const merged = normalizeHostMusicPrefs({
+            ...current,
+            ...(patch || {})
+        });
+        if (
+            current.appleAutoConnect === merged.appleAutoConnect
+            && current.applePlaylistUrl === merged.applePlaylistUrl
+            && current.appleAutoPlaylistId === merged.appleAutoPlaylistId
+            && current.appleAutoPlaylistTitle === merged.appleAutoPlaylistTitle
+        ) {
+            return;
+        }
+        accountMusicPrefsRef.current = merged;
+        try {
+            await setDoc(doc(db, 'private_user_settings', activeUid), {
+                uid: activeUid,
+                hostMusic: merged,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            hostLogger.debug('Could not persist account music preferences', error);
+        }
+    }, [uid]);
+
     const ensureAppleMusic = useCallback(async () => {
         if (!roomCode) {
             const missingRoomError = new Error('Open a room before connecting Apple Music.');
@@ -5992,7 +6025,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return instance;
     }, [roomCode]);
 
-    const connectAppleMusic = async () => {
+    const connectAppleMusic = useCallback(async () => {
         try {
             const instance = await ensureAppleMusic();
             await instance.authorize();
@@ -6005,7 +6038,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error(e);
             setAppleMusicStatus('Apple Music login failed.');
         }
-    };
+    }, [ensureAppleMusic, persistAccountMusicPrefs]);
 
     const disconnectAppleMusic = async () => {
         try {
@@ -6571,7 +6604,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             canceled = true;
             clearTimeout(timer);
         };
-    }, [showYtIndex, ytCurateQuery]);
+    }, [showYtIndex, ytCurateQuery, roomCode]);
     useEffect(() => {
         if (!showSettings) {
             setSettingsNavOpen(false);
@@ -6822,33 +6855,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [missionAdvancedTogglesOpen, setMissionAdvancedTogglesOpen] = useState(false);
     const [missionShowAllSpotlightModes, setMissionShowAllSpotlightModes] = useState(false);
     const eventCreditsRemoteSyncKeyRef = useRef('');
-    useEffect(() => {
-        if (!isMarketingDemoFixture) return;
-        const fixture = demoFixture || {};
-        const fixtureRoomCode = String(fixture.roomCode || normalizedInitialCode || '').trim().toUpperCase();
-        if (fixtureRoomCode) {
-            setRoomCode(fixtureRoomCode);
-            setRoomCodeInput(fixtureRoomCode);
-        }
-        if (fixture.room !== undefined) setRoom(fixture.room || null);
-        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
-        if (Array.isArray(fixture.users)) setUsers(fixture.users);
-        if (Array.isArray(fixture.localLibrary)) setLocalLibrary(fixture.localLibrary);
-        if (Array.isArray(fixture.ytIndex)) setYtIndex(fixture.ytIndex);
-        setRunOfShowPolicy(normalizeRunOfShowPolicy(fixture.room?.runOfShowPolicy || {}));
-        setRunOfShowRoles(normalizeRunOfShowRoles(fixture.room?.runOfShowRoles || {}));
-        setRunOfShowTemplateMeta(normalizeRunOfShowTemplateMeta(fixture.room?.runOfShowTemplateMeta || {}));
-        if (Array.isArray(fixture.runOfShowTemplates)) setRunOfShowTemplates(fixture.runOfShowTemplates);
-        if (Array.isArray(fixture.activities)) setActivities(fixture.activities);
-        if (Array.isArray(fixture.contacts)) setContacts(fixture.contacts);
-        if (fixture.view) setView(fixture.view);
-        else setView('workspace');
-        if (fixture.tab) setTab(fixture.tab);
-        if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
-        if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
-        if (Array.isArray(fixture.runOfShowSubmissions)) setRunOfShowSubmissions(fixture.runOfShowSubmissions);
-        setEntryError('');
-    }, [demoFixture, isMarketingDemoFixture, normalizedInitialCode]);
     const hostUpdateDeploymentBanner = hostUpdateDeploymentWarning ? (
         <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
             <div>
@@ -6909,6 +6915,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         tvBase,
         uid,
     });
+    useEffect(() => {
+        if (!isMarketingDemoFixture) return;
+        const fixture = demoFixture || {};
+        const fixtureRoomCode = String(fixture.roomCode || normalizedInitialCode || '').trim().toUpperCase();
+        if (fixtureRoomCode) {
+            setRoomCode(fixtureRoomCode);
+            setRoomCodeInput(fixtureRoomCode);
+        }
+        if (fixture.room !== undefined) setRoom(fixture.room || null);
+        if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
+        if (Array.isArray(fixture.users)) setUsers(fixture.users);
+        if (Array.isArray(fixture.localLibrary)) setLocalLibrary(fixture.localLibrary);
+        if (Array.isArray(fixture.ytIndex)) setYtIndex(fixture.ytIndex);
+        setRunOfShowPolicy(normalizeRunOfShowPolicy(fixture.room?.runOfShowPolicy || {}));
+        setRunOfShowRoles(normalizeRunOfShowRoles(fixture.room?.runOfShowRoles || {}));
+        setRunOfShowTemplateMeta(normalizeRunOfShowTemplateMeta(fixture.room?.runOfShowTemplateMeta || {}));
+        if (Array.isArray(fixture.runOfShowTemplates)) setRunOfShowTemplates(fixture.runOfShowTemplates);
+        if (Array.isArray(fixture.activities)) setActivities(fixture.activities);
+        if (Array.isArray(fixture.contacts)) setContacts(fixture.contacts);
+        if (fixture.view) setView(fixture.view);
+        else setView('workspace');
+        if (fixture.tab) setTab(fixture.tab);
+        if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
+        if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
+        if (Array.isArray(fixture.runOfShowSubmissions)) setRunOfShowSubmissions(fixture.runOfShowSubmissions);
+        setEntryError('');
+    }, [demoFixture, isMarketingDemoFixture, normalizedInitialCode, setEntryError]);
     const activeRoomLaunchUrls = useMemo(
         () => resolveLaunchUrlsForRoomCode(roomCode),
         [resolveLaunchUrlsForRoomCode, roomCode]
@@ -7183,7 +7216,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearTimeout(t);
             if (controller) controller.abort();
         };
-    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized]);
+    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized, roomCode]);
 
     const bgAudio = useRef(null);
     const bgCtxRef = useRef(null);
@@ -7758,7 +7791,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const persistedDirector = await persistRunOfShowDirector(nextDirector);
         if (ready) requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [deriveRunOfShowEditableStatus, executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState]);
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode]);
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -7842,7 +7875,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, executeRunOfShowAction, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -7884,7 +7917,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, executeRunOfShowAction, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, runOfShowDirectorState, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -8099,7 +8132,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             automationPaused: paused === true,
             automationStatus: paused === true ? 'paused' : 'idle'
         });
-    }, [executeRunOfShowAction, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, roomCode]);
     const startRunOfShowNow = useCallback(async (options = {}) => {
         if (!roomCode) return getCurrentRunOfShowDirector();
         const allowUnsafe = options?.allowUnsafe === true;
@@ -8468,7 +8501,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return nextMeta;
         });
         return result;
-    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy, runOfShowTemplateMeta]);
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, roomCode, runOfShowPolicy, runOfShowTemplateMeta]);
     const applyRunOfShowTemplate = useCallback(async (templateId = '') => {
         const safeTemplateId = String(templateId || '').trim();
         if (!safeTemplateId) return null;
@@ -8503,7 +8536,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return nextMeta;
         });
         return result;
-    }, [isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowTemplates]);
+    }, [isMarketingDemoFixture, roomCode, runOfShowTemplates]);
     const archiveCurrentRunOfShow = useCallback(async (templateName = '') => {
         const safeName = String(templateName || '').trim() || 'Archived Run Of Show';
         if (isMarketingDemoFixture) {
@@ -8541,7 +8574,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return nextMeta;
         });
         return result;
-    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, manageRunOfShowTemplate, roomCode, runOfShowPolicy]);
+    }, [getCurrentRunOfShowDirector, isMarketingDemoFixture, roomCode, runOfShowPolicy]);
     const applyRunOfShowStarterTemplate = useCallback(async (starterId = 'aahf_kickoff') => {
         const safeStarterId = String(starterId || '').trim().toLowerCase();
         const starter = safeStarterId === 'aahf_kickoff'
@@ -9027,7 +9060,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         window.history.replaceState({}, '', `${url.pathname}?${params.toString()}`);
     }, [tab, settingsTab, activeWorkspaceSection, activeWorkspaceView]);
-    useEffect(() => () => clearStormTimers(), []);
+    useEffect(() => () => {
+        stormTimersRef.current.forEach(t => clearTimeout(t));
+        stormTimersRef.current = [];
+    }, []);
     useEffect(() => () => {
         if (hallOfFameTimerRef.current) {
             clearTimeout(hallOfFameTimerRef.current);
@@ -9265,11 +9301,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         roomCode,
         runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
-        runOfShowLiveItem?.id,
-        runOfShowNextItem?.automationMode,
-        runOfShowNextItem?.id,
-        runOfShowNextItem?.status,
-        runOfShowStagedItem?.id
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem
     ]);
     useEffect(() => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
@@ -9312,8 +9346,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         roomCode,
         runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
-        runOfShowLiveItem?.id,
-        runOfShowStagedItem?.id,
+        runOfShowLiveItem,
+        runOfShowStagedItem,
         startRunOfShowItem
     ]);
     useEffect(() => {
@@ -9553,7 +9587,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }
         logActivity(roomCode, next.singerName, `took the stage!`, EMOJI.mic);
-    }, [appleMusicAuthorized, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
+    }, [appleMusicAuthorized, holdAutoBgDuringStageActivation, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom, logActivity]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -9752,34 +9786,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return () => { isMounted = false; };
     }, []);
-
-    const persistAccountMusicPrefs = useCallback(async (patch = {}) => {
-        const activeUid = auth.currentUser?.uid || uid || '';
-        if (!activeUid) return;
-        const current = normalizeHostMusicPrefs(accountMusicPrefsRef.current || DEFAULT_HOST_MUSIC_PREFS);
-        const merged = normalizeHostMusicPrefs({
-            ...current,
-            ...(patch || {})
-        });
-        if (
-            current.appleAutoConnect === merged.appleAutoConnect
-            && current.applePlaylistUrl === merged.applePlaylistUrl
-            && current.appleAutoPlaylistId === merged.appleAutoPlaylistId
-            && current.appleAutoPlaylistTitle === merged.appleAutoPlaylistTitle
-        ) {
-            return;
-        }
-        accountMusicPrefsRef.current = merged;
-        try {
-            await setDoc(doc(db, 'private_user_settings', activeUid), {
-                uid: activeUid,
-                hostMusic: merged,
-                updatedAt: serverTimestamp()
-            }, { merge: true });
-        } catch (error) {
-            hostLogger.debug('Could not persist account music preferences', error);
-        }
-    }, [uid]);
 
     useEffect(() => {
         let unsub = () => {};
@@ -10151,69 +10157,135 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [missionControlEnabled, missionAdvancedOverrides]);
 
-    const resolveNightSetupRecommendation = useCallback(() => {
-        const knownPresetIds = new Set(Object.keys(HOST_NIGHT_PRESETS));
-        const lastPreset = (() => {
-            try {
-                return String(localStorage.getItem('bross_last_night_setup_preset') || '').trim();
-            } catch {
-                return '';
+    const setBgMusicState = useCallback((next) => {
+        if (!bgAudio.current) return;
+        if (playingBgRef.current === next) return;
+        playingBgRef.current = next;
+        setPlayingBg(next);
+        if (next) {
+            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
+                bgCtxRef.current.resume().catch(() => {});
             }
-        })();
-        if (knownPresetIds.has(lastPreset)) {
-            return {
-                presetId: lastPreset,
-                reason: 'Based on your most recent host setup.'
-            };
+            bgAudio.current.play().catch(() => {});
+        } else {
+            bgAudio.current.pause();
         }
+        updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
+    }, [currentTrackIdx, updateRoom]);
 
-        const guestCount = Array.isArray(users) ? users.length : 0;
-        const activeQueueCount = Number(queuedCount || 0);
-        if (guestCount >= 18 || activeQueueCount >= 16) {
-            return {
-                presetId: 'competition',
-                reason: 'High turnout detected. Competition keeps queue pressure under control.'
-            };
-        }
-        if (activeQueueCount >= 8 && guestCount >= 10) {
-            return {
-                presetId: 'bingo',
-                reason: 'Balanced crowd + queue size suggests Bingo Spotlight engagement.'
-            };
-        }
-
-        const dayOfWeek = new Date().getDay();
-        if (dayOfWeek === 5 || dayOfWeek === 6) {
-            return {
-                presetId: 'casual',
-                reason: 'Weekend default: high-energy casual flow.'
-            };
-        }
-        return {
-            presetId: 'trivia',
-            reason: 'Weeknight default: trivia bursts keep non-singers active.'
-        };
-    }, [users, queuedCount]);
-
-    const seedNightSetupFromPreset = useCallback((presetId = 'casual', options = {}) => {
-        const preset = HOST_NIGHT_PRESETS[presetId] || HOST_NIGHT_PRESETS.casual;
-        const presetSettings = preset?.settings || {};
-        const queueSettings = presetSettings.queueSettings || {};
-        const keepQueueDraft = !!options.keepQueueDraft;
-        setNightSetupPresetId(preset.id);
-        if (!keepQueueDraft) {
-            setNightSetupQueueLimitMode(queueSettings.limitMode || 'none');
-            setNightSetupQueueLimitCount(Math.max(0, Number(queueSettings.limitCount || 0)));
-            setNightSetupQueueRotation(queueSettings.rotation || 'round_robin');
-            setNightSetupQueueFirstTimeBoost(queueSettings.firstTimeBoost !== false);
-        }
-        setNightSetupShowScoring(presetSettings.showScoring !== false);
-        setNightSetupAutoPlayMedia(presetSettings.autoPlayMedia !== false);
-        setNightSetupChatOnTv(!!presetSettings.chatShowOnTv);
-        setNightSetupMarqueeEnabled(!!presetSettings.marqueeEnabled);
-        setNightSetupPrimaryMode(presetSettings.gamePreviewId || (preset.id === 'bingo' ? 'bingo' : preset.id === 'trivia' ? 'trivia_pop' : 'karaoke'));
-        return preset;
-    }, []);
+    const {
+        applyNightSetupWizard,
+        launchNightSetupPackage,
+        openNightSetupWizard,
+        openSpotlightFlowFromSetup,
+        resolveNightSetupRecommendation,
+        seedNightSetupFromPreset,
+    } = useHostNightSetupFlow({
+        applyMissionDraftToNightSetupState,
+        buildMissionDraftFromRoom,
+        buildMissionPartyFromRoom,
+        buildMissionPartyPayload,
+        compileMissionPayloadWithAssist,
+        deriveAudienceBackingMode,
+        deriveUnknownBackingPolicy,
+        hostLogger,
+        hostName,
+        hostNightPresets: HOST_NIGHT_PRESETS,
+        legacyGuestBackingOptionalRequestMode: REQUEST_MODES.guestBackingOptional,
+        logoUrl,
+        missionAssistDefaultLevel: MISSION_DEFAULT_ASSIST_LEVEL,
+        missionControlCohort,
+        missionControlEnabled,
+        missionControlVersion: MISSION_CONTROL_VERSION,
+        missionDraft,
+        missionFlowRules: MISSION_FLOW_RULES,
+        missionPartyDraft,
+        missionPrimaryModes: NIGHT_SETUP_PRIMARY_MODES,
+        missionAdvancedOverrides,
+        nightSetupAutoPlayMedia,
+        nightSetupChatOnTv,
+        nightSetupMarqueeEnabled,
+        nightSetupPlanSnapshotRef,
+        nightSetupPrimaryMode,
+        nightSetupPresetId,
+        nightSetupPrimaryModes: NIGHT_SETUP_PRIMARY_MODES,
+        nightSetupQueueFirstTimeBoost,
+        nightSetupQueueLimitCount,
+        nightSetupQueueLimitMode,
+        nightSetupQueueRotation,
+        nightSetupQueueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
+        nightSetupQueueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
+        nightSetupShowScoring,
+        nightSetupStep,
+        nowMs,
+        room,
+        roomCode,
+        roomUsers: users,
+        queuedCount,
+        roomLaunchUrls: activeRoomLaunchUrls,
+        normalizeRoomRequestMode,
+        playingBg,
+        primaryMissionStorageKey: MISSION_DRAFT_STORAGE_KEY,
+        overrideMissionStorageKey: MISSION_OVERRIDE_STORAGE_KEY,
+        requestRoomUpdate: updateRoom,
+        serverTimestamp,
+        setAudienceBackingMode,
+        setAudienceBingoReopenEnabled,
+        setAllowSingerTrackSelect,
+        setAutoBgMusic,
+        setAutoBonusEnabled,
+        setAutoBonusPoints,
+        setAutoDj,
+        setAutoDjDelaySec,
+        setAutoEndOnTrackFinish,
+        setAutoLyricsOnQueue,
+        setAutoOpenGameId,
+        setAutoPlayMedia,
+        setChatShowOnTv,
+        setHostNightPreset,
+        setMarqueeEnabled,
+        setMarqueeShowMode,
+        setMissionAdvancedOpen,
+        setMissionAdvancedOverrides,
+        setMissionAdvancedPartyOpen,
+        setMissionAdvancedQueueOpen,
+        setMissionAdvancedTogglesOpen,
+        setMissionDraft,
+        setMissionPartyDraft,
+        setMissionShowAllSpotlightModes,
+        setNightSetupApplying,
+        setNightSetupAutoPlayMedia,
+        setNightSetupChatOnTv,
+        setNightSetupMarqueeEnabled,
+        setNightSetupPlanPulse,
+        setNightSetupPresetId,
+        setNightSetupPrimaryMode,
+        setNightSetupQueueFirstTimeBoost,
+        setNightSetupQueueLimitCount,
+        setNightSetupQueueLimitMode,
+        setNightSetupQueueRotation,
+        setNightSetupRecommendation,
+        setNightSetupShowScoring,
+        setNightSetupStep,
+        setPopTriviaEnabled,
+        setQueueFirstTimeBoost,
+        setQueueLimitCount,
+        setQueueLimitMode,
+        setQueueRotation,
+        setRequestMode,
+        setSearchSources,
+        setShowFameLevel,
+        setShowLaunchMenu,
+        setShowNavMenu,
+        setShowNightSetupWizard,
+        setShowScoring,
+        setUnknownBackingPolicy,
+        setBgMusicState,
+        showNightSetupWizard,
+        setTab,
+        toast,
+        trackEvent,
+    });
 
     const updateMissionDraftPick = useCallback((patch = {}, reason = 'manual') => {
         setMissionDraft((prev) => {
@@ -10237,438 +10309,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [applyMissionDraftToNightSetupState, missionAdvancedOverrides, roomCode, missionControlEnabled, missionControlCohort]);
 
-    const openNightSetupWizard = useCallback((presetId = '') => {
-        const recommendation = resolveNightSetupRecommendation();
-        const resolvedPresetId = (presetId && HOST_NIGHT_PRESETS[presetId]) ? presetId : recommendation.presetId;
-        setNightSetupRecommendation(recommendation);
-        if (missionControlEnabled) {
-            const roomDraft = buildMissionDraftFromRoom(room || {}, {
-                flowRules: MISSION_FLOW_RULES,
-                primaryModes: NIGHT_SETUP_PRIMARY_MODES
-            });
-            const seedDraft = {
-                ...roomDraft,
-                archetype: resolvedPresetId || roomDraft.archetype || 'casual',
-                assistLevel: roomDraft.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
-            };
-            let persistedDraft = null;
-            let persistedOverrides = null;
-            try {
-                const savedDraftRaw = localStorage.getItem(MISSION_DRAFT_STORAGE_KEY);
-                const savedOverrideRaw = localStorage.getItem(MISSION_OVERRIDE_STORAGE_KEY);
-                persistedDraft = savedDraftRaw ? JSON.parse(savedDraftRaw) : null;
-                persistedOverrides = savedOverrideRaw ? JSON.parse(savedOverrideRaw) : null;
-            } catch (_err) {
-                persistedDraft = null;
-                persistedOverrides = null;
-            }
-            const nextDraft = (persistedDraft && typeof persistedDraft === 'object' && !Array.isArray(persistedDraft))
-                ? { ...seedDraft, ...persistedDraft }
-                : seedDraft;
-            const nextOverrides = (room?.missionControl?.advancedOverrides && typeof room.missionControl.advancedOverrides === 'object')
-                ? room.missionControl.advancedOverrides
-                : ((persistedOverrides && typeof persistedOverrides === 'object' && !Array.isArray(persistedOverrides)) ? persistedOverrides : {});
-            const nextParty = buildMissionPartyFromRoom(room || {});
-            setMissionDraft(nextDraft);
-            setMissionPartyDraft(nextParty);
-            setMissionAdvancedOverrides(nextOverrides);
-            setMissionAdvancedOpen(false);
-            setMissionAdvancedQueueOpen(false);
-            setMissionAdvancedPartyOpen(false);
-            setMissionAdvancedTogglesOpen(false);
-            setMissionShowAllSpotlightModes(false);
-            applyMissionDraftToNightSetupState(nextDraft, nextOverrides);
-            trackEvent('host_mission_setup_opened', {
-                room_code: roomCode || '',
-                archetype: nextDraft.archetype,
-                spotlight_mode: nextDraft.spotlightMode,
-                feature_flag: 'mission_control_v1',
-                cohort: missionControlCohort,
-                timestamp: nowMs()
-            });
-        } else {
-            seedNightSetupFromPreset(resolvedPresetId, { keepQueueDraft: false });
-            setMissionPartyDraft(buildMissionPartyPayload());
-        }
-        setNightSetupStep(0);
-        setShowNightSetupWizard(true);
-    }, [
-        resolveNightSetupRecommendation,
-        missionControlEnabled,
-        room,
-        roomCode,
-        missionControlCohort,
-        applyMissionDraftToNightSetupState,
-        seedNightSetupFromPreset
-    ]);
-
-    const createRoom = useCallback(async (options = {}) => {
-        const result = await provisionRoom({ ...options, openNightSetup: false });
-        const shouldOpenNightSetup = options?.openNightSetup !== false;
-        if (!result?.roomCode || !shouldOpenNightSetup) return result;
-        openNightSetupWizard(
-            String(options?.nightPresetId || '').trim()
-            || String(result?.presetId || '').trim()
-            || 'casual'
-        );
-        return result;
-    }, [openNightSetupWizard, provisionRoom]);
-
-    const launchOnboardingRoom = useCallback(async () => {
-        const trimmedHost = onboardingHostName.trim();
-        const trimmedWorkspace = onboardingWorkspaceName.trim();
-        const trimmedLogo = onboardingLogoUrl.trim();
-        if (!trimmedHost || !trimmedWorkspace) {
-            setOnboardingError('Identity and workspace details are required before launch.');
-            setOnboardingStep(0);
-            return;
-        }
-        setOnboardingError('');
-        await createRoom({
-            hostName: trimmedHost,
-            orgName: trimmedWorkspace,
-            logoUrl: trimmedLogo || ASSETS.logo,
-            nightPresetId: hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual',
-            openNightSetup: true
-        });
-    }, [
+    const {
+        closeNightSetupWizard,
         createRoom,
+        launchOnboardingRoom,
+        openHostRoomDashboard,
+    } = useHostLaunchSession({
+        fallbackLogoUrl: ASSETS.logo,
         hostNightPreset,
+        nightSetupApplying,
         onboardingHostName,
         onboardingLogoUrl,
         onboardingWorkspaceName,
+        openNightSetupWizard,
+        provisionRoom,
+        roomCode,
+        setEntryError,
+        setLandingLaunchMode,
         setOnboardingError,
-        setOnboardingStep
-    ]);
-
-    const closeNightSetupWizard = useCallback(() => {
-        if (nightSetupApplying) return;
-        setShowNightSetupWizard(false);
-        setNightSetupStep(0);
-    }, [nightSetupApplying]);
-    const openHostRoomDashboard = useCallback(() => {
-        setShowNightSetupWizard(false);
-        setShowSettings(false);
-        setQuickStartChecklistRoomCode('');
-        setQuickStartChecklistProgress({
-            roomCode: '',
-            tvOpened: false,
-            joinLinkCopied: false,
-            roomSetupOpened: false,
-        });
-        setLandingLaunchMode('start');
-        setEntryError('');
-        if (roomCode) {
-            setRoomCodeInput(roomCode);
-        }
-        setView('landing');
-    }, [roomCode]);
-
-    useEffect(() => {
-        if (!showNightSetupWizard) return;
-        setShowLaunchMenu(false);
-        setShowNavMenu(false);
-        trackEvent('host_night_setup_step_view', {
-            step_index: nightSetupStep,
-            preset_id: nightSetupPresetId,
-            primary_mode: nightSetupPrimaryMode
-        });
-    }, [showNightSetupWizard, nightSetupStep, nightSetupPresetId, nightSetupPrimaryMode]);
-    useEffect(() => {
-        if (!showNightSetupWizard) {
-            nightSetupPlanSnapshotRef.current = {
-                night: '',
-                pacing: '',
-                spotlight: '',
-                readiness: ''
-            };
-            setNightSetupPlanPulse({
-                night: 0,
-                pacing: 0,
-                spotlight: 0,
-                readiness: 0
-            });
-            return;
-        }
-        const selectedPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
-        const selectedMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === nightSetupPrimaryMode) || NIGHT_SETUP_PRIMARY_MODES[0];
-        const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
-        const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
-        const readinessChecks = [
-            !!String(hostName || '').trim(),
-            !!String(roomCode || '').trim(),
-            !!String(selectedPreset?.id || '').trim(),
-            !!String(selectedMode?.id || '').trim(),
-            !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim(),
-            !!String(logoUrl || '').trim(),
-            !!nightSetupAutoPlayMedia || !!nightSetupShowScoring || !!nightSetupQueueFirstTimeBoost || !!nightSetupChatOnTv || !!nightSetupMarqueeEnabled
-        ];
-        const readinessScore = Math.round((readinessChecks.filter(Boolean).length / readinessChecks.length) * 100);
-        const nextSnapshot = {
-            night: selectedPreset.label,
-            pacing: `${limitOption.label}${nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''} | ${rotationOption.label}`,
-            spotlight: selectedMode.label,
-            readiness: `${readinessScore}% Ready`
-        };
-        const previous = nightSetupPlanSnapshotRef.current || {};
-        const ts = nowMs();
-        const patch = {};
-        if (previous.night && previous.night !== nextSnapshot.night) patch.night = ts;
-        if (previous.pacing && previous.pacing !== nextSnapshot.pacing) patch.pacing = ts;
-        if (previous.spotlight && previous.spotlight !== nextSnapshot.spotlight) patch.spotlight = ts;
-        if (previous.readiness && previous.readiness !== nextSnapshot.readiness) patch.readiness = ts;
-        nightSetupPlanSnapshotRef.current = nextSnapshot;
-        if (Object.keys(patch).length) {
-            setNightSetupPlanPulse((prev) => ({ ...prev, ...patch }));
-        }
-    }, [
-        showNightSetupWizard,
-        nightSetupPresetId,
-        nightSetupQueueLimitMode,
-        nightSetupQueueLimitCount,
-        nightSetupQueueRotation,
-        nightSetupPrimaryMode,
-        nightSetupAutoPlayMedia,
-        nightSetupShowScoring,
-        nightSetupQueueFirstTimeBoost,
-        nightSetupChatOnTv,
-        nightSetupMarqueeEnabled,
-        hostName,
-        roomCode,
-        logoUrl
-    ]);
-
-    const setBgMusicState = useCallback((next) => {
-        if (!bgAudio.current) return;
-        if (playingBgRef.current === next) return;
-        playingBgRef.current = next;
-        setPlayingBg(next);
-        if (next) {
-            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
-                bgCtxRef.current.resume().catch(() => {});
-            }
-            bgAudio.current.play().catch(() => {});
-        } else {
-            bgAudio.current.pause();
-        }
-        updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
-    }, [currentTrackIdx, updateRoom]);
-
-    const nightSetupAutoOpenGameTimerRef = useRef(null);
-    useEffect(() => () => {
-        if (nightSetupAutoOpenGameTimerRef.current) {
-            clearTimeout(nightSetupAutoOpenGameTimerRef.current);
-            nightSetupAutoOpenGameTimerRef.current = null;
-        }
-    }, []);
-
-    const openSpotlightFlowFromSetup = useCallback((modeId = 'karaoke') => {
-        const targetMode = String(modeId || '').trim().toLowerCase();
-        if (!targetMode || targetMode === 'karaoke') {
-            setTab('stage');
-            return;
-        }
-        setTab('games');
-        setAutoOpenGameId('');
-        if (nightSetupAutoOpenGameTimerRef.current) {
-            clearTimeout(nightSetupAutoOpenGameTimerRef.current);
-        }
-        nightSetupAutoOpenGameTimerRef.current = setTimeout(() => {
-            setAutoOpenGameId(targetMode);
-            nightSetupAutoOpenGameTimerRef.current = null;
-        }, 0);
-    }, [setTab]);
-
-    const applyNightSetupWizard = useCallback(async (options = {}) => {
-        const intent = String(options?.intent || 'save').trim().toLowerCase();
-        if (!roomCode) {
-            toast('Open a room first.');
-            return false;
-        }
-        const legacyPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
-        const legacyPresetSettings = legacyPreset.settings || {};
-        const legacyGameDefaults = legacyPresetSettings.gameDefaults || {};
-        const legacyAutoLyricsEnabled = !!legacyPresetSettings.autoLyricsOnQueue;
-        const legacyQueueLimitModeValue = nightSetupQueueLimitMode || 'none';
-        const legacyQueueLimitCountValue = legacyQueueLimitModeValue === 'none'
-            ? 0
-            : Math.max(0, Number(nightSetupQueueLimitCount || 0));
-        const legacyPayload = {
-            hostNightPreset: legacyPreset.id,
-            autoDj: !!legacyPresetSettings.autoDj,
-            autoBgMusic: !!legacyPresetSettings.autoBgMusic,
-            autoPlayMedia: !!nightSetupAutoPlayMedia,
-            autoEndOnTrackFinish: legacyPresetSettings.autoEndOnTrackFinish !== false,
-            autoBonusEnabled: legacyPresetSettings.autoBonusEnabled !== false,
-            autoBonusPoints: Math.max(0, Math.min(1000, Number(legacyPresetSettings.autoBonusPoints ?? 25) || 25)),
-            autoDjDelaySec: Math.max(2, Math.min(45, Number(legacyPresetSettings.autoDjDelaySec ?? 10) || 10)),
-            showVisualizerTv: !!legacyPresetSettings.showVisualizerTv,
-            showLyricsTv: !!legacyPresetSettings.showLyricsTv,
-            showScoring: !!nightSetupShowScoring,
-            showFameLevel: !!legacyPresetSettings.showFameLevel,
-            requestMode: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect),
-            allowSingerTrackSelect: normalizeRoomRequestMode(legacyPresetSettings.requestMode, legacyPresetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
-            audienceBackingMode: deriveAudienceBackingMode({
-                audienceBackingMode: legacyPresetSettings.audienceBackingMode,
-                requestMode: legacyPresetSettings.requestMode,
-                allowSingerTrackSelect: legacyPresetSettings.allowSingerTrackSelect,
-            }),
-            unknownBackingPolicy: deriveUnknownBackingPolicy({
-                unknownBackingPolicy: legacyPresetSettings.unknownBackingPolicy,
-                requestMode: legacyPresetSettings.requestMode,
-                allowSingerTrackSelect: legacyPresetSettings.allowSingerTrackSelect,
-            }),
-            marqueeEnabled: !!nightSetupMarqueeEnabled,
-            marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'always',
-            chatShowOnTv: !!nightSetupChatOnTv,
-            chatTvMode: legacyPresetSettings.chatTvMode || 'auto',
-            bouncerMode: !!legacyPresetSettings.bouncerMode,
-            bingoShowTv: legacyPresetSettings.bingoShowTv !== false,
-            bingoVotingMode: legacyPresetSettings.bingoVotingMode || 'host+votes',
-            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyPresetSettings.bingoAutoApprovePct ?? 50))),
-            bingoAudienceReopenEnabled: legacyPresetSettings.bingoAudienceReopenEnabled !== false,
-            autoLyricsOnQueue: legacyAutoLyricsEnabled,
-            popTriviaEnabled: legacyPresetSettings.popTriviaEnabled === true,
-            gamePreviewId: nightSetupPrimaryMode === 'karaoke' ? null : nightSetupPrimaryMode,
-            gameDefaults: {
-                triviaRoundSec: Math.max(5, Number(legacyGameDefaults.triviaRoundSec || 20)),
-                triviaAutoReveal: legacyGameDefaults.triviaAutoReveal !== false,
-                bingoVotingMode: legacyGameDefaults.bingoVotingMode || 'host+votes',
-                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyGameDefaults.bingoAutoApprovePct ?? 50)))
-            },
-            queueSettings: {
-                limitMode: legacyQueueLimitModeValue,
-                limitCount: legacyQueueLimitCountValue,
-                rotation: nightSetupQueueRotation || 'round_robin',
-                firstTimeBoost: nightSetupQueueFirstTimeBoost !== false
-            }
-        };
-        const missionPayload = compileMissionPayloadWithAssist(missionDraft, missionAdvancedOverrides);
-        const payload = missionControlEnabled ? missionPayload : legacyPayload;
-        const payloadPreset = HOST_NIGHT_PRESETS[payload.hostNightPreset] || HOST_NIGHT_PRESETS.casual;
-        const resolvedSpotlightMode = String(
-            missionControlEnabled
-                ? (missionDraft?.spotlightMode || payload.gamePreviewId || nightSetupPrimaryMode || 'karaoke')
-                : (nightSetupPrimaryMode || payload.gamePreviewId || 'karaoke')
-        ).trim().toLowerCase();
-        setNightSetupApplying(true);
-        try {
-            await updateRoom({
-                ...payload,
-                missionControl: {
-                    version: MISSION_CONTROL_VERSION,
-                    enabled: !!missionControlEnabled,
-                    setupDraft: {
-                        archetype: missionDraft?.archetype || payload.hostNightPreset || 'casual',
-                        flowRule: missionDraft?.flowRule || 'balanced',
-                        spotlightMode: missionDraft?.spotlightMode || (payload.gamePreviewId || 'karaoke'),
-                        assistLevel: missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL
-                    },
-                    advancedOverrides: missionAdvancedOverrides || {},
-                    party: buildMissionPartyPayload(missionPartyDraft),
-                    lastAppliedAt: serverTimestamp(),
-                    lastSuggestedAction: room?.missionControl?.lastSuggestedAction || ''
-                }
-            });
-            setHostNightPreset(payload.hostNightPreset);
-            setAutoDj(!!payload.autoDj);
-            setAutoBgMusic(!!payload.autoBgMusic);
-            setAutoPlayMedia(!!payload.autoPlayMedia);
-            setAutoEndOnTrackFinish(payload.autoEndOnTrackFinish !== false);
-            setAutoBonusEnabled(payload.autoBonusEnabled !== false);
-            setAutoBonusPoints(Math.max(0, Math.min(1000, Number(payload.autoBonusPoints ?? 25) || 25)));
-            setAutoDjDelaySec(Math.max(2, Math.min(45, Number(payload.autoDjDelaySec ?? 10) || 10)));
-            setQueueLimitMode(payload.queueSettings.limitMode);
-            setQueueLimitCount(payload.queueSettings.limitCount);
-            setQueueRotation(payload.queueSettings.rotation);
-            setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
-            setShowScoring(!!payload.showScoring);
-            setShowFameLevel(!!payload.showFameLevel);
-            setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
-            setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
-            setAudienceBackingMode(deriveAudienceBackingMode({
-                audienceBackingMode: payload.audienceBackingMode,
-                requestMode: payload.requestMode,
-                allowSingerTrackSelect: payload.allowSingerTrackSelect,
-            }));
-            setUnknownBackingPolicy(deriveUnknownBackingPolicy({
-                unknownBackingPolicy: payload.unknownBackingPolicy,
-                requestMode: payload.requestMode,
-                allowSingerTrackSelect: payload.allowSingerTrackSelect,
-            }));
-            setMarqueeEnabled(!!payload.marqueeEnabled);
-            setMarqueeShowMode(payload.marqueeShowMode || 'always');
-            setChatShowOnTv(!!payload.chatShowOnTv);
-            setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
-            setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
-            setPopTriviaEnabled(payload.popTriviaEnabled === true);
-            setSearchSources(payloadPreset.searchSources || { local: true, youtube: true, itunes: true });
-            if (payload.autoBgMusic && !playingBg) setBgMusicState(true);
-            if (!payload.autoBgMusic && playingBg) setBgMusicState(false);
-            if (intent === 'start_match') {
-                openSpotlightFlowFromSetup(resolvedSpotlightMode);
-            }
-            trackEvent('host_night_setup_applied', {
-                preset_id: payload.hostNightPreset,
-                primary_mode: resolvedSpotlightMode,
-                queue_limit_mode: payload.queueSettings.limitMode
-            });
-            if (missionControlEnabled) {
-                trackEvent('host_mission_applied', {
-                    room_code: roomCode,
-                    archetype: missionDraft?.archetype || payload.hostNightPreset,
-                    flow_rule: missionDraft?.flowRule || 'balanced',
-                    spotlight_mode: missionDraft?.spotlightMode || (payload.gamePreviewId || 'karaoke'),
-                    feature_flag: 'mission_control_v1',
-                    cohort: missionControlCohort,
-                    timestamp: nowMs()
-                });
-            }
-            try {
-                localStorage.setItem('bross_last_night_setup_preset', payload.hostNightPreset);
-            } catch (_err) {
-                // ignore local storage errors
-            }
-            toast(intent === 'start_match'
-                ? 'Setup saved. Match flow ready.'
-                : (missionControlEnabled ? 'Mission control setup applied.' : 'Night setup applied.'));
-            setShowNightSetupWizard(false);
-            setNightSetupStep(0);
-            return true;
-        } catch (error) {
-            hostLogger.error('Apply night setup wizard failed', error);
-            toast('Could not apply night setup.');
-            return false;
-        } finally {
-            setNightSetupApplying(false);
-        }
-    }, [
-        roomCode,
-        nightSetupPresetId,
-        nightSetupAutoPlayMedia,
-        nightSetupShowScoring,
-        nightSetupQueueLimitMode,
-        nightSetupQueueLimitCount,
-        nightSetupQueueRotation,
-        nightSetupQueueFirstTimeBoost,
-        nightSetupPrimaryMode,
-        nightSetupChatOnTv,
-        nightSetupMarqueeEnabled,
-        missionControlEnabled,
-        missionDraft,
-        missionPartyDraft,
-        missionAdvancedOverrides,
-        room?.missionControl?.lastSuggestedAction,
-        missionControlCohort,
-        compileMissionPayloadWithAssist,
-        updateRoom,
-        playingBg,
-        setBgMusicState,
-        openSpotlightFlowFromSetup,
-        toast,
-        setSearchSources,
-        setChatShowOnTv
-    ]);
+        setOnboardingStep,
+        setQuickStartChecklistProgress,
+        setQuickStartChecklistRoomCode,
+        setRoomCodeInput,
+        setShowNightSetupWizard,
+        setShowSettings,
+        setNightSetupStep,
+        setView,
+    });
 
     const openActiveRoomTv = useCallback(() => {
         if (!roomCode) {
@@ -10761,49 +10428,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const dismissStageQuickStartChecklist = useCallback(() => {
         setQuickStartChecklistRoomCode('');
     }, []);
-
-    const launchNightSetupPackage = useCallback(async () => {
-        if (!roomCode) {
-            toast('Open a room first.');
-            return;
-        }
-        const tvUrl = String(activeRoomLaunchUrls?.tvUrl || '').trim();
-        try {
-            if (tvUrl) {
-                window.open(tvUrl, '_blank', 'noopener,noreferrer');
-            }
-        } catch (_err) {
-            // ignore popup-block issues
-        }
-        const applied = await applyNightSetupWizard({ intent: 'start_match' });
-        if (!applied) return;
-
-        const joinUrl = String(activeRoomLaunchUrls?.audienceUrl || '').trim();
-        if (!joinUrl) {
-            toast('Launch package complete. Audience link is unavailable right now.');
-            return;
-        }
-        try {
-            await navigator.clipboard.writeText(joinUrl);
-            toast('Launch package complete: TV opened and join link copied.');
-        } catch (_err) {
-            toast(`Launch package complete. Join link: ${joinUrl}`);
-        }
-
-        trackEvent('host_night_setup_launch_package', {
-            room_code: roomCode,
-            preset_id: nightSetupPresetId,
-            primary_mode: nightSetupPrimaryMode
-        });
-    }, [
-        roomCode,
-        activeRoomLaunchUrls?.audienceUrl,
-        activeRoomLaunchUrls?.tvUrl,
-        applyNightSetupWizard,
-        toast,
-        nightSetupPresetId,
-        nightSetupPrimaryMode
-    ]);
 
     const purgeRoomArtifactsForCode = async (targetRoomCode = '') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -11197,11 +10821,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ lobbyOrbSkinUrl: normalized || null });
         toast(normalized ? 'Orb skin updated' : 'Orb skin reset');
     };
-    const clearStormTimers = () => {
+    const clearStormTimers = useCallback(() => {
         stormTimersRef.current.forEach(t => clearTimeout(t));
         stormTimersRef.current = [];
-    };
-    const startStormSequence = async () => {
+    }, []);
+    const startStormSequence = useCallback(async () => {
         clearStormTimers();
         const seqId = nowMs();
         const totalMs = STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs + STORM_SEQUENCE.passMs + STORM_SEQUENCE.clearMs;
@@ -11218,12 +10842,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         stormTimersRef.current.push(setTimeout(() => updateRoom({ stormPhase: 'pass' }), STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs));
         stormTimersRef.current.push(setTimeout(() => updateRoom({ stormPhase: 'clear' }), STORM_SEQUENCE.approachMs + STORM_SEQUENCE.peakMs + STORM_SEQUENCE.passMs));
         stormTimersRef.current.push(setTimeout(() => updateRoom({ lightMode: 'off', stormPhase: 'off' }), totalMs));
-    };
-    const stopStormSequence = async () => {
+    }, [clearStormTimers, updateRoom]);
+    const stopStormSequence = useCallback(async () => {
         clearStormTimers();
         await updateRoom({ lightMode: 'off', stormPhase: 'off' });
-    };
-    const startBeatDrop = async () => {
+    }, [clearStormTimers, updateRoom]);
+    const startBeatDrop = useCallback(async () => {
         const now = nowMs();
         await updateRoom({
             lightMode: 'strobe',
@@ -11234,7 +10858,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             strobeResults: null,
             strobeVictory: null
         });
-    };
+    }, [updateRoom]);
     const toggleBgMusic = async () => {
         if (playingBg && autoBgMusic) {
             setAutoBgMusic(false);
@@ -11340,13 +10964,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom({ bgMusicVolume: restore });
         }
     };
-    const playSfxSafe = (url) => {
+    const playSfxSafe = useCallback((url) => {
         if (sfxMuted) return;
         playSfx(url, sfxVolume);
         setSfxLevel(100);
         if (sfxPulseRef.current) clearTimeout(sfxPulseRef.current);
         sfxPulseRef.current = setTimeout(() => setSfxLevel(0), 600);
-    };
+    }, [sfxMuted, sfxVolume]);
     const momentSoundUrls = useMemo(() => {
         const findSoundUrl = (...soundNames) => {
             const targetNames = soundNames
@@ -12023,13 +11647,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast("Settings Saved"); 
     };
 
-    const persistYtIndex = async (next) => {
+    const persistYtIndex = useCallback(async (next) => {
         setYtIndex(next);
         if (!roomCode) return;
         await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { ytIndex: next }, { merge: true });
-    };
+    }, [roomCode]);
 
-    const upsertYtIndexEntries = async (entries = [], statusMessage = '') => {
+    const upsertYtIndexEntries = useCallback(async (entries = [], statusMessage = '') => {
         const safeEntries = Array.isArray(entries) ? entries : [];
         const normalizedEntries = safeEntries
             .map((entry) => normalizeYtIndexEntry(entry))
@@ -12056,7 +11680,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await persistYtIndex(next);
         if (statusMessage) setYtAddStatus(statusMessage);
         return next;
-    };
+    }, [hostName, persistYtIndex, ytIndex]);
     upsertYtIndexEntriesRef.current = upsertYtIndexEntries;
 
     const successfulYoutubePerformanceKeyRef = useRef('');
@@ -13157,39 +12781,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         selectSettingsTab(nextTab);
         setSettingsNavOpen(false);
     }, [selectSettingsTab]);
-    const openChatSettings = () => {
-        setTab('admin');
-        setActiveWorkspaceView('audience');
-        setActiveWorkspaceSection('audience.chat');
-        handleSettingsNavSelect('chat');
-    };
-    const routeToWorkspaceSection = useCallback((sectionId = 'ops.room_setup', { forceAdmin = false } = {}) => {
-        const targetSection = sectionId || 'ops.room_setup';
-        const sectionMeta = getSectionMeta(targetSection);
-        const viewId = sectionMeta?.view || 'ops';
-        const mappedTab = SECTION_TO_SETTINGS_TAB[targetSection] || 'general';
-        setActiveWorkspaceView(viewId);
-        setActiveWorkspaceSection(targetSection);
-        if (!forceAdmin && sectionMeta?.hostTab) {
-            setSettingsNavOpen(false);
-            setShowSettings(false);
-            setTab(sectionMeta.hostTab);
-            return;
-        }
-        setSettingsTab(mappedTab);
-        setTab('admin');
-        setShowSettings(true);
-    }, []);
-    const openAdminWorkspace = useCallback((sectionId = 'ops.room_setup') => {
-        routeToWorkspaceSection(sectionId, { forceAdmin: true });
-    }, [routeToWorkspaceSection]);
-    const openExistingRoomWorkspace = useCallback(async (targetRoomCode = '', sectionId = 'queue.live_run') => {
-        const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
-        const joined = await joinRoom(normalizedCode || roomCodeInput);
-        if (!joined) return false;
-        if (sectionId) routeToWorkspaceSection(sectionId);
-        return true;
-    }, [joinRoom, roomCodeInput, routeToWorkspaceSection]);
+    const {
+        closeSettingsSurface,
+        handleTopChromeTabChange,
+        leaveAdminWithTarget,
+        openAdminWorkspace,
+        openChatSettings,
+        openExistingRoomWorkspace,
+        routeToWorkspaceSection,
+        selectWorkspaceView,
+    } = useHostWorkspaceNavigation({
+        adminWorkspaceViews: ADMIN_WORKSPACE_VIEWS,
+        getSectionMeta,
+        getViewDefaultSection,
+        handleSettingsNavSelect,
+        hostWorkspaceSections: HOST_WORKSPACE_SECTIONS,
+        joinRoom,
+        normalizeHostWorkspaceTab,
+        roomCodeInput,
+        sectionToSettingsTab: SECTION_TO_SETTINGS_TAB,
+        setActiveWorkspaceSection,
+        setActiveWorkspaceView,
+        setSettingsNavOpen,
+        setSettingsTab,
+        setShowSettings,
+        setTab,
+        tab,
+    });
     const {
         canStartLauncherRoom,
         discoveryListingEnabled,
@@ -13289,42 +12907,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             onClick: handleStageQuickStartConnectAppleMusic
         }
     ];
-    const leaveAdminWithTarget = (targetTab = 'stage') => {
-        setSettingsNavOpen(false);
-        setShowSettings(false);
-        if (targetTab) setTab(targetTab);
-        return true;
-    };
-    const selectWorkspaceView = (viewId) => {
-        const requestedView = String(viewId || 'ops').trim() || 'ops';
-        const hasSettingsForView = ADMIN_WORKSPACE_VIEWS.some((view) => view.id === requestedView);
-        const nextView = hasSettingsForView ? requestedView : 'ops';
-        const defaultSectionId = getViewDefaultSection(nextView);
-        const sectionId = SECTION_TO_SETTINGS_TAB[defaultSectionId]
-            ? defaultSectionId
-            : (
-                HOST_WORKSPACE_SECTIONS.find((section) =>
-                    section.view === nextView && !!SECTION_TO_SETTINGS_TAB[section.id]
-                )?.id || 'ops.room_setup'
-            );
-        const mappedTab = SECTION_TO_SETTINGS_TAB[sectionId] || 'general';
-        setActiveWorkspaceView(nextView);
-        setActiveWorkspaceSection(sectionId);
-        setTab('admin');
-        setSettingsTab(mappedTab);
-        setShowSettings(true);
-    };
-    const closeSettingsSurface = () => {
-        if (tab === 'admin') {
-            leaveAdminWithTarget('stage');
-            return;
-        }
-        setShowSettings(false);
-        setSettingsNavOpen(false);
-    };
-    const handleTopChromeTabChange = (nextTab) => {
-        setTab(normalizeHostWorkspaceTab(nextTab));
-    };
     const runMissionDeckAction = async (actionId = '') => {
         const action = String(actionId || '').trim();
         if (!action) return;
@@ -17559,7 +17141,109 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="max-w-2xl">
+                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Audience App Layout</div>
+                                    <div className="mt-1 text-lg font-semibold text-white">Turn on the streamlined audience app here.</div>
+                                    <div className="mt-1 text-sm text-zinc-300">
+                                        Classic keeps the full guest navigation. Streamlined trims the shell to the lighter two-tab flow with live-mode takeovers during the night.
+                                    </div>
+                                </div>
+                                <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                                    audienceShellVariant === 'streamlined'
+                                        ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-100'
+                                        : 'border-white/15 bg-black/25 text-zinc-200'
+                                }`}>
+                                    {audienceShellVariant === 'streamlined' ? 'Streamlined On' : 'Classic On'}
+                                </span>
+                            </div>
+                            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                {[
+                                    {
+                                        id: 'classic',
+                                        label: 'Classic',
+                                        note: 'Full navigation with the current guest destinations and familiar flow.'
+                                    },
+                                    {
+                                        id: 'streamlined',
+                                        label: 'Streamlined',
+                                        note: 'Party-first shell with fewer tabs, lighter clutter, and clearer live moments.'
+                                    }
+                                ].map((option) => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => setAudienceShellVariant(option.id)}
+                                        className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+                                            audienceShellVariant === option.id
+                                                ? 'border-cyan-300/45 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
+                                                : 'border-white/10 bg-black/20 hover:border-cyan-400/30'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-sm font-semibold text-white">{option.label}</div>
+                                            {audienceShellVariant === option.id ? (
+                                                <span className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                                    Active
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-2 text-sm text-zinc-300">{option.note}</div>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                                <button
+                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                    className={`${STYLES.btnStd} ${audiencePreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
+                                >
+                                    <i className="fa-solid fa-mobile-screen-button"></i>
+                                    {audiencePreviewVisible ? 'Audience Preview On' : 'Audience Preview Off'}
+                                </button>
+                                <button
+                                    onClick={() => setAudiencePreviewCollapsed(prev => !prev)}
+                                    disabled={!audiencePreviewVisible}
+                                    className={`${STYLES.btnStd} ${audiencePreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!audiencePreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className={`fa-solid ${audiencePreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
+                                    {audiencePreviewCollapsed ? 'Expand Preview' : 'Compact Preview'}
+                                </button>
+                            </div>
+                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
+                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Navigation</div>
+                                    <div className="mt-1 text-sm text-zinc-200">
+                                        {audienceShellVariant === 'streamlined' ? 'Party + Songs stay front and center.' : 'Guests keep the full multi-destination nav.'}
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Live Moments</div>
+                                    <div className="mt-1 text-sm text-zinc-200">
+                                        {audienceShellVariant === 'streamlined' ? 'Takeovers guide guests into the active room moment.' : 'Guests stay in the current shell without the lighter takeovers.'}
+                                    </div>
+                                </div>
+                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Best Fit</div>
+                                    <div className="mt-1 text-sm text-zinc-200">
+                                        {audienceShellVariant === 'streamlined' ? 'Use this when you want less guest clutter and faster scanning.' : 'Use this when your regulars rely on the full app layout.'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Branding + Tips</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Host name, logos, orb skin, and tip links.</div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                        Open when needed
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Host identity</div>
                                 <input value={hostName} onChange={e=>setHostName(e.target.value)} className={STYLES.input} placeholder="Host name" title="Shown on the TV and activity feed" />
@@ -17597,8 +17281,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <input value={tipSettings.qr} onChange={e=>setTipSettings({...tipSettings, qr:e.target.value})} className={STYLES.input} placeholder="Tip QR image URL" title="Direct link to a QR image" />
                                 <div className="host-form-helper">Shown on the TV Tip overlay.</div>
                             </div>
-                        </div>
-                        <div className="mt-6 space-y-2">
+                            </div>
+                        </details>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Night Profiles</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Reusable presets and event-specific room packages.</div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                        Open when needed
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 space-y-2">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Host presets</div>
                             <div className="host-form-helper">One-click tone control for how the night runs. Applies queue rules, overlays, and game defaults.</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -17650,25 +17347,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     })}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                                <button
-                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
-                                    className={`${STYLES.btnStd} ${audiencePreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
-                                >
-                                    <i className="fa-solid fa-tv"></i>
-                                    {audiencePreviewVisible ? 'Audience preview on' : 'Audience preview off'}
-                                </button>
-                                <button
-                                    onClick={() => setAudiencePreviewCollapsed(prev => !prev)}
-                                    disabled={!audiencePreviewVisible}
-                                    className={`${STYLES.btnStd} ${audiencePreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!audiencePreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    <i className={`fa-solid ${audiencePreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
-                                    {audiencePreviewCollapsed ? 'Expand preview' : 'Compact preview'}
-                                </button>
                             </div>
-                        </div>
-                        <div className="mt-6 space-y-2">
+                        </details>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Guest Flow + Audience Settings</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Queue rules, guest requests, audience branding, and live behavior toggles.</div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                        Open when needed
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 space-y-6">
+                        <div className="space-y-2">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Queue settings</div>
                             <div className="grid grid-cols-2 gap-2">
                                 <select
@@ -17914,30 +17608,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 )}
                             </div>
                             <div className="pt-2">
-                                <div className="text-sm uppercase tracking-widest text-zinc-400">Audience shell experiment</div>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    {[
-                                        { id: 'classic', label: 'Classic' },
-                                        { id: 'streamlined', label: 'Streamlined' }
-                                    ].map((option) => (
-                                        <button
-                                            key={option.id}
-                                            type="button"
-                                            onClick={() => setAudienceShellVariant(option.id)}
-                                            className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
-                                                audienceShellVariant === option.id
-                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
-                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                                            }`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    ))}
-                            </div>
-                            <div className="host-form-helper">Classic keeps the current audience app. Streamlined uses the two-tab shell with soft live-mode takeovers.</div>
-                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
-                                <div className="mt-2 text-sm text-zinc-300">Recolor the audience app for this room and optionally replace the default app title.</div>
+                                <div className="host-form-helper mt-2">Recolor the audience app for this room and optionally replace the default app title.</div>
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                                 <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
                                     <label className="space-y-2">
                                         <div className="text-xs uppercase tracking-[0.2em] text-zinc-500">Audience app title</div>
@@ -18008,6 +17681,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </div>
                             </div>
+                            </div>
+                            </div>
+                        </details>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Cleanup + Advanced Room Tools</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Exports, recap actions, and the separate show-planning workspace.</div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                        Open when needed
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 space-y-4">
                             <div className="pt-4">
                                 <div className="rounded-3xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-5">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -18031,7 +17720,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                            </div>
+                        </details>
                         </>
                         )}
 
@@ -19896,12 +19586,3 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 };
 
 export default HostApp;
-
-
-
-
-
-
-
-
-

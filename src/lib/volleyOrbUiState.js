@@ -1,10 +1,6 @@
 import { isCrowdObjectiveLightMode } from './crowdObjectiveModes.js';
 
-const clampNumber = (value = 0, min = 0, max = 0) => {
-    const numeric = Number(value || 0);
-    if (!Number.isFinite(numeric)) return min;
-    return Math.max(min, Math.min(max, numeric));
-};
+const clampNumber = (value = 0, min = 0, max = 0) => Math.max(min, Math.min(max, Number(value || 0)));
 
 export const VOLLEY_ORB_BASE_ACTIONS = Object.freeze([
     Object.freeze({

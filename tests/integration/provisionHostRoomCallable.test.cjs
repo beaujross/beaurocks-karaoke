@@ -207,6 +207,8 @@ async function run() {
             skipLineBonusPoints: 600,
             websiteCheckInPoints: 150,
             socialPromoPoints: 250,
+            audienceAccessMode: "email_or_donation",
+            supportCelebrationStyle: "moneybags_burst",
             promoCampaigns: [
               {
                 id: "website_check_in",
@@ -241,6 +243,8 @@ async function run() {
       assert.equal(roomSnap.get("eventCredits.sourceCampaignCode"), "AAHF2026");
       assert.equal(Number(roomSnap.get("eventCredits.generalAdmissionPoints")), 200);
       assert.equal(String(roomSnap.get("eventCredits.eventLabel")), "AAHF Karaoke Kick-Off");
+      assert.equal(String(roomSnap.get("eventCredits.audienceAccessMode")), "email_or_donation");
+      assert.equal(String(roomSnap.get("eventCredits.supportCelebrationStyle")), "moneybags_burst");
       assert.equal(Number(roomSnap.get("eventCredits.promoCampaignCount")), 1);
       assert.equal(roomSnap.get("eventCredits.claimCodes"), undefined);
 
@@ -249,6 +253,8 @@ async function run() {
       assert.equal(secureSnap.get("enabled"), true);
       assert.equal(secureSnap.get("presetId"), "aahf_kickoff");
       assert.equal(secureSnap.get("sourceProvider"), "givebutter");
+      assert.equal(String(secureSnap.get("audienceAccessMode")), "email_or_donation");
+      assert.equal(String(secureSnap.get("supportCelebrationStyle")), "moneybags_burst");
       assert.equal(String(secureSnap.get("claimCodes.vip")), "VIP2026");
       assert.equal(String(secureSnap.get("claimCodes.skipLine")), "SKIP2026");
       assert.equal(Array.isArray(secureSnap.get("promoCampaigns")), true);

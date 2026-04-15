@@ -1,3 +1,10 @@
+import {
+    AUDIENCE_ACCESS_MODES,
+    SUPPORT_CELEBRATION_STYLES,
+    normalizeAudienceAccessMode,
+    normalizeSupportCelebrationStyle,
+} from '../../lib/roomMonetization';
+
 export const fromDateTimeLocalInput = (value = '') => {
     const token = String(value || '').trim();
     if (!token) return 0;
@@ -52,6 +59,8 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     supportCampaignCode: '',
     supportPoints: 0,
     supportBadge: true,
+    audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+    supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
     promoCampaigns: [],
     claimCodes: {
         vip: '',
@@ -85,6 +94,8 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+            supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
         },
     },
@@ -111,6 +122,8 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+            supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
         },
     },
@@ -137,6 +150,8 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+            supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
         },
     },
@@ -163,6 +178,8 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+            supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [
                 {
                     id: 'promo_drop',
@@ -185,7 +202,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
     aahf_kickoff: {
         id: 'aahf_kickoff',
         label: 'AAHF Kick-Off Preset',
-        description: 'AAHF defaults with simple Givebutter ticket matching.',
+        description: 'AAHF kickoff defaults for May 1 from 7 PM to midnight, with explicit lyrics after 9 PM.',
         values: {
             enabled: true,
             presetId: 'aahf_kickoff',
@@ -198,13 +215,15 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             skipLineBonusPoints: 0,
             websiteCheckInPoints: 0,
             socialPromoPoints: 0,
-            supportProvider: '',
-            supportLabel: '',
+            supportProvider: 'givebutter',
+            supportLabel: 'Support AAHF Festival',
             supportUrl: '',
             supportEmbedUrl: '',
             supportCampaignCode: '',
-            supportPoints: 0,
+            supportPoints: 250,
             supportBadge: true,
+            audienceAccessMode: AUDIENCE_ACCESS_MODES.emailOrDonation,
+            supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.moneybagsBurst,
             promoCampaigns: [],
         },
     },
@@ -258,6 +277,8 @@ export const createEventCreditsDraft = (draft = {}) => {
         supportCampaignCode: String(source.supportCampaignCode || '').trim(),
         supportPoints: clampWholeNumber(source.supportPoints ?? 0),
         supportBadge: source.supportBadge !== false,
+        audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || DEFAULT_EVENT_CREDITS_CONFIG.audienceAccessMode),
+        supportCelebrationStyle: normalizeSupportCelebrationStyle(source.supportCelebrationStyle || DEFAULT_EVENT_CREDITS_CONFIG.supportCelebrationStyle),
     };
 };
 
@@ -307,6 +328,8 @@ export const buildProvisionEventCreditsPayload = (draft = {}) => {
         supportCampaignCode: sanitizeEventCode(nextDraft.supportCampaignCode || ''),
         supportPoints: clampWholeNumber(nextDraft.supportPoints),
         supportBadge: nextDraft.supportBadge !== false,
+        audienceAccessMode: normalizeAudienceAccessMode(nextDraft.audienceAccessMode || ''),
+        supportCelebrationStyle: normalizeSupportCelebrationStyle(nextDraft.supportCelebrationStyle || ''),
         promoCampaigns: nextDraft.promoCampaigns.map((campaign, index) => ({
             id: sanitizeEventCode(campaign?.id || `promo_${index + 1}`) || `promo_${index + 1}`,
             label: String(campaign?.label || `Promo ${index + 1}`).trim().slice(0, 120) || `Promo ${index + 1}`,

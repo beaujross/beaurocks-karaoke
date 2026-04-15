@@ -864,8 +864,15 @@ const MarketingSite = () => {
       return;
     }
     trackEvent("mk_nav_host_access_click", { source });
-    navigate(MARKETING_ROUTE_PAGES.forHosts, "", withCampaignParams({ utm_content: source }));
-  }, [collapseNavMenus, hasFullAccount, navigate, openHostDashboard, withCampaignParams]);
+    openHostAuthGate({
+      intent: "host_dashboard_resume",
+      targetType: "host_dashboard",
+      returnRoute: {
+        page: MARKETING_ROUTE_PAGES.hostAccess,
+        params: withCampaignParams({ utm_content: source }),
+      },
+    });
+  }, [collapseNavMenus, hasFullAccount, openHostAuthGate, openHostDashboard, withCampaignParams]);
   const handleNavHostAccess = useCallback(() => {
     openMarketingHostAccess(hasFullAccount ? "marketing_nav_host_dashboard_primary" : "nav_primary_host_login");
   }, [hasFullAccount, openMarketingHostAccess]);
@@ -1384,4 +1391,3 @@ const MarketingSite = () => {
 };
 
 export default MarketingSite;
-

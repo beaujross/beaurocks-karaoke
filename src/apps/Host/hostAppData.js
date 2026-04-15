@@ -30,7 +30,7 @@ export const DEFAULT_LOGO_PRESETS = Object.freeze([
 
 export const DEFAULT_ORB_SKIN_PRESETS = Object.freeze([
     { id: 'default-orb', label: 'Default Orb', url: '' },
-    { id: 'aahf-kickoff-logo', label: 'AAHF Kickoff Logo', url: '/images/marketing/karaoke-kickoff-logo-simple.png' }
+    { id: 'aahf-kickoff-logo', label: 'AAHF Festival Badge', url: '/images/marketing/aahf-combined-badge-clean.png' }
 ]);
 
 export const HOST_ONBOARDING_STEPS = Object.freeze([

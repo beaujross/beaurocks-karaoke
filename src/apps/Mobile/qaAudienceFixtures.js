@@ -2,12 +2,12 @@ import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 
 const DEFAULT_ROOM_CODE = 'DEMOAUD';
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
-const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
+const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
 const AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
-    appTitle: 'AAHF Karaoke',
-    primaryColor: '#FF4FA3',
-    secondaryColor: '#1ED7FF',
-    accentColor: '#FACC15',
+    appTitle: 'AAHF Festival',
+    primaryColor: '#E05A44',
+    secondaryColor: '#F4C94A',
+    accentColor: '#8F2D2A',
 });
 
 const buildBaseRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'classic', activeMode = 'karaoke' } = {}) => ({
@@ -44,9 +44,38 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
     eventProfileVersion: 1,
     logoUrl: AAHF_LOGO_URL,
     audienceBrandTheme: AAHF_AUDIENCE_BRAND_THEME,
+    eventCredits: {
+        enabled: true,
+        presetId: 'aahf_kickoff',
+        eventId: 'aahf-2026-kickoff',
+        eventLabel: 'AAHF Karaoke Kick-Off',
+        sourceProvider: 'givebutter',
+        supportProvider: 'givebutter',
+        supportLabel: 'Support AAHF Festival',
+        supportUrl: 'https://givebutter.com/aahf-kickoff',
+        supportCampaignCode: 'aahf_kickoff',
+        supportPoints: 5000,
+        supportBadge: true,
+        audienceAccessMode: 'email_or_donation',
+        supportCelebrationStyle: 'moneybags_burst',
+    },
     roomPlan: {
         startsAtLocal: '2026-05-01T19:00',
         startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+    },
+});
+
+const buildAahfJoinFixture = ({ roomCode = DEFAULT_ROOM_CODE, showAbout = false, showPhoneModal = false } = {}) => ({
+    ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+    room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+    user: null,
+    profile: null,
+    termsAccepted: true,
+    showAbout,
+    showPhoneModal,
+    form: {
+        name: '',
+        emoji: '🎤',
     },
 });
 
@@ -116,6 +145,9 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'classic-home',
     'streamlined-home',
     'streamlined-aahf-home',
+    'streamlined-aahf-join',
+    'streamlined-aahf-join-about',
+    'streamlined-aahf-join-access',
     'classic-trivia',
     'streamlined-trivia',
 ]);
@@ -147,6 +179,18 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
             ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
             room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
         };
+    }
+
+    if (safeId === 'streamlined-aahf-join') {
+        return buildAahfJoinFixture({ roomCode });
+    }
+
+    if (safeId === 'streamlined-aahf-join-about') {
+        return buildAahfJoinFixture({ roomCode, showAbout: true });
+    }
+
+    if (safeId === 'streamlined-aahf-join-access') {
+        return buildAahfJoinFixture({ roomCode, showPhoneModal: true });
     }
 
     if (safeId === 'classic-trivia') {

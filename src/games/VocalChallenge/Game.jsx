@@ -182,13 +182,16 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
         nextState.nextNoteAt = Math.max(Number(nextState.nextNoteAt || 0), Date.now() + 900);
         nextState.lastUpdated = Date.now();
         stateRef.current = nextState;
-        setLocalState(nextState);
-        setHostAssistBanner({
-            label: hostAssist?.label || 'HARMONY BOOST',
-            by: hostAssist?.by || 'Host'
-        });
-        if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
-        hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), VOCAL_ASSIST_BANNER_MS);
+        const commitTimer = setTimeout(() => {
+            setLocalState(nextState);
+            setHostAssistBanner({
+                label: hostAssist?.label || 'HARMONY BOOST',
+                by: hostAssist?.by || 'Host'
+            });
+            if (hostAssistBannerTimeoutRef.current) clearTimeout(hostAssistBannerTimeoutRef.current);
+            hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), VOCAL_ASSIST_BANNER_MS);
+        }, 0);
+        return () => clearTimeout(commitTimer);
     }, [data]);
 
     useEffect(() => () => {

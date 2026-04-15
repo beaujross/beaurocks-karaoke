@@ -2,13 +2,13 @@ import { createDefaultRunOfShowDirector } from '../../lib/runOfShowDirector.js';
 import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 
 export const FIXED_QA_HOST_NOW_MS = 1763503200000;
-const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
-const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
-const AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
-    appTitle: 'AAHF Karaoke',
-    primaryColor: '#FF4FA3',
-    secondaryColor: '#1ED7FF',
-    accentColor: '#FACC15',
+export const QA_AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
+const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+export const QA_AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
+    appTitle: 'AAHF Festival',
+    primaryColor: '#E05A44',
+    secondaryColor: '#F4C94A',
+    accentColor: '#8F2D2A',
 });
 
 export const QA_HOST_SCENARIOS = Object.freeze([
@@ -116,14 +116,14 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
             hostUid: 'fixture_host',
             hostUids: ['fixture_host'],
             hostName: 'AAHF Host',
-            eventProfileId: AAHF_EVENT_PROFILE_ID,
+            eventProfileId: QA_AAHF_EVENT_PROFILE_ID,
             eventProfileLabel: 'AAHF Kick-Off',
             eventProfileVersion: 1,
             activeMode: 'karaoke',
             logoUrl: AAHF_LOGO_URL,
             lobbyOrbSkinUrl: AAHF_LOGO_URL,
             audienceShellVariant: 'streamlined',
-            audienceBrandTheme: AAHF_AUDIENCE_BRAND_THEME,
+            audienceBrandTheme: QA_AAHF_AUDIENCE_BRAND_THEME,
             roomPlan: {
                 startsAtLocal: '2026-05-01T19:00',
                 startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),

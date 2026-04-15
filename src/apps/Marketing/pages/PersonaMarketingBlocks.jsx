@@ -118,8 +118,8 @@ export const PersonaSurfaceMock = ({
         </div>
         <div className="mk3-surface-mock-radar-list">
           <div><span>Live now</span><b>The Neon Lounge</b></div>
-          <div><span>9 PM</span><b>AAHF Kick-Off</b></div>
-          <div><span>Weekly</span><b>Thursday Rotation</b></div>
+          <div><span>7 PM - Midnight</span><b>AAHF Kick-Off</b></div>
+          <div><span>After 9 PM</span><b>Explicit Lyrics Open</b></div>
         </div>
         <div className="mk3-surface-mock-copy">
           <strong>{title}</strong>

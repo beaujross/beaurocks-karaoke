@@ -179,6 +179,20 @@ const parseRewardPoints = (value) => {
     return Math.max(0, asNumber);
 };
 
+const normalizeTriviaEntry = (item = {}, idx = 0) => ({
+    id: item.id || `trivia_${idx}`,
+    asked: item.asked || false,
+    points: Number(item.points) || 100,
+    ...item
+});
+
+const normalizeWyrEntry = (item = {}, idx = 0) => ({
+    id: item.id || `wyr_${idx}`,
+    asked: item.asked || false,
+    points: Number(item.points) || 50,
+    ...item
+});
+
 const buildInitialBingoRevealed = (tiles = []) => {
     const revealed = {};
     tiles.forEach((tile, idx) => {
@@ -502,12 +516,10 @@ const UnifiedGameLauncher = ({
 
     useEffect(() => {
         if (!roomCode) return () => {};
-        const normalizeTrivia = (items) => items.map((t, idx) => ({ id: t.id || `${Date.now()}_${idx}`, asked: t.asked || false, ...t }));
-        const normalizeWyr = (items) => items.map((w, idx) => ({ id: w.id || `${Date.now()}_${idx}`, asked: w.asked || false, ...w }));
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), (snap) => {
             const data = snap.data() || {};
-            const nextTrivia = Array.isArray(data.trivia) && data.trivia.length ? normalizeTrivia(data.trivia) : normalizeTrivia(TRIVIA_BANK);
-            const nextWyr = Array.isArray(data.wyr) && data.wyr.length ? normalizeWyr(data.wyr) : normalizeWyr(WYR_BANK);
+            const nextTrivia = Array.isArray(data.trivia) && data.trivia.length ? data.trivia.map(normalizeTriviaEntry) : TRIVIA_BANK.map(normalizeTriviaEntry);
+            const nextWyr = Array.isArray(data.wyr) && data.wyr.length ? data.wyr.map(normalizeWyrEntry) : WYR_BANK.map(normalizeWyrEntry);
             const hasBingoBoards = Array.isArray(data.bingo) && data.bingo.length > 0;
             const nextBingo = hasBingoBoards ? data.bingo : PRESET_BINGO_BOARDS;
             if (!snap.exists()) {
@@ -1208,14 +1220,16 @@ const UnifiedGameLauncher = ({
 
 
     const startRandomTrivia = () => {
-        if (!filteredTrivia.length) return toast('No trivia questions available');
-        const pick = filteredTrivia[Math.floor(Math.random() * filteredTrivia.length)];
+        const pool = filteredTrivia.length ? filteredTrivia : fallbackTriviaBank;
+        if (!pool.length) return toast('No trivia questions available');
+        const pick = pool[Math.floor(Math.random() * pool.length)];
         launchTrivia(pick);
     };
 
     const startRandomWyr = () => {
-        if (!filteredWyr.length) return toast('No WYR prompts available');
-        const pick = filteredWyr[Math.floor(Math.random() * filteredWyr.length)];
+        const pool = filteredWyr.length ? filteredWyr : fallbackWyrBank;
+        if (!pool.length) return toast('No WYR prompts available');
+        const pick = pool[Math.floor(Math.random() * pool.length)];
         launchWyr(pick);
     };
 
@@ -1229,6 +1243,9 @@ const UnifiedGameLauncher = ({
         const q = wyrFilter.trim().toLowerCase();
         return wyrBank.filter(w => !q || `${w.q} ${w.a} ${w.b}`.toLowerCase().includes(q));
     }, [wyrBank, wyrFilter]);
+
+    const fallbackTriviaBank = useMemo(() => TRIVIA_BANK.map(normalizeTriviaEntry), []);
+    const fallbackWyrBank = useMemo(() => WYR_BANK.map(normalizeWyrEntry), []);
 
     useEffect(() => {
         const rng = room?.bingoMysteryRng;

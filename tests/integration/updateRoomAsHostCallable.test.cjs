@@ -84,6 +84,8 @@ async function run() {
           eventLabel: "AAHF Karaoke Kick-Off",
           generalAdmissionPoints: 200,
           vipBonusPoints: 400,
+          audienceAccessMode: "email_or_donation",
+          supportCelebrationStyle: "moneybags_burst",
         },
         programMode: "run_of_show",
         runOfShowEnabled: true,
@@ -150,6 +152,8 @@ async function run() {
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
       assert.equal(snap.get("eventCredits.enabled"), true);
       assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);
+      assert.equal(snap.get("eventCredits.audienceAccessMode"), "email_or_donation");
+      assert.equal(snap.get("eventCredits.supportCelebrationStyle"), "moneybags_burst");
       assert.equal(snap.get("programMode"), "run_of_show");
       assert.equal(snap.get("runOfShowEnabled"), true);
       assert.equal(snap.get("runOfShowPolicy.defaultAutomationMode"), "manual");

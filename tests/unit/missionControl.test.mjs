@@ -197,3 +197,54 @@ test("missionControl.test", () => {
     assert.equal(defaultParty.minSingingSharePct, 70);
     assert.equal(defaultParty.maxConsecutiveNonKaraokeModes, 1);
 });
+
+test("missionControl.test handles setupDraft fallbacks and remaining host actions", () => {
+    const fromSetupDraft = buildMissionDraftFromRoom({
+        hostNightPreset: 'competition',
+        queueSettings: { limitMode: 'none', limitCount: 0, rotation: 'round_robin', firstTimeBoost: false },
+        gamePreviewId: 'trivia_pop',
+        missionControl: {
+            setupDraft: {
+                archetype: '',
+                flowRule: '',
+                spotlightMode: '',
+                assistLevel: ''
+            }
+        }
+    }, {
+        flowRules: MISSION_FLOW_RULES,
+        primaryModes: [{ id: 'karaoke' }]
+    });
+    assert.equal(fromSetupDraft.archetype, 'casual');
+    assert.equal(fromSetupDraft.flowRule, 'balanced');
+    assert.equal(fromSetupDraft.spotlightMode, 'karaoke');
+    assert.equal(fromSetupDraft.assistLevel, 'smart_assist');
+
+    const safeMerged = mergePayloadWithOverrides({ queueSettings: { limitCount: 2 } }, null);
+    assert.deepEqual(safeMerged, { queueSettings: { limitCount: 2 } });
+
+    const readyCheck = getRecommendedHostAction({
+        room: { activeMode: 'karaoke', readyCheck: { active: true } },
+        queue: [{ id: '1' }],
+        current: { id: 'perf' },
+        pendingModerationCount: 0
+    });
+    assert.equal(readyCheck.id, 'ready_check_live');
+
+    const crowdCheck = getRecommendedHostAction({
+        room: { activeMode: 'karaoke' },
+        queue: [],
+        current: { id: 'perf' },
+        pendingModerationCount: 0
+    });
+    assert.equal(crowdCheck.id, 'crowd_check');
+
+    const defaultHype = getRecommendedHostAction({
+        room: { activeMode: 'karaoke' },
+        queue: [{ id: '1' }],
+        current: { id: 'perf' },
+        pendingModerationCount: 0
+    });
+    assert.equal(defaultHype.id, 'hype_moment');
+    assert.equal(defaultHype.status, 'ready');
+});

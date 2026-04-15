@@ -169,3 +169,64 @@ test("discoverListingViewModel.test uses curated AAHF artwork for matching disco
 
   assert.equal(listing.imageUrl, "/images/marketing/CLEAN%201.png");
 });
+
+test("discoverListingViewModel.test builds recurring event metadata and dedupes google photos", () => {
+  const startsAtMs = Date.UTC(2026, 4, 2, 2, 0, 0);
+  const listing = buildDiscoverListing({
+    id: "event-5",
+    title: "Recurring kickoff series",
+    listingType: "event",
+    hostName: "",
+    venueName: "Neon Hall",
+    recurringRule: "FREQ=WEEKLY;BYDAY=FR",
+    karaokeNightsLabel: "Fridays at 7 PM",
+    startsAtMs,
+    officialBadgeImageUrl: "/images/custom/event-badge.png",
+    externalSources: {
+      google: {
+        photoRef: "photo-a",
+        photoRefs: ["photo-a", "photo-b"],
+        photoReferences: ["photo-b", "photo-c"],
+      },
+    },
+  }, "event", {
+    mapsApiKey: "maps-key",
+    allowGoogleImageApis: true,
+    allowGoogleStaticFallback: false,
+    resolvedLocationFields: {
+      city: "Seattle",
+      state: "WA",
+      address1: "123 Pike St",
+    },
+  });
+
+  assert.equal(listing.timeLabel.length > 0, true);
+  assert.equal(listing.isRecurringEvent, true);
+  assert.equal(listing.hostToken, "");
+  assert.equal(listing.officialBadgeImageUrl, "/images/custom/event-badge.png");
+  assert.equal(listing.googleImageCandidates.length, 3);
+  assert.ok(listing.googleImageCandidates.every((url) => url.includes("photo_reference=")));
+});
+
+test("discoverListingViewModel.test builds room support badge and location fallbacks", () => {
+  const listing = buildDiscoverListing({
+    id: "session-2",
+    title: "Support room",
+    listingType: "room_session",
+    roomCode: "vip777",
+    venueName: "Harbor Hall",
+    supportProvider: "stripe",
+    supportsAudienceFunding: true,
+    logoUrl: "ftp://invalid.example.com/logo.png",
+  }, "room_session", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {},
+  });
+
+  assert.equal(listing.subtitle, "Location pending");
+  assert.equal(listing.roomSupportBadge?.provider, "stripe");
+  assert.equal(listing.roomSupportBadge?.label, "Stripe");
+  assert.equal(listing.roomSupportBadge?.icon, "fa-credit-card");
+  assert.equal(listing.officialBadgeImageUrl, "");
+  assert.equal(listing.avatarLabel, "vip777");
+});

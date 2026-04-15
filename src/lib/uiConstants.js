@@ -57,7 +57,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 220px;
         top: -8%;
         left: -6%;
-        background: rgba(0,196,217,0.6);
+        background: rgba(var(--audience-brand-primary-rgb, 0, 196, 217), 0.6);
         animation: spotlightDriftA 8s linear infinite, spotlightHue 6.5s ease-in-out infinite, spotlightPulse 4.8s ease-in-out infinite;
         animation-delay: -1.2s, -0.8s, -0.4s;
     }
@@ -66,7 +66,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 260px;
         top: 15%;
         right: -8%;
-        background: rgba(255,103,182,0.6);
+        background: rgba(var(--audience-brand-secondary-rgb, 255, 103, 182), 0.6);
         animation: spotlightDriftB 9s linear infinite, spotlightHue 7.8s ease-in-out infinite, spotlightPulse 5.6s ease-in-out infinite;
         animation-delay: -1.8s, -2.2s, -1.1s;
     }
@@ -75,7 +75,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 200px;
         bottom: 6%;
         left: 8%;
-        background: rgba(0,196,217,0.5);
+        background: rgba(var(--audience-brand-accent-rgb, 250, 204, 21), 0.5);
         animation: spotlightDriftC 8.5s linear infinite, spotlightHue 6.2s ease-in-out infinite, spotlightPulse 4.4s ease-in-out infinite;
         animation-delay: -2.6s, -1.4s, -0.9s;
     }
@@ -84,7 +84,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 240px;
         bottom: -8%;
         right: 6%;
-        background: rgba(255,103,182,0.45);
+        background: rgba(var(--audience-brand-secondary-rgb, 255, 103, 182), 0.45);
         animation: spotlightDriftA 10s linear infinite, spotlightHue 7s ease-in-out infinite, spotlightPulse 5.2s ease-in-out infinite;
         animation-delay: -3.2s, -2.4s, -1.5s;
     }
@@ -93,7 +93,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 190px;
         top: 45%;
         left: 55%;
-        background: rgba(0,196,217,0.45);
+        background: rgba(var(--audience-brand-primary-rgb, 0, 196, 217), 0.45);
         animation: spotlightDriftB 7.8s linear infinite, spotlightHue 6.1s ease-in-out infinite, spotlightPulse 4.9s ease-in-out infinite;
         animation-delay: -2.1s, -1.2s, -0.7s;
     }
@@ -102,7 +102,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 210px;
         top: 60%;
         left: 15%;
-        background: rgba(255,103,182,0.45);
+        background: rgba(var(--audience-brand-accent-rgb, 250, 204, 21), 0.45);
         animation: spotlightDriftC 9.5s linear infinite, spotlightHue 7.3s ease-in-out infinite, spotlightPulse 5.9s ease-in-out infinite;
         animation-delay: -3.8s, -3s, -1.9s;
     }
@@ -111,7 +111,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 260px;
         top: 6%;
         left: 55%;
-        background: rgba(0,196,217,0.42);
+        background: rgba(var(--audience-brand-secondary-rgb, 255, 103, 182), 0.42);
         animation: spotlightDriftA 7.2s linear infinite, spotlightHue 5.8s ease-in-out infinite, spotlightPulse 4.2s ease-in-out infinite;
         animation-delay: -2.8s, -2.1s, -1.2s;
     }
@@ -120,7 +120,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 230px;
         bottom: 18%;
         right: 18%;
-        background: rgba(255,103,182,0.46);
+        background: rgba(var(--audience-brand-primary-rgb, 0, 196, 217), 0.46);
         animation: spotlightDriftB 8.4s linear infinite, spotlightHue 6.4s ease-in-out infinite, spotlightPulse 4.7s ease-in-out infinite;
         animation-delay: -3.4s, -2.5s, -1.6s;
     }
@@ -129,7 +129,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 200px;
         top: 32%;
         right: 6%;
-        background: rgba(0,196,217,0.4);
+        background: rgba(var(--audience-brand-accent-rgb, 250, 204, 21), 0.4);
         animation: spotlightDriftC 7.6s linear infinite, spotlightHue 5.9s ease-in-out infinite, spotlightPulse 4.1s ease-in-out infinite;
         animation-delay: -2.2s, -1.6s, -0.9s;
     }
@@ -138,7 +138,7 @@ export const PARTY_LIGHTS_STYLE = `
         height: 240px;
         bottom: -6%;
         left: 28%;
-        background: rgba(255,103,182,0.42);
+        background: rgba(var(--audience-brand-secondary-rgb, 255, 103, 182), 0.42);
         animation: spotlightDriftA 8.8s linear infinite, spotlightHue 6.7s ease-in-out infinite, spotlightPulse 5.3s ease-in-out infinite;
         animation-delay: -4.2s, -3.1s, -2s;
     }

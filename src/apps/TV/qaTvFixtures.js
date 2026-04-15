@@ -1,6 +1,6 @@
 export const FIXED_QA_TV_NOW_MS = 1763503200000;
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
-const AAHF_LOGO_URL = '/images/marketing/karaoke-kickoff-logo-simple.png';
+const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
 
 export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
     {
@@ -34,10 +34,10 @@ const buildBaseRoom = (roomCode = 'DEMOAAHF') => ({
     eventProfileVersion: 1,
     logoUrl: AAHF_LOGO_URL,
     audienceBrandTheme: {
-        appTitle: 'AAHF Karaoke',
-        primaryColor: '#FF4FA3',
-        secondaryColor: '#1ED7FF',
-        accentColor: '#FACC15',
+        appTitle: 'AAHF Festival',
+        primaryColor: '#E05A44',
+        secondaryColor: '#F4C94A',
+        accentColor: '#8F2D2A',
     },
 });
 
