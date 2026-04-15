@@ -1,3 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization --
+ * PublicTV is a legacy scene controller that still relies on effect-driven state sync and
+ * narrowly scoped manual memoization. A safe refactor needs to be broken into smaller passes.
+ */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
