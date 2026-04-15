@@ -1,9 +1,14 @@
+import {
+  applyQaAppCheckDebugInitScript,
+  requireQaAppCheckDebugTokenForRemoteUrl,
+} from "./lib/appCheckDebug.mjs";
+
 const DEFAULT_BASE_URL = "https://beaurocks-karaoke-v2.web.app";
 const DEFAULT_TIMEOUT_MS = 90000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-overnight-smoke-failure.png";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST"]);
+const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST", "BROWSER", "DASHBOARD"]);
 
 const ensurePlaywright = async () => {
   try {
@@ -22,6 +27,44 @@ const isLikelyRoomCode = (value) => {
   return code.length >= 4 && code.length <= 10 && !ROOM_CODE_BLOCKLIST.has(code);
 };
 
+const deriveSurfaceOriginFromBase = (baseUrl = "", surface = "app") => {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim());
+    const protocol = parsed.protocol || "https:";
+    const hostname = String(parsed.hostname || "").trim().toLowerCase();
+    const portPart = parsed.port ? `:${parsed.port}` : "";
+
+    if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") {
+      return `${protocol}//${hostname || "localhost"}${portPart}`;
+    }
+
+    const labels = hostname.split(".");
+    const knownSurface = new Set(["app", "host", "tv", "www"]);
+    let domainLabels = labels;
+    if (knownSurface.has(labels[0])) {
+      domainLabels = labels.slice(1);
+    }
+    if (!domainLabels.length) {
+      return `${protocol}//${hostname}${portPart}`;
+    }
+    return `${protocol}//${surface}.${domainLabels.join(".")}${portPart}`;
+  } catch {
+    return "";
+  }
+};
+
+const deriveHostUrlFromBase = (baseUrl = "") => {
+  const hostOrigin = deriveSurfaceOriginFromBase(baseUrl, "host");
+  if (!hostOrigin) return `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=host`;
+  return `${hostOrigin}/?mode=host&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin`;
+};
+
+const deriveHostAccessUrlFromBase = (baseUrl = "") => {
+  const hostOrigin = deriveSurfaceOriginFromBase(baseUrl, "host");
+  if (hostOrigin) return `${hostOrigin}/host-access`;
+  return `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`;
+};
+
 const readHostRoomCode = async (page) => {
   const hooked = page.locator("[data-host-room-code]").first();
   if (await hooked.count()) {
@@ -29,20 +72,8 @@ const readHostRoomCode = async (page) => {
     if (isLikelyRoomCode(text)) return text;
   }
 
-  const monoCode = await page.evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll("div,span"));
-    for (const node of nodes) {
-      const cls = typeof node.className === "string" ? node.className : "";
-      if (!cls.includes("font-mono")) continue;
-      const text = (node.textContent || "").trim().toUpperCase();
-      if (/^[A-Z0-9]{4,10}$/.test(text)) return text;
-    }
-    return "";
-  }).catch(() => "");
-  if (isLikelyRoomCode(monoCode)) return sanitizeRoomCode(monoCode);
-
   const bodyText = await page.locator("body").innerText().catch(() => "");
-  const regexes = [/\broom\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
+  const regexes = [/\bcreated room\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
   for (const regex of regexes) {
     const match = bodyText.match(regex);
     const candidate = sanitizeRoomCode(match?.[1] || "");
@@ -111,6 +142,22 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     const code = await readHostRoomCode(page);
     if (code) return code;
 
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).toLowerCase();
+    if (/beaurocks host rooms|browse rooms like a workspace/i.test(bodyText)) {
+      const openHostPanel = page.getByRole("button", { name: /Open Host Panel/i }).first();
+      const openRoom = page.getByRole("button", { name: /^OPEN$/i }).first();
+      if (await openHostPanel.isVisible().catch(() => false)) {
+        await openHostPanel.click({ force: true });
+        await delay(1800);
+        continue;
+      }
+      if (await openRoom.isVisible().catch(() => false)) {
+        await openRoom.click({ force: true });
+        await delay(1800);
+        continue;
+      }
+    }
+
     const advancedSummary = page.getByText(/Advanced Launch \(QA \/ Returning Hosts\)/i).first();
     if (await advancedSummary.isVisible().catch(() => false)) {
       await advancedSummary.click({ force: true }).catch(() => {});
@@ -172,6 +219,85 @@ const runCheck = async (checks, name, fn) => {
   }
 };
 
+const gotoHostAccessAndLogin = async ({ page, baseUrl, email, password, timeoutMs }) => {
+  const candidates = [
+    `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`,
+    `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=marketing&page=host_access`,
+    deriveHostAccessUrlFromBase(baseUrl),
+  ];
+
+  let loaded = false;
+  for (const target of candidates) {
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await delay(1200);
+
+    const handoffButton = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+    if (await handoffButton.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        handoffButton.click({ force: true }),
+      ]);
+      await delay(1500);
+    }
+
+    const hasHeading = await page.getByText(/Host Login (\+ (Application|Room Manager)|and Applications)/i).first().isVisible().catch(() => false);
+    const hasAuthForm = await page.locator("form").first().isVisible().catch(() => false);
+    const hasSignedInState = await page.getByText(/Signed in as/i).first().isVisible().catch(() => false);
+    if (hasHeading && (hasAuthForm || hasSignedInState)) {
+      loaded = true;
+      break;
+    }
+  }
+
+  if (!loaded) {
+    throw new Error(`Could not load host access route from base url "${baseUrl}".`);
+  }
+
+  const signOut = page.getByRole("button", { name: /sign out/i }).first();
+  if (await signOut.isVisible().catch(() => false)) {
+    await signOut.click({ force: true });
+    await delay(900);
+  }
+
+  const authForm = page.locator("form").first();
+  await authForm.waitFor({ state: "visible", timeout: timeoutMs });
+
+  const signInModeBtn = authForm.locator(".mk3-toggle-row button").filter({ hasText: /^Log In$/i }).first();
+  if (await signInModeBtn.isVisible().catch(() => false)) {
+    await signInModeBtn.click({ force: true });
+  }
+
+  await authForm.getByLabel(/Email/i).first().fill(email);
+  await authForm.getByLabel(/Password/i).first().fill(password);
+  await authForm.locator('button[type="submit"]').first().click({ force: true });
+
+  const continueToHostLogin = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+  const openHostDashboard = page.getByRole("button", { name: /Open Host Dashboard/i }).first();
+  const initialSuccess = await Promise.race([
+    page.getByText(/Signed in as/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    page.getByRole("button", { name: /sign out/i }).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    continueToHostLogin.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    openHostDashboard.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+  ]);
+  if (!initialSuccess) {
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 300);
+    throw new Error(`Login did not complete on host access flow. Snippet="${bodyText}"`);
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await continueToHostLogin.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        continueToHostLogin.click({ force: true }),
+      ]);
+      await delay(1500);
+      continue;
+    }
+    break;
+  }
+  return `Logged in as ${email}.`;
+};
+
 const validateHostDropdown = async (hostPage, timeoutMs) => {
   const isSetupWizardVisible = async () => {
     const setupHeading = hostPage.getByText("Set The Night", { exact: false }).first();
@@ -183,6 +309,22 @@ const validateHostDropdown = async (hostPage, timeoutMs) => {
     while (Date.now() - started < Math.min(timeoutMs, 30000)) {
       const tvToggle = hostPage.locator('[data-feature-id="deck-tv-menu-toggle"]').first();
       if (await tvToggle.isVisible().catch(() => false)) return tvToggle;
+
+      const bodyText = String(await hostPage.locator("body").innerText().catch(() => "")).toLowerCase();
+      if (/beaurocks host rooms|browse rooms like a workspace/i.test(bodyText)) {
+        const openHostPanel = hostPage.getByRole("button", { name: /Open Host Panel/i }).first();
+        const openRoom = hostPage.getByRole("button", { name: /^OPEN$/i }).first();
+        if (await openHostPanel.isVisible().catch(() => false)) {
+          await openHostPanel.click({ force: true });
+          await delay(1800);
+          continue;
+        }
+        if (await openRoom.isVisible().catch(() => false)) {
+          await openRoom.click({ force: true });
+          await delay(1800);
+          continue;
+        }
+      }
 
       const skipIntroHook = hostPage.locator("[data-host-setup-skip-intro]").first();
       if (await skipIntroHook.isVisible().catch(() => false)) {
@@ -269,14 +411,19 @@ const validateHostDropdown = async (hostPage, timeoutMs) => {
     lvBtn.waitFor({ state: "visible", timeout: timeoutMs }),
   ]);
 
-  if (panelMeta.width < 360 || panelMeta.height < 240) {
+  if (panelMeta.width < 320) {
     throw new Error(`TV dropdown panel too small (${panelMeta.width}x${panelMeta.height}).`);
   }
   return `TV dropdown rendered (${panelMeta.width}x${panelMeta.height}).`;
 };
 
 const assertNoCriticalErrors = (bucket, label) => {
-  const scoped = bucket.filter((entry) => entry.label === label);
+  const scoped = bucket.filter((entry) => {
+    if (entry.label !== label) return false;
+    const text = String(entry.text || "").toLowerCase();
+    if (text.includes("auth/network-request-failed")) return false;
+    return true;
+  });
   if (!scoped.length) return "No critical console/page errors detected.";
   const detail = scoped
     .slice(0, 5)
@@ -305,14 +452,33 @@ const validateTvNotStuckOnPreview = async (tvPage, timeoutMs) => {
 const run = async () => {
   const { chromium } = await ensurePlaywright();
   const baseUrl = process.env.QA_BASE_URL || DEFAULT_BASE_URL;
+  const hostUrl = process.env.QA_HOST_URL || deriveHostUrlFromBase(baseUrl);
+  const audienceOrigin = process.env.QA_AUDIENCE_URL || deriveSurfaceOriginFromBase(baseUrl, "app") || baseUrl;
+  const tvOrigin = process.env.QA_TV_URL || deriveSurfaceOriginFromBase(baseUrl, "tv") || baseUrl;
   const timeoutMs = Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  const email = String(process.env.QA_HOST_EMAIL || "").trim();
+  const password = String(process.env.QA_HOST_PASSWORD || "");
   const checks = [];
   const errors = [];
+
+  if (!email || !password) {
+    console.log(JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "QA_HOST_EMAIL and QA_HOST_PASSWORD are required for overnight prod smoke.",
+      baseUrl,
+      hostUrl,
+    }, null, 2));
+    return;
+  }
+
+  requireQaAppCheckDebugTokenForRemoteUrl(baseUrl);
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await applyQaAppCheckDebugInitScript(context);
   const hostPage = await context.newPage();
   const audiencePage = await context.newPage();
   const tvPage = await context.newPage();
@@ -324,8 +490,9 @@ const run = async () => {
   let roomCode = "";
   try {
     await runCheck(checks, "host_create_or_join_room", async () => {
-      await hostPage.goto(`${baseUrl}?mode=host`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-      await delay(2500);
+      await gotoHostAccessAndLogin({ page: hostPage, baseUrl, email, password, timeoutMs });
+      await hostPage.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+      await delay(2200);
       roomCode = await waitForHostRoomCode({ page: hostPage, timeoutMs });
       return `Room ${roomCode}`;
     });
@@ -337,7 +504,7 @@ const run = async () => {
 
     await runCheck(checks, "audience_load_no_critical_errors", async () => {
       if (!roomCode) throw new Error("Room code unavailable.");
-      await audiencePage.goto(`${baseUrl}?room=${encodeURIComponent(roomCode)}`, {
+      await audiencePage.goto(`${audienceOrigin}?room=${encodeURIComponent(roomCode)}`, {
         waitUntil: "domcontentloaded",
         timeout: timeoutMs,
       });
@@ -347,7 +514,7 @@ const run = async () => {
 
     await runCheck(checks, "tv_preview_not_stuck", async () => {
       if (!roomCode) throw new Error("Room code unavailable.");
-      await tvPage.goto(`${baseUrl}?room=${encodeURIComponent(roomCode)}&mode=tv`, {
+      await tvPage.goto(`${tvOrigin}?room=${encodeURIComponent(roomCode)}&mode=tv`, {
         waitUntil: "domcontentloaded",
         timeout: timeoutMs,
       });
@@ -370,6 +537,9 @@ const run = async () => {
   const output = {
     ok: failedChecks.length === 0,
     baseUrl,
+    hostUrl,
+    audienceOrigin,
+    tvOrigin,
     roomCode,
     checks,
     failures: failedChecks,

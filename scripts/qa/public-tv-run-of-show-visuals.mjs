@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { FIXED_QA_TV_NOW_MS, QA_TV_VISUAL_SCENARIOS } from "../../src/apps/TV/qaTvFixtures.js";
+import { FIXED_QA_TV_NOW_MS, QA_TV_VISUAL_SCENARIOS, buildQaTvFixture } from "../../src/apps/TV/qaTvFixtures.js";
 import {
   delay,
   ensurePlaywright,
@@ -97,7 +97,7 @@ const waitForBodyTexts = async ({ page, expectedTexts, timeoutMs }) => {
   throw new Error(`Timed out waiting for expected takeover copy: ${expectedTexts.join(", ")} :: ${lastBodyText}`);
 };
 
-const verifyTakeoverSemantics = async ({ page, scenario, timeoutMs }) => {
+const verifyTakeoverSemantics = async ({ page, scenario, timeoutMs, expectedBrandLogoFragment }) => {
   const overlay = page.locator(".public-tv").first();
   await overlay.waitFor({ state: "visible", timeout: timeoutMs });
 
@@ -113,7 +113,8 @@ const verifyTakeoverSemantics = async ({ page, scenario, timeoutMs }) => {
   if (roomCode !== scenario.roomCode) {
     throw new Error(`Unexpected room code for ${scenario.id}: ${roomCode}`);
   }
-  if (!String(brandLogo || "").includes("karaoke-kickoff-logo-simple.png")) {
+  const expectedBrandLogo = String(expectedBrandLogoFragment || "").trim() || "karaoke-kickoff-logo-simple.png";
+  if (!String(brandLogo || "").includes(expectedBrandLogo)) {
     throw new Error(`Unexpected takeover brand logo for ${scenario.id}: ${brandLogo}`);
   }
   if (!(headlineFontSize >= 150)) {
@@ -153,6 +154,14 @@ const main = async () => {
 
   try {
     for (const scenario of FIXTURES) {
+      const scenarioFixture = buildQaTvFixture(scenario.id, {
+        roomCode: scenario.roomCode,
+        nowMs: FIXED_QA_TV_NOW_MS,
+      });
+      const expectedBrandLogoFragment = String(scenarioFixture?.room?.logoUrl || "")
+        .split("/")
+        .filter(Boolean)
+        .pop();
       await page.setViewportSize(scenario.viewport);
       await page.goto(buildTvUrl(server.baseUrl, scenario.roomCode, scenario.id), {
         waitUntil: "domcontentloaded",
@@ -162,7 +171,7 @@ const main = async () => {
       await waitForBodyTexts({ page, expectedTexts: scenario.expectedTexts, timeoutMs });
       const overlay = page.locator(".public-tv").first();
       await overlay.waitFor({ state: "visible", timeout: timeoutMs });
-      await verifyTakeoverSemantics({ page, scenario, timeoutMs });
+      await verifyTakeoverSemantics({ page, scenario, timeoutMs, expectedBrandLogoFragment });
       await delay(150);
 
       const artifactPath = path.join(ARTIFACT_DIR, `${scenario.id}.png`);

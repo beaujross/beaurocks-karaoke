@@ -10,6 +10,8 @@ const ROOM_CODE_BLOCKLIST = new Set([
   "GUIDED",
   "LAUNCH",
   "READY",
+  "BROWSER",
+  "DASHBOARD",
 ]);
 
 export const sanitizeRoomCode = (value) =>

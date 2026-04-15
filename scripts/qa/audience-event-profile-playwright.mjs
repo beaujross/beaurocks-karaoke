@@ -64,8 +64,8 @@ const main = async () => {
       const secondary = await root.getAttribute("data-audience-qa-brand-secondary");
       const accent = await root.getAttribute("data-audience-qa-brand-accent");
       if (eventProfile !== "aahf_2026_kickoff") throw new Error(`Unexpected event profile: ${eventProfile}`);
-      if (title !== "AAHF Karaoke") throw new Error(`Unexpected brand title: ${title}`);
-      if (primary !== "#FF4FA3" || secondary !== "#1ED7FF" || accent !== "#FACC15") {
+      if (title !== "AAHF Festival") throw new Error(`Unexpected brand title: ${title}`);
+      if (primary !== "#E05A44" || secondary !== "#F4C94A" || accent !== "#8F2D2A") {
         throw new Error(`Unexpected brand colors: ${primary}, ${secondary}, ${accent}`);
       }
       await page.getByText("AAHF HOST").first().waitFor({ state: "visible", timeout: timeoutMs });

@@ -59,7 +59,12 @@ const signInAnonymouslyViaRest = async (apiKey) => {
 };
 
 const patchUserDoc = async ({ uid, idToken, fields }) => {
-  const response = await fetchWithTimeout(userDocUrl(uid), {
+  const fieldKeys = Object.keys(fields || {});
+  const url = new URL(userDocUrl(uid));
+  for (const key of fieldKeys) {
+    url.searchParams.append("updateMask.fieldPaths", key);
+  }
+  const response = await fetchWithTimeout(url.toString(), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -104,7 +109,7 @@ const run = async () => {
       idToken: userA.idToken,
       fields: {
         name: "Smoke Host",
-        avatar: "SmokeHost",
+        avatar: "😀",
       },
     });
     checks.push({

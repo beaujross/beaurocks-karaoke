@@ -13,6 +13,33 @@ This note captures product and engineering lessons that should outlive the immed
   - no branch may reference later-initialized render data
 - Keep `tests/unit/singerAppHooks.test.mjs` aligned to the real component structure whenever the audience shell changes.
 
+## Audience Join Requires Real Auth Bootstrap
+
+- A wait helper is not enough if nothing actually starts auth.
+- On 2026-04-14 the live matrix exposed that `waitForJoinAuthUid()` could sit on a cold session unless the audience shell explicitly called `initAuth()` on load or before join.
+- Durable rule:
+  - if the audience shell depends on auth state, it must bootstrap auth as part of initial room entry
+  - do not assume some unrelated later flow will initialize it in time
+
+## Session Identity Has Layers
+
+- There are at least three useful identity layers in the audience shell:
+  - current Firebase auth UID
+  - auth-ready/session UID known to the shell
+  - room-user identity already participating in a live takeover
+- Product and QA should not assume these always become available in the same order.
+- Use the weakest identity that satisfies the product need:
+  - usable audience shell for most gameplay smoke
+  - auth-backed UID only when seeding or account writes require it
+
+## QA Should Follow Real Product States
+
+- A takeover screen is not a failed join just because it bypasses the classic idle main shell.
+- On 2026-04-14 the matrix initially misread a live bracket audience screen as a join failure.
+- Durable rule:
+  - if host, audience, or TV can validly land in a state during normal product behavior, QA should model that state directly
+  - avoid overfitting automation to one happy-path shell
+
 ## Song Requests Should Stay Song-First
 
 - The durable product decision is `song intent -> backing resolution`, not `let the audience search YouTube directly`.

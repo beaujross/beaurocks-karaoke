@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FIXED_QA_HOST_NOW_MS } from "../../src/apps/Host/qaHostFixtures.js";
+import {
+  FIXED_QA_HOST_NOW_MS,
+  QA_AAHF_AUDIENCE_BRAND_THEME,
+  QA_AAHF_EVENT_PROFILE_ID,
+} from "../../src/apps/Host/qaHostFixtures.js";
 import {
   DEFAULT_FIREBASE_RUNTIME_CONFIG,
   delay,
@@ -41,12 +45,29 @@ const ensureShowWorkspace = async (page, timeoutMs) => {
   await page.getByText("Run Of Show Board").first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
+const ensureDetailsSectionOpen = async (page, label) => {
+  const details = page.locator("details").filter({
+    has: page.getByText(label, { exact: false }),
+  }).first();
+  if (!(await details.count())) return false;
+  await details.evaluate((node) => {
+    node.open = true;
+  }).catch(() => {});
+  const summary = details.locator("summary").first();
+  if (await summary.isVisible().catch(() => false)) {
+    await summary.scrollIntoViewIfNeeded().catch(() => {});
+  }
+  return true;
+};
+
 const ensureAdminRoomSetup = async (page, timeoutMs) => {
   await clickHostTab(page, "admin", timeoutMs);
   await waitForHostState(page, { tab: "admin", section: "ops.room_setup", timeoutMs });
+  await ensureDetailsSectionOpen(page, "Night Profiles");
+  await ensureDetailsSectionOpen(page, "Guest Flow + Audience Settings");
   await waitForAnyVisible([
     page.getByText("Event profiles").first(),
-    page.locator('[data-host-event-profile="aahf_2026_kickoff"]').first(),
+    page.locator(`[data-host-event-profile="${QA_AAHF_EVENT_PROFILE_ID}"]`).first(),
     page.locator('[data-host-audience-brand-title]').first(),
   ], timeoutMs);
 };
@@ -117,7 +138,7 @@ const main = async () => {
 
     await runCheck(checks, "host_app_event_profile_active", async () => {
       await ensureAdminRoomSetup(page, timeoutMs);
-      const activeProfile = page.locator('[data-host-event-profile="aahf_2026_kickoff"][data-host-event-profile-active="true"]').first();
+      const activeProfile = page.locator(`[data-host-event-profile="${QA_AAHF_EVENT_PROFILE_ID}"][data-host-event-profile-active="true"]`).first();
       await activeProfile.waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Event profiles").first().waitFor({ state: "visible", timeout: timeoutMs });
       return "AAHF event profile is active in room setup";
@@ -130,8 +151,12 @@ const main = async () => {
       const primary = await page.locator('[data-host-audience-brand-hex="primaryColor"]').inputValue();
       const secondary = await page.locator('[data-host-audience-brand-hex="secondaryColor"]').inputValue();
       const accent = await page.locator('[data-host-audience-brand-hex="accentColor"]').inputValue();
-      if (title !== "AAHF Karaoke") throw new Error(`Unexpected audience brand title: ${title}`);
-      if (primary !== "#FF4FA3" || secondary !== "#1ED7FF" || accent !== "#FACC15") {
+      if (title !== QA_AAHF_AUDIENCE_BRAND_THEME.appTitle) throw new Error(`Unexpected audience brand title: ${title}`);
+      if (
+        primary !== QA_AAHF_AUDIENCE_BRAND_THEME.primaryColor
+        || secondary !== QA_AAHF_AUDIENCE_BRAND_THEME.secondaryColor
+        || accent !== QA_AAHF_AUDIENCE_BRAND_THEME.accentColor
+      ) {
         throw new Error(`Unexpected audience brand colors: ${primary}, ${secondary}, ${accent}`);
       }
       return "audience branding fields show AAHF room colors";

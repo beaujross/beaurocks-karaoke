@@ -1,3 +1,8 @@
+import {
+  applyQaAppCheckDebugInitScript,
+  requireQaAppCheckDebugTokenForRemoteUrl,
+} from "./lib/appCheckDebug.mjs";
+
 const DEFAULT_BASE_URL = "https://app.beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 45000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-admin-workspace-failure.png";
@@ -11,6 +16,7 @@ const toBool = (value, fallback = false) => {
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const escapeRegex = (value = "") => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const deriveHostUrlFromBase = (baseUrl = "") => {
   try {
     const parsed = new URL(String(baseUrl || "").trim());
@@ -24,6 +30,22 @@ const deriveHostUrlFromBase = (baseUrl = "") => {
     return `${parsed.protocol}//${nextHost}/?mode=host&hostUiVersion=v2&view=ops&section=ops.room_setup&tab=admin`;
   } catch {
     return `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=host`;
+  }
+};
+
+const deriveHostAccessUrlFromBase = (baseUrl = "") => {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim());
+    const host = String(parsed.hostname || "").trim().toLowerCase();
+    let nextHost = host;
+    if (host.startsWith("app.")) {
+      nextHost = `host.${host.slice(4)}`;
+    } else if (host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
+      nextHost = `host.${host}`;
+    }
+    return `${parsed.protocol}//${nextHost}/host-access`;
+  } catch {
+    return `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`;
   }
 };
 
@@ -76,25 +98,230 @@ const runCheck = async (checks, name, fn) => {
   }
 };
 
+const ADMIN_SECTION_SIGNAL_REGEXES = {
+  media: [
+    /Media pipelines, uploads, and playback source controls\./i,
+    /Apple Music playback/i,
+    /Playlist playback is host-only/i,
+  ],
+  chat: [
+    /Audience chat policy, DM controls, and TV feed behavior\./i,
+    /Chat policy/i,
+    /Configure Chat TV \(Exit Admin\)/i,
+  ],
+  moderation: [
+    /Pending total:/i,
+    /Open moderation inbox/i,
+    /Keep visibility and chat scope here/i,
+  ],
+};
+
+const ADMIN_SECTION_ROUTE_META = {
+  media: { view: "media", section: "media.playback" },
+  chat: { view: "audience", section: "audience.chat" },
+  moderation: { view: "audience", section: "audience.moderation" },
+};
+const ROOM_CODE_REGEXES = [/\broom\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
+
+const gotoHostAccessAndLogin = async ({ page, baseUrl, email, password, timeoutMs }) => {
+  const candidates = [
+    `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`,
+    `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=marketing&page=host_access`,
+    deriveHostAccessUrlFromBase(baseUrl),
+  ];
+
+  let loaded = false;
+  for (const target of candidates) {
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await delay(1200);
+
+    const handoffButton = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+    if (await handoffButton.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        handoffButton.click({ force: true }),
+      ]);
+      await delay(1500);
+    }
+
+    const hasHeading = await page.getByText(/Host Login (\+ (Application|Room Manager)|and Applications)/i).first().isVisible().catch(() => false);
+    const hasAuthForm = await page.locator("form").first().isVisible().catch(() => false);
+    const hasSignedInState = await page.getByText(/Signed in as/i).first().isVisible().catch(() => false);
+    if (hasHeading && (hasAuthForm || hasSignedInState)) {
+      loaded = true;
+      break;
+    }
+  }
+  if (!loaded) {
+    throw new Error(`Could not load host access route from base url "${baseUrl}".`);
+  }
+
+  const signOut = page.getByRole("button", { name: /sign out/i }).first();
+  if (await signOut.isVisible().catch(() => false)) {
+    await signOut.click({ force: true });
+    await delay(900);
+  }
+
+  const authForm = page.locator("form").first();
+  await authForm.waitFor({ state: "visible", timeout: timeoutMs });
+
+  const signInModeBtn = authForm.locator(".mk3-toggle-row button").filter({ hasText: /^Log In$/i }).first();
+  if (await signInModeBtn.isVisible().catch(() => false)) {
+    await signInModeBtn.click({ force: true });
+  }
+
+  await authForm.getByLabel(/Email/i).first().fill(email);
+  await authForm.getByLabel(/Password/i).first().fill(password);
+  await authForm.locator('button[type="submit"]').first().click({ force: true });
+
+  const continueToHostLogin = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+  const openHostDashboard = page.getByRole("button", { name: /Open Host Dashboard/i }).first();
+  const initialSuccess = await Promise.race([
+    page.getByText(/Signed in as/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    page.getByRole("button", { name: /sign out/i }).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    continueToHostLogin.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    openHostDashboard.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+  ]);
+
+  if (!initialSuccess) {
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 300);
+    throw new Error(`Login did not complete on host access flow. Snippet="${bodyText}"`);
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await continueToHostLogin.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        continueToHostLogin.click({ force: true }),
+      ]);
+      await delay(1500);
+      continue;
+    }
+    break;
+  }
+  return `Logged in as ${email}.`;
+};
+
 const getActiveSectionTitle = async (page) => {
   const hooked = page.locator("[data-admin-active-section-title]");
-  if (await hooked.count()) {
+  if (await hooked.first().isVisible().catch(() => false)) {
     return (await hooked.first().innerText()).trim();
   }
   const fallback = page.locator("div.text-xl.font-bold.text-white.mt-1").nth(1);
-  if (await fallback.count()) {
+  if (await fallback.isVisible().catch(() => false)) {
     return (await fallback.innerText()).trim();
   }
   return "";
 };
 
-const clickSectionNav = async (page, key, label) => {
+const readCurrentRoomCode = async (page) => {
+  const hooked = page.locator("[data-host-room-code]").first();
+  if (await hooked.isVisible().catch(() => false)) {
+    const text = String(await hooked.innerText().catch(() => "")).trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (text) return text;
+  }
+
+  try {
+    const url = new URL(page.url());
+    const fromQuery = String(url.searchParams.get("room") || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (fromQuery) return fromQuery;
+  } catch {
+    // Ignore URL parse failures.
+  }
+
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  for (const regex of ROOM_CODE_REGEXES) {
+    const match = bodyText.match(regex);
+    const candidate = String(match?.[1] || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (candidate) return candidate;
+  }
+
+  return "";
+};
+
+const openAdminSectionByRoute = async (page, key, timeoutMs) => {
+  const routeMeta = ADMIN_SECTION_ROUTE_META[key];
+  if (!routeMeta) return false;
+  try {
+    const url = new URL(page.url());
+    const roomCode = await readCurrentRoomCode(page);
+    if (roomCode) {
+      url.searchParams.set("room", roomCode);
+    }
+    url.searchParams.set("hostUiVersion", "v2");
+    url.searchParams.set("tab", "admin");
+    url.searchParams.set("view", routeMeta.view);
+    url.searchParams.set("section", routeMeta.section);
+    await page.goto(url.toString(), { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await delay(1500);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const clickSectionNav = async (page, key, label, timeoutMs) => {
   const hooked = page.locator(`[data-admin-section-item="${key}"]`);
-  if (await hooked.count()) {
+  if (await hooked.isVisible().catch(() => false)) {
     await hooked.first().click({ force: true });
     return;
   }
-  await page.locator("aside button").filter({ hasText: label }).first().click({ force: true });
+
+  const searchInputs = [
+    page.getByPlaceholder(/Search sections/i).first(),
+    page.getByPlaceholder(/Search host controls, settings, or tools/i).first(),
+  ];
+  for (const searchInput of searchInputs) {
+    if (await searchInput.isVisible().catch(() => false)) {
+      await searchInput.fill(label);
+      await delay(250);
+      if (await hooked.isVisible().catch(() => false)) {
+        await hooked.first().click({ force: true });
+        return;
+      }
+    }
+  }
+
+  const navScope = page.locator("[data-admin-sections-nav]").first();
+  const exactRoleMatch = navScope.getByRole("button", {
+    name: new RegExp(`^${escapeRegex(label)}$`, "i"),
+  }).first();
+  if (await exactRoleMatch.isVisible().catch(() => false)) {
+    await exactRoleMatch.click({ force: true });
+    return;
+  }
+  const fallback = navScope.locator("button").filter({ hasText: label }).first();
+  if (await fallback.isVisible().catch(() => false)) {
+    await fallback.click({ force: true });
+    return;
+  }
+
+  const openedByRoute = await openAdminSectionByRoute(page, key, timeoutMs);
+  if (!openedByRoute) {
+    throw new Error(`Could not find admin navigation item for section "${key}".`);
+  }
+};
+
+const waitForSectionReady = async ({ page, key, expectedTitleRegex, hasTitleHook, timeoutMs }) => {
+  const signals = ADMIN_SECTION_SIGNAL_REGEXES[key] || [];
+  const started = Date.now();
+  let lastTitle = "";
+  while (Date.now() - started < timeoutMs) {
+    lastTitle = await getActiveSectionTitle(page);
+    if (hasTitleHook && expectedTitleRegex.test(lastTitle)) {
+      return lastTitle;
+    }
+
+    const bodyText = await page.locator("body").innerText().catch(() => "");
+    if (signals.some((regex) => regex.test(bodyText))) {
+      if (lastTitle && expectedTitleRegex.test(lastTitle)) return lastTitle;
+      return lastTitle ? `${lastTitle} (content confirmed)` : `${key} content visible`;
+    }
+
+    await delay(350);
+  }
+
+  throw new Error(`Expected section ${key} to match ${expectedTitleRegex}, got "${lastTitle || "unknown"}".`);
 };
 
 const getSectionsToggle = async (page) => {
@@ -175,6 +402,7 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
   const quickStart = (await quickStartHook.count())
     ? quickStartHook
     : page.getByRole("button", { name: /Quick Start New Room/i });
+  const openRoomSettings = page.getByRole("button", { name: /Open room settings/i }).first();
   const openAdmin = page.locator('button[title="Open Admin"]');
   const openFullAdmin = page.getByRole("button", { name: /Open Full Admin/i });
   const activeSectionTitle = page.locator("[data-admin-active-section-title]");
@@ -203,6 +431,18 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
       activeSectionTitle,
       timeoutMs,
     });
+  }
+
+  if (await adminWorkspaceTitle.isVisible().catch(() => false)) {
+    return "";
+  }
+
+  if (await openRoomSettings.isVisible().catch(() => false)) {
+    const isEnabled = await openRoomSettings.isEnabled().catch(() => false);
+    if (isEnabled) {
+      await openRoomSettings.click({ force: true });
+      await delay(1800);
+    }
   }
 
   if (await adminWorkspaceTitle.isVisible().catch(() => false)) {
@@ -260,11 +500,13 @@ const openHostAndAdmin = async (page, { hostUrl, timeoutMs }) => {
   return (await workspaceSurface.getAttribute("data-admin-workspace")) || "";
 };
 
-const runDesktopScenario = async ({ browser, hostUrl, timeoutMs, checks }) => {
+const runDesktopScenario = async ({ browser, baseUrl, hostUrl, email, password, timeoutMs, checks }) => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await applyQaAppCheckDebugInitScript(context);
   const page = await context.newPage();
 
   try {
+    await gotoHostAccessAndLogin({ page, baseUrl, email, password, timeoutMs });
     const workspaceMode = await openHostAndAdmin(page, { hostUrl, timeoutMs });
     const openFullAdmin = page.getByRole("button", { name: /Open Full Admin/i });
     const hasTitleHook = (await page.locator("[data-admin-active-section-title]").count()) > 0;
@@ -312,15 +554,8 @@ const runDesktopScenario = async ({ browser, hostUrl, timeoutMs, checks }) => {
         chat: "Chat",
         moderation: "Approvals",
       };
-      await clickSectionNav(page, key, labelByKey[key] || key);
-      if (!hasTitleHook) {
-        return `Clicked ${labelByKey[key] || key} (fallback mode without title hook).`;
-      }
-      const text = await getActiveSectionTitle(page);
-      if (!expectedTitleRegex.test(text)) {
-        throw new Error(`Expected section title ${expectedTitleRegex}, got "${text}".`);
-      }
-      return text;
+      await clickSectionNav(page, key, labelByKey[key] || key, timeoutMs);
+      return waitForSectionReady({ page, key, expectedTitleRegex, hasTitleHook, timeoutMs });
     };
 
     await runCheck(checks, "desktop_section_switch_media", async () =>
@@ -350,15 +585,17 @@ const runDesktopScenario = async ({ browser, hostUrl, timeoutMs, checks }) => {
   }
 };
 
-const runMobileScenario = async ({ browser, hostUrl, timeoutMs, checks }) => {
+const runMobileScenario = async ({ browser, baseUrl, hostUrl, email, password, timeoutMs, checks }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
     hasTouch: true,
   });
+  await applyQaAppCheckDebugInitScript(context);
   const page = await context.newPage();
 
   try {
+    await gotoHostAccessAndLogin({ page, baseUrl, email, password, timeoutMs });
     await openHostAndAdmin(page, { hostUrl, timeoutMs });
     const hasTitleHook = (await page.locator("[data-admin-active-section-title]").count()) > 0;
 
@@ -395,15 +632,14 @@ const runMobileScenario = async ({ browser, hostUrl, timeoutMs, checks }) => {
       if (!chatNavVisible) {
         return "Skipped Chat section click (mobile sections rail not exposed in this build).";
       }
-      await clickSectionNav(page, "chat", "Chat");
-      if (!hasTitleHook) {
-        return "Clicked Chat section (fallback mode without title hook).";
-      }
-      const text = await getActiveSectionTitle(page);
-      if (!/chat/i.test(text)) {
-        throw new Error(`Expected Chat section after mobile nav, got "${text}".`);
-      }
-      return text;
+      await clickSectionNav(page, "chat", "Chat", timeoutMs);
+      return waitForSectionReady({
+        page,
+        key: "chat",
+        expectedTitleRegex: /chat/i,
+        hasTitleHook,
+        timeoutMs,
+      });
     });
   } finally {
     await context.close();
@@ -417,20 +653,36 @@ const run = async () => {
   const headless = !toBool(process.env.QA_HEADFUL, false);
   const includeMobile = !toBool(process.env.QA_SKIP_MOBILE, false);
   const failureScreenshotPath = process.env.QA_FAILURE_SCREENSHOT || DEFAULT_FAILURE_SCREENSHOT;
+  const email = String(process.env.QA_HOST_EMAIL || "").trim();
+  const password = String(process.env.QA_HOST_PASSWORD || "");
   const checks = [];
+
+  if (!email || !password) {
+    console.log(JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "QA_HOST_EMAIL and QA_HOST_PASSWORD are required for prod host admin smoke.",
+      baseUrl,
+      hostUrl,
+    }, null, 2));
+    return;
+  }
+
+  requireQaAppCheckDebugTokenForRemoteUrl(baseUrl);
 
   const { chromium } = await ensurePlaywright();
   const browser = await chromium.launch({ headless });
   let scenarioFailure = false;
 
   try {
-    await runDesktopScenario({ browser, hostUrl, timeoutMs, checks });
+    await runDesktopScenario({ browser, baseUrl, hostUrl, email, password, timeoutMs, checks });
     if (includeMobile) {
-      await runMobileScenario({ browser, hostUrl, timeoutMs, checks });
+      await runMobileScenario({ browser, baseUrl, hostUrl, email, password, timeoutMs, checks });
     }
   } catch (error) {
     scenarioFailure = true;
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+    await applyQaAppCheckDebugInitScript(context);
     const page = await context.newPage();
     try {
       await page.goto(hostUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });

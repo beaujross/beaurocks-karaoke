@@ -1,3 +1,8 @@
+import {
+  applyQaAppCheckDebugInitScript,
+  requireQaAppCheckDebugTokenForRemoteUrl,
+} from "./lib/appCheckDebug.mjs";
+
 const DEFAULT_BASE_URL = "https://app.beaurocks.app";
 const DEFAULT_TIMEOUT_MS = 70000;
 const DEFAULT_FAILURE_SCREENSHOT = "tmp/qa-persona-golden-failure.png";
@@ -12,7 +17,7 @@ const toBool = (value, fallback = false) => {
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST"]);
+const ROOM_CODE_BLOCKLIST = new Set(["ROOM", "CODE", "LIKE", "OPEN", "HOST", "BROWSER", "DASHBOARD"]);
 
 const ensurePlaywright = async () => {
   try {
@@ -52,6 +57,21 @@ const deriveHostUrlFromBase = (baseUrl = "") => {
     return `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=host`;
   }
 };
+const deriveHostAccessUrlFromBase = (baseUrl = "") => {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim());
+    const host = String(parsed.hostname || "").trim().toLowerCase();
+    let nextHost = host;
+    if (host.startsWith("app.")) {
+      nextHost = `host.${host.slice(4)}`;
+    } else if (host && !host.startsWith("host.") && host !== "localhost" && host !== "127.0.0.1") {
+      nextHost = `host.${host}`;
+    }
+    return `${parsed.protocol}//${nextHost}/host-access`;
+  } catch {
+    return `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`;
+  }
+};
 const deriveTvOriginFromBase = (baseUrl = "") => {
   try {
     const parsed = new URL(String(baseUrl || "").trim());
@@ -79,24 +99,49 @@ const isLikelyRoomCode = (value) => {
   return code.length >= 4 && code.length <= 10 && !ROOM_CODE_BLOCKLIST.has(code);
 };
 
+const isGameLaunchpadReady = async (page) => {
+  const hookedCount = await page.locator("[data-game-quick-launch]").count().catch(() => 0);
+  if (hookedCount > 0) return true;
+  const quickLaunchButtons = await page.getByRole("button", { name: /Quick Launch/i }).count().catch(() => 0);
+  if (quickLaunchButtons > 0) return true;
+  const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+  return /Game Launchpad|Quick Launch/i.test(bodyText);
+};
+
+const getGameLaunchpadDetail = async (page) => {
+  if (await isGameLaunchpadReady(page)) {
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    return bodyText.match(/Game Launchpad|Quick Launch/i)
+      ? "Game Launchpad rendered."
+      : "Quick Launch controls rendered.";
+  }
+  return "";
+};
+
+const waitForGameLaunchpad = async ({ page, timeoutMs }) => {
+  const launchpadHeading = page.getByText(/Game Launchpad/i).first();
+  const anyQuickLaunch = page.locator("[data-game-quick-launch]").first();
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (await isGameLaunchpadReady(page)) return "Game Launchpad ready.";
+    if ((await anyQuickLaunch.count()) > 0) return "Quick Launch controls rendered.";
+    if (await anyQuickLaunch.isVisible().catch(() => false)) return "Quick Launch controls visible.";
+    if (await launchpadHeading.isVisible().catch(() => false)) return "Game Launchpad visible.";
+    const bodyText = String(await page.locator("body").innerText().catch(() => ""));
+    if (/Game Launchpad|Quick Launch/i.test(bodyText)) {
+      return "Game Launchpad text rendered.";
+    }
+    await delay(400);
+  }
+  return "";
+};
+
 const readHostRoomCode = async (page) => {
   const hooked = page.locator("[data-host-room-code]").first();
   if (await hooked.count()) {
     const text = sanitizeRoomCode(await hooked.innerText().catch(() => ""));
     if (isLikelyRoomCode(text)) return text;
   }
-
-  const monoCode = await page.evaluate(() => {
-    const nodes = Array.from(document.querySelectorAll("div,span"));
-    for (const node of nodes) {
-      const cls = typeof node.className === "string" ? node.className : "";
-      if (!cls.includes("font-mono")) continue;
-      const text = (node.textContent || "").trim().toUpperCase();
-      if (/^[A-Z0-9]{4,10}$/.test(text)) return text;
-    }
-    return "";
-  }).catch(() => "");
-  if (isLikelyRoomCode(monoCode)) return sanitizeRoomCode(monoCode);
 
   const url = page.url();
   try {
@@ -108,7 +153,7 @@ const readHostRoomCode = async (page) => {
   }
 
   const bodyText = await page.locator("body").innerText().catch(() => "");
-  const regexes = [/\broom\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
+  const regexes = [/\bcreated room\s+([A-Z0-9]{4,8})\b/i, /\b([A-Z0-9]{4,8})\s+created\b/i];
   for (const regex of regexes) {
     const match = bodyText.match(regex);
     const candidate = sanitizeRoomCode(match?.[1] || "");
@@ -206,6 +251,15 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
       }
     }
 
+    const openHostPanel = page.getByRole("button", { name: /Open the host panel/i }).first();
+    if (!createClicked && (await openHostPanel.isVisible().catch(() => false))) {
+      const enabled = await openHostPanel.isEnabled().catch(() => false);
+      if (enabled) {
+        await openHostPanel.click({ force: true });
+        createClicked = true;
+      }
+    }
+
     if (!createClicked && !guidedFlowAttempted) {
       guidedFlowAttempted = true;
       const guidedRoomCode = await runGuidedSetupWizardLaunch({ page, timeoutMs });
@@ -213,6 +267,21 @@ const waitForHostRoomCode = async ({ page, timeoutMs }) => {
     }
 
     const bodyText = (await page.locator("body").innerText().catch(() => "")).toLowerCase();
+    if (/beaurocks host rooms|browse rooms like a workspace/i.test(bodyText)) {
+      const openHostPanel = page.getByRole("button", { name: /Open Host Panel/i }).first();
+      const openRoom = page.getByRole("button", { name: /^OPEN$/i }).first();
+      if (await openHostPanel.isVisible().catch(() => false)) {
+        await openHostPanel.click({ force: true });
+        await delay(1800);
+        continue;
+      }
+      if (await openRoom.isVisible().catch(() => false)) {
+        await openRoom.click({ force: true });
+        await delay(1800);
+        continue;
+      }
+    }
+
     if (
       bodyText.includes("failed to create room") ||
       bodyText.includes("permission denied while creating room") ||
@@ -233,28 +302,154 @@ const openHostAndCreateRoom = async ({ page, hostUrl, timeoutMs }) => {
   return waitForHostRoomCode({ page, timeoutMs });
 };
 
+const gotoHostAccessAndLogin = async ({ page, baseUrl, email, password, timeoutMs }) => {
+  const candidates = [
+    `${String(baseUrl || "").replace(/\/+$/, "")}/host-access`,
+    `${String(baseUrl || "").replace(/\/+$/, "")}/?mode=marketing&page=host_access`,
+    deriveHostAccessUrlFromBase(baseUrl),
+  ];
+
+  let loaded = false;
+  for (const target of candidates) {
+    await page.goto(target, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await delay(1200);
+
+    const handoffButton = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+    if (await handoffButton.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        handoffButton.click({ force: true }),
+      ]);
+      await delay(1500);
+    }
+
+    const hasHeading = await page.getByText(/Host Login (\+ (Application|Room Manager)|and Applications)/i).first().isVisible().catch(() => false);
+    const hasAuthForm = await page.locator("form").first().isVisible().catch(() => false);
+    const hasSignedInState = await page.getByText(/Signed in as/i).first().isVisible().catch(() => false);
+    if (hasHeading && (hasAuthForm || hasSignedInState)) {
+      loaded = true;
+      break;
+    }
+  }
+  if (!loaded) {
+    throw new Error(`Could not load host access route from base url "${baseUrl}".`);
+  }
+
+  const signOut = page.getByRole("button", { name: /sign out/i }).first();
+  if (await signOut.isVisible().catch(() => false)) {
+    await signOut.click({ force: true });
+    await delay(900);
+  }
+
+  const authForm = page.locator("form").first();
+  await authForm.waitFor({ state: "visible", timeout: timeoutMs });
+
+  const signInModeBtn = authForm.locator(".mk3-toggle-row button").filter({ hasText: /^Log In$/i }).first();
+  if (await signInModeBtn.isVisible().catch(() => false)) {
+    await signInModeBtn.click({ force: true });
+  }
+
+  await authForm.getByLabel(/Email/i).first().fill(email);
+  await authForm.getByLabel(/Password/i).first().fill(password);
+  await authForm.locator('button[type="submit"]').first().click({ force: true });
+
+  const continueToHostLogin = page.getByRole("button", { name: /Continue To Host Login/i }).first();
+  const openHostDashboard = page.getByRole("button", { name: /Open Host Dashboard/i }).first();
+  const initialSuccess = await Promise.race([
+    page.getByText(/Signed in as/i).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    page.getByRole("button", { name: /sign out/i }).first().waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    continueToHostLogin.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+    openHostDashboard.waitFor({ state: "visible", timeout: timeoutMs }).then(() => true).catch(() => false),
+  ]);
+
+  if (!initialSuccess) {
+    const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 300);
+    throw new Error(`Host login did not complete successfully. Snippet="${bodyText}"`);
+  }
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await continueToHostLogin.isVisible().catch(() => false)) {
+      await Promise.allSettled([
+        page.waitForURL(/host\./i, { timeout: Math.min(20000, timeoutMs) }),
+        continueToHostLogin.click({ force: true }),
+      ]);
+      await delay(1500);
+      continue;
+    }
+    break;
+  }
+  return `Logged in as ${email}.`;
+};
+
 const navigateHostToGames = async ({ page, hostUrl, roomCode, timeoutMs }) => {
   const hostOrigin = hostOriginFromUrl(hostUrl);
   if (!hostOrigin) {
     throw new Error(`Could not resolve host origin from hostUrl "${hostUrl}".`);
   }
-  const hostGamesUrl = `${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host&tab=games`;
-  await page.goto(hostGamesUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
-  await delay(2500);
+  const hostRoomUrl = `${hostOrigin}/?room=${encodeURIComponent(roomCode)}&mode=host`;
+  if (!page.url().includes(`room=${encodeURIComponent(roomCode)}`)) {
+    await page.goto(hostRoomUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await delay(2500);
+  }
+
+  const directReady = await getGameLaunchpadDetail(page);
+  if (directReady) {
+    return `${hostRoomUrl} (${directReady})`;
+  }
 
   const gamesTab = page.locator('[data-host-tab="games"]').first();
-  if (await gamesTab.count()) {
+  if (await gamesTab.isVisible().catch(() => false)) {
     await gamesTab.click({ force: true });
-  } else {
-    const fallbackTab = page.getByRole("button", { name: /^Games$/i }).first();
-    if (await fallbackTab.isVisible().catch(() => false)) {
-      await fallbackTab.click({ force: true });
+    await delay(1800);
+    const directReadyAfterTab = await getGameLaunchpadDetail(page);
+    if (directReadyAfterTab) {
+      return `${hostRoomUrl} (${directReadyAfterTab})`;
+    }
+    const readyAfterTab = await waitForGameLaunchpad({ page, timeoutMs: Math.min(12000, timeoutMs) });
+    if (readyAfterTab) {
+      return `${hostRoomUrl} (${readyAfterTab})`;
     }
   }
 
-  const anyQuickLaunch = page.locator("[data-game-quick-launch]").first();
-  await anyQuickLaunch.waitFor({ state: "visible", timeout: timeoutMs });
-  return hostGamesUrl;
+  const fallbackTab = page.getByRole("button", { name: /^Games$/i }).first();
+  if (await fallbackTab.isVisible().catch(() => false)) {
+    await fallbackTab.click({ force: true });
+    await delay(1800);
+    const directReadyAfterFallbackTab = await getGameLaunchpadDetail(page);
+    if (directReadyAfterFallbackTab) {
+      return `${hostRoomUrl} (${directReadyAfterFallbackTab})`;
+    }
+    const readyAfterFallbackTab = await waitForGameLaunchpad({ page, timeoutMs: Math.min(12000, timeoutMs) });
+    if (readyAfterFallbackTab) {
+      return `${hostRoomUrl} (${readyAfterFallbackTab})`;
+    }
+  }
+
+  const openLiveModes = page.getByRole("button", { name: /Open Live Modes/i }).first();
+  if (await openLiveModes.isVisible().catch(() => false)) {
+    await openLiveModes.click({ force: true });
+    await delay(1800);
+  }
+
+  const openLaunchpad = page.getByRole("button", { name: /Open Launchpad \(Exit Admin\)/i }).first();
+  if (await openLaunchpad.isVisible().catch(() => false)) {
+    await openLaunchpad.click({ force: true });
+    await delay(2200);
+    const directReadyAfterAdminExit = await getGameLaunchpadDetail(page);
+    if (directReadyAfterAdminExit) {
+      return `${hostRoomUrl} (${directReadyAfterAdminExit})`;
+    }
+    const readyAfterAdminExit = await waitForGameLaunchpad({ page, timeoutMs: Math.min(15000, timeoutMs) });
+    if (readyAfterAdminExit) {
+      return `${hostRoomUrl} (${readyAfterAdminExit})`;
+    }
+  }
+
+  const bodyText = String(await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
+  if (/Game Launchpad|Quick Launch/i.test(bodyText)) {
+    return `${hostRoomUrl} (launchpad text visible after fallback navigation)`;
+  }
+  throw new Error(`Could not reach Game Launchpad for room ${roomCode}. Snippet="${bodyText}"`);
 };
 
 const gameModeMeta = (gameMode = DEFAULT_GAME_MODE) => {
@@ -280,47 +475,65 @@ const gameModeMeta = (gameMode = DEFAULT_GAME_MODE) => {
 };
 
 const clickGameQuickLaunch = async ({ page, modeMeta, timeoutMs }) => {
-  let launchPath = "";
-  const hooked = page.locator(`[data-game-quick-launch="${modeMeta.mode}"]`).first();
-  if (await hooked.count()) {
-    await hooked.click({ force: true });
-    launchPath = `Quick launched ${modeMeta.mode} via hook.`;
+  const attemptQuickLaunch = async () => {
+    let launchPath = "";
+    const hooked = page.locator(`[data-game-quick-launch="${modeMeta.mode}"]`).first();
+    if (await hooked.count()) {
+      await hooked.click({ force: true });
+      launchPath = `Quick launched ${modeMeta.mode} via hook.`;
+    }
+
+    if (!launchPath) {
+      const clickedViaDom = await page.evaluate((hostLabel) => {
+        const quickButtons = Array.from(document.querySelectorAll("button"));
+        const normalizedLabel = String(hostLabel || "").toLowerCase();
+        const target = quickButtons.find((button) => {
+          const label = (button.textContent || "").toLowerCase();
+          if (!label.includes("quick launch")) return false;
+          const card = button.closest("[data-game-card]") || button.closest("div");
+          const cardText = (card?.textContent || "").toLowerCase();
+          return normalizedLabel ? cardText.includes(normalizedLabel) : true;
+        }) || quickButtons.find((button) => (button.textContent || "").toLowerCase().includes("quick launch"));
+        if (!target) return false;
+        target.click();
+        return true;
+      }, modeMeta.hostLabel).catch(() => false);
+
+      if (!clickedViaDom) {
+        throw new Error(`Could not find Quick Launch for mode ${modeMeta.mode}.`);
+      }
+      launchPath = `Quick launched ${modeMeta.hostLabel} via fallback selector.`;
+    }
+
+    const started = Date.now();
+    while (Date.now() - started < Math.min(15000, timeoutMs)) {
+      const liveText = String(await readHostLiveMode(page).catch(() => "")).trim();
+      if (liveText && !/karaoke/i.test(liveText)) {
+        return `${launchPath} Host live mode: ${liveText}`;
+      }
+      const endModeButton = page.getByRole("button", { name: /End Mode/i }).first();
+      if (await endModeButton.isVisible().catch(() => false)) {
+        return `${launchPath} End Mode control visible.`;
+      }
+      await delay(400);
+    }
+
+    return "";
+  };
+
+  if (modeMeta.mode === "trivia_pop" || modeMeta.mode === "wyr") {
+    await delay(8000);
   }
 
-  if (!launchPath) {
-    const clickedViaDom = await page.evaluate((hostLabel) => {
-      const quickButtons = Array.from(document.querySelectorAll("button"));
-      const normalizedLabel = String(hostLabel || "").toLowerCase();
-      const target = quickButtons.find((button) => {
-        const label = (button.textContent || "").toLowerCase();
-        if (!label.includes("quick launch")) return false;
-        const card = button.closest("[data-game-card]") || button.closest("div");
-        const cardText = (card?.textContent || "").toLowerCase();
-        return normalizedLabel ? cardText.includes(normalizedLabel) : true;
-      }) || quickButtons.find((button) => (button.textContent || "").toLowerCase().includes("quick launch"));
-      if (!target) return false;
-      target.click();
-      return true;
-    }, modeMeta.hostLabel).catch(() => false);
+  const firstAttempt = await attemptQuickLaunch();
+  if (firstAttempt) return firstAttempt;
 
-    if (!clickedViaDom) {
-      throw new Error(`Could not find Quick Launch for mode ${modeMeta.mode}.`);
-    }
-    launchPath = `Quick launched ${modeMeta.hostLabel} via fallback selector.`;
+  if (modeMeta.mode === "trivia_pop" || modeMeta.mode === "wyr") {
+    await delay(8000);
+    const secondAttempt = await attemptQuickLaunch();
+    if (secondAttempt) return secondAttempt;
   }
 
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const liveText = String(await readHostLiveMode(page).catch(() => "")).trim();
-    if (liveText && !/karaoke/i.test(liveText)) {
-      return `${launchPath} Host live mode: ${liveText}`;
-    }
-    const endModeButton = page.getByRole("button", { name: /End Mode/i }).first();
-    if (await endModeButton.isVisible().catch(() => false)) {
-      return `${launchPath} End Mode control visible.`;
-    }
-    await delay(400);
-  }
   throw new Error(`Mode launch did not become active after quick launch for ${modeMeta.mode}.`);
 };
 
@@ -431,8 +644,24 @@ const run = async () => {
   const suppliedRoomCode = sanitizeRoomCode(process.env.QA_ROOM_CODE || "");
   const skipRecap = toBool(process.env.QA_SKIP_RECAP, false);
   const modeMeta = gameModeMeta(process.env.QA_GAME_MODE || DEFAULT_GAME_MODE);
+  const email = String(process.env.QA_HOST_EMAIL || "").trim();
+  const password = String(process.env.QA_HOST_PASSWORD || "");
 
   const checks = [];
+
+  if (!email || !password) {
+    console.log(JSON.stringify({
+      ok: true,
+      skipped: true,
+      reason: "QA_HOST_EMAIL and QA_HOST_PASSWORD are required for prod persona golden paths.",
+      baseUrl,
+      hostUrl,
+      gameMode: modeMeta.mode,
+    }, null, 2));
+    return;
+  }
+
+  requireQaAppCheckDebugTokenForRemoteUrl(baseUrl);
   const { chromium } = await ensurePlaywright();
   const browser = await chromium.launch({ headless });
 
@@ -440,10 +669,12 @@ const run = async () => {
   let scenarioFailure = false;
 
   const hostContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await applyQaAppCheckDebugInitScript(hostContext);
   const hostPage = await hostContext.newPage();
 
   try {
     await runCheck(checks, "host_create_or_open_room", async () => {
+      await gotoHostAccessAndLogin({ page: hostPage, baseUrl, email, password, timeoutMs });
       if (roomCode) {
         const hostOrigin = hostOriginFromUrl(hostUrl);
         if (!hostOrigin) {
@@ -470,6 +701,7 @@ const run = async () => {
     });
 
     const singerContext = await browser.newContext({ viewport: { width: 430, height: 932 }, isMobile: true, hasTouch: true });
+    await applyQaAppCheckDebugInitScript(singerContext);
     const singerPage = await singerContext.newPage();
 
     try {
@@ -563,6 +795,7 @@ const run = async () => {
     }
 
     const tvContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    await applyQaAppCheckDebugInitScript(tvContext);
     const tvPage = await tvContext.newPage();
 
     try {
@@ -640,6 +873,7 @@ const run = async () => {
 
     if (!skipRecap) {
       const recapContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+      await applyQaAppCheckDebugInitScript(recapContext);
       const recapPage = await recapContext.newPage();
       try {
         await runCheck(checks, "recap_route_loads", async () => {

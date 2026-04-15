@@ -1,7 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildQaHostFixture, FIXED_QA_HOST_NOW_MS } from "../../src/apps/Host/qaHostFixtures.js";
+import {
+  buildQaHostFixture,
+  FIXED_QA_HOST_NOW_MS,
+  QA_AAHF_AUDIENCE_BRAND_THEME,
+  QA_AAHF_EVENT_PROFILE_ID,
+} from "../../src/apps/Host/qaHostFixtures.js";
 import {
   DEFAULT_FIREBASE_RUNTIME_CONFIG,
   delay,
@@ -66,9 +71,13 @@ const main = async () => {
       const primary = await root.getAttribute("data-host-qa-brand-primary");
       const secondary = await root.getAttribute("data-host-qa-brand-secondary");
       const accent = await root.getAttribute("data-host-qa-brand-accent");
-      if (eventProfile !== "aahf_2026_kickoff") throw new Error(`Unexpected event profile: ${eventProfile}`);
-      if (title !== "AAHF Karaoke") throw new Error(`Unexpected audience brand title: ${title}`);
-      if (primary !== "#FF4FA3" || secondary !== "#1ED7FF" || accent !== "#FACC15") {
+      if (eventProfile !== QA_AAHF_EVENT_PROFILE_ID) throw new Error(`Unexpected event profile: ${eventProfile}`);
+      if (title !== QA_AAHF_AUDIENCE_BRAND_THEME.appTitle) throw new Error(`Unexpected audience brand title: ${title}`);
+      if (
+        primary !== QA_AAHF_AUDIENCE_BRAND_THEME.primaryColor
+        || secondary !== QA_AAHF_AUDIENCE_BRAND_THEME.secondaryColor
+        || accent !== QA_AAHF_AUDIENCE_BRAND_THEME.accentColor
+      ) {
         throw new Error(`Unexpected brand colors: ${primary}, ${secondary}, ${accent}`);
       }
       return "AAHF event profile and audience branding loaded";

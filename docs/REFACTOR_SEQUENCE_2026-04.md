@@ -1,6 +1,6 @@
 # Refactor Sequence (April 2026)
 
-Last updated: 2026-04-13
+Last updated: 2026-04-14
 
 ## Purpose
 
@@ -16,6 +16,65 @@ This sequence is based on the current repo state:
 - `src/apps/Marketing/marketing.css`: ~17,950 lines
 
 ## Operating Principles
+
+## Fresh Takeaways (2026-04-14)
+
+These came directly from the host game matrix remediation and should influence the next refactor cuts.
+
+### Audience readiness is not the same as auth-backed identity
+
+The product repeatedly exposed a real distinction:
+
+- a phone can be in a valid live audience state
+- while still not exposing the auth-backed UID the QA harness expected
+
+That means refactors and tests must not collapse these into one concept.
+
+Practical rule:
+
+- treat "usable audience shell" as one contract
+- treat "seedable identity for fixture/setup flows" as a stricter contract used only when required
+
+This especially matters for:
+
+- `SingerApp.jsx`
+- setup-heavy modes like `karaoke_bracket`
+- any future extraction of join/auth/bootstrap logic
+
+### QA should model real takeover states, not a single ideal join screen
+
+A failed matrix run was eventually traced to this:
+
+- the live audience page sometimes opened directly into an active bracket takeover
+- the runner still assumed the only healthy precondition was the classic joined main shell
+
+Future automation should always recognize:
+
+- joined shell
+- mode-specific takeover shell
+- config/setup shell when the mode intentionally starts there
+
+If the product can validly render a state, QA should treat that state as first-class instead of as noise.
+
+### SingerApp auth bootstrap is part of the critical path
+
+The audience shell still had a product-level gap:
+
+- `waitForJoinAuthUid()` could wait on auth
+- without guaranteeing auth bootstrap had even started
+
+The durable lesson is that audience auth bootstrap is not just implementation detail. It is part of the release-critical audience join contract and belongs with other early-path ownership concerns in the refactor order.
+
+### Shared parsing helpers deserve narrow regression tests
+
+The room-browser work exposed an easy-to-miss class of failures:
+
+- host UI labels like `BROWSER` and `DASHBOARD` looked like room codes to loose parsing
+
+The fix was small, but the lesson is larger:
+
+- when a helper is shared across host/audience/TV QA scripts, add a precise unit test as soon as a new false positive appears
+- do not rely on Playwright reruns alone to preserve this behavior
 
 ### Extraction rule
 
@@ -100,7 +159,10 @@ Progress so far:
 - extracted `useHostWorkspaceState.js` for launch/workspace operator state and launch URL resolution
 - extracted `useHostLandingLaunchpad.js` for landing launch derivation, venue autocomplete, and retry/start actions
 - extracted `useHostEntryBootstrap.js` for URL/query-driven host entry bootstrapping
-- `HostApp.jsx` is down from about 20,131 lines to about 19,504 lines after the first landing/workspace cuts
+- extracted `useHostWorkspaceNavigation.js` for admin/workspace routing and join-then-open flow
+- extracted `useHostLaunchSession.js` for create-room wrapper, onboarding launch, and return-to-dashboard flow
+- extracted `useHostNightSetupFlow.js` for night-setup recommendation, wizard orchestration, and launch-package apply flow
+- `HostApp.jsx` is down from about 20,131 lines to about 19,207 lines after the first landing/workspace cuts
 
 ### 1b. HostApp billing, usage summary, and invoice split
 
@@ -146,6 +208,7 @@ Why this moved earlier:
 - `SingerApp.jsx` has a repeated history of hook-order and early-return regressions.
 - Audience join and request submission sit directly on the release-critical path.
 - This file is still a larger production risk than many host-only subsystems.
+- Audience auth bootstrap and session identity proved again on 2026-04-14 that this is not optional cleanup; it directly affects whether production QA can even enter the room reliably.
 
 Primary source:
 
@@ -176,6 +239,7 @@ Verification:
 - `tests/unit/singerAppHooks.test.mjs`
 - `tests/unit/songRequestResolution.test.mjs`
 - `tests/unit/requestModes.test.mjs`
+- targeted audience session/auth identity coverage whenever join/bootstrap behavior changes
 - audience join/request smoke
 - `npm run qa:release:core-night` for any join/request changes
 
