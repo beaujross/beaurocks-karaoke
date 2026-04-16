@@ -74,7 +74,7 @@ import {
     SUPPORT_CELEBRATION_STYLES,
     normalizePurchaseCelebration,
 } from '../../lib/roomMonetization';
-import { normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
+import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -888,6 +888,8 @@ const RunOfShowTakeoverOverlay = ({
     const theme = getRunOfShowTakeoverTheme(overlay?.accentTheme || 'cyan', brandTheme);
     const sceneKey = String(overlay?.takeoverScene || overlay?.type || 'default').trim().toLowerCase();
     const scene = getRunOfShowTakeoverScene(sceneKey);
+    const overlayType = String(overlay?.type || '').trim().toLowerCase();
+    const showAnnouncementBurst = overlayType === 'announcement' || sceneKey === 'announcement';
     const headline = String(overlay?.headline || overlay?.title || 'Run Of Show').trim() || 'Run Of Show';
     const subhead = String(overlay?.subhead || '').trim();
     const summary = String(overlay?.summary || '').trim();
@@ -905,6 +907,18 @@ const RunOfShowTakeoverOverlay = ({
     const roomLabel = String(roomCode || '').trim() ? `Room ${roomCode}` : 'Room Live';
     const brandLogoUrl = String(logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
     const detailModeLabel = preview ? 'TV Preview' : scene.detailLabel;
+    const burstVars = useMemo(() => {
+        const palette = buildAudienceBrandThemePalette({
+            primaryColor: theme.primaryColor,
+            secondaryColor: theme.secondaryColor,
+            accentColor: theme.accentColor,
+        });
+        return {
+            '--audience-brand-primary-rgb': palette.rootStyle['--audience-brand-primary-rgb'],
+            '--audience-brand-secondary-rgb': palette.rootStyle['--audience-brand-secondary-rgb'],
+            '--audience-brand-accent-rgb': palette.rootStyle['--audience-brand-accent-rgb'],
+        };
+    }, [theme.accentColor, theme.primaryColor, theme.secondaryColor]);
     const metaChips = [
         roomLabel,
         modeKey ? toTitleCaseWords(modeKey) : detailModeLabel,
@@ -925,6 +939,17 @@ const RunOfShowTakeoverOverlay = ({
         >
             <div className={`absolute -left-[12vw] top-[-12vh] h-[46vw] w-[46vw] rounded-full blur-3xl ${scene.orbClass}`}></div>
             <div className="absolute right-[-10vw] top-[20vh] h-[34vw] w-[34vw] rounded-full blur-3xl" style={theme.spotlightStyle}></div>
+            {showAnnouncementBurst ? (
+                <div
+                    className="logo-rays join-rays tv-takeover-announcement-burst"
+                    style={{
+                        ...burstVars,
+                        '--ray-inner': '280px',
+                        left: '43%',
+                        top: '52%',
+                    }}
+                ></div>
+            ) : null}
             <div className="tv-takeover-ray-field"></div>
             <div className="tv-takeover-ray-field tv-takeover-ray-field-alt"></div>
             <div className={`absolute inset-0 bg-gradient-to-br ${scene.stripeClass}`}></div>
@@ -8501,6 +8526,14 @@ const PublicTV = ({ roomCode }) => {
                 filter: blur(4px);
                 animation-duration: 72s, 10.5s;
                 animation-direction: reverse, normal;
+              }
+              .tv-takeover-announcement-burst {
+                width: 2400px;
+                height: 2400px;
+                opacity: 0.44;
+                filter: blur(8px);
+                animation-duration: 92s;
+                z-index: 0;
               }
               .tv-takeover-brand-shell::after {
                 content: '';

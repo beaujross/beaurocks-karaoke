@@ -83,6 +83,20 @@ const comparePngFiles = async (actualPath, baselinePath) => {
 const buildTvUrl = (baseUrl, roomCode, fixtureId) =>
   `${baseUrl}/?mode=tv&room=${encodeURIComponent(roomCode)}&mkDemoEmbed=1&qaTvFixture=${encodeURIComponent(fixtureId)}`;
 
+const freezeMotion = async (page) => {
+  await page.addStyleTag({
+    content: `
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+        caret-color: transparent !important;
+      }
+    `,
+  });
+};
+
 const waitForBodyTexts = async ({ page, expectedTexts, timeoutMs }) => {
   const startedAt = Date.now();
   let lastBodyText = "";
@@ -167,6 +181,7 @@ const main = async () => {
         waitUntil: "domcontentloaded",
         timeout: timeoutMs,
       });
+      await freezeMotion(page);
       await delay(2500);
       await waitForBodyTexts({ page, expectedTexts: scenario.expectedTexts, timeoutMs });
       const overlay = page.locator(".public-tv").first();

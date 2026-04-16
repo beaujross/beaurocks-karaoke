@@ -211,6 +211,26 @@ async function run() {
       assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
     }],
 
+    ["host can update performance recap timing fields", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        performanceRecapBreakdownMs: 6000,
+        performanceRecapLeaderboardMs: 8000,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "performanceRecapBreakdownMs",
+          "performanceRecapLeaderboardMs",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("performanceRecapBreakdownMs"), 6000);
+      assert.equal(snap.get("performanceRecapLeaderboardMs"), 8000);
+    }],
+
     ["approved-only backing mode coerces unknown policy to block unknown", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         audienceBackingMode: "canonical_plus_approved_backings",

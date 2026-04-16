@@ -26,6 +26,11 @@ const karaokeSongPath = (songId = "song_1") => `${ROOT}/karaoke_songs/${songId}`
 const nonAnonymousContext = (uid) => testEnv.authenticatedContext(uid, {
   firebase: { sign_in_provider: "password" },
 });
+const superAdminEmailContext = (uid, email = "hello@beaurocks.app") => testEnv.authenticatedContext(uid, {
+  email,
+  email_verified: true,
+  firebase: { sign_in_provider: "password" },
+});
 const anonymousContext = (uid) => testEnv.authenticatedContext(uid, {
   firebase: { sign_in_provider: "anonymous" },
 });
@@ -923,6 +928,14 @@ async function run() {
       );
     }],
 
+    ["storage: super admin email can upload branding image for another host room", async () => {
+      const storage = superAdminEmailContext("super-admin-email").storage(BUCKET);
+      const ref = storage.ref(`room_branding/${ROOM_CODE}/logo.png`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
     ["storage: audience participant can upload room photo", async () => {
       await testEnv.withSecurityRulesDisabled(async (context) => {
         const db = context.firestore();
@@ -1004,6 +1017,16 @@ async function run() {
       const guestRef = guestStorage.ref(`room_uploads/${ROOM_CODE}/private.mp4`);
       await assertSucceeds(hostRef.getDownloadURL());
       await assertFails(guestRef.getDownloadURL());
+    }],
+
+    ["firestore: super admin email can update host libraries for another host room", async () => {
+      const db = superAdminEmailContext("super-admin-email").firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/host_libraries/${ROOM_CODE}`).set(
+          { logoLibrary: ["https://example.com/logo.png"] },
+          { merge: true }
+        )
+      );
     }],
   ];
 

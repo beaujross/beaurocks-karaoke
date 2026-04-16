@@ -36,7 +36,10 @@ service cloud.firestore {
             request.auth.token.keys().hasAny(['email'])
             && request.auth.token.keys().hasAny(['email_verified'])
             && request.auth.token.email is string
-            && request.auth.token.email == 'hello@beauross.com'
+            && (
+              request.auth.token.email == 'hello@beauross.com'
+              || request.auth.token.email == 'hello@beaurocks.app'
+            )
             && request.auth.token.email_verified == true
           )
         );

@@ -44,6 +44,11 @@ export const RUN_OF_SHOW_AUTOMATION_MODES = Object.freeze({
     auto: 'auto',
     manual: 'manual'
 });
+export const RUN_OF_SHOW_ADVANCE_MODES = Object.freeze({
+    auto: 'auto',
+    host: 'host',
+    hostAfterMin: 'host_after_min'
+});
 
 export const RUN_OF_SHOW_PERFORMER_MODES = Object.freeze({
     assigned: 'assigned',
@@ -64,6 +69,7 @@ const ALLOWED_ITEM_TYPES = new Set(RUN_OF_SHOW_ITEM_TYPES);
 const ALLOWED_STATUSES = new Set(RUN_OF_SHOW_ITEM_STATUSES);
 const ALLOWED_BACKING_SOURCES = new Set(RUN_OF_SHOW_BACKING_SOURCES);
 const ALLOWED_AUTOMATION_MODES = new Set(Object.values(RUN_OF_SHOW_AUTOMATION_MODES));
+const ALLOWED_ADVANCE_MODES = new Set(Object.values(RUN_OF_SHOW_ADVANCE_MODES));
 const ALLOWED_PERFORMER_MODES = new Set(Object.values(RUN_OF_SHOW_PERFORMER_MODES));
 const ALLOWED_OPERATOR_ROLES = new Set(Object.values(RUN_OF_SHOW_OPERATOR_ROLES));
 const ALLOWED_LATE_POLICIES = new Set(RUN_OF_SHOW_LATE_BLOCK_POLICIES);
@@ -107,6 +113,19 @@ export const normalizeRunOfShowProgramMode = (value = '') => (
         ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow
         : RUN_OF_SHOW_PROGRAM_MODES.standard
 );
+
+export const getRunOfShowAdvanceMode = (item = {}) => {
+    const safeMode = cleanText(item?.advanceMode).toLowerCase();
+    if (ALLOWED_ADVANCE_MODES.has(safeMode)) return safeMode;
+    return item?.requireHostAdvance === true
+        ? RUN_OF_SHOW_ADVANCE_MODES.host
+        : RUN_OF_SHOW_ADVANCE_MODES.auto;
+};
+
+export const getRunOfShowHostAdvanceMinSec = (item = {}) => {
+    if (getRunOfShowAdvanceMode(item) !== RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) return 0;
+    return clampInt(item?.hostAdvanceMinSec, 0, 3600, clampInt(item?.plannedDurationSec, 0, 3600, 0));
+};
 
 export const createDefaultRunOfShowPolicy = (overrides = {}) => ({
     defaultAutomationMode: ALLOWED_DEFAULT_AUTOMATION_POLICIES.has(cleanText(overrides.defaultAutomationMode).toLowerCase())
@@ -194,6 +213,16 @@ export const getRunOfShowBlockedActionLabel = (readiness = null, item = {}, poli
 export const getRunOfShowOperatingHint = ({ item = {}, readiness = null, policy = {} } = {}) => {
     const normalizedPolicy = normalizeRunOfShowPolicy(policy || {});
     if (item?.status === 'blocked') return getRunOfShowBlockedActionLabel(readiness, item, normalizedPolicy);
+    const advanceMode = getRunOfShowAdvanceMode(item);
+    if (item?.status === 'live' && advanceMode === RUN_OF_SHOW_ADVANCE_MODES.host) {
+        return 'This scene stays live until the host explicitly advances it.';
+    }
+    if (item?.status === 'live' && advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) {
+        const minimumSec = getRunOfShowHostAdvanceMinSec(item);
+        return minimumSec > 0
+            ? `This scene needs host advance after at least ${minimumSec}s live.`
+            : 'This scene needs host advance after its minimum live window.';
+    }
     if (item?.status === 'live' && normalizedPolicy.lateBlockPolicy === 'compress') return 'If the room is running late, compress this block before moving on.';
     if (item?.type === 'performance' && normalizedPolicy.queueDivergencePolicy === 'queue_can_fill_gaps') return 'The live queue may fill gaps if this planned slot changes.';
     return normalizedPolicy.defaultAutomationMode === 'manual'
@@ -280,13 +309,18 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
                 ? 'backing'
                 : '')
         : '';
+    const plannedDurationSec = clampInt(overrides.plannedDurationSec, 0, 3600, safeType === 'performance' ? 180 : 45);
+    const advanceMode = getRunOfShowAdvanceMode(overrides);
+    const hostAdvanceMinSec = advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
+        ? clampInt(overrides.hostAdvanceMinSec, 0, 3600, plannedDurationSec)
+        : 0;
     return {
         id: cleanText(overrides.id) || createId(safeType, now),
         type: safeType,
         title: readEditableTextField(overrides, 'title', safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())),
         sequence: clampInt(overrides.sequence, 1, 999, 1),
         startsAtMs: asTimestampMs(overrides.startsAtMs, 0),
-        plannedDurationSec: clampInt(overrides.plannedDurationSec, 0, 3600, safeType === 'performance' ? 180 : 45),
+        plannedDurationSec,
         plannedDurationSource,
         status: ALLOWED_STATUSES.has(cleanText(overrides.status).toLowerCase())
             ? cleanText(overrides.status).toLowerCase()
@@ -296,6 +330,9 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
         automationMode: ALLOWED_AUTOMATION_MODES.has(cleanText(overrides.automationMode).toLowerCase())
             ? cleanText(overrides.automationMode).toLowerCase()
             : RUN_OF_SHOW_AUTOMATION_MODES.auto,
+        advanceMode,
+        hostAdvanceMinSec,
+        requireHostAdvance: advanceMode !== RUN_OF_SHOW_ADVANCE_MODES.auto,
         performerMode,
         assignedPerformerUid: cleanText(overrides.assignedPerformerUid),
         assignedPerformerName: readEditableTextField(overrides, 'assignedPerformerName'),
@@ -355,6 +392,8 @@ export const createDefaultRunOfShowDirector = (overrides = {}) => ({
     version: 1,
     enabled: overrides.enabled === true,
     automationPaused: overrides.automationPaused === true,
+    holdCurrent: overrides.holdCurrent === true,
+    holdAfterCurrent: overrides.holdAfterCurrent === true,
     automationStatus: cleanText(overrides.automationStatus) || 'idle',
     currentItemId: cleanText(overrides.currentItemId),
     lastCompletedItemId: cleanText(overrides.lastCompletedItemId),
@@ -371,6 +410,76 @@ export const normalizeRunOfShowDirector = (raw = {}, now = Date.now()) => {
     const director = createDefaultRunOfShowDirector(source, now);
     director.items = resequenceRunOfShowItems(director.items);
     return director;
+};
+
+export const getRunOfShowProgressionDecision = ({
+    director = {},
+    item = null,
+    phase = 'prepare',
+} = {}) => {
+    const normalizedDirector = normalizeRunOfShowDirector(director);
+    const safePhase = cleanText(phase).toLowerCase();
+    const targetItem = item && typeof item === 'object'
+        ? createRunOfShowItem(item?.type || 'buffer', item)
+        : null;
+    const safeItem = targetItem
+        || normalizedDirector.items.find((entry) => entry.id === cleanText(item?.id || ''))
+        || null;
+
+    if (!safeItem) {
+        return { allowed: false, reason: 'missing_item' };
+    }
+    if (normalizedDirector.automationPaused) {
+        return { allowed: false, reason: 'automation_paused' };
+    }
+    if (safePhase === 'prepare') {
+        if (safeItem.automationMode !== RUN_OF_SHOW_AUTOMATION_MODES.auto) {
+            return { allowed: false, reason: 'item_manual_start' };
+        }
+        const status = cleanText(safeItem.status).toLowerCase();
+        if (['complete', 'skipped', 'live', 'staged'].includes(status)) {
+            return { allowed: false, reason: 'prepare_not_needed' };
+        }
+        return { allowed: true, reason: 'ready' };
+    }
+    if (safePhase === 'start') {
+        if (normalizedDirector.holdAfterCurrent) {
+            return { allowed: false, reason: 'hold_after_current' };
+        }
+        if (safeItem.automationMode !== RUN_OF_SHOW_AUTOMATION_MODES.auto) {
+            return { allowed: false, reason: 'item_manual_start' };
+        }
+        if (cleanText(safeItem.status).toLowerCase() !== 'staged') {
+            return { allowed: false, reason: 'not_staged' };
+        }
+        return { allowed: true, reason: 'ready' };
+    }
+    if (safePhase === 'complete') {
+        if (normalizedDirector.holdCurrent) {
+            return { allowed: false, reason: 'hold_current' };
+        }
+        if (cleanText(safeItem.type).toLowerCase() === 'performance') {
+            return { allowed: false, reason: 'performance_managed_elsewhere' };
+        }
+        if (cleanText(safeItem.status).toLowerCase() !== 'live') {
+            return { allowed: false, reason: 'not_live' };
+        }
+        const advanceMode = getRunOfShowAdvanceMode(safeItem);
+        if (advanceMode === RUN_OF_SHOW_ADVANCE_MODES.host) {
+            return { allowed: false, reason: 'require_host_advance' };
+        }
+        if (advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) {
+            const minDurationMs = getRunOfShowHostAdvanceMinSec(safeItem) * 1000;
+            const liveStartedAtMs = asTimestampMs(safeItem.liveStartedAtMs, 0);
+            const elapsedMs = liveStartedAtMs > 0 ? Math.max(0, Date.now() - liveStartedAtMs) : 0;
+            if (!liveStartedAtMs || elapsedMs < minDurationMs) {
+                return { allowed: false, reason: 'host_advance_min_not_reached' };
+            }
+            return { allowed: false, reason: 'ready_for_host_advance' };
+        }
+        return { allowed: true, reason: 'ready' };
+    }
+    return { allowed: false, reason: 'unknown_phase' };
 };
 
 export const updateRunOfShowItem = (director = {}, itemId = '', updater = null) => {

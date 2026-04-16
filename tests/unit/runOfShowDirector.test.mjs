@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import {
+  RUN_OF_SHOW_ADVANCE_MODES,
   RUN_OF_SHOW_OPERATOR_ROLES,
   RUN_OF_SHOW_PROGRAM_MODES,
   RUN_OF_SHOW_PERFORMER_MODES,
   buildRunOfShowQueueDocId,
   getRunOfShowBlockedActionLabel,
+  getRunOfShowAdvanceMode,
+  getRunOfShowHostAdvanceMinSec,
   createRunOfShowItem,
   createDefaultRunOfShowDirector,
   getRunOfShowOperatorRole,
@@ -14,6 +17,7 @@ import {
   getRunOfShowItemReadiness,
   getRunOfShowOpenSubmissionItems,
   getRunOfShowPublicItems,
+  getRunOfShowProgressionDecision,
   hasRunOfShowBackingIdentity,
   isApprovedAutomationSource,
   isRunOfShowItemReady,
@@ -53,11 +57,15 @@ test("runOfShowDirector normalizes director state and performance readiness", ()
 
   assert.equal(director.items.length, 2);
   assert.equal(director.items[0].sequence, 1);
+  assert.equal(getRunOfShowAdvanceMode(director.items[0]), RUN_OF_SHOW_ADVANCE_MODES.auto);
+  assert.equal(getRunOfShowHostAdvanceMinSec(director.items[0]), 0);
   assert.equal(hasRunOfShowBackingIdentity(director.items[0].backingPlan), true);
   assert.equal(isApprovedAutomationSource(director.items[0].backingPlan), true);
   assert.equal(isRunOfShowItemReady(director.items[0]), true);
   assert.equal(getRunOfShowOpenSubmissionItems(director).length, 1);
   assert.equal(getRunOfShowPublicItems(director).length, 1);
+  assert.equal(director.holdCurrent, false);
+  assert.equal(director.holdAfterCurrent, false);
 });
 
 test("runOfShowDirector updates item state and blocks unapproved user-submitted backing", () => {
@@ -203,4 +211,119 @@ test("runOfShowDirector operating hints reflect blocked policy decisions", () =>
 
   assert.match(getRunOfShowBlockedActionLabel(readiness, item, policy), /pull a queue-ready replacement/i);
   assert.match(getRunOfShowOperatingHint({ item, readiness, policy }), /pull a queue-ready replacement/i);
+});
+
+test("runOfShowDirector progression decisions block timed completion when host advance is required", () => {
+  const liveAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_live",
+    status: "live",
+    automationMode: "auto",
+    requireHostAdvance: true,
+    plannedDurationSec: 45,
+  });
+  const stagedAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_staged",
+    status: "staged",
+    automationMode: "manual",
+  });
+  const director = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    items: [liveAnnouncement, stagedAnnouncement],
+  }));
+
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director,
+      item: director.items[0],
+      phase: "complete",
+    }),
+    { allowed: false, reason: "require_host_advance" },
+  );
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director,
+      item: director.items[1],
+      phase: "start",
+    }),
+    { allowed: false, reason: "item_manual_start" },
+  );
+});
+
+test("runOfShowDirector progression decisions respect host minimum live windows", () => {
+  const now = Date.now();
+  const liveAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_live_min",
+    status: "live",
+    automationMode: "auto",
+    advanceMode: "host_after_min",
+    hostAdvanceMinSec: 90,
+    liveStartedAtMs: now - 30_000,
+  });
+  const liveReadyAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_live_ready",
+    status: "live",
+    automationMode: "auto",
+    advanceMode: "host_after_min",
+    hostAdvanceMinSec: 90,
+    liveStartedAtMs: now - 120_000,
+  });
+  const director = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    items: [liveAnnouncement, liveReadyAnnouncement],
+  }));
+
+  assert.equal(getRunOfShowAdvanceMode(director.items[0]), RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin);
+  assert.equal(getRunOfShowHostAdvanceMinSec(director.items[0]), 90);
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director,
+      item: director.items[0],
+      phase: "complete",
+    }),
+    { allowed: false, reason: "host_advance_min_not_reached" },
+  );
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director,
+      item: director.items[1],
+      phase: "complete",
+    }),
+    { allowed: false, reason: "ready_for_host_advance" },
+  );
+});
+
+test("runOfShowDirector progression decisions respect hold flags", () => {
+  const liveAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_live",
+    status: "live",
+    automationMode: "auto",
+  });
+  const stagedAnnouncement = createRunOfShowItem("announcement", {
+    id: "announce_staged",
+    status: "staged",
+    automationMode: "auto",
+  });
+  const holdCurrentDirector = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    holdCurrent: true,
+    items: [liveAnnouncement],
+  }));
+  const holdAfterDirector = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    holdAfterCurrent: true,
+    items: [stagedAnnouncement],
+  }));
+
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director: holdCurrentDirector,
+      item: holdCurrentDirector.items[0],
+      phase: "complete",
+    }),
+    { allowed: false, reason: "hold_current" },
+  );
+  assert.deepEqual(
+    getRunOfShowProgressionDecision({
+      director: holdAfterDirector,
+      item: holdAfterDirector.items[0],
+      phase: "start",
+    }),
+    { allowed: false, reason: "hold_after_current" },
+  );
 });

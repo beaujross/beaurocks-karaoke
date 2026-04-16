@@ -90,6 +90,9 @@ async function resetData() {
           status: "staged",
           visibility: "public",
           automationMode: "auto",
+          advanceMode: "host_after_min",
+          hostAdvanceMinSec: 75,
+          requireHostAdvance: true,
           performerMode: "assigned",
           assignedPerformerUid: "guest_2",
           assignedPerformerName: "Guest Two",
@@ -175,6 +178,42 @@ async function run() {
       const item = (roomSnap.get("runOfShowDirector.items") || []).find((entry) => entry.id === "perf_next");
       assert.equal(item.status, "live");
       assert.equal(roomSnap.get("runOfShowDirector.currentItemId"), "perf_next");
+      assert.equal(item.advanceMode, "host_after_min");
+      assert.equal(item.hostAdvanceMinSec, 75);
+    }],
+
+    ["host cannot complete a host-after-min scene before minimum live time elapses", async () => {
+      await roomRef.set({
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          currentItemId: "announce_hold",
+          items: [
+            {
+              id: "announce_hold",
+              type: "announcement",
+              title: "Sponsor Hit",
+              sequence: 1,
+              status: "live",
+              visibility: "public",
+              automationMode: "auto",
+              advanceMode: "host_after_min",
+              hostAdvanceMinSec: 120,
+              requireHostAdvance: true,
+              liveStartedAtMs: Date.now() - 15_000,
+            },
+          ],
+        },
+      }, { merge: true });
+
+      await expectHttpsError(
+        () => executeRunOfShowAction.run(requestFor(HOST_UID, {
+          roomCode: ROOM_CODE,
+          action: "complete",
+          itemId: "announce_hold",
+        })),
+        "failed-precondition"
+      );
     }],
 
     ["host can save and apply a run-of-show template", async () => {
@@ -216,6 +255,8 @@ async function run() {
       const items = roomSnap.get("runOfShowDirector.items") || [];
       assert.equal(items.length, 2);
       assert.equal(items[0].id, "perf_live");
+      assert.equal(items[1].advanceMode, "host_after_min");
+      assert.equal(items[1].hostAdvanceMinSec, 75);
       assert.equal(roomSnap.get("runOfShowTemplateMeta.currentTemplateId"), "kickoff_v1");
       assert.equal(roomSnap.get("runOfShowTemplateMeta.currentTemplateName"), "Kick-Off v1");
     }],

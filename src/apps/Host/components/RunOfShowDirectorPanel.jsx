@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { callFunction } from '../../../lib/firebase';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants';
 import {
+    RUN_OF_SHOW_ADVANCE_MODES,
     RUN_OF_SHOW_BLOCKED_ACTION_POLICIES,
     RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES,
     RUN_OF_SHOW_ITEM_TYPES,
@@ -15,6 +16,8 @@ import {
     getRunOfShowHudState,
     getRunOfShowHudToneClass,
     getRunOfShowBlockedActionLabel,
+    getRunOfShowAdvanceMode,
+    getRunOfShowHostAdvanceMinSec,
     getNextRunOfShowItem,
     getRunOfShowItemReadiness,
     getRunOfShowItemLabel,
@@ -62,6 +65,15 @@ const POLICY_LABELS = Object.freeze({
     manual_override_allowed: 'Allow manual override',
     skip_blocked_after_review: 'Skip after review'
 });
+const getAdvanceModeLabel = (item = {}) => {
+    const advanceMode = getRunOfShowAdvanceMode(item);
+    if (advanceMode === RUN_OF_SHOW_ADVANCE_MODES.host) return 'Host advances';
+    if (advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) {
+        const minimumSec = getRunOfShowHostAdvanceMinSec(item);
+        return minimumSec > 0 ? `Host after ${formatDurationSec(minimumSec) || `${minimumSec}s`}` : 'Host after minimum';
+    }
+    return 'Auto after duration';
+};
 const POLICY_PRESETS = Object.freeze([
     {
         id: 'hands_on',
@@ -781,6 +793,7 @@ const buildTakeoverPresetUpdate = (item = {}, presetId = '') => {
         }
     };
 };
+const TAKEOVER_ITEM_TYPES = new Set(['announcement', 'intro', 'closing', 'intermission', 'buffer']);
 const distributeInsertions = (count = 0, total = 0) => {
     if (!count || !total) return [];
     return Array.from({ length: count }, (_, index) => Math.max(1, Math.min(total, Math.round(((index + 1) * total) / (count + 1)))));
@@ -1017,6 +1030,278 @@ const ControlButton = ({ children, tone = 'default', className = '', ...props })
     return <button type="button" {...props} className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-1.5 min-h-[42px] touch-manipulation text-[10px] font-black uppercase tracking-[0.18em] disabled:opacity-40 ${toneClass} ${className}`}>{children}</button>;
 };
 
+const RunOfShowAdvanceModePicker = ({
+    item = {},
+    onUpdateItem,
+    disabled = false,
+    helper = 'During the show, use the live strip to change this without reopening the editor.'
+}) => {
+    const advanceMode = getRunOfShowAdvanceMode(item);
+    const minimumSec = getRunOfShowHostAdvanceMinSec(item);
+    const setAdvanceMode = (nextMode = RUN_OF_SHOW_ADVANCE_MODES.auto) => {
+        if (typeof onUpdateItem !== 'function' || !item?.id) return;
+        onUpdateItem(item.id, {
+            advanceMode: nextMode,
+            requireHostAdvance: nextMode !== RUN_OF_SHOW_ADVANCE_MODES.auto,
+            hostAdvanceMinSec: nextMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
+                ? Math.max(5, minimumSec || Number(item?.plannedDurationSec || 0) || 45)
+                : 0
+        });
+    };
+    const setMinimumSec = (nextValue = 0) => {
+        if (typeof onUpdateItem !== 'function' || !item?.id) return;
+        onUpdateItem(item.id, {
+            advanceMode: RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin,
+            requireHostAdvance: true,
+            hostAdvanceMinSec: Math.max(0, Number(nextValue || 0))
+        });
+    };
+    return (
+        <div className="rounded-2xl border border-amber-300/18 bg-amber-500/8 px-3 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <FieldLabel>Scene Progress</FieldLabel>
+                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                    {getAdvanceModeLabel(item)}
+                </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                    [RUN_OF_SHOW_ADVANCE_MODES.auto, 'Auto-advance'],
+                    [RUN_OF_SHOW_ADVANCE_MODES.host, 'Wait for me'],
+                    [RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin, 'Wait at least...']
+                ].map(([value, label]) => {
+                    const active = advanceMode === value;
+                    return (
+                        <button
+                            key={value}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => setAdvanceMode(value)}
+                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${active ? 'border-amber-300/35 bg-amber-500/14 text-amber-50' : 'border-white/10 bg-black/25 text-zinc-200 hover:border-amber-300/25'}`}
+                        >
+                            {label}
+                        </button>
+                    );
+                })}
+                {advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin ? (
+                    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-2.5 py-1">
+                        <input
+                            type="number"
+                            min="5"
+                            step="5"
+                            value={minimumSec}
+                            onChange={(e) => setMinimumSec(e.target.value)}
+                            disabled={disabled}
+                            className="w-16 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] font-black text-white disabled:opacity-40"
+                            aria-label="Minimum live time in seconds"
+                        />
+                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">sec</span>
+                    </div>
+                ) : null}
+            </div>
+            <div className="mt-2 text-xs text-amber-100/75">{helper}</div>
+        </div>
+    );
+};
+
+const TAKEOVER_SOUNDTRACK_SOURCE_META = Object.freeze({
+    youtube: {
+        label: 'YouTube',
+        primaryFieldLabel: 'YouTube ID',
+        primaryPlaceholder: 'dQw4w9WgXcQ',
+        secondaryFieldLabel: 'Fallback Media URL',
+        secondaryPlaceholder: 'Optional direct video URL'
+    },
+    apple_music: {
+        label: 'Apple Music',
+        primaryFieldLabel: 'Apple Music Track ID',
+        primaryPlaceholder: 'pl.u-...'
+    },
+    manual_external: {
+        label: 'Direct Media URL',
+        primaryFieldLabel: 'Media URL',
+        primaryPlaceholder: 'https://...'
+    }
+});
+
+const getTakeoverSoundtrackSourceMeta = (sourceType = '') => (
+    TAKEOVER_SOUNDTRACK_SOURCE_META[String(sourceType || '').trim().toLowerCase()] || null
+);
+
+const ROOM_OVERLAY_OPTIONS = Object.freeze([
+    { value: 'stage', label: 'Stage' },
+    { value: 'leaderboard', label: 'Leaderboard' },
+    { value: 'tipping', label: 'Tip CTA' }
+]);
+
+const ROOM_MODE_OPTIONS = Object.freeze([
+    { value: '', label: 'None' },
+    { value: 'selfie_cam', label: 'Selfie Cam' }
+]);
+
+const ROOM_LIGHTING_OPTIONS = Object.freeze([
+    { value: 'off', label: 'Off' },
+    { value: 'ballad', label: 'Ballad' },
+    { value: 'banger', label: 'Banger' }
+]);
+
+const RunOfShowTakeoverSoundtrackEditor = ({
+    presentationPlan = {},
+    audioPlan = {},
+    matchedTakeoverPreset = null,
+    customizeOpen = false,
+    onToggleCustomize,
+    onUpdatePresentationPlan,
+    onUpdateAudioPlan,
+    disabled = false
+}) => {
+    const sourceType = String(presentationPlan?.soundtrackSourceType || '').trim().toLowerCase();
+    const sourceMeta = getTakeoverSoundtrackSourceMeta(sourceType);
+    const sourceLabel = sourceMeta?.label || 'None';
+    const primaryValue = sourceType === 'youtube'
+        ? (presentationPlan?.soundtrackYoutubeId || '')
+        : sourceType === 'apple_music'
+            ? (presentationPlan?.soundtrackAppleMusicId || '')
+            : (presentationPlan?.soundtrackMediaUrl || '');
+    const setSourceType = (nextType = '') => {
+        if (typeof onUpdatePresentationPlan !== 'function') return;
+        onUpdatePresentationPlan({
+            soundtrackSourceType: nextType,
+            soundtrackYoutubeId: nextType === 'youtube' ? (presentationPlan?.soundtrackYoutubeId || '') : '',
+            soundtrackAppleMusicId: nextType === 'apple_music' ? (presentationPlan?.soundtrackAppleMusicId || '') : '',
+            soundtrackMediaUrl: nextType === 'manual_external'
+                ? (presentationPlan?.soundtrackMediaUrl || '')
+                : (nextType === 'youtube' ? (presentationPlan?.soundtrackMediaUrl || '') : ''),
+        });
+    };
+    const setPrimaryValue = (nextValue = '') => {
+        if (typeof onUpdatePresentationPlan !== 'function') return;
+        if (sourceType === 'youtube') {
+            onUpdatePresentationPlan({ soundtrackYoutubeId: nextValue });
+            return;
+        }
+        if (sourceType === 'apple_music') {
+            onUpdatePresentationPlan({ soundtrackAppleMusicId: nextValue });
+            return;
+        }
+        onUpdatePresentationPlan({ soundtrackMediaUrl: nextValue });
+    };
+    return (
+        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Takeover Soundtrack</div>
+                    <div className="mt-1 text-sm text-zinc-300">Attach one track for this scene, then open more options only when you need labels, ducking, or fallback media.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                        {sourceLabel}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={onToggleCustomize}
+                        disabled={disabled}
+                        className={`inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${customizeOpen ? 'border-cyan-300/28 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
+                    >
+                        {customizeOpen ? 'Hide Soundtrack Options' : 'Soundtrack Options'}
+                    </button>
+                </div>
+            </div>
+            {matchedTakeoverPreset?.soundtrackHint ? (
+                <div className="mt-2 text-xs text-zinc-400">{matchedTakeoverPreset.soundtrackHint}</div>
+            ) : null}
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div>
+                    <FieldLabel>Source</FieldLabel>
+                    <SelectControl
+                        value={sourceType}
+                        onChange={(e) => setSourceType(e.target.value)}
+                        disabled={disabled}
+                        className={textInputClass}
+                    >
+                        <option value="">None</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="apple_music">Apple Music</option>
+                        <option value="manual_external">Direct Media URL</option>
+                    </SelectControl>
+                </div>
+                {sourceMeta ? (
+                    <div className="md:col-span-1 xl:col-span-2">
+                        <FieldLabel>{sourceMeta.primaryFieldLabel}</FieldLabel>
+                        <input
+                            value={primaryValue}
+                            onChange={(e) => setPrimaryValue(e.target.value)}
+                            disabled={disabled}
+                            className={textInputClass}
+                            placeholder={sourceMeta.primaryPlaceholder}
+                        />
+                    </div>
+                ) : (
+                    <div className="md:col-span-1 xl:col-span-2 rounded-2xl border border-dashed border-white/10 bg-black/15 px-3 py-3 text-sm text-zinc-500">
+                        Pick a soundtrack source when this scene needs takeover audio.
+                    </div>
+                )}
+            </div>
+            {customizeOpen ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="xl:col-span-2">
+                        <FieldLabel>Now Playing Label</FieldLabel>
+                        <input
+                            value={presentationPlan?.soundtrackLabel || ''}
+                            onChange={(e) => onUpdatePresentationPlan?.({ soundtrackLabel: e.target.value })}
+                            disabled={disabled}
+                            className={textInputClass}
+                            placeholder="Optional now playing label"
+                        />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-zinc-300 pt-7">
+                        <input
+                            type="checkbox"
+                            checked={presentationPlan?.soundtrackAutoPlay === true}
+                            onChange={(e) => onUpdatePresentationPlan?.({ soundtrackAutoPlay: e.target.checked })}
+                            disabled={disabled}
+                        />
+                        Auto-play soundtrack
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-zinc-300 pt-7">
+                        <input
+                            type="checkbox"
+                            checked={audioPlan?.duckBackingEnabled === true}
+                            onChange={(e) => onUpdateAudioPlan?.({ duckBackingEnabled: e.target.checked })}
+                            disabled={disabled}
+                        />
+                        Duck backing audio
+                    </label>
+                    {audioPlan?.duckBackingEnabled === true ? (
+                        <div>
+                            <FieldLabel>Duck Level %</FieldLabel>
+                            <input
+                                type="number"
+                                value={audioPlan?.duckLevelPct ?? 35}
+                                onChange={(e) => onUpdateAudioPlan?.({ duckLevelPct: Number(e.target.value || 0) })}
+                                disabled={disabled}
+                                className={textInputClass}
+                            />
+                        </div>
+                    ) : null}
+                    {sourceType === 'youtube' ? (
+                        <div className="md:col-span-2 xl:col-span-4">
+                            <FieldLabel>{sourceMeta?.secondaryFieldLabel || 'Fallback Media URL'}</FieldLabel>
+                            <input
+                                value={presentationPlan?.soundtrackMediaUrl || ''}
+                                onChange={(e) => onUpdatePresentationPlan?.({ soundtrackMediaUrl: e.target.value })}
+                                disabled={disabled}
+                                className={textInputClass}
+                                placeholder={sourceMeta?.secondaryPlaceholder || 'Optional direct video URL'}
+                            />
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
+        </div>
+    );
+};
+
 const SelectControl = ({ children, className = '', ...props }) => (
     <div className="group relative">
         <select {...props} className={`${selectInputClass} border-cyan-300/18 bg-gradient-to-r from-black/45 to-zinc-900/70 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition group-hover:border-cyan-300/35 ${className}`}>
@@ -1029,8 +1314,103 @@ const SelectControl = ({ children, className = '', ...props }) => (
     </div>
 );
 
+const RunOfShowRoomBehaviorEditor = ({
+    item = {},
+    onUpdateItem,
+    disabled = false,
+    customizeOpen = false,
+    onToggleCustomize
+}) => {
+    const roomMomentPlan = item?.roomMomentPlan && typeof item.roomMomentPlan === 'object' ? item.roomMomentPlan : {};
+    const activeScreen = String(roomMomentPlan?.activeScreen || '').trim() || 'stage';
+    const activeMode = String(roomMomentPlan?.activeMode || '').trim();
+    const lightMode = String(roomMomentPlan?.lightMode || 'off').trim() || 'off';
+    const updateRoomMomentPlan = (patch = {}) => {
+        if (typeof onUpdateItem !== 'function' || !item?.id) return;
+        onUpdateItem(item.id, { roomMomentPlan: { ...(roomMomentPlan || {}), ...(patch || {}) } });
+    };
+    return (
+        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Room Behavior</div>
+                    <div className="mt-1 text-sm text-zinc-300">Set what the room should see first, then open more options only when this scene needs lighting or a how-to overlay.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                        {compactMomentSummary(roomMomentPlan) || 'Stage only'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={onToggleCustomize}
+                        disabled={disabled}
+                        className={`inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${customizeOpen ? 'border-amber-300/28 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
+                    >
+                        {customizeOpen ? 'Hide Room Options' : 'Room Options'}
+                    </button>
+                </div>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                    <FieldLabel>TV Overlay</FieldLabel>
+                    <SelectControl
+                        value={activeScreen}
+                        onChange={(e) => updateRoomMomentPlan({ activeScreen: e.target.value === 'stage' ? '' : e.target.value })}
+                        disabled={disabled}
+                        className={textInputClass}
+                    >
+                        {ROOM_OVERLAY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                    </SelectControl>
+                </div>
+                <div>
+                    <FieldLabel>Phone / Room Mode</FieldLabel>
+                    <SelectControl
+                        value={activeMode}
+                        onChange={(e) => updateRoomMomentPlan({ activeMode: e.target.value })}
+                        disabled={disabled}
+                        className={textInputClass}
+                    >
+                        {ROOM_MODE_OPTIONS.map((option) => (
+                            <option key={option.value || 'none'} value={option.value}>{option.label}</option>
+                        ))}
+                    </SelectControl>
+                </div>
+            </div>
+            {customizeOpen ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div>
+                        <FieldLabel>Vibe Lighting</FieldLabel>
+                        <SelectControl
+                            value={lightMode}
+                            onChange={(e) => updateRoomMomentPlan({ lightMode: e.target.value })}
+                            disabled={disabled}
+                            className={textInputClass}
+                        >
+                            {ROOM_LIGHTING_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </SelectControl>
+                    </div>
+                    <label className="flex items-center gap-2 rounded-2xl bg-black/10 px-3 py-2 text-sm text-zinc-300 md:col-span-1 xl:col-span-2 xl:mt-6">
+                        <input
+                            type="checkbox"
+                            checked={roomMomentPlan?.showHowToPlay === true}
+                            onChange={(e) => updateRoomMomentPlan({ showHowToPlay: e.target.checked })}
+                            disabled={disabled}
+                        />
+                        Show How To Play overlay
+                    </label>
+                </div>
+            ) : null}
+        </div>
+    );
+};
+
 const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) => {
     const isPerformance = String(item?.type || '').trim().toLowerCase() === 'performance';
+    const audioPlan = item?.audioPlan && typeof item.audioPlan === 'object' ? item.audioPlan : {};
     return (
         <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1110,9 +1490,30 @@ const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) =
                         </div>
                     </div>
                 ) : null}
+                <div>
+                    <FieldLabel>Scene Cue</FieldLabel>
+                    <div className="mt-1">
+                        <SelectControl
+                            value={audioPlan?.momentCueId || ''}
+                            onChange={(e) => onUpdateItem?.(item.id, {
+                                audioPlan: {
+                                    ...(audioPlan || {}),
+                                    momentCueId: e.target.value,
+                                    momentCueAutoFire: e.target.value ? (audioPlan?.momentCueAutoFire ?? true) : false
+                                }
+                            })}
+                            disabled={disabled}
+                        >
+                            <option value="">No cue</option>
+                            {MOMENT_CUE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </SelectControl>
+                    </div>
+                </div>
             </div>
             <div className="mt-3 text-xs text-zinc-400">
-                Use the full builder only for takeovers, track source, room behavior, or slot policy.
+                Open the full editor when this scene needs public-TV treatment, soundtrack, room behavior, or slot policy changes.
             </div>
         </div>
     );
@@ -1124,95 +1525,110 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
     const cueTiming = String(audioPlan?.momentCueTiming || 'start').trim().toLowerCase() || 'start';
     const autoFire = audioPlan?.momentCueAutoFire === true;
     const activeCue = getHostMomentCueMeta(cueId);
+    const hasCustomCueOptions = Boolean(cueId) && (cueTiming !== 'start' || autoFire === false);
+    const [customizeOpen, setCustomizeOpen] = useState(hasCustomCueOptions);
+    useEffect(() => {
+        if (hasCustomCueOptions) setCustomizeOpen(true);
+    }, [hasCustomCueOptions, item?.id]);
+    const setCueId = (nextCueId = '') => {
+        onUpdateItem?.(item.id, {
+            audioPlan: {
+                ...(audioPlan || {}),
+                momentCueId: nextCueId,
+                momentCueTiming: nextCueId ? (audioPlan?.momentCueTiming || 'start') : 'start',
+                momentCueAutoFire: nextCueId ? (audioPlan?.momentCueAutoFire ?? true) : false
+            }
+        });
+    };
     return (
         <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Cue</div>
-            <div className="mt-1 text-sm text-zinc-300">Pick one short console-style moment for this scene. Use it when the beat needs punctuation, not constant noise.</div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                <button
-                    type="button"
-                    onClick={() => onUpdateItem?.(item.id, {
-                        audioPlan: {
-                            ...(audioPlan || {}),
-                            momentCueId: '',
-                            momentCueAutoFire: false
-                        }
-                    })}
-                    disabled={disabled}
-                    className={`rounded-2xl border px-3 py-3 text-left transition ${!cueId ? 'border-white/18 bg-white/8 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.08)]' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-white/20 hover:bg-white/6'}`}
-                >
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">No cue</div>
-                    <div className="mt-1 text-sm font-semibold">Keep this scene clean</div>
-                    <div className="mt-1 text-xs text-zinc-400">No extra stinger or room punctuation.</div>
-                </button>
-                {MOMENT_CUE_OPTIONS.map((option) => {
-                    const active = cueId === option.value;
-                    return (
-                        <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => onUpdateItem?.(item.id, {
-                                audioPlan: {
-                                    ...(audioPlan || {}),
-                                    momentCueId: option.value,
-                                    momentCueAutoFire: true
-                                }
-                            })}
-                            disabled={disabled}
-                            className={`rounded-2xl border px-3 py-3 text-left transition ${active ? `${option.toneClass} shadow-[0_0_0_1px_rgba(255,255,255,0.08)]` : 'border-white/10 bg-black/20 text-zinc-200 hover:border-white/20 hover:bg-white/6'}`}
-                        >
-                            <div className="flex items-start justify-between gap-3">
-                                <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${active ? 'border-white/18 bg-black/15 text-white' : 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                                    <i className={`fa-solid ${option.icon}`}></i>
-                                </span>
-                                {active ? (
-                                    <span className="rounded-full border border-white/15 bg-black/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/90">
-                                        Selected
-                                    </span>
-                                ) : null}
-                            </div>
-                            <div className="mt-2 text-sm font-semibold text-white">{option.label}</div>
-                            <div className="mt-1 text-xs text-current/80">{option.detail}</div>
-                        </button>
-                    );
-                })}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Cue</div>
+                    <div className="mt-1 text-sm text-zinc-300">Pick one short room beat for this scene, then only open more options when timing or manual triggering needs to change.</div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${activeCue?.chipClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
+                        {cueId ? cueSummaryLabel(audioPlan) : 'No cue'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => setCustomizeOpen((current) => !current)}
+                        disabled={disabled || !cueId}
+                        className={`inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${customizeOpen && cueId ? 'border-fuchsia-300/28 bg-fuchsia-500/10 text-fuchsia-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
+                    >
+                        {customizeOpen && cueId ? 'Hide Cue Options' : 'Cue Options'}
+                    </button>
+                </div>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
                 <div>
-                    <FieldLabel>Timing</FieldLabel>
+                    <FieldLabel>Cue</FieldLabel>
                     <SelectControl
-                        value={cueTiming}
-                        onChange={(event) => onUpdateItem?.(item.id, {
-                            audioPlan: {
-                                ...(audioPlan || {}),
-                                momentCueTiming: event.target.value
-                            }
-                        })}
-                        disabled={disabled || !cueId}
+                        value={cueId}
+                        onChange={(event) => setCueId(event.target.value)}
+                        disabled={disabled}
                     >
-                        {MOMENT_CUE_TIMING_OPTIONS.map((option) => (
+                        <option value="">No cue</option>
+                        {MOMENT_CUE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
                     </SelectControl>
                     {activeCue?.editorHint ? (
                         <div className="mt-2 text-xs text-zinc-500">{activeCue.editorHint}</div>
-                    ) : null}
+                    ) : (
+                        <div className="mt-2 text-xs text-zinc-500">Leave this empty when the scene should stay clean and unpunctuated.</div>
+                    )}
                 </div>
-                <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
-                    <input
-                        type="checkbox"
-                        checked={cueId ? autoFire : false}
-                        onChange={(event) => onUpdateItem?.(item.id, {
-                            audioPlan: {
-                                ...(audioPlan || {}),
-                                momentCueAutoFire: cueId ? event.target.checked : false
-                            }
-                        })}
-                        disabled={disabled || !cueId}
-                    />
-                    <span>Auto-fire this cue</span>
-                </label>
+                {cueId ? (
+                    <div className={`rounded-2xl border px-3 py-3 text-sm ${activeCue?.toneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
+                        <div className="flex items-center gap-2">
+                            <i className={`fa-solid ${activeCue?.icon || 'fa-bolt'}`}></i>
+                            <span className="font-semibold text-white">{activeCue?.label || cueId}</span>
+                        </div>
+                        <div className="mt-1 text-xs text-current/80">{activeCue?.detail || 'Short room punctuation for this scene.'}</div>
+                    </div>
+                ) : (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-3 py-3 text-sm text-zinc-500">
+                        No cue attached.
+                    </div>
+                )}
             </div>
+            {customizeOpen && cueId ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+                    <div>
+                        <FieldLabel>Timing</FieldLabel>
+                        <SelectControl
+                            value={cueTiming}
+                            onChange={(event) => onUpdateItem?.(item.id, {
+                                audioPlan: {
+                                    ...(audioPlan || {}),
+                                    momentCueTiming: event.target.value
+                                }
+                            })}
+                            disabled={disabled}
+                        >
+                            {MOMENT_CUE_TIMING_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </SelectControl>
+                    </div>
+                    <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
+                        <input
+                            type="checkbox"
+                            checked={autoFire}
+                            onChange={(event) => onUpdateItem?.(item.id, {
+                                audioPlan: {
+                                    ...(audioPlan || {}),
+                                    momentCueAutoFire: event.target.checked
+                                }
+                            })}
+                            disabled={disabled}
+                        />
+                        <span>Auto-fire this cue</span>
+                    </label>
+                </div>
+            ) : null}
             {cueId ? (
                 <div className="mt-3 rounded-xl bg-black/15 px-3 py-2 text-xs text-zinc-400">
                     {autoFire
@@ -1677,8 +2093,8 @@ const StoryboardTimeline = ({
                                             <div className={`mt-1 text-sm font-semibold ${blockers ? 'text-amber-100' : pendingCount ? 'text-amber-100' : 'text-emerald-100'}`}>{readinessLabel}</div>
                                         </div>
                                         <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
-                                            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Mode</div>
-                                            <div className="mt-1 text-sm font-semibold text-white">{item.automationMode || 'auto'}</div>
+                                            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Advance</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">{getAdvanceModeLabel(item)}</div>
                                         </div>
                                     </div>
                                 </button>
@@ -1740,8 +2156,6 @@ const TimelineStudio = ({
     onAddScenePack,
     onToggleGenerator,
     generatorOpen = false,
-    momentPacksOpen = false,
-    onToggleMomentPacks,
 }) => {
     const tickMarks = [0, 25, 50, 75, 100];
     const addSpotlightMoment = (modeId = '', option = null) => {
@@ -1863,19 +2277,15 @@ const TimelineStudio = ({
                         </button>
                     ))}
                 </div>
-            </div>
-            <div className="mt-4">
-                <CollapsiblePanel
-                    label="Curated Packs"
-                    title="Reusable specialist moments"
-                    summary="Optional prebuilt beats like TV takeovers, onboarding, selfie cam, leaderboard flashes, and light cues."
-                    open={momentPacksOpen}
-                    onToggle={onToggleMomentPacks}
-                    badge={`${MOMENT_PACKS.length} presets`}
-                    tone="violet"
-                    compact
-                >
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-4 border-t border-white/10 pt-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Curated Packs</div>
+                            <div className="mt-1 text-sm text-zinc-300">Drop in proven takeovers, onboarding beats, leaderboard flashes, and other specialist moments from the same add menu.</div>
+                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{MOMENT_PACKS.length} reusable packs</div>
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                         {MOMENT_PACKS.map((pack) => (
                             <button
                                 key={pack.id}
@@ -1902,7 +2312,7 @@ const TimelineStudio = ({
                             </button>
                         ))}
                     </div>
-                </CollapsiblePanel>
+                </div>
             </div>
             {items.length ? (
                 <div className="mt-4 space-y-3">
@@ -2321,6 +2731,122 @@ const QuickDraftModal = ({
                                 {generatorBusy ? 'Applying...' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
                             </ControlButton>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const TemplateToolsModal = ({
+    open = false,
+    onClose,
+    canManageTemplates = false,
+    starterTemplateOptions = [],
+    templateDraftName = '',
+    onTemplateDraftNameChange,
+    currentTemplateId = '',
+    currentTemplateName = '',
+    runOfShowTemplates = [],
+    onApplyStarterTemplate,
+    onApplyTemplate,
+    onSaveTemplate,
+    onArchiveCurrent,
+    lastArchiveId = '',
+}) => {
+    if (!open) return null;
+    const safeTemplates = Array.isArray(runOfShowTemplates) ? runOfShowTemplates : [];
+
+    return (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/72 p-3 sm:items-center sm:p-4">
+            <div className="max-h-[calc(100dvh-1rem)] w-full max-w-5xl overflow-hidden rounded-[28px] border border-cyan-300/22 bg-[linear-gradient(180deg,rgba(5,10,22,0.98),rgba(8,13,24,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
+                    <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Templates</div>
+                        <div className="mt-1 text-sm font-semibold text-white">Reuse proven show formats without crowding the main editing lane.</div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                {currentTemplateName || 'Unsaved working copy'}
+                            </span>
+                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                {safeTemplates.length} saved
+                            </span>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25"
+                    >
+                        Close
+                    </button>
+                </div>
+                <div className="max-h-[calc(100dvh-10.5rem)] overflow-y-auto px-4 py-4 sm:px-5">
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.95fr)]">
+                        <article className={`${surfaceClass} p-4`}>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Starter Templates</div>
+                            <div className="mt-1 text-sm text-zinc-300">Apply a proven room format before you fine-tune tonight&rsquo;s sequence.</div>
+                            <div className="mt-4 grid gap-2">
+                                {starterTemplateOptions.map((entry) => (
+                                    <button
+                                        key={entry.id}
+                                        type="button"
+                                        disabled={!canManageTemplates}
+                                        onClick={() => onApplyStarterTemplate?.(entry.id)}
+                                        className={`rounded-2xl border px-3 py-3 text-left transition disabled:opacity-40 ${entry.toneClass}`}
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-black/15 text-white">
+                                                <i className={`fa-solid ${entry.icon}`}></i>
+                                            </span>
+                                            <span className="rounded-full border border-white/15 bg-black/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/90">
+                                                Starter
+                                            </span>
+                                        </div>
+                                        <div className="mt-2 text-sm font-semibold text-white">{entry.label}</div>
+                                        <div className="mt-1 text-xs text-current/80">{entry.detail}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </article>
+
+                        <article className={`${surfaceClass} p-4`}>
+                            <div className="space-y-3">
+                                <div>
+                                    <FieldLabel>Template Name</FieldLabel>
+                                    <input
+                                        value={templateDraftName}
+                                        onChange={(e) => onTemplateDraftNameChange?.(e.target.value)}
+                                        disabled={!canManageTemplates}
+                                        className={textInputClass}
+                                        placeholder="AAHF Kick-Off Format"
+                                    />
+                                </div>
+                                <div>
+                                    <FieldLabel>Saved Templates</FieldLabel>
+                                    <SelectControl value={currentTemplateId || ''} onChange={(e) => onApplyTemplate?.(e.target.value)} disabled={!canManageTemplates}>
+                                        <option value="">Select a saved template</option>
+                                        {safeTemplates.map((entry) => (
+                                            <option key={entry.id || entry.templateId} value={entry.templateId || entry.id}>{entry.templateName || entry.templateId || entry.id}</option>
+                                        ))}
+                                    </SelectControl>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-3">
+                                    <ControlButton tone="primary" disabled={!canManageTemplates} onClick={() => onSaveTemplate?.(templateDraftName || currentTemplateName || 'Run Of Show Template')}>
+                                        Save Template
+                                    </ControlButton>
+                                    <ControlButton disabled={!canManageTemplates || !String(currentTemplateId || '').trim()} onClick={() => onApplyTemplate?.(currentTemplateId)}>
+                                        Reset To Current
+                                    </ControlButton>
+                                    <ControlButton tone="warning" disabled={!canManageTemplates} onClick={() => onArchiveCurrent?.(templateDraftName || currentTemplateName || 'Archived Run Of Show')}>
+                                        Archive Night
+                                    </ControlButton>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
+                                    Current template: <span className="text-white">{currentTemplateName || 'Unsaved working copy'}</span>{lastArchiveId ? ` | Last archive ${lastArchiveId}` : ''}
+                                </div>
+                            </div>
+                        </article>
                     </div>
                 </div>
             </div>
@@ -2765,8 +3291,9 @@ export default function RunOfShowDirectorPanel({
     const [generatorConfig, setGeneratorConfig] = useState({ ...GENERATOR_DEFAULTS });
     const [generatorBusy, setGeneratorBusy] = useState(false);
     const [quickDraftModalOpen, setQuickDraftModalOpen] = useState(false);
-    const [momentPacksOpen, setMomentPacksOpen] = useState(false);
     const [approvalInboxOpen, setApprovalInboxOpen] = useState(true);
+    const [liveWaitAtLeastSec, setLiveWaitAtLeastSec] = useState(30);
+    const [liveAdjustmentNowMs, setLiveAdjustmentNowMs] = useState(() => Date.now());
     const [planningControlsOpen, setPlanningControlsOpen] = useState(items.length === 0);
     const [coHostToolsOpen, setCoHostToolsOpen] = useState(false);
     const [templateToolsOpen, setTemplateToolsOpen] = useState(false);
@@ -2856,6 +3383,26 @@ export default function RunOfShowDirectorPanel({
     const liveAdjustmentDurationSec = Math.max(0, Number(liveAdjustmentTarget?.plannedDurationSec || 0));
     const liveAdjustmentSoundtrackConfigured = hasRunOfShowTakeoverSoundtrackIdentity(liveAdjustmentTarget?.presentationPlan || {});
     const liveAdjustmentSoundtrackActive = liveAdjustmentSoundtrackConfigured && liveAdjustmentTarget?.presentationPlan?.soundtrackAutoPlay === true;
+    const liveAdjustmentAdvanceMode = getRunOfShowAdvanceMode(liveAdjustmentTarget || {});
+    const liveAdjustmentHostAdvanceMinSec = getRunOfShowHostAdvanceMinSec(liveAdjustmentTarget || {});
+    const liveAdjustmentElapsedSec = liveAdjustmentTarget?.status === 'live'
+        ? Math.max(0, Math.floor((liveAdjustmentNowMs - Number(liveAdjustmentTarget?.liveStartedAtMs || 0)) / 1000))
+        : 0;
+    const liveAdjustmentSupportsAdvanceControl = liveItem?.id === liveAdjustmentTarget?.id
+        && String(liveAdjustmentTarget?.type || '').trim().toLowerCase() !== 'performance';
+    const liveAdjustmentRequiresHostAdvance = liveAdjustmentAdvanceMode !== RUN_OF_SHOW_ADVANCE_MODES.auto;
+    const liveAdjustmentMinAdvanceRemainingSec = liveAdjustmentTarget?.status === 'live' && liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
+        ? Math.max(0, Math.ceil(((Number(liveAdjustmentTarget?.liveStartedAtMs || 0) + (liveAdjustmentHostAdvanceMinSec * 1000)) - liveAdjustmentNowMs) / 1000))
+        : 0;
+    const liveAdjustmentAdvanceSummary = liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.host
+        ? 'host advances'
+        : liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
+            ? (liveAdjustmentTarget?.status === 'live'
+                ? (liveAdjustmentMinAdvanceRemainingSec > 0
+                    ? `host can advance in ${formatDurationSec(liveAdjustmentMinAdvanceRemainingSec) || `${liveAdjustmentMinAdvanceRemainingSec}s`}`
+                    : 'host can advance now')
+                : `host advances after ${formatDurationSec(liveAdjustmentHostAdvanceMinSec) || `${liveAdjustmentHostAdvanceMinSec}s`}`)
+            : '';
     const handleExtendLiveAdjustment = async (deltaSec = 30) => {
         if (!liveAdjustmentTarget?.id || typeof onUpdateItem !== 'function') return;
         await onUpdateItem(liveAdjustmentTarget.id, {
@@ -2873,10 +3420,55 @@ export default function RunOfShowDirectorPanel({
         });
         openItem(liveAdjustmentTarget.id, { preserveRepair: true, scrollToSetup: false });
     };
+    const handleSetLiveAdvanceMode = async (nextMode = RUN_OF_SHOW_ADVANCE_MODES.auto, options = {}) => {
+        if (!liveAdjustmentSupportsAdvanceControl || !liveAdjustmentTarget?.id || typeof onUpdateItem !== 'function') return;
+        const extraSec = Math.max(5, Number(options.extraSec ?? liveWaitAtLeastSec) || 30);
+        const nextPatch = nextMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
+            ? {
+                advanceMode: RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin,
+                requireHostAdvance: true,
+                hostAdvanceMinSec: Math.max(0, liveAdjustmentElapsedSec + extraSec)
+            }
+            : nextMode === RUN_OF_SHOW_ADVANCE_MODES.host
+                ? {
+                    advanceMode: RUN_OF_SHOW_ADVANCE_MODES.host,
+                    requireHostAdvance: true,
+                    hostAdvanceMinSec: 0
+                }
+                : {
+                    advanceMode: RUN_OF_SHOW_ADVANCE_MODES.auto,
+                    requireHostAdvance: false,
+                    hostAdvanceMinSec: 0
+                };
+        await onUpdateItem(liveAdjustmentTarget.id, nextPatch);
+        openItem(liveAdjustmentTarget.id, { preserveRepair: true, scrollToSetup: false });
+    };
+    const handleLiveWaitAtLeastInput = async (rawValue = '') => {
+        const nextExtraSec = Math.max(5, Number(rawValue || 0) || 0);
+        setLiveWaitAtLeastSec(nextExtraSec);
+        if (liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) {
+            await handleSetLiveAdvanceMode(RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin, { extraSec: nextExtraSec });
+        }
+    };
     const handleSkipUpcomingItem = async () => {
         if (!liveAdjustmentUpcomingTarget?.id || typeof onSkipItem !== 'function') return;
         await onSkipItem(liveAdjustmentUpcomingTarget.id, { manualAdvance: true });
     };
+    useEffect(() => {
+        if (!liveAdjustmentSupportsAdvanceControl || liveAdjustmentAdvanceMode !== RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) return undefined;
+        const timer = setInterval(() => {
+            setLiveAdjustmentNowMs(Date.now());
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [liveAdjustmentAdvanceMode, liveAdjustmentSupportsAdvanceControl]);
+    useEffect(() => {
+        if (!liveAdjustmentTarget?.id) return;
+        if (liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) {
+            setLiveWaitAtLeastSec(Math.max(5, liveAdjustmentMinAdvanceRemainingSec || 30));
+            return;
+        }
+        setLiveWaitAtLeastSec(30);
+    }, [liveAdjustmentAdvanceMode, liveAdjustmentMinAdvanceRemainingSec, liveAdjustmentTarget?.id]);
     useEffect(() => {
         const targetId = String(focusRequest?.itemId || '').trim();
         if (!targetId) return;
@@ -2944,9 +3536,12 @@ export default function RunOfShowDirectorPanel({
         const key = sectionKey(itemId, section);
         return Object.prototype.hasOwnProperty.call(sectionOpenState, key) ? !!sectionOpenState[key] : defaultOpen;
     };
-    const openSection = (itemId = '', section = '') => {
+    const setSectionOpen = (itemId = '', section = '', open = true) => {
         const key = sectionKey(itemId, section);
-        setSectionOpenState((prev) => ({ ...prev, [key]: true }));
+        setSectionOpenState((prev) => ({ ...prev, [key]: !!open }));
+    };
+    const openSection = (itemId = '', section = '') => {
+        setSectionOpen(itemId, section, true);
     };
     const scrollPerformancePrepSectionIntoView = (itemId = '', step = 'singer') => {
         const safeItemId = String(itemId || '').trim();
@@ -4195,6 +4790,7 @@ export default function RunOfShowDirectorPanel({
                                         </div>
                                         <div className="mt-1 text-xs text-zinc-400">
                                             {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} · {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
+                                            {liveAdjustmentRequiresHostAdvance ? ` · ${liveAdjustmentAdvanceSummary}` : ''}
                                             {liveAdjustmentSoundtrackConfigured ? ` · takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
                                         </div>
                                     </div>
@@ -4237,6 +4833,71 @@ export default function RunOfShowDirectorPanel({
                                         ) : null}
                                     </div>
                                 </div>
+                                {liveAdjustmentSupportsAdvanceControl ? (
+                                    <div className="mt-3 rounded-[18px] border border-white/10 bg-black/20 px-3 py-3">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Scene Progress</div>
+                                                <div className="mt-1 text-sm font-semibold text-white">
+                                                    {liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.auto
+                                                        ? 'Auto-advance is on.'
+                                                        : liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.host
+                                                            ? 'The host decides when this scene ends.'
+                                                            : liveAdjustmentMinAdvanceRemainingSec > 0
+                                                                ? `The host can advance this scene in ${formatDurationSec(liveAdjustmentMinAdvanceRemainingSec) || `${liveAdjustmentMinAdvanceRemainingSec}s`}.`
+                                                                : 'The minimum live time has elapsed. The host can advance when ready.'}
+                                                </div>
+                                            </div>
+                                            <div className="rounded-full border border-white/10 bg-black/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                                {liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.auto
+                                                    ? 'Auto-advance'
+                                                    : liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.host
+                                                        ? 'Wait for me'
+                                                        : 'Wait at least...'}
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                data-live-adjustment="advance-auto"
+                                                onClick={() => handleSetLiveAdvanceMode(RUN_OF_SHOW_ADVANCE_MODES.auto)}
+                                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] ${liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.auto ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-200 hover:border-emerald-300/25'}`}
+                                            >
+                                                Auto-advance
+                                            </button>
+                                            <button
+                                                type="button"
+                                                data-live-adjustment="advance-host"
+                                                onClick={() => handleSetLiveAdvanceMode(RUN_OF_SHOW_ADVANCE_MODES.host)}
+                                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] ${liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.host ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-white/10 bg-black/25 text-zinc-200 hover:border-amber-300/25'}`}
+                                            >
+                                                Wait for me
+                                            </button>
+                                            <div className={`flex items-center gap-2 rounded-full border px-2.5 py-1 ${liveAdjustmentAdvanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                                <button
+                                                    type="button"
+                                                    data-live-adjustment="advance-host-after-min"
+                                                    onClick={() => handleSetLiveAdvanceMode(RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin)}
+                                                    className="text-[10px] font-black uppercase tracking-[0.16em]"
+                                                >
+                                                    Wait at least...
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    min="5"
+                                                    step="5"
+                                                    value={liveWaitAtLeastSec}
+                                                    onChange={(e) => {
+                                                        void handleLiveWaitAtLeastInput(e.target.value);
+                                                    }}
+                                                    className="w-16 rounded-full border border-white/10 bg-black/35 px-2 py-1 text-[10px] font-black text-white"
+                                                    aria-label="Additional wait time in seconds"
+                                                />
+                                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-current/80">sec</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
                                 <div className="mt-2 text-xs text-zinc-500">
                                     Drag the strip above to reorder fast when a singer no-shows or the room energy shifts.
                                 </div>
@@ -4278,6 +4939,23 @@ export default function RunOfShowDirectorPanel({
                 onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
                 generatedDraftItems={generatedDraftItems}
                 itemsCount={items.length}
+            />
+
+            <TemplateToolsModal
+                open={templateToolsOpen}
+                onClose={() => setTemplateToolsOpen(false)}
+                canManageTemplates={safeOperatorCapabilities.canManageTemplates}
+                starterTemplateOptions={STARTER_TEMPLATE_OPTIONS}
+                templateDraftName={templateDraftName}
+                onTemplateDraftNameChange={setTemplateDraftName}
+                currentTemplateId={safeTemplateMeta.currentTemplateId || ''}
+                currentTemplateName={safeTemplateMeta.currentTemplateName || ''}
+                runOfShowTemplates={runOfShowTemplates}
+                onApplyStarterTemplate={onApplyStarterTemplate}
+                onApplyTemplate={onApplyTemplate}
+                onSaveTemplate={onSaveTemplate}
+                onArchiveCurrent={onArchiveCurrent}
+                lastArchiveId={safeTemplateMeta.lastArchiveId || ''}
             />
 
             {goLiveSheetOpen && !isRunOfShowActive ? (
@@ -4459,64 +5137,22 @@ export default function RunOfShowDirectorPanel({
                         </div>
                     </UtilityDrawer>
 
-                    <UtilityDrawer
-                        eyebrow="Templates"
-                        title="Reuse a proven show format"
-                        summary="Keep template operations available without taking over the main planning view."
-                        open={templateToolsOpen}
-                        onToggle={() => setTemplateToolsOpen((prev) => !prev)}
-                        badge={safeTemplateMeta.currentTemplateName || 'Unsaved'}
-                    >
-                        <div className="space-y-3">
-                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Starter Templates</div>
-                                <div className="mt-1 text-sm text-zinc-300">Apply a proven room format before you start fine-tuning the night.</div>
-                                <div className="mt-3 grid gap-2">
-                                    {STARTER_TEMPLATE_OPTIONS.map((entry) => (
-                                        <button
-                                            key={entry.id}
-                                            type="button"
-                                            disabled={!safeOperatorCapabilities.canManageTemplates}
-                                            onClick={() => onApplyStarterTemplate?.(entry.id)}
-                                            className={`rounded-2xl border px-3 py-3 text-left transition disabled:opacity-40 ${entry.toneClass}`}
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/15 bg-black/15 text-white">
-                                                    <i className={`fa-solid ${entry.icon}`}></i>
-                                                </span>
-                                                <span className="rounded-full border border-white/15 bg-black/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-white/90">
-                                                    Starter
-                                                </span>
-                                            </div>
-                                            <div className="mt-2 text-sm font-semibold text-white">{entry.label}</div>
-                                            <div className="mt-1 text-xs text-current/80">{entry.detail}</div>
-                                        </button>
-                                    ))}
+                    <article className={`${surfaceClass} p-4`}>
+                        <div className="rounded-[24px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(10,17,32,0.92),rgba(18,12,34,0.86))] p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">Templates</div>
+                                    <div className="mt-1 text-sm font-semibold text-white">Keep reusable show formats in a separate tray.</div>
+                                    <div className="mt-2 text-xs text-zinc-300">
+                                        Current template: <span className="text-white">{safeTemplateMeta.currentTemplateName || 'Unsaved working copy'}</span>{safeTemplateMeta.lastArchiveId ? ` | Last archive ${safeTemplateMeta.lastArchiveId}` : ''}
+                                    </div>
                                 </div>
-                            </div>
-                            <div>
-                                <FieldLabel>Template Name</FieldLabel>
-                                <input value={templateDraftName} onChange={(e) => setTemplateDraftName(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates} className={textInputClass} placeholder="AAHF Kick-Off Format" />
-                            </div>
-                            <div>
-                                <FieldLabel>Saved Templates</FieldLabel>
-                                <SelectControl value={safeTemplateMeta.currentTemplateId || ''} onChange={(e) => onApplyTemplate?.(e.target.value)} disabled={!safeOperatorCapabilities.canManageTemplates}>
-                                    <option value="">Select a saved template</option>
-                                    {(Array.isArray(runOfShowTemplates) ? runOfShowTemplates : []).map((entry) => (
-                                        <option key={entry.id || entry.templateId} value={entry.templateId || entry.id}>{entry.templateName || entry.templateId || entry.id}</option>
-                                    ))}
-                                </SelectControl>
-                            </div>
-                            <div className="grid gap-2 sm:grid-cols-3">
-                                <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onSaveTemplate?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Run Of Show Template')}>Save Template</ControlButton>
-                                <ControlButton disabled={!safeOperatorCapabilities.canManageTemplates || !(safeTemplateMeta.currentTemplateId || '').trim()} onClick={() => onApplyTemplate?.(safeTemplateMeta.currentTemplateId)}>Reset To Current Template</ControlButton>
-                                <ControlButton tone="warning" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => onArchiveCurrent?.(templateDraftName || safeTemplateMeta.currentTemplateName || 'Archived Run Of Show')}>Archive Night</ControlButton>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-400">
-                                Current template: <span className="text-white">{safeTemplateMeta.currentTemplateName || 'Unsaved working copy'}</span>{safeTemplateMeta.lastArchiveId ? ` | Last archive ${safeTemplateMeta.lastArchiveId}` : ''}
+                                <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canManageTemplates} onClick={() => setTemplateToolsOpen(true)}>
+                                    Open Templates
+                                </ControlButton>
                             </div>
                         </div>
-                    </UtilityDrawer>
+                    </article>
                 </div>
             ) : null}
 
@@ -4658,8 +5294,6 @@ export default function RunOfShowDirectorPanel({
                             onAddScenePack={applyScenePack}
                             onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
                             generatorOpen={generatorOpen}
-                            momentPacksOpen={momentPacksOpen}
-                            onToggleMomentPacks={() => setMomentPacksOpen((prev) => !prev)}
                             getPrimaryAction={getPrimaryActionForItem}
                             onFocus={openItem}
                             dragState={dragState}
@@ -5038,6 +5672,60 @@ export default function RunOfShowDirectorPanel({
                             if (!safeOperatorCapabilities.canCurateMedia) return;
                             onUpdateItem?.(item.id, { backingPlan: { ...(item.backingPlan || {}), ...(patch || {}) } });
                         };
+                        const presentationPlan = item?.presentationPlan && typeof item.presentationPlan === 'object' ? item.presentationPlan : {};
+                        const audioPlan = item?.audioPlan && typeof item.audioPlan === 'object' ? item.audioPlan : {};
+                        const supportsPresentationScene = TAKEOVER_ITEM_TYPES.has(String(item?.type || '').trim().toLowerCase());
+                        const matchedTakeoverPreset = getTakeoverStylePresetMatch(item);
+                        const hasCustomPresentationOverrides = Boolean(String(presentationPlan?.backgroundMedia || '').trim())
+                            || (!matchedTakeoverPreset && (
+                                String(presentationPlan?.takeoverScene || '').trim()
+                                || String(presentationPlan?.accentTheme || '').trim()
+                            ));
+                        const presentationCustomOverridesOpen = isSectionOpen(item.id, 'presentation_custom_overrides', hasCustomPresentationOverrides);
+                        const soundtrackConfigured = hasRunOfShowTakeoverSoundtrackIdentity(presentationPlan);
+                        const soundtrackControlsOpen = isSectionOpen(item.id, 'presentation_soundtrack', soundtrackConfigured);
+                        const soundtrackSourceType = String(presentationPlan?.soundtrackSourceType || '').trim().toLowerCase();
+                        const hasCustomSoundtrackOptions = Boolean(String(presentationPlan?.soundtrackLabel || '').trim())
+                            || presentationPlan?.soundtrackAutoPlay === true
+                            || audioPlan?.duckBackingEnabled === true
+                            || (soundtrackSourceType === 'youtube' && Boolean(String(presentationPlan?.soundtrackMediaUrl || '').trim()));
+                        const soundtrackCustomizeOpen = isSectionOpen(item.id, 'presentation_soundtrack_customize', hasCustomSoundtrackOptions);
+                        const roomMomentPlan = item?.roomMomentPlan && typeof item.roomMomentPlan === 'object' ? item.roomMomentPlan : {};
+                        const hasCustomRoomOptions = (String(roomMomentPlan?.lightMode || 'off').trim().toLowerCase() !== 'off')
+                            || roomMomentPlan?.showHowToPlay === true;
+                        const roomMomentCustomizeOpen = isSectionOpen(item.id, 'room_moment_customize', hasCustomRoomOptions);
+                        const updatePresentationPlan = (patch) => {
+                            if (!safeOperatorCapabilities.canEditFlow) return;
+                            onUpdateItem?.(item.id, { presentationPlan: { ...(presentationPlan || {}), ...(patch || {}) } });
+                        };
+                        const updateAudioPlan = (patch) => {
+                            if (!safeOperatorCapabilities.canEditFlow) return;
+                            onUpdateItem?.(item.id, { audioPlan: { ...(audioPlan || {}), ...(patch || {}) } });
+                        };
+                        const setPresentationSoundtrackEnabled = (enabled = false) => {
+                            if (!safeOperatorCapabilities.canEditFlow) return;
+                            setSectionOpen(item.id, 'presentation_soundtrack', enabled);
+                            if (enabled) {
+                                if (!soundtrackConfigured) updatePresentationPlan({ soundtrackSourceType: 'youtube' });
+                                return;
+                            }
+                            setSectionOpen(item.id, 'presentation_soundtrack_customize', false);
+                            onUpdateItem?.(item.id, {
+                                presentationPlan: {
+                                    ...(presentationPlan || {}),
+                                    soundtrackSourceType: '',
+                                    soundtrackYoutubeId: '',
+                                    soundtrackAppleMusicId: '',
+                                    soundtrackMediaUrl: '',
+                                    soundtrackLabel: '',
+                                    soundtrackAutoPlay: false
+                                },
+                                audioPlan: {
+                                    ...(audioPlan || {}),
+                                    duckBackingEnabled: false
+                                }
+                            });
+                        };
                         const visual = getItemVisual(item.type);
                         const performanceFields = item.type === 'performance' ? getPerformanceIdentityFields(item) : [];
                         const summaryLine = item.type === 'performance'
@@ -5305,6 +5993,11 @@ export default function RunOfShowDirectorPanel({
                                                         Drag scene
                                                     </span>
                                                     <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">{item.automationMode}</span>
+                                                    {getRunOfShowAdvanceMode(item) !== RUN_OF_SHOW_ADVANCE_MODES.auto ? (
+                                                        <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                                            {getAdvanceModeLabel(item)}
+                                                        </span>
+                                                    ) : null}
                                                     {previewActiveId === item.id ? <div className="rounded-full border border-violet-300/35 bg-violet-500/14 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-violet-100">previewing</div> : null}
                                                     {pendingCount > 0 ? <SubmissionStatusBadge count={pendingCount} /> : null}
                                                     {item.type === 'performance' ? (
@@ -5356,7 +6049,7 @@ export default function RunOfShowDirectorPanel({
                                                 {getRunOfShowItemLabel(item.type)}
                                             </div>
                                         </div>
-                                        {item.type !== 'performance' ? (
+                                        {item.type !== 'performance' && !supportsPresentationScene ? (
                                             <>
                                                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                                     <div className="md:col-span-2">
@@ -5390,6 +6083,11 @@ export default function RunOfShowDirectorPanel({
                                                     <div><FieldLabel>Planned Start</FieldLabel><input type="datetime-local" value={item.startsAtMs ? new Date(item.startsAtMs).toISOString().slice(0, 16) : ''} onChange={(e) => onUpdateItem?.(item.id, { startsAtMs: e.target.value ? new Date(e.target.value).getTime() : 0 })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
                                                     <div><FieldLabel>Notes</FieldLabel><input value={item.notes || ''} onChange={(e) => onUpdateItem?.(item.id, { notes: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} /></div>
                                                 </div>
+                                                <RunOfShowAdvanceModePicker
+                                                    item={item}
+                                                    onUpdateItem={onUpdateItem}
+                                                    disabled={!safeOperatorCapabilities.canEditFlow}
+                                                />
                                                 {!repairModeActive ? (
                                                     <div className="rounded-2xl bg-black/15 px-4 py-3 text-sm text-zinc-300">
                                                         <span className="font-semibold text-white">Scene controls:</span> Public scenes can take over TV and audience surfaces, automation decides whether the show advances by itself, and duration sets how long the block can hold the stage before the next one takes over.
@@ -5398,11 +6096,11 @@ export default function RunOfShowDirectorPanel({
                                             </>
                                         ) : null}
 
-                                        {item.type !== 'performance' ? (
+                                        {!supportsPresentationScene && item.type !== 'performance' ? (
                                             <CollapsiblePanel
-                                                label="Advanced Scene Settings"
+                                                label="Room Behavior"
                                                 title="TV, phone, and room behavior"
-                                                summary="Optional overlay, room-mode, and vibe controls for special moments."
+                                                summary="Use this only when this scene needs overlay, room mode, or vibe controls."
                                                 open={roomMomentOpen}
                                                 onToggle={() => toggleSection(item.id, 'room_moment')}
                                                 badge={compactMomentSummary(item.roomMomentPlan || {}) || 'Hidden by default'}
@@ -5412,88 +6110,13 @@ export default function RunOfShowDirectorPanel({
                                                 <div className="rounded-2xl bg-black/10 px-3 py-3 text-sm text-zinc-300">
                                                     Use this only when the scene needs something beyond the normal TV takeover and duration controls.
                                                 </div>
-                                                <div className="grid gap-3 lg:grid-cols-4">
-                                                    <div className="space-y-2">
-                                                        <FieldLabel>TV Overlay</FieldLabel>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {[
-                                                                ['stage', 'Stage'],
-                                                                ['leaderboard', 'Leaderboard'],
-                                                                ['tipping', 'Tip CTA'],
-                                                            ].map(([value, label]) => {
-                                                                const active = String(item.roomMomentPlan?.activeScreen || '').trim() === value || (!item.roomMomentPlan?.activeScreen && value === 'stage');
-                                                                return (
-                                                                    <button
-                                                                        key={value}
-                                                                        type="button"
-                                                                        disabled={!safeOperatorCapabilities.canEditFlow}
-                                                                        onClick={() => onUpdateItem?.(item.id, { roomMomentPlan: { ...(item.roomMomentPlan || {}), activeScreen: value === 'stage' ? '' : value } })}
-                                                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
-                                                                    >
-                                                                        {label}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <FieldLabel>Phone / Room Mode</FieldLabel>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {[
-                                                                ['', 'None'],
-                                                                ['selfie_cam', 'Selfie Cam'],
-                                                            ].map(([value, label]) => {
-                                                                const active = String(item.roomMomentPlan?.activeMode || '').trim() === value;
-                                                                return (
-                                                                    <button
-                                                                        key={value || 'none'}
-                                                                        type="button"
-                                                                        disabled={!safeOperatorCapabilities.canEditFlow}
-                                                                        onClick={() => onUpdateItem?.(item.id, { roomMomentPlan: { ...(item.roomMomentPlan || {}), activeMode: value } })}
-                                                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${active ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
-                                                                    >
-                                                                        {label}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <FieldLabel>Vibe Lighting</FieldLabel>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {[
-                                                                ['off', 'Off'],
-                                                                ['ballad', 'Ballad'],
-                                                                ['banger', 'Banger'],
-                                                            ].map(([value, label]) => {
-                                                                const active = String(item.roomMomentPlan?.lightMode || 'off').trim() === value;
-                                                                return (
-                                                                    <button
-                                                                        key={value}
-                                                                        type="button"
-                                                                        disabled={!safeOperatorCapabilities.canEditFlow}
-                                                                        onClick={() => onUpdateItem?.(item.id, { roomMomentPlan: { ...(item.roomMomentPlan || {}), lightMode: value } })}
-                                                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${active ? 'border-rose-300/35 bg-rose-500/12 text-rose-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
-                                                                    >
-                                                                        {label}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <FieldLabel>Quick Instruction Beat</FieldLabel>
-                                                        <label className="flex items-center gap-2 rounded-2xl bg-black/10 px-3 py-2 text-sm text-zinc-300">
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={item.roomMomentPlan?.showHowToPlay === true}
-                                                                onChange={(e) => onUpdateItem?.(item.id, { roomMomentPlan: { ...(item.roomMomentPlan || {}), showHowToPlay: e.target.checked } })}
-                                                                disabled={!safeOperatorCapabilities.canEditFlow}
-                                                            />
-                                                            Show How To Play overlay
-                                                        </label>
-                                                    </div>
-                                                </div>
+                                                <RunOfShowRoomBehaviorEditor
+                                                    item={item}
+                                                    onUpdateItem={onUpdateItem}
+                                                    disabled={!safeOperatorCapabilities.canEditFlow}
+                                                    customizeOpen={roomMomentCustomizeOpen}
+                                                    onToggleCustomize={() => toggleSection(item.id, 'room_moment_customize', hasCustomRoomOptions)}
+                                                />
                                             </CollapsiblePanel>
                                         ) : null}
 
@@ -6367,15 +6990,18 @@ export default function RunOfShowDirectorPanel({
                                                         </CollapsiblePanel>
                                                     ) : null}
                                                     <CollapsiblePanel
-                                                        label="Scene Settings"
-                                                        title="Timing, visibility, and notes"
-                                                        summary="These are lower-priority scene controls. Use them after the slot is ready."
+                                                        label="Planning Defaults"
+                                                        title="Timeline defaults and notes"
+                                                        summary="These define the planned setup for this scene. Use the live strip for temporary in-show changes."
                                                         open={sceneSettingsOpen}
                                                         onToggle={() => toggleSection(item.id, 'scene_settings')}
-                                                        badge={item.automationMode || 'auto'}
+                                                        badge={getAdvanceModeLabel(item)}
                                                         tone="violet"
                                                         compact
                                                     >
+                                                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
+                                                            <span className="font-semibold text-white">Planning surface:</span> these values describe tonight&apos;s intended scene setup. Live adjustments should change the running show without rewriting the defaults here.
+                                                        </div>
                                                         <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                                                             <div className="md:col-span-2">
                                                                 <FieldLabel>Title</FieldLabel>
@@ -6427,19 +7053,23 @@ export default function RunOfShowDirectorPanel({
                                             </div>
                                             ) : null}
 
-                                        {(item.type === 'announcement' || item.type === 'intro' || item.type === 'closing' || item.type === 'intermission' || item.type === 'buffer') ? (
+                                        {supportsPresentationScene ? (
                                             <CollapsiblePanel
-                                                label="Presentation Scene"
-                                                title="Headline and takeover settings"
-                                                summary="Secondary presentation controls for intros, announcements, and buffers."
+                                                label="Public Scene"
+                                                title="What audience sees and how it runs"
+                                                summary="This is the canonical editing lane for public scenes: visuals, sound, progression, and room behavior."
                                                 open={presentationOpen}
                                                 onToggle={() => toggleSection(item.id, 'presentation_scene')}
-                                                badge={item.presentationPlan?.headline || 'Optional'}
+                                                badge={presentationPlan?.headline || matchedTakeoverPreset?.label || 'Public scene'}
                                                 tone="violet"
                                                 compact
                                             >
                                                 <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
-                                                    <span className="font-semibold text-white">Author this like a scene, not a slide:</span> pick a visual treatment first, then set the headline and optional soundtrack for that takeover.
+                                                    <span className="font-semibold text-white">One place on purpose:</span> plan the public scene here, then use live controls during the show for temporary pacing changes instead of reopening editor defaults.
+                                                </div>
+                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">What Audience Sees</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">Choose the public-TV treatment, headline, and any visual exception for this scene.</div>
                                                 </div>
                                                 <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                                     <div className="flex items-center justify-between gap-3">
@@ -6447,15 +7077,15 @@ export default function RunOfShowDirectorPanel({
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Style</div>
                                                             <div className="mt-1 text-sm text-zinc-300">Choose the mood for this takeover. It sets the TV look and the default cue behavior together.</div>
                                                         </div>
-                                                        {getTakeoverStylePresetMatch(item) ? (
+                                                        {matchedTakeoverPreset ? (
                                                             <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
-                                                                {getTakeoverStylePresetMatch(item)?.label}
+                                                                {matchedTakeoverPreset?.label}
                                                             </span>
                                                         ) : null}
                                                     </div>
                                                     <div className="mt-3 grid gap-2 lg:grid-cols-3">
                                                         {TAKEOVER_STYLE_PRESETS.map((preset) => {
-                                                            const active = getTakeoverStylePresetMatch(item)?.id === preset.id;
+                                                            const active = matchedTakeoverPreset?.id === preset.id;
                                                             const toneClass = preset.tone === 'amber'
                                                                 ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
                                                                 : preset.tone === 'rose'
@@ -6494,85 +7124,61 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                 </div>
                                                 <div className="grid gap-3 md:grid-cols-2">
-                                                    <div><FieldLabel>Headline</FieldLabel><input value={item.presentationPlan?.headline || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), headline: e.target.value } })} className={textInputClass} /></div>
-                                                    <div><FieldLabel>Subhead</FieldLabel><input value={item.presentationPlan?.subhead || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), subhead: e.target.value } })} className={textInputClass} /></div>
+                                                    <div><FieldLabel>Headline</FieldLabel><input value={presentationPlan?.headline || ''} onChange={(e) => updatePresentationPlan({ headline: e.target.value })} className={textInputClass} /></div>
+                                                    <div><FieldLabel>Subhead</FieldLabel><input value={presentationPlan?.subhead || ''} onChange={(e) => updatePresentationPlan({ subhead: e.target.value })} className={textInputClass} /></div>
                                                 </div>
-                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Visual Details</div>
-                                                    <div className="mt-2 grid gap-3 md:grid-cols-3">
-                                                        <div><FieldLabel>Takeover Scene</FieldLabel><input value={item.presentationPlan?.takeoverScene || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), takeoverScene: e.target.value } })} className={textInputClass} /></div>
-                                                        <div><FieldLabel>Background Media</FieldLabel><input value={item.presentationPlan?.backgroundMedia || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), backgroundMedia: e.target.value } })} className={textInputClass} /></div>
-                                                        <div><FieldLabel>Accent Theme</FieldLabel><input value={item.presentationPlan?.accentTheme || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), accentTheme: e.target.value } })} className={textInputClass} /></div>
-                                                    </div>
+                                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                                    <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={presentationPlan?.publicTvTakeoverEnabled === true} onChange={(e) => updatePresentationPlan({ publicTvTakeoverEnabled: e.target.checked })} />Public TV takeover</label>
+                                                    <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={soundtrackControlsOpen || soundtrackConfigured} onChange={(e) => setPresentationSoundtrackEnabled(e.target.checked)} />Takeover soundtrack</label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleSection(item.id, 'presentation_custom_overrides', hasCustomPresentationOverrides)}
+                                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                                        className={`inline-flex items-center justify-center rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${presentationCustomOverridesOpen ? 'border-violet-300/28 bg-violet-500/10 text-violet-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
+                                                    >
+                                                        {presentationCustomOverridesOpen ? 'Hide Visual Overrides' : 'Visual Overrides'}
+                                                    </button>
                                                 </div>
-                                                <div className="grid gap-3 md:grid-cols-3">
-                                                    <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={item.presentationPlan?.publicTvTakeoverEnabled === true} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), publicTvTakeoverEnabled: e.target.checked } })} />Public TV takeover</label>
-                                                    <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={item.audioPlan?.duckBackingEnabled === true} onChange={(e) => onUpdateItem?.(item.id, { audioPlan: { ...(item.audioPlan || {}), duckBackingEnabled: e.target.checked } })} />Duck backing</label>
-                                                    <div><FieldLabel>Duck Level %</FieldLabel><input type="number" value={item.audioPlan?.duckLevelPct ?? 35} onChange={(e) => onUpdateItem?.(item.id, { audioPlan: { ...(item.audioPlan || {}), duckLevelPct: Number(e.target.value || 0) } })} className={textInputClass} /></div>
-                                                </div>
-                                                <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
-                                                    <span className="font-semibold text-white">Scene soundtrack:</span> Optionally attach a song that only plays during this takeover. YouTube and direct media URLs play on Public TV; Apple Music uses the host playback path while the takeover stays on screen.
-                                                    {getTakeoverStylePresetMatch(item)?.soundtrackHint ? (
-                                                        <div className="mt-2 text-xs text-zinc-400">
-                                                            {getTakeoverStylePresetMatch(item)?.soundtrackHint}
+                                                {presentationCustomOverridesOpen ? (
+                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Custom Visual Overrides</div>
+                                                                <div className="mt-1 text-sm text-zinc-300">Only use this when the preset grid cannot describe the exact TV treatment you need.</div>
+                                                            </div>
+                                                            <span className="rounded-full border border-violet-300/20 bg-violet-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-violet-100">Advanced</span>
                                                         </div>
-                                                    ) : null}
-                                                </div>
-                                                <div className="grid gap-3 md:grid-cols-4">
-                                                    <div>
-                                                        <FieldLabel>Soundtrack Source</FieldLabel>
-                                                        <SelectControl
-                                                            value={item.presentationPlan?.soundtrackSourceType || ''}
-                                                            onChange={(e) => onUpdateItem?.(item.id, {
-                                                                presentationPlan: {
-                                                                    ...(item.presentationPlan || {}),
-                                                                    soundtrackSourceType: e.target.value,
-                                                                    soundtrackYoutubeId: e.target.value === 'youtube' ? (item.presentationPlan?.soundtrackYoutubeId || '') : '',
-                                                                    soundtrackAppleMusicId: e.target.value === 'apple_music' ? (item.presentationPlan?.soundtrackAppleMusicId || '') : '',
-                                                                    soundtrackMediaUrl: e.target.value === 'manual_external' ? (item.presentationPlan?.soundtrackMediaUrl || '') : (e.target.value === 'youtube' ? (item.presentationPlan?.soundtrackMediaUrl || '') : ''),
-                                                                }
-                                                            })}
-                                                            className={textInputClass}
-                                                        >
-                                                            <option value="">None</option>
-                                                            <option value="youtube">YouTube</option>
-                                                            <option value="apple_music">Apple Music</option>
-                                                            <option value="manual_external">Direct Media URL</option>
-                                                        </SelectControl>
-                                                    </div>
-                                                    <div className="md:col-span-2">
-                                                        <FieldLabel>Soundtrack Label</FieldLabel>
-                                                        <input
-                                                            value={item.presentationPlan?.soundtrackLabel || ''}
-                                                            onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackLabel: e.target.value } })}
-                                                            className={textInputClass}
-                                                            placeholder="Optional now playing label"
-                                                        />
-                                                    </div>
-                                                    <label className="flex items-center gap-2 text-sm text-zinc-300 pt-7">
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={item.presentationPlan?.soundtrackAutoPlay === true}
-                                                            onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackAutoPlay: e.target.checked } })}
-                                                        />
-                                                        Auto-play soundtrack
-                                                    </label>
-                                                </div>
-                                                {item.presentationPlan?.soundtrackSourceType === 'youtube' ? (
-                                                    <div className="grid gap-3 md:grid-cols-2">
-                                                        <div><FieldLabel>YouTube ID</FieldLabel><input value={item.presentationPlan?.soundtrackYoutubeId || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackYoutubeId: e.target.value } })} className={textInputClass} placeholder="dQw4w9WgXcQ" /></div>
-                                                        <div><FieldLabel>Fallback Media URL</FieldLabel><input value={item.presentationPlan?.soundtrackMediaUrl || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackMediaUrl: e.target.value } })} className={textInputClass} placeholder="Optional direct video URL" /></div>
+                                                        <div className="mt-3 grid gap-3 md:grid-cols-3">
+                                                            <div><FieldLabel>Takeover Scene</FieldLabel><input value={presentationPlan?.takeoverScene || ''} onChange={(e) => updatePresentationPlan({ takeoverScene: e.target.value })} className={textInputClass} /></div>
+                                                            <div><FieldLabel>Background Media</FieldLabel><input value={presentationPlan?.backgroundMedia || ''} onChange={(e) => updatePresentationPlan({ backgroundMedia: e.target.value })} className={textInputClass} /></div>
+                                                            <div><FieldLabel>Accent Theme</FieldLabel><input value={presentationPlan?.accentTheme || ''} onChange={(e) => updatePresentationPlan({ accentTheme: e.target.value })} className={textInputClass} /></div>
+                                                        </div>
                                                     </div>
                                                 ) : null}
-                                                {item.presentationPlan?.soundtrackSourceType === 'apple_music' ? (
-                                                    <div className="grid gap-3 md:grid-cols-1">
-                                                        <div><FieldLabel>Apple Music Track ID</FieldLabel><input value={item.presentationPlan?.soundtrackAppleMusicId || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackAppleMusicId: e.target.value } })} className={textInputClass} placeholder="pl.u-..." /></div>
-                                                    </div>
-                                                ) : null}
-                                                {item.presentationPlan?.soundtrackSourceType === 'manual_external' ? (
-                                                    <div className="grid gap-3 md:grid-cols-1">
-                                                        <div><FieldLabel>Media URL</FieldLabel><input value={item.presentationPlan?.soundtrackMediaUrl || ''} onChange={(e) => onUpdateItem?.(item.id, { presentationPlan: { ...(item.presentationPlan || {}), soundtrackMediaUrl: e.target.value } })} className={textInputClass} placeholder="https://..." /></div>
-                                                    </div>
+                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">How It Moves Forward</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">Set the planned progression rule for this scene. Live pacing changes should happen from the sticky run-of-show strip after the show starts.</div>
+                                                </div>
+                                                <RunOfShowAdvanceModePicker
+                                                    item={item}
+                                                    onUpdateItem={onUpdateItem}
+                                                    disabled={!safeOperatorCapabilities.canEditFlow}
+                                                />
+                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">How It Sounds</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">Attach takeover audio or cue punctuation only when this scene needs it.</div>
+                                                </div>
+                                                {soundtrackControlsOpen || soundtrackConfigured ? (
+                                                    <RunOfShowTakeoverSoundtrackEditor
+                                                        presentationPlan={presentationPlan}
+                                                        audioPlan={audioPlan}
+                                                        matchedTakeoverPreset={matchedTakeoverPreset}
+                                                        customizeOpen={soundtrackCustomizeOpen}
+                                                        onToggleCustomize={() => toggleSection(item.id, 'presentation_soundtrack_customize', hasCustomSoundtrackOptions)}
+                                                        onUpdatePresentationPlan={updatePresentationPlan}
+                                                        onUpdateAudioPlan={updateAudioPlan}
+                                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                                    />
                                                 ) : null}
                                                 <div className="mt-3">
                                                     <RunOfShowMomentCueFields
@@ -6580,6 +7186,20 @@ export default function RunOfShowDirectorPanel({
                                                         onUpdateItem={onUpdateItem}
                                                         disabled={!safeOperatorCapabilities.canEditFlow}
                                                     />
+                                                </div>
+                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">What The Room Does</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">Choose the screen, room mode, and any scene-specific room behavior that should accompany the public scene.</div>
+                                                </div>
+                                                <RunOfShowRoomBehaviorEditor
+                                                    item={item}
+                                                    onUpdateItem={onUpdateItem}
+                                                    disabled={!safeOperatorCapabilities.canEditFlow}
+                                                    customizeOpen={roomMomentCustomizeOpen}
+                                                    onToggleCustomize={() => toggleSection(item.id, 'room_moment_customize', hasCustomRoomOptions)}
+                                                />
+                                                <div className="rounded-2xl border border-amber-300/18 bg-amber-500/8 px-3 py-3 text-sm text-amber-100/90">
+                                                    <span className="font-semibold text-white">Live-only overrides:</span> once this scene is active, use the run-of-show live strip for temporary pacing changes instead of editing these planning defaults.
                                                 </div>
                                             </CollapsiblePanel>
                                         ) : null}

@@ -917,6 +917,8 @@ const buildDefaultRunOfShowDirector = () => ({
   version: 1,
   enabled: false,
   automationPaused: false,
+  holdCurrent: false,
+  holdAfterCurrent: false,
   automationStatus: "idle",
   currentItemId: "",
   lastCompletedItemId: "",
@@ -925,6 +927,16 @@ const buildDefaultRunOfShowDirector = () => ({
   audioSnapshot: null,
   items: [],
 });
+const normalizeRunOfShowAdvanceMode = (value = "", requireHostAdvance = false) => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "host" || token === "host_after_min" || token === "auto") return token;
+  return requireHostAdvance === true ? "host" : "auto";
+};
+const normalizeRunOfShowHostAdvanceMinSec = (value, fallback = 0) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return Math.max(0, Math.min(3600, Number(fallback || 0) || 0));
+  return Math.max(0, Math.min(3600, Math.floor(parsed)));
+};
 const buildDefaultRunOfShowPolicy = () => normalizeRunOfShowPolicy({});
 const buildDefaultRunOfShowRoles = () => normalizeRunOfShowRoles({});
 const buildDefaultRunOfShowTemplateMeta = () => normalizeRunOfShowTemplateMeta({});
@@ -952,6 +964,8 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
     ...source,
     enabled: source.enabled === true || roomData?.runOfShowEnabled === true,
     automationPaused: source.automationPaused === true,
+    holdCurrent: source.holdCurrent === true,
+    holdAfterCurrent: source.holdAfterCurrent === true,
     automationStatus: normalizeRunOfShowText(source.automationStatus || "idle", 40) || "idle",
     currentItemId: normalizeRunOfShowText(source.currentItemId || "", 160),
     lastCompletedItemId: normalizeRunOfShowText(source.lastCompletedItemId || "", 160),
@@ -966,6 +980,10 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
         const safeType = String(item.type || "").trim().toLowerCase();
         const type = RUN_OF_SHOW_ALLOWED_TYPES.has(safeType) ? safeType : "buffer";
         const performerMode = String(item.performerMode || "").trim().toLowerCase();
+        const advanceMode = normalizeRunOfShowAdvanceMode(item.advanceMode, item.requireHostAdvance === true);
+        const hostAdvanceMinSec = advanceMode === "host_after_min"
+          ? normalizeRunOfShowHostAdvanceMinSec(item.hostAdvanceMinSec, item.plannedDurationSec || 0)
+          : 0;
         return {
           ...item,
           id: normalizeRunOfShowText(item.id || "", 160) || `ros_item_${index + 1}`,
@@ -980,6 +998,9 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
           visibility: String(item.visibility || "").trim().toLowerCase() === "private" ? "private" : "public",
           notes: normalizeRunOfShowText(item.notes || "", 2000),
           automationMode: String(item.automationMode || "").trim().toLowerCase() === "manual" ? "manual" : "auto",
+          advanceMode,
+          hostAdvanceMinSec,
+          requireHostAdvance: advanceMode !== "auto",
           performerMode: RUN_OF_SHOW_ALLOWED_PERFORMER_MODES.has(performerMode)
             ? performerMode
             : (type === "performance" ? "placeholder" : ""),
@@ -15492,6 +15513,19 @@ exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
       roomPatch.activeMode = "karaoke";
     }
   } else if (action === "complete" || action === "skip") {
+    if (action === "complete") {
+      const advanceMode = normalizeRunOfShowAdvanceMode(targetItem?.advanceMode, targetItem?.requireHostAdvance === true);
+      if (advanceMode === "host_after_min") {
+        const liveStartedAtMs = normalizeRunOfShowTimestamp(targetItem?.liveStartedAtMs || 0);
+        const minimumLiveMs = normalizeRunOfShowHostAdvanceMinSec(
+          targetItem?.hostAdvanceMinSec,
+          targetItem?.plannedDurationSec || 0
+        ) * 1000;
+        if (!liveStartedAtMs || nowMsValue - liveStartedAtMs < minimumLiveMs) {
+          throw new HttpsError("failed-precondition", "This scene cannot advance until its minimum live time has elapsed.");
+        }
+      }
+    }
     nextDirector = {
       ...director,
       currentItemId: director.currentItemId === itemId ? "" : director.currentItemId,
