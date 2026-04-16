@@ -10,6 +10,7 @@ import { buildSurfaceUrl, inferSurfaceFromHostname } from './lib/surfaceDomains'
 const PublicTV = lazy(() => import('./apps/TV/PublicTV'));
 const SingerApp = lazy(() => import('./apps/Mobile/SingerApp'));
 const AudienceQaHarness = lazy(() => import('./apps/Mobile/AudienceQaHarness'));
+const VoiceGamesQaHarness = lazy(() => import('./apps/Mobile/VoiceGamesQaHarness'));
 const RecapView = lazy(() => import('./apps/Recap/RecapView'));
 const HostApp = lazy(() => import('./apps/Host/HostApp'));
 const HostRunOfShowQaHarness = lazy(() => import('./apps/Host/HostRunOfShowQaHarness'));
@@ -136,6 +137,9 @@ const getInitialRouteState = () => {
     }
     if (m === 'audience-qa' && qaAudienceFixture) {
         return { view: 'audience_qa', roomCode: r ? r.toUpperCase() : '' };
+    }
+    if (m === 'voice-games-qa') {
+        return { view: 'voice_games_qa', roomCode: r ? r.toUpperCase() : '' };
     }
     if (m === 'host') {
         return { view: 'host', roomCode: r ? r.toUpperCase() : '' };
@@ -373,6 +377,11 @@ const App = () => {
                 roomCode={roomCode || 'DEMOAUD'}
                 fixtureId={typeof window !== 'undefined' ? new URLSearchParams(window.location.search || '').get('qaAudienceFixture') || 'classic-home' : 'classic-home'}
             />
+        </Suspense>
+    );
+    if (view === 'voice_games_qa') return (
+        <Suspense fallback={<ViewLoader />}>
+            <VoiceGamesQaHarness roomCode={roomCode || 'DEMOVOICE'} />
         </Suspense>
     );
     if (view === 'recap') return (

@@ -184,11 +184,13 @@ import {
     getNextRunOfShowItem,
     getRunOfShowItemLabel,
     getRunOfShowLiveItem,
+    getRunOfShowHostAdvanceMinSec,
     getRunOfShowStagedItem,
     getRunOfShowPreflightReport,
     getRunOfShowOperatorRole,
     getRunOfShowRoleCapabilities,
     getRunOfShowOperatingHint,
+    getRunOfShowProgressionDecision,
     hasRunOfShowTakeoverSoundtrackIdentity,
     isRunOfShowItemReady,
     normalizeRunOfShowPolicy,
@@ -3117,7 +3119,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         label: 'HOST RESCUE',
                         by: room?.hostName || 'Host',
                         triggeredAt: now,
-                        durationMs: 3200
+                        durationMs: 4800
                     },
                     lightMode: 'strobe',
                     strobeSessionId: `host_rescue_${now}`,
@@ -3139,13 +3141,13 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         label: 'HARMONY BOOST',
                         by: room?.hostName || 'Host',
                         triggeredAt: now,
-                        durationMs: 4500
+                        durationMs: 6000
                     },
                     lightMode: 'ballad'
                 });
                 setTimeout(() => {
                     updateRoom({ lightMode: 'off' }).catch(() => {});
-                }, 4500);
+                }, 6000);
                 toast('Harmony boost sent.');
                 await logHostInteraction('sent a Vocal Challenge harmony boost.');
                 return;
@@ -3161,7 +3163,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         label: 'SCALE SAVE',
                         by: room?.hostName || 'Host',
                         triggeredAt: now,
-                        durationMs: 5000
+                        durationMs: 6500
                     },
                     lightMode: 'storm',
                     stormStartedAt: now,
@@ -8002,6 +8004,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
+        const completionDecision = getRunOfShowProgressionDecision({
+            director: currentDirector,
+            item: targetItem,
+            phase: 'complete',
+        });
+        if (
+            options?.skip !== true
+            && options?.automation !== true
+            && targetItem?.status === 'live'
+            && completionDecision.reason === 'host_advance_min_not_reached'
+        ) {
+            const minimumSec = getRunOfShowHostAdvanceMinSec(targetItem);
+            toast(minimumSec > 0
+                ? `This scene can advance after ${minimumSec}s live.`
+                : 'This scene cannot advance yet.');
+            return currentDirector;
+        }
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: options?.skip === true ? 'skip' : 'complete', itemId });
             const nextDirector = applyRunOfShowActionResult(result);
@@ -9383,7 +9402,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || runOfShowStagedItem || !runOfShowNextItem) return;
-        if (runOfShowNextItem.automationMode !== 'auto') return;
+        const prepareDecision = getRunOfShowProgressionDecision({
+            director: runOfShowDirector,
+            item: runOfShowNextItem,
+            phase: 'prepare',
+        });
+        if (!prepareDecision.allowed) return;
         const nextStatus = String(runOfShowNextItem.status || '').toLowerCase();
         if (['complete', 'skipped', 'live', 'staged'].includes(nextStatus)) return;
         const cooldownRemainingMs = runOfShowAutoPrepareCooldownUntilRef.current - nowMs();
@@ -9432,6 +9456,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
+        const startDecision = getRunOfShowProgressionDecision({
+            director: runOfShowDirector,
+            item: runOfShowStagedItem,
+            phase: 'start',
+        });
+        if (!startDecision.allowed) return;
         const cooldownRemainingMs = runOfShowAutoStartCooldownUntilRef.current - nowMs();
         if (cooldownRemainingMs > 0) {
             const cooldownTimer = setTimeout(() => {
@@ -9476,7 +9506,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
         if (!runOfShowLiveItem || runOfShowLiveItem.type === 'performance') return;
-        if (runOfShowLiveItem.automationMode !== 'auto') return;
+        const completionDecision = getRunOfShowProgressionDecision({
+            director: runOfShowDirector,
+            item: runOfShowLiveItem,
+            phase: 'complete',
+        });
+        if (!completionDecision.allowed) return;
         const startedAtMs = Number(runOfShowLiveItem.liveStartedAtMs || 0);
         const durationMs = Math.max(0, Number(runOfShowLiveItem.plannedDurationSec || 0) * 1000);
         if (!startedAtMs || !durationMs) return;

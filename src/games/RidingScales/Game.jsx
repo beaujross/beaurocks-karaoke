@@ -2,6 +2,13 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { usePitch } from '../../hooks/usePitch';
 import { db, doc, updateDoc, collection, query, where, getDocs, writeBatch, increment } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
+import {
+    VOICE_GAME_FUN_DEFAULTS,
+    buildRidingScalesStepMsList,
+    getRidingScalesHoldMs,
+    getRidingScalesLengthIncrement,
+    getRidingScalesStepMs
+} from '../vocalGameTuning';
 
 const NOTE_FREQ = {
     C: 261.63,
@@ -26,33 +33,8 @@ const NOTE_Y = {
 
 const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 const centsBetween = (freqA, freqB) => (freqA > 0 && freqB > 0 ? (1200 * Math.log2(freqA / freqB)) : 9999);
-const SCALE_ASSIST_DEFAULT_MS = 5000;
+const SCALE_ASSIST_DEFAULT_MS = 6500;
 const SCALE_ASSIST_BANNER_MS = 2400;
-
-const pickStepMs = (round, difficulty) => {
-    const baseByDifficulty = {
-        easy: 1550,
-        standard: 1400,
-        hard: 1200
-    };
-    const base = clamp((baseByDifficulty[difficulty] || 1400) - round * 60, 650, 1600);
-    const jitter = Math.floor((Math.random() * 220) - 110);
-    return clamp(base + jitter, 520, 1600);
-};
-
-const nextLengthIncrement = (round, difficulty) => {
-    if (difficulty === 'easy') {
-        if (round < 4) return 1;
-        return round % 3 === 0 ? 2 : 1;
-    }
-    if (difficulty === 'hard') {
-        if (round < 2) return 1;
-        return round % 2 === 0 ? 2 : 1;
-    }
-    if (round < 3) return 1;
-    if (round % 2 === 0) return 2;
-    return 1;
-};
 
 const buildSequence = (length, difficulty) => {
     const seq = [];
@@ -72,16 +54,19 @@ const buildSequence = (length, difficulty) => {
     return seq;
 };
 
-const buildStepMsList = (length, round, difficulty) =>
-    Array.from({ length }, () => pickStepMs(round, difficulty));
-
 const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSource, view = 'tv', user }) => {
     const gameData = useMemo(() => (playerData || gameState || {}), [playerData, gameState]);
     const controlSource = gameData.inputSource || inputSource || 'remote';
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
     const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, stableNote, note, confidence, isSinging } = usePitch(isLocalInput);
+    const { pitch, stableNote, note, confidence, isSinging } = usePitch(isLocalInput, {
+        smoothingFactor: 0.42,
+        confidenceThreshold: 0.3,
+        singingThreshold: 0.03,
+        stableNoteMs: 180,
+        noiseGateMultiplier: 1.24
+    });
 
     const [localState, setLocalState] = useState(null);
     const [rewarded, setRewarded] = useState(false);
@@ -100,11 +85,11 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const lastHostAssistIdRef = useRef('');
     const hostAssistBannerTimeoutRef = useRef(null);
 
-    const maxStrikes = Number(gameData.maxStrikes || 3);
-    const rewardPerRound = Number(gameData.rewardPerRound || 50);
-    const difficulty = gameData.difficulty || 'standard';
+    const maxStrikes = Number(gameData.maxStrikes || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes);
+    const rewardPerRound = Number(gameData.rewardPerRound || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound);
+    const difficulty = gameData.difficulty || VOICE_GAME_FUN_DEFAULTS.ridingScales.difficulty;
     const guideTone = gameData.guideTone !== false;
-    const holdMs = difficulty === 'hard' ? 135 : difficulty === 'easy' ? 240 : 170;
+    const holdMs = getRidingScalesHoldMs(difficulty);
     const isTurnsMode = gameData.mode === 'turns';
     const summaryDurationMs = 2500;
 
@@ -126,7 +111,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
         const round = 1;
         const length = 3;
         const sequence = buildSequence(length, difficulty);
-        const stepMsList = buildStepMsList(length, round, difficulty);
+        const stepMsList = buildRidingScalesStepMsList(length, round, difficulty);
         const init = {
             ...gameData,
             phase: 'playback',
@@ -141,7 +126,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             detectedNote: '-',
             summaryUntil: null,
             assistUntil: null,
-            assistCharges: 0,
+            assistCharges: 1,
             lastPhaseChangeAt: Date.now(),
             lastNoteAdvanceAt: Date.now(),
             lastUpdated: Date.now()
@@ -190,7 +175,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             nextState.phase = 'playback';
             nextState.playbackIndex = 0;
             nextState.inputIndex = 0;
-            nextState.nextAt = Date.now() + clamp((nextState.stepMsList?.[0] || 900) + 220, 900, 1900);
+            nextState.nextAt = Date.now() + clamp((nextState.stepMsList?.[0] || 1100) + 320, 1100, 2200);
             nextState.lastPhaseChangeAt = Date.now();
             nextState.lastNoteAdvanceAt = Date.now();
         }
@@ -256,13 +241,13 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     if (nextIndex >= state.sequence.length) {
                         state.phase = 'input';
                         state.inputIndex = 0;
-                        state.nextAt = current + clamp(state.stepMsList[0] + (assistActive ? 720 : 560), 1050, 2500);
+                        state.nextAt = current + clamp(state.stepMsList[0] + (assistActive ? 920 : 760), 1200, 2800);
                         state.lastPhaseChangeAt = current;
                         state.lastNoteAdvanceAt = current;
                         matchRef.current = { note: '-', since: 0 };
                     } else {
                         state.playbackIndex = nextIndex;
-                        state.nextAt = current + (state.stepMsList[nextIndex] || pickStepMs(state.round, difficulty));
+                        state.nextAt = current + (state.stepMsList[nextIndex] || getRidingScalesStepMs(state.round, difficulty));
                         state.lastNoteAdvanceAt = current;
                     }
                 }
@@ -270,8 +255,8 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                 const targetNote = state.sequence[state.inputIndex];
                 const targetFreq = NOTE_FREQ[targetNote] || 0;
                 const centsOff = targetFreq ? centsBetween(pitchRef.current || 0, targetFreq) : 9999;
-                const tuneWindow = assistActive ? 145 : 112;
-                const relaxedConfidence = assistActive ? 0.34 : 0.46;
+                const tuneWindow = assistActive ? 200 : 160;
+                const relaxedConfidence = assistActive ? 0.18 : 0.28;
                 const exactNote = displayNote === targetNote || stableNote === targetNote;
                 const isMatch = isSinging
                     && confidence >= relaxedConfidence
@@ -279,13 +264,13 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                 if (isMatch) {
                     if (matchRef.current.note !== targetNote) {
                         matchRef.current = { note: targetNote, since: current };
-                    } else if (current - matchRef.current.since >= Math.max(90, Math.round(holdMs * (assistActive ? 0.72 : 1)))) {
+                    } else if (current - matchRef.current.since >= Math.max(80, Math.round(holdMs * (assistActive ? 0.65 : 1)))) {
                         const nextInput = state.inputIndex + 1;
                         if (nextInput >= state.sequence.length) {
                             const nextRound = state.round + 1;
-                            const nextLen = state.sequence.length + nextLengthIncrement(state.round, difficulty);
+                            const nextLen = state.sequence.length + getRidingScalesLengthIncrement(state.round, difficulty);
                             const nextSeq = buildSequence(nextLen, difficulty);
-                            const nextSteps = buildStepMsList(nextLen, nextRound, difficulty);
+                            const nextSteps = buildRidingScalesStepMsList(nextLen, nextRound, difficulty);
                             state.round = nextRound;
                             state.bestRound = Math.max(state.bestRound || 1, state.round);
                             state.sequence = nextSeq;
@@ -294,11 +279,12 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                             state.inputIndex = 0;
                             state.phase = 'playback';
                             state.nextAt = current + nextSteps[0];
+                            state.assistCharges = Math.min(2, Math.max(0, Number(state.assistCharges || 0)) + 1);
                             state.lastPhaseChangeAt = current;
                             state.lastNoteAdvanceAt = current;
                         } else {
                             state.inputIndex = nextInput;
-                            state.nextAt = current + clamp(state.stepMsList[nextInput] + (assistActive ? 780 : 620), 1050, 2500);
+                            state.nextAt = current + clamp(state.stepMsList[nextInput] + (assistActive ? 980 : 760), 1200, 2800);
                             state.lastNoteAdvanceAt = current;
                         }
                         matchRef.current = { note: '-', since: 0 };
@@ -309,7 +295,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                         state.phase = 'playback';
                         state.playbackIndex = 0;
                         state.inputIndex = 0;
-                        state.nextAt = current + clamp((state.stepMsList?.[0] || 900) + 220, 900, 1900);
+                        state.nextAt = current + clamp((state.stepMsList?.[0] || 900) + 320, 1100, 2200);
                         state.lastPhaseChangeAt = current;
                         state.lastNoteAdvanceAt = current;
                         matchRef.current = { note: '-', since: 0 };
@@ -319,10 +305,11 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                             state.phase = 'summary';
                             state.summaryUntil = current + summaryDurationMs;
                         } else {
-                            const fallbackRound = state.strikes >= 2 ? Math.max(1, state.round - 1) : state.round;
-                            const fallbackLen = state.strikes >= 2 ? Math.max(3, state.sequence.length - 1) : state.sequence.length;
+                            const shouldTrimBack = state.strikes >= Math.max(3, maxStrikes - 1);
+                            const fallbackRound = shouldTrimBack ? Math.max(1, state.round - 1) : state.round;
+                            const fallbackLen = shouldTrimBack ? Math.max(3, state.sequence.length - 1) : state.sequence.length;
                             const resetSeq = buildSequence(fallbackLen, difficulty);
-                            const resetSteps = buildStepMsList(fallbackLen, fallbackRound, difficulty);
+                            const resetSteps = buildRidingScalesStepMsList(fallbackLen, fallbackRound, difficulty);
                             state.round = fallbackRound;
                             state.sequence = resetSeq;
                             state.stepMsList = resetSteps;
@@ -541,7 +528,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                             <div className={`h-full transition-all duration-150 ${localState.phase === 'playback' ? 'bg-gradient-to-r from-cyan-300 via-sky-300 to-indigo-300' : 'bg-gradient-to-r from-pink-300 via-fuchsia-300 to-amber-300'}`} style={{ width: `${phaseProgressPct}%` }} />
                         </div>
                         <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">
-                            {assistActive ? 'Scale save armed.' : showCuePulse ? 'Cue changed. Stay with it.' : localState.phase === 'playback' ? 'Listen for the next note.' : 'Match the current note.'}
+                            {assistActive ? 'Scale save armed.' : showCuePulse ? 'Cue changed. Stay with it.' : localState.phase === 'playback' ? 'Listen for the next note.' : 'Close notes count, so keep going.'}
                         </div>
                     </div>
                     <div className="rounded-3xl border border-white/10 bg-black/40 p-4">
@@ -552,7 +539,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                         <div className="h-4 rounded-full border border-white/10 bg-white/10 overflow-hidden">
                             <div className="h-full bg-gradient-to-r from-emerald-300 via-cyan-300 to-sky-300 transition-all duration-150" style={{ width: `${Math.min(100, Number(localState.assistCharges || 0) * 100)}%` }} />
                         </div>
-                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">Next miss gets replayed</div>
+                        <div className="mt-2 text-sm text-zinc-300 uppercase tracking-[0.16em]">Next miss gets a replay buffer</div>
                     </div>
                 </div>
                 <div className="bg-black/50 border border-white/10 rounded-3xl p-6">

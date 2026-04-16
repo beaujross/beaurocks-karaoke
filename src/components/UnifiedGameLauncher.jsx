@@ -17,6 +17,7 @@ import {
     resolveRoomUserUid,
     selectQuickLaunchBingoBoard
 } from '../lib/gameLaunchSupport';
+import { VOICE_GAME_FUN_DEFAULTS } from '../games/vocalGameTuning';
 
 const STYLES = {
     btnStd: "rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0",
@@ -358,11 +359,11 @@ const UnifiedGameLauncher = ({
     
     // Scale state
     const [scaleParticipants, setScaleParticipants] = useState([]);
-    const [scaleDurationSec, setScaleDurationSec] = useState(30);
-    const [scaleMaxStrikes, setScaleMaxStrikes] = useState(3);
-    const [scaleRewardPerRound, setScaleRewardPerRound] = useState(50);
-    const [scaleDifficulty, setScaleDifficulty] = useState('standard');
-    const [scaleGuideTone, setScaleGuideTone] = useState(true);
+    const [scaleDurationSec, setScaleDurationSec] = useState(VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec);
+    const [scaleMaxStrikes, setScaleMaxStrikes] = useState(VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes);
+    const [scaleRewardPerRound, setScaleRewardPerRound] = useState(VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound);
+    const [scaleDifficulty, setScaleDifficulty] = useState(VOICE_GAME_FUN_DEFAULTS.ridingScales.difficulty);
+    const [scaleGuideTone, setScaleGuideTone] = useState(VOICE_GAME_FUN_DEFAULTS.ridingScales.guideTone);
 
     // Trivia / WYR / Bingo state
     const [triviaBank, setTriviaBank] = useState([]);
@@ -392,9 +393,9 @@ const UnifiedGameLauncher = ({
     
     // Vocal challenge state
     const [vocalParticipants, setVocalParticipants] = useState([]);
-    const [vocalDurationSec, setVocalDurationSec] = useState(30);
-    const [vocalDifficulty, setVocalDifficulty] = useState('easy');
-    const [vocalGuideTone, setVocalGuideTone] = useState(true);
+    const [vocalDurationSec, setVocalDurationSec] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec);
+    const [vocalDifficulty, setVocalDifficulty] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.difficulty);
+    const [vocalGuideTone, setVocalGuideTone] = useState(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.guideTone);
 
     const participantConfigs = useMemo(() => ({
         trivia_pop: {
@@ -640,8 +641,8 @@ const UnifiedGameLauncher = ({
             : 'All players';
         const durationMap = {
             doodle_oke: `${Math.max(10, Number(doodleDuration) || 45)}s`,
-            vocal_challenge: `${Math.max(10, Number(vocalDurationSec) || 30)}s`,
-            riding_scales: `${Math.max(10, Number(scaleDurationSec) || 30)}s`,
+            vocal_challenge: `${Math.max(10, Number(vocalDurationSec) || VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec)}s`,
+            riding_scales: `${Math.max(10, Number(scaleDurationSec) || VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec)}s`,
             selfie_challenge: 'Photo round',
             trivia_pop: `${Math.max(5, Number(triviaRoundSec) || 20)}s round`,
             wyr: '1 question',
@@ -743,7 +744,7 @@ const UnifiedGameLauncher = ({
     const startFlappyAmbient = async ({ quick = false } = {}) => {
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() },
+            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, timestamp: Date.now() },
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Flappy (crowd mic).', 'GAME');
@@ -761,7 +762,7 @@ const UnifiedGameLauncher = ({
         }
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: 3, timestamp: Date.now() },
+            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, timestamp: Date.now() },
             ...buildParticipantPayload('selected', [uid])
         });
         logActivity(roomCode, 'HOST', `started Solo Flappy for ${selected.name || 'Singer'}.`, 'GAME');
@@ -790,7 +791,7 @@ const UnifiedGameLauncher = ({
                 status: 'playing',
                 score: 0,
                 streak: 0,
-                turnDurationMs: Math.max(10, Number(vocalDurationSec) || 30) * 1000,
+                turnDurationMs: Math.max(10, Number(vocalDurationSec) || VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec) * 1000,
                 difficulty: vocalDifficulty,
                 guideTone: vocalGuideTone,
                 timestamp: Date.now()
@@ -829,7 +830,7 @@ const UnifiedGameLauncher = ({
                 status: 'playing',
                 score: 0,
                 streak: 0,
-                turnDurationMs: Math.max(10, Number(vocalDurationSec) || 30) * 1000,
+                turnDurationMs: Math.max(10, Number(vocalDurationSec) || VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec) * 1000,
                 difficulty: vocalDifficulty,
                 guideTone: vocalGuideTone,
                 timestamp: Date.now()
@@ -867,12 +868,12 @@ const UnifiedGameLauncher = ({
                 inputSource: 'crowd',
                 mode: 'crowd',
                 startedAt: now,
-                turnDurationMs: Math.max(10, Number(scaleDurationSec) || 30) * 1000,
+                turnDurationMs: Math.max(10, Number(scaleDurationSec) || VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec) * 1000,
                 pattern: pickScalePattern(),
                 difficulty: scaleDifficulty,
                 guideTone: scaleGuideTone,
-                maxStrikes: Math.max(1, Number(scaleMaxStrikes) || 3),
-                rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || 50),
+                maxStrikes: Math.max(1, Number(scaleMaxStrikes) || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes),
+                rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
             },
             ...buildParticipantPayload('all', [])
@@ -903,12 +904,12 @@ const UnifiedGameLauncher = ({
                 participantMeta,
                 turnIndex: 0,
                 startedAt: now,
-                turnDurationMs: Math.max(10, Number(scaleDurationSec) || 30) * 1000,
+                turnDurationMs: Math.max(10, Number(scaleDurationSec) || VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec) * 1000,
                 pattern: pickScalePattern(),
                 difficulty: scaleDifficulty,
                 guideTone: scaleGuideTone,
-                maxStrikes: Math.max(1, Number(scaleMaxStrikes) || 3),
-                rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || 50),
+                maxStrikes: Math.max(1, Number(scaleMaxStrikes) || VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes),
+                rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
             },
             ...buildParticipantPayload('selected', participants)

@@ -5,16 +5,16 @@ const GAME_RULES = {
     flappy_bird: {
         title: 'Flappy Bird (Voice)',
         lines: [
-            'Use short loud bursts (or tap) to flap upward.',
-            'Hold a strong steady tone to trigger shield/assist.',
-            'Avoid obstacles, collect coins, and chase the high score.'
+            'Keep an easy tone going to float, then burst louder to hop up.',
+            'Tap still works, so nobody is stuck if the mic gets weird.',
+            'Big openings, extra lives, and host rescue keep the round fun.'
         ]
     },
     vocal_challenge: {
         title: 'Vocal Challenge',
         lines: [
             'Follow the glowing melody note as it shifts.',
-            'Close matches still score, perfect holds build streak.',
+            'Close matches still score, and perfect holds stack bonus streak.',
             'Host can trigger Harmony Boost to widen the window.'
         ]
     },
@@ -22,7 +22,7 @@ const GAME_RULES = {
         title: 'Riding Scales',
         lines: [
             'Listen to the sequence, then repeat it note by note.',
-            'The pattern grows each round, but misses no longer hard-reset immediately.',
+            'The pattern grows gently, and misses replay instead of punishing fast.',
             'Host can trigger Scale Save to replay the pattern and protect a miss.'
         ]
     },
