@@ -50,3 +50,28 @@ test("SingerApp declares ready-check auto-party copy before the ready-check rend
     "SingerApp must declare `autoCrowdMomentDetail` before the ready-check render branch to avoid TDZ crashes",
   );
 });
+
+test("SingerApp keeps streamlined audience shell inside party and songs flows", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const primaryStageTabs = isStreamlinedAudienceShell \? \['home', 'request'\] : \['home', 'request', 'social'\];/,
+    "SingerApp should treat streamlined stage tabs as party and songs only",
+  );
+  assert.match(
+    source,
+    /if \(!isStreamlinedAudienceShell \|\| tab !== 'social'\) return;\s*setTab\('home'\);/,
+    "SingerApp should bounce streamlined audiences back to party if stale state lands on social",
+  );
+  assert.match(
+    source,
+    /if \(isStreamlinedAudienceShell\) \{\s*openEditProfile\(\);\s*return;\s*}\s*setTab\('social'\);\s*setSocialTab\('profile'\);/,
+    "SingerApp should route the streamlined profile shortcut to the profile editor instead of the social tab",
+  );
+  assert.match(
+    source,
+    /isStreamlinedAudienceShell \? 'View Queue' : 'Open Lobby'/,
+    "SingerApp should swap the empty-stage secondary action to queue in streamlined mode",
+  );
+});

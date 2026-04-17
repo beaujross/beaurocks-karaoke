@@ -59,6 +59,7 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     supportCampaignCode: '',
     supportPoints: 0,
     supportBadge: true,
+    supportOffers: [],
     audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
     supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
     promoCampaigns: [],
@@ -69,6 +70,12 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
         socialPromo: '',
     },
 });
+
+const DEFAULT_AAHF_SUPPORT_OFFERS = Object.freeze([
+    { id: 'solo_boost', label: 'Solo Boost', amount: 5, points: 1200, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
+    { id: 'stage_starter', label: 'Stage Starter', amount: 10, points: 3000, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
+    { id: 'headliner', label: 'Headliner', amount: 20, points: 7500, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
+]);
 
 export const EVENT_CREDITS_PRESETS = Object.freeze({
     off: {
@@ -94,6 +101,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            supportOffers: [],
             audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
@@ -122,6 +130,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            supportOffers: [],
             audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
@@ -150,6 +159,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            supportOffers: [],
             audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [],
@@ -178,6 +188,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportCampaignCode: '',
             supportPoints: 0,
             supportBadge: true,
+            supportOffers: [],
             audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
             promoCampaigns: [
@@ -220,8 +231,9 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             supportUrl: '',
             supportEmbedUrl: '',
             supportCampaignCode: '',
-            supportPoints: 250,
+            supportPoints: 0,
             supportBadge: true,
+            supportOffers: DEFAULT_AAHF_SUPPORT_OFFERS,
             audienceAccessMode: AUDIENCE_ACCESS_MODES.emailOrDonation,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.moneybagsBurst,
             promoCampaigns: [],
@@ -248,6 +260,7 @@ export const createEventCreditsDraft = (draft = {}) => {
         ? source.claimCodes
         : {};
     const promoCampaigns = Array.isArray(source.promoCampaigns) ? source.promoCampaigns : [];
+    const supportOffers = Array.isArray(source.supportOffers) ? source.supportOffers : [];
     return {
         ...DEFAULT_EVENT_CREDITS_CONFIG,
         ...source,
@@ -277,6 +290,18 @@ export const createEventCreditsDraft = (draft = {}) => {
         supportCampaignCode: String(source.supportCampaignCode || '').trim(),
         supportPoints: clampWholeNumber(source.supportPoints ?? 0),
         supportBadge: source.supportBadge !== false,
+        supportOffers: supportOffers.map((offer, index) => ({
+            id: String(offer?.id || `offer_${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64) || `offer_${index + 1}`,
+            label: String(offer?.label || `Offer ${index + 1}`).trim().slice(0, 120) || `Offer ${index + 1}`,
+            amount: clampWholeNumber(offer?.amount ?? 0, { min: 0, max: 500 }),
+            points: clampWholeNumber(offer?.points ?? 0),
+            rewardScope: normalizeSupportRewardScope(offer?.rewardScope || ''),
+            awardBadge: offer?.awardBadge === true,
+            supportUrl: String(offer?.supportUrl || '').trim(),
+            supportEmbedUrl: String(offer?.supportEmbedUrl || '').trim(),
+            supportCampaignCode: String(offer?.supportCampaignCode || '').trim(),
+            supportFundCode: String(offer?.supportFundCode || '').trim(),
+        })).filter((offer) => offer.amount > 0 && offer.points > 0),
         audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || DEFAULT_EVENT_CREDITS_CONFIG.audienceAccessMode),
         supportCelebrationStyle: normalizeSupportCelebrationStyle(source.supportCelebrationStyle || DEFAULT_EVENT_CREDITS_CONFIG.supportCelebrationStyle),
     };
@@ -304,6 +329,11 @@ const sanitizeEventCode = (value = '') =>
         .replace(/[^a-zA-Z0-9_-]/g, '')
         .slice(0, 64);
 
+const normalizeSupportRewardScope = (value = '') => {
+    const token = String(value || '').trim().toLowerCase();
+    return ['buyer', 'room', 'buyer_and_room'].includes(token) ? token : 'buyer';
+};
+
 export const buildProvisionEventCreditsPayload = (draft = {}) => {
     const nextDraft = createEventCreditsDraft(draft);
     const enabled = !!nextDraft.enabled;
@@ -328,6 +358,18 @@ export const buildProvisionEventCreditsPayload = (draft = {}) => {
         supportCampaignCode: sanitizeEventCode(nextDraft.supportCampaignCode || ''),
         supportPoints: clampWholeNumber(nextDraft.supportPoints),
         supportBadge: nextDraft.supportBadge !== false,
+        supportOffers: nextDraft.supportOffers.map((offer, index) => ({
+            id: sanitizeEventCode(offer?.id || `offer_${index + 1}`) || `offer_${index + 1}`,
+            label: String(offer?.label || `Offer ${index + 1}`).trim().slice(0, 120) || `Offer ${index + 1}`,
+            amount: clampWholeNumber(offer?.amount ?? 0, { min: 0, max: 500 }),
+            points: clampWholeNumber(offer?.points ?? 0),
+            rewardScope: normalizeSupportRewardScope(offer?.rewardScope || ''),
+            awardBadge: offer?.awardBadge === true,
+            supportUrl: normalizeLaunchHttpUrl(offer?.supportUrl || ''),
+            supportEmbedUrl: normalizeLaunchHttpUrl(offer?.supportEmbedUrl || ''),
+            supportCampaignCode: sanitizeEventCode(offer?.supportCampaignCode || ''),
+            supportFundCode: sanitizeEventCode(offer?.supportFundCode || ''),
+        })).filter((offer) => offer.amount > 0 && offer.points > 0),
         audienceAccessMode: normalizeAudienceAccessMode(nextDraft.audienceAccessMode || ''),
         supportCelebrationStyle: normalizeSupportCelebrationStyle(nextDraft.supportCelebrationStyle || ''),
         promoCampaigns: nextDraft.promoCampaigns.map((campaign, index) => ({

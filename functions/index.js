@@ -1065,6 +1065,7 @@ const buildDefaultRoomEventCredits = () => ({
   supportCampaignCode: "",
   supportPoints: 0,
   supportBadge: true,
+  supportOffers: [],
   audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
   supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
   promoCampaigns: [],
@@ -1096,6 +1097,31 @@ const normalizeSupportCelebrationStyle = (value = "") => {
   }
   return SUPPORT_CELEBRATION_STYLES.standard;
 };
+const normalizeSupportRewardScope = (value = "") => {
+  const token = normalizeDirectoryToken(value || "buyer", 40);
+  if (token === "room") return "room";
+  if (token === "buyer_and_room") return "buyer_and_room";
+  return "buyer";
+};
+const normalizeRoomSupportOffer = (input = {}, index = 0) => {
+  const source = isPlainObject(input) ? input : {};
+  return {
+    id: normalizeRoomEventCreditCode(source.id || `offer_${index + 1}`) || `offer_${index + 1}`,
+    label: safeDirectoryString(source.label || `Offer ${index + 1}`, 120) || `Offer ${index + 1}`,
+    amount: clampNumber(source.amount ?? 0, 0, 500, 0),
+    points: clampNumber(source.points ?? 0, 0, 100000, 0),
+    rewardScope: normalizeSupportRewardScope(source.rewardScope),
+    awardBadge: source.awardBadge === true,
+    supportUrl: normalizeDirectoryOptionalUrl(source.supportUrl || ""),
+    supportEmbedUrl: normalizeDirectoryOptionalUrl(source.supportEmbedUrl || ""),
+    supportCampaignCode: normalizeRoomEventCreditCode(source.supportCampaignCode || ""),
+    supportFundCode: normalizeRoomEventCreditCode(source.supportFundCode || ""),
+  };
+};
+const normalizeRoomSupportOfferList = (input = []) =>
+  (Array.isArray(input) ? input : [])
+    .map((offer, index) => normalizeRoomSupportOffer(offer, index))
+    .filter((offer) => offer.amount > 0 && offer.points > 0);
 const normalizeRoomPromoCampaign = (input = {}, index = 0) => {
   const source = isPlainObject(input) ? input : {};
   const id = normalizeRoomEventCreditCode(source.id || `promo_${index + 1}`) || `promo_${index + 1}`;
@@ -1143,6 +1169,7 @@ const normalizeRoomEventCredits = (input = {}) => {
     supportCampaignCode: normalizeRoomEventCreditCode(source.supportCampaignCode || defaults.supportCampaignCode),
     supportPoints: clampNumber(source.supportPoints ?? defaults.supportPoints, 0, 100000, 0),
     supportBadge: source.supportBadge !== false,
+    supportOffers: normalizeRoomSupportOfferList(source.supportOffers || defaults.supportOffers),
     audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || defaults.audienceAccessMode),
     supportCelebrationStyle: normalizeSupportCelebrationStyle(
       source.supportCelebrationStyle || defaults.supportCelebrationStyle
@@ -1185,6 +1212,18 @@ const buildRoomEventCreditPublicSummary = (config = {}) => {
     supportCampaignCode: normalized.supportCampaignCode,
     supportPoints: normalized.supportPoints,
     supportBadge: normalized.supportBadge,
+    supportOffers: normalized.supportOffers.map((offer) => ({
+      id: offer.id,
+      label: offer.label,
+      amount: offer.amount,
+      points: offer.points,
+      rewardScope: offer.rewardScope,
+      awardBadge: offer.awardBadge,
+      supportUrl: offer.supportUrl,
+      supportEmbedUrl: offer.supportEmbedUrl,
+      supportCampaignCode: offer.supportCampaignCode,
+      supportFundCode: offer.supportFundCode,
+    })),
     audienceAccessMode: normalized.audienceAccessMode,
     supportCelebrationStyle: normalized.supportCelebrationStyle,
     promoCampaignCount: normalized.promoCampaigns.length,
@@ -12854,10 +12893,19 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
     );
     if (matchingSupportPurchase) {
       const amountCents = clampNumber(matchingSupportPurchase.get("amountCents") || 0, 0, 100000000, 0);
+      const supportPoints = clampNumber(matchingSupportPurchase.get("pointsGranted") || 0, 0, 100000, 0);
+      const supportRewardScope = normalizeSupportRewardScope(matchingSupportPurchase.get("rewardScope") || "room");
+      const supportAwardBadge = matchingSupportPurchase.get("awardBadge") !== false;
+      const supportPointsAlreadyFulfilled = !!matchingSupportPurchase.get("pointsFulfilledAt");
+      const shouldFulfillBuyerPoints = supportPoints > 0
+        && !supportPointsAlreadyFulfilled
+        && (supportRewardScope === "buyer" || supportRewardScope === "buyer_and_room");
       await Promise.all([
         roomUserRef.set({
-          roomBoostBadge: true,
+          roomBoostBadge: supportAwardBadge ? true : undefined,
           roomBoosted: true,
+          ...(supportAwardBadge ? { roomBoosts: admin.firestore.FieldValue.increment(1) } : {}),
+          ...(shouldFulfillBuyerPoints ? { points: admin.firestore.FieldValue.increment(supportPoints) } : {}),
           lastSupportPurchaseAmountCents: amountCents,
           lastSupportPurchaseProvider: normalizeDirectoryToken(
             matchingSupportPurchase.get("sourceProvider") || "givebutter",
@@ -12865,10 +12913,18 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
           ) || "givebutter",
           lastSupportPurchaseAt: serverNow,
         }, { merge: true }),
+        ...(shouldFulfillBuyerPoints ? [
+          userRef.set({
+            uid: callerUid,
+            pointsBalance: admin.firestore.FieldValue.increment(supportPoints),
+            updatedAt: serverNow,
+          }, { merge: true }),
+        ] : []),
         matchingSupportPurchase.ref.set({
           matchedUid: callerUid,
           matchedRoomCode: roomCode,
           matchedAt: serverNow,
+          ...(shouldFulfillBuyerPoints ? { pointsFulfilledAt: serverNow } : {}),
           updatedAt: serverNow,
         }, { merge: true }),
       ]);
@@ -16884,6 +16940,21 @@ const normalizeGivebutterWebhookPayload = (payload = {}) => {
     || source.campaign?.slug
     || ""
   );
+  const fundCode = normalizeRoomEventCreditCode(
+    source.fund_code
+    || source.fundCode
+    || source.fund_id
+    || source.fundId
+    || source.fund?.code
+    || source.fund?.id
+    || source.purchase?.fund_code
+    || source.purchase?.fundId
+    || source.purchase?.fund?.code
+    || source.purchase?.fund?.id
+    || payload?.fund_code
+    || ""
+  );
+  const amountCents = extractGivebutterAmountCents(payload);
   const externalId = normalizeDirectoryToken(
     source.ticket_id
     || source.line_item_id
@@ -16899,8 +16970,92 @@ const normalizeGivebutterWebhookPayload = (payload = {}) => {
     attendeeName,
     eventId,
     sourceCampaignCode,
+    fundCode,
+    amountCents,
     externalId,
     rawSubject: source,
+  };
+};
+
+const matchGivebutterSupportConfig = ({
+  config = {},
+  normalized = {},
+} = {}) => {
+  const safeConfig = normalizeRoomEventCreditConfigRecord(config);
+  if (!safeConfig.supportProvider || safeConfig.supportProvider !== "givebutter") return false;
+  const offerCampaignCodes = safeConfig.supportOffers
+    .map((offer) => normalizeRoomEventCreditCode(offer.supportCampaignCode || ""))
+    .filter(Boolean);
+  const hasCampaignMatch = normalized.sourceCampaignCode
+    && (
+      safeConfig.supportCampaignCode === normalized.sourceCampaignCode
+      || offerCampaignCodes.includes(normalized.sourceCampaignCode)
+    );
+  if (hasCampaignMatch) return true;
+  const hasFundMatch = normalized.fundCode
+    && safeConfig.supportOffers.some((offer) => normalizeRoomEventCreditCode(offer.supportFundCode || "") === normalized.fundCode);
+  if (hasFundMatch) return true;
+  if (!safeConfig.supportCampaignCode && !offerCampaignCodes.length && normalized.eventId && safeConfig.eventId === normalized.eventId) {
+    return true;
+  }
+  return false;
+};
+
+const resolveGivebutterSupportReward = ({
+  config = {},
+  normalized = {},
+  payload = {},
+} = {}) => {
+  const safeConfig = normalizeRoomEventCreditConfigRecord(config);
+  const amountCents = clampNumber(
+    normalized.amountCents || extractGivebutterAmountCents(payload),
+    0,
+    100000000,
+    0
+  );
+  const campaignCode = normalizeRoomEventCreditCode(normalized.sourceCampaignCode || "");
+  const fundCode = normalizeRoomEventCreditCode(normalized.fundCode || "");
+  const scoredOffers = safeConfig.supportOffers
+    .map((offer) => {
+      const offerCampaignCode = normalizeRoomEventCreditCode(offer.supportCampaignCode || safeConfig.supportCampaignCode || "");
+      const offerFundCode = normalizeRoomEventCreditCode(offer.supportFundCode || "");
+      const offerAmountCents = Math.round(clampNumber(offer.amount || 0, 0, 500, 0) * 100);
+      if (campaignCode && offer.supportCampaignCode && offerCampaignCode !== campaignCode) return null;
+      if (fundCode && offerFundCode && offerFundCode !== fundCode) return null;
+      let score = 0;
+      if (fundCode && offerFundCode === fundCode) score += 100;
+      if (campaignCode && offerCampaignCode === campaignCode) score += offer.supportCampaignCode ? 40 : 10;
+      if (amountCents && offerAmountCents === amountCents) score += 20;
+      if (!score) return null;
+      return { offer, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score);
+
+  const bestOffer = scoredOffers[0];
+  if (bestOffer) {
+    const tiedOffers = scoredOffers.filter((entry) => entry.score === bestOffer.score);
+    if (tiedOffers.length === 1) {
+      return {
+        offerId: bestOffer.offer.id || "",
+        label: safeDirectoryString(bestOffer.offer.label || "Support Offer", 120) || "Support Offer",
+        pointsGranted: clampNumber(bestOffer.offer.points || 0, 0, 100000, 0),
+        rewardScope: normalizeSupportRewardScope(bestOffer.offer.rewardScope || "buyer"),
+        awardBadge: bestOffer.offer.awardBadge === true,
+        amountCents,
+        celebrationStyle: safeConfig.supportCelebrationStyle,
+      };
+    }
+  }
+
+  return {
+    offerId: "",
+    label: safeDirectoryString(safeConfig.supportLabel || safeConfig.eventLabel || "Room Support", 120) || "Room Support",
+    pointsGranted: clampNumber(safeConfig.supportPoints, 0, 100000, 0),
+    rewardScope: "room",
+    awardBadge: safeConfig.supportBadge !== false,
+    amountCents,
+    celebrationStyle: safeConfig.supportCelebrationStyle,
   };
 };
 
@@ -16951,13 +17106,7 @@ exports.givebutterWebhook = onRequest(
     ]);
     const matchingSupportConfig = supportConfigQuery.docs
       .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
-      .find((entry) => {
-        const config = normalizeRoomEventCreditConfigRecord(entry);
-        if (!config.supportProvider || config.supportProvider !== "givebutter") return false;
-        if (normalized.sourceCampaignCode && config.supportCampaignCode && config.supportCampaignCode === normalized.sourceCampaignCode) return true;
-        if (!config.supportCampaignCode && normalized.eventId && config.eventId === normalized.eventId) return true;
-        return false;
-      });
+      .find((entry) => matchGivebutterSupportConfig({ config: entry, normalized }));
     if (matchingSupportConfig) {
       const existingSupport = await supportEventRef.get();
       if (existingSupport.exists) {
@@ -16966,9 +17115,15 @@ exports.givebutterWebhook = onRequest(
       }
       const supportConfig = normalizeRoomEventCreditConfigRecord(matchingSupportConfig);
       const roomCode = normalizeRoomCode(matchingSupportConfig.roomCode || matchingSupportConfig.id || "");
-      const pointsGranted = clampNumber(supportConfig.supportPoints, 0, 100000, 0);
-      const label = safeDirectoryString(supportConfig.supportLabel || supportConfig.eventLabel || "Room Support", 120) || "Room Support";
-      const amountCents = extractGivebutterAmountCents(payload);
+      const supportReward = resolveGivebutterSupportReward({
+        config: supportConfig,
+        normalized,
+        payload,
+      });
+      const pointsGranted = clampNumber(supportReward.pointsGranted, 0, 100000, 0);
+      const label = safeDirectoryString(supportReward.label || supportConfig.supportLabel || supportConfig.eventLabel || "Room Support", 120) || "Room Support";
+      const rewardScope = normalizeSupportRewardScope(supportReward.rewardScope || "room");
+      const amountCents = clampNumber(supportReward.amountCents, 0, 100000000, 0);
       let matchedBuyerUid = "";
       let matchedBuyerAvatar = "";
       if (roomCode) {
@@ -16980,18 +17135,25 @@ exports.givebutterWebhook = onRequest(
           const batch = db.batch();
           usersSnap.docs.forEach((docSnap) => {
             const roomUserData = docSnap.data() || {};
-            if (pointsGranted > 0) {
+            const roomUserEmail = normalizeEmailToken(roomUserData.email || "");
+            const safeUid = normalizeUidToken(roomUserData.uid || "") || normalizeUidToken(docSnap.id.split("_").pop() || "");
+            const isBuyer = !!roomUserEmail && roomUserEmail === normalized.purchaserEmail;
+            if (!matchedBuyerUid && isBuyer) {
+              matchedBuyerUid = safeUid;
+              matchedBuyerAvatar = safeDirectoryString(roomUserData.avatar || "", 24);
+            }
+            const shouldGrantRoomPoints = pointsGranted > 0 && (rewardScope === "room" || rewardScope === "buyer_and_room");
+            const shouldGrantBuyerPoints = pointsGranted > 0 && rewardScope === "buyer" && isBuyer;
+            if (shouldGrantRoomPoints || shouldGrantBuyerPoints) {
               batch.update(docSnap.ref, {
                 points: admin.firestore.FieldValue.increment(pointsGranted),
               });
             }
-            const roomUserEmail = normalizeEmailToken(roomUserData.email || "");
-            if (!matchedBuyerUid && roomUserEmail && roomUserEmail === normalized.purchaserEmail) {
-              matchedBuyerUid = normalizeUidToken(roomUserData.uid || "") || normalizeUidToken(docSnap.id.split("_").pop() || "");
-              matchedBuyerAvatar = safeDirectoryString(roomUserData.avatar || "", 24);
+            if (isBuyer) {
               batch.set(docSnap.ref, {
-                roomBoostBadge: true,
+                roomBoostBadge: supportReward.awardBadge ? true : undefined,
                 roomBoosted: true,
+                ...(supportReward.awardBadge ? { roomBoosts: admin.firestore.FieldValue.increment(1) } : {}),
                 lastSupportPurchaseAmountCents: amountCents,
                 lastSupportPurchaseProvider: "givebutter",
                 lastSupportPurchaseAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -17001,6 +17163,13 @@ exports.givebutterWebhook = onRequest(
           await batch.commit();
         }
       }
+      if (matchedBuyerUid && pointsGranted > 0 && (rewardScope === "buyer" || rewardScope === "buyer_and_room")) {
+        await db.collection("users").doc(matchedBuyerUid).set({
+          uid: matchedBuyerUid,
+          pointsBalance: admin.firestore.FieldValue.increment(pointsGranted),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
       if (roomCode) {
         await getRootRef().collection("rooms").doc(roomCode).set({
           purchaseCelebration: buildRoomPurchaseCelebrationPayload({
@@ -17009,17 +17178,21 @@ exports.givebutterWebhook = onRequest(
             buyerAvatar: matchedBuyerAvatar,
             label,
             points: pointsGranted,
-            badgeAwarded: supportConfig.supportBadge !== false,
+            badgeAwarded: supportReward.awardBadge === true,
             sourceProvider: "givebutter",
-            rewardScope: matchedBuyerUid ? "buyer_and_room" : "room",
+            rewardScope,
             amountCents,
-            celebrationStyle: supportConfig.supportCelebrationStyle,
+            celebrationStyle: supportReward.celebrationStyle,
           }),
         }, { merge: true });
         await getRootRef().collection("activities").add({
           roomCode,
           user: normalized.attendeeName || "SUPPORTER",
-          text: `${normalized.attendeeName || "A supporter"} unlocked ${label}${pointsGranted > 0 ? ` - everyone +${pointsGranted} pts` : ""}`,
+          text: `${normalized.attendeeName || "A supporter"} unlocked ${label}${pointsGranted > 0
+            ? rewardScope === "room"
+              ? ` - everyone +${pointsGranted} pts`
+              : ` - +${pointsGranted} pts`
+            : ""}`,
           icon: "$",
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -17030,10 +17203,17 @@ exports.givebutterWebhook = onRequest(
         normalizedEmail: normalized.purchaserEmail,
         attendeeName: normalized.attendeeName,
         sourceCampaignCode: normalized.sourceCampaignCode || supportConfig.supportCampaignCode,
+        fundCode: normalized.fundCode || null,
         label,
         pointsGranted,
         amountCents,
+        rewardScope,
+        awardBadge: supportReward.awardBadge === true,
+        supportOfferId: supportReward.offerId || null,
         matchedUid: matchedBuyerUid || null,
+        pointsFulfilledAt: matchedBuyerUid && pointsGranted > 0 && (rewardScope === "buyer" || rewardScope === "buyer_and_room")
+          ? admin.firestore.FieldValue.serverTimestamp()
+          : null,
         externalId: normalized.externalId,
         rawPayload: payload,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

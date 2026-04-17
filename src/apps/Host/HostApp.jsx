@@ -1265,9 +1265,9 @@ const NIGHT_SETUP_PRIMARY_MODES = [
     },
     {
         id: 'flappy_bird',
-        label: 'Flappy Bird',
-        description: 'Voice-volume obstacle gameplay for quick energy spikes.',
-        icon: 'fa-feather-pointed',
+        label: 'Pitch Runner',
+        description: 'Pitch lane obstacle gameplay for quick voice challenges.',
+        icon: 'fa-wave-square',
         accent: 'from-lime-500/25 via-lime-500/10 to-transparent'
     }
 ];
@@ -2642,7 +2642,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         trivia_pop: 'Trivia Pop',
         wyr: 'Would You Rather',
         riding_scales: 'Riding Scales',
-        flappy_bird: 'Flappy Bird',
+        flappy_bird: 'Pitch Runner',
         vocal_challenge: 'Vocal Challenge',
         applause: 'Applause Meter',
         applause_countdown: 'Applause Countdown',
@@ -2934,8 +2934,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         },
         flappy_bird: {
             icon: 'fa-life-ring',
-            label: 'Host Rescue',
-            description: 'Give the bird an instant lift plus a short safety shield.'
+            label: 'Pitch Lock',
+            description: 'Snap the orb into the safe lane and add a short shield.'
         },
         vocal_challenge: {
             icon: 'fa-music',
@@ -3117,7 +3117,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                     'gameData.hostAssist': {
                         id: `host_rescue_${now}`,
                         kind: 'rescue',
-                        label: 'HOST RESCUE',
+                        label: 'PITCH LOCK',
                         by: room?.hostName || 'Host',
                         triggeredAt: now,
                         durationMs: 4800
@@ -3128,8 +3128,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                     strobeEndsAt: now + 2500,
                     strobeResults: null
                 });
-                toast('Host rescue sent.');
-                await logHostInteraction('sent a Flappy Bird rescue.');
+                toast('Pitch lock sent.');
+                await logHostInteraction('sent a Pitch Runner rescue.');
                 return;
             }
 
@@ -3457,7 +3457,7 @@ const AudienceMiniPreview = ({
         doodle_oke: 'Doodle-oke',
         selfie_challenge: 'Selfie Challenge',
         selfie_cam: 'Selfie Cam',
-        flappy_bird: 'Flappy Bird',
+        flappy_bird: 'Pitch Runner',
         vocal_challenge: 'Vocal Challenge',
         riding_scales: 'Riding Scales',
         karaoke_bracket: 'Sweet 16 Bracket',

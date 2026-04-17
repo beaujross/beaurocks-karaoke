@@ -19,6 +19,7 @@ test("voice game defaults bias toward easier audience-friendly sessions", () => 
   assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes, 5);
   assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound, 50);
   assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, 4);
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty, "normal");
   assert.ok(FLAPPY_BIRD_TUNING.firstObstacleDelayMs > FLAPPY_BIRD_TUNING.startGraceMs);
   assert.equal(FLAPPY_BIRD_TUNING.hostAssistDefaultMs, 4800);
   assert.ok(FLAPPY_BIRD_TUNING.crowdGapForgiveness > FLAPPY_BIRD_TUNING.soloGapForgiveness);

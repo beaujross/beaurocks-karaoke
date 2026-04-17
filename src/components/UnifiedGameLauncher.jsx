@@ -500,7 +500,7 @@ const UnifiedGameLauncher = ({
     };
     
     const activeGameLabel = {
-        flappy_bird: 'Flappy Bird',
+        flappy_bird: 'Pitch Runner',
         vocal_challenge: 'Vocal Challenge',
         riding_scales: 'Riding Scales',
         selfie_challenge: 'Selfie Challenge',
@@ -649,7 +649,7 @@ const UnifiedGameLauncher = ({
             bingo: '1 board',
             team_pong: 'Live rally',
             karaoke_bracket: 'Sweet 16 flow',
-            flappy_bird: 'Crowd mic quick round'
+            flappy_bird: 'Crowd mic pitch run'
         };
         const rewardMap = {
             trivia_pop: '100 pts',
@@ -744,37 +744,37 @@ const UnifiedGameLauncher = ({
     const startFlappyAmbient = async ({ quick = false } = {}) => {
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, timestamp: Date.now() },
+            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal', timestamp: Date.now() },
             ...buildParticipantPayload('all', [])
         });
-        logActivity(roomCode, 'HOST', 'started Ambient Flappy (crowd mic).', 'GAME');
+        logActivity(roomCode, 'HOST', 'started Ambient Pitch Runner (crowd mic).', 'GAME');
         toast(quick
-            ? "Quick Flappy: Crowd mic mode (TV controls bird)."
-            : "Ambient Flappy Started! Crowd mic (TV) controls the bird.");
+            ? "Quick Pitch Runner: Crowd mic mode (TV controls pitch lane)."
+            : "Ambient Pitch Runner started. Crowd mic on TV drives the lane.");
         setShowGameConfig(false);
     };
 
     const startFlappySoloForUser = async (selected, { quick = false } = {}) => {
         const uid = resolveRoomUserUid(selected);
         if (!selected || !uid) {
-            toast("Pick a singer to start Solo Flappy.");
+            toast("Pick a singer to start Solo Pitch Runner.");
             return;
         }
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, timestamp: Date.now() },
+            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal', timestamp: Date.now() },
             ...buildParticipantPayload('selected', [uid])
         });
-        logActivity(roomCode, 'HOST', `started Solo Flappy for ${selected.name || 'Singer'}.`, 'GAME');
+        logActivity(roomCode, 'HOST', `started Solo Pitch Runner for ${selected.name || 'Singer'}.`, 'GAME');
         toast(quick
-            ? `Quick Flappy: Solo mode for ${selected.name || 'Singer'}.`
-            : "Solo Flappy Started!");
+            ? `Quick Pitch Runner: Solo mode for ${selected.name || 'Singer'}.`
+            : 'Solo Pitch Runner started.');
         setShowGameConfig(false);
     };
     
     const startFlappySolo = async () => {
         const selected = findRoomUserByUid(users, selectedSingerId);
-        if (!selected) { toast("Pick a singer to start Solo Flappy."); return; }
+        if (!selected) { toast("Pick a singer to start Solo Pitch Runner."); return; }
         await startFlappySoloForUser(selected, { quick: false });
         setShowGameConfig(false);
     };
@@ -2606,7 +2606,7 @@ const GameConfigModal = ({
                 <div className="w-full max-w-3xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl">
                     <div className="flex items-center justify-between mb-4">
                         <div>
-                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Flappy Bird</div>
+                            <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Pitch Runner</div>
                             <div className="text-2xl font-bold text-cyan-300">Configure game mode</div>
                         </div>
                         <button onClick={onClose} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm`}>Close</button>
@@ -2623,7 +2623,7 @@ const GameConfigModal = ({
                         </select>
                         <div className="flex gap-2">
                             <button onClick={onStartFlappyAmbient} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
-                                <i className="fa-solid fa-microphone mr-1"></i> Ambient (Crowd)
+                                <i className="fa-solid fa-microphone mr-1"></i> Crowd Mic
                             </button>
                             <button onClick={onStartFlappySolo} className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm`}>
                                 <i className="fa-solid fa-user mr-1"></i> Solo Singer

@@ -1,6 +1,46 @@
 # Project History and Lessons Learned
 
-Last updated: 2026-03-11
+Last updated: 2026-04-16
+
+## 2026-04-16 Run Of Show Admin Simplification and Full Deploy Notes
+
+Scope delivered:
+- Simplified the admin run-of-show surface from `build/review/run` into `build/preflight/run`.
+- Removed the separate review mode and replaced it with a shared repair queue for approvals, critical blockers, and risky items.
+- Moved slot assignment into preflight.
+- Moved low-frequency live controls behind `More Controls`.
+- Deployed the full Firebase project from the current workspace to `beaurocks-karaoke-v2`.
+
+Validation evidence captured:
+- `npm run build`: pass.
+- `npx vitest run tests/unit/runOfShowDirector.test.mjs`: pass.
+- `npm run qa:host:run-of-show`: pass.
+- `npm run qa:host:run-of-show:app`: pass.
+- `npx firebase-tools emulators:exec --project demo-bross --only firestore "node tests/integration/runOfShowActions.test.cjs"`: pass.
+- `npx firebase-tools emulators:exec --project demo-bross --only firestore "node tests/integration/runOfShowSlotSubmissions.test.cjs"`: pass.
+- `npx firebase-tools deploy --non-interactive`: pass.
+
+Important operational notes:
+- In this repo, `npx firebase-tools deploy --non-interactive` deploys `storage`, `firestore`, `functions`, and `hosting` to the default Firebase project in `.firebaserc`, currently `beaurocks-karaoke-v2`.
+- A full deploy from a dirty worktree ships all currently modified deployable surfaces, not just the feature under discussion.
+- The run-of-show browser QA now assumes:
+  - `Preflight` owns slot assignment
+  - `More Controls` reveals the live adjustment panel
+  - the old standalone `review` screen no longer exists
+
+Lessons learned and process changes:
+
+1. Treat UX phase names as test contracts.
+- Lesson: when the product flow changed from `review` to `preflight`, the Playwright checks broke even though the product behavior was correct.
+- Change adopted: whenever host workflow labels or mode boundaries change, update the browser QA in the same pass.
+
+2. Keep behavior coverage below the UI layer.
+- Lesson: browser smoke tests are useful for reachability and layout, but they are the first thing to go brittle during UX simplification.
+- Change adopted: preserve the underlying run-of-show behavior checks in unit and Firestore-backed integration tests so UI smoke can stay focused on workflow reachability.
+
+3. Record the meaning of `deploy all` before running it.
+- Lesson: “deploy all” is ambiguous in conversation but concrete in this repo: it means the whole Firebase config for the default project.
+- Change adopted: before any future full deploy, confirm `.firebaserc`, `firebase.json`, and the current git worktree so there is no confusion about blast radius.
 
 ## 2026-03-10 Audience Join Recovery and QA Account Notes
 

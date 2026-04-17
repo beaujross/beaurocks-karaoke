@@ -3,11 +3,11 @@ import { GAME_REGISTRY } from '../lib/gameRegistry';
 
 const GAME_RULES = {
     flappy_bird: {
-        title: 'Flappy Bird (Voice)',
+        title: 'Pitch Runner',
         lines: [
-            'Keep an easy tone going to float, then burst louder to hop up.',
-            'Tap still works, so nobody is stuck if the mic gets weird.',
-            'Big openings, extra lives, and host rescue keep the round fun.'
+            'Lock your range first, then ride your sung pitch through each note gap.',
+            'The glowing line shows the target note, and breath pause lets you reset mid-run.',
+            'Host assist can lock you into the safe lane when the room needs a save.'
         ]
     },
     vocal_challenge: {

@@ -1,218 +1,307 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePitch } from '../../hooks/usePitch';
-import { db, doc, onSnapshot, updateDoc, writeBatch } from '../../lib/firebase';
-import { APP_ID, GAME_ASSETS } from '../../lib/assets';
+import { db, doc, onSnapshot, updateDoc } from '../../lib/firebase';
+import { APP_ID, GAME_ASSETS, NOTE_NAMES } from '../../lib/assets';
 import { playSfx } from '../../lib/utils';
-import { EMOJI } from '../../lib/emoji';
-import { createProfiler } from '../../lib/profiler';
-import VoiceHud from '../../components/VoiceHud';
-import { FLAPPY_BIRD_TUNING, VOICE_GAME_FUN_DEFAULTS } from '../vocalGameTuning';
+import { VOICE_GAME_FUN_DEFAULTS } from '../vocalGameTuning';
 
-const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
-
-const FLAP_THRESHOLD = FLAPPY_BIRD_TUNING.flapThreshold;
-const FLAP_RESET_THRESHOLD = FLAPPY_BIRD_TUNING.flapResetThreshold;
-const SPIKE_THRESHOLD = FLAPPY_BIRD_TUNING.spikeThreshold;
-const GLIDE_THRESHOLD = FLAPPY_BIRD_TUNING.glideThreshold;
-const SHIELD_THRESHOLD = FLAPPY_BIRD_TUNING.shieldThreshold;
-const BASE_GRAVITY = FLAPPY_BIRD_TUNING.baseGravity;
-const FLAP_FORCE = FLAPPY_BIRD_TUNING.flapForce;
-const MIN_SPAWN_MS = FLAPPY_BIRD_TUNING.minSpawnMs;
-const START_GRACE_MS = FLAPPY_BIRD_TUNING.startGraceMs;
-const START_COUNTDOWN_MS = FLAPPY_BIRD_TUNING.startCountdownMs;
-const WARMUP_FLIGHT_MS = FLAPPY_BIRD_TUNING.warmupFlightMs;
-const FIRST_OBSTACLE_DELAY_MS = FLAPPY_BIRD_TUNING.firstObstacleDelayMs;
-const HOST_ASSIST_DEFAULT_MS = FLAPPY_BIRD_TUNING.hostAssistDefaultMs;
-const HOST_ASSIST_BANNER_MS = FLAPPY_BIRD_TUNING.hostAssistBannerMs;
-const HOST_ASSIST_LIFT = FLAPPY_BIRD_TUNING.hostAssistLift;
 const MAX_LIVES = VOICE_GAME_FUN_DEFAULTS.flappyBird.lives;
+const DEFAULT_DIFFICULTY = VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal';
+const ORB_X = 18;
+const TOP_PCT = 6;
+const FLOOR_TOP_PCT = 84;
+const FLOOR_FAIL_PCT = 88;
+const TRAIL_LIMIT = 28;
+const OBSTACLE_WIDTH = 11;
+const CALIBRATION_MIN_SPAN = 8;
+const RANGE_PADDING = 3;
+const RECOVERY_SHIELD_MS = 1500;
+const HOST_ASSIST_DEFAULT_MS = 4000;
+const HOST_ASSIST_BANNER_MS = 2300;
 
-const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState, view = 'tv' }) => {
-    const data = useMemo(() => playerData || gameState || {}, [gameState, playerData]);
+const DIFFICULTY_CONFIG = Object.freeze({
+    easy: {
+        gapSemitones: 12,
+        speedPerFrame: 0.38,
+        spawnMs: 2300,
+        stepChoices: [-4, -3, -2, -1, 1, 2, 3, 4]
+    },
+    normal: {
+        gapSemitones: 9,
+        speedPerFrame: 0.48,
+        spawnMs: 1850,
+        stepChoices: [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
+    },
+    hard: {
+        gapSemitones: 7,
+        speedPerFrame: 0.58,
+        spawnMs: 1500,
+        stepChoices: [-7, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7]
+    }
+});
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const lerp = (from, to, amount) => from + ((to - from) * amount);
+
+const normalizeDifficulty = (value = '') => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'easy' || normalized === 'hard') return normalized;
+    return 'normal';
+};
+
+const midiFromPitch = (pitch) => {
+    if (!pitch || pitch <= 0) return 0;
+    return Math.round((12 * Math.log2(pitch / 440)) + 69);
+};
+
+const labelFromMidi = (midi) => {
+    const safeMidi = Math.round(Number(midi || 0));
+    if (!safeMidi) return '--';
+    const noteIndex = ((safeMidi % 12) + 12) % 12;
+    const octave = Math.floor(safeMidi / 12) - 1;
+    return `${NOTE_NAMES[noteIndex]}${octave}`;
+};
+
+const sanitizeRange = (lowestMidi, highestMidi) => {
+    const low = clamp(Math.round(Number(lowestMidi || 46)), 30, 86);
+    const high = clamp(Math.round(Number(highestMidi || 71)), low + 6, 92);
+    if ((high - low) >= CALIBRATION_MIN_SPAN) return { low, high };
+    const midpoint = Math.round((low + high) / 2);
+    return {
+        low: clamp(midpoint - Math.ceil(CALIBRATION_MIN_SPAN / 2), 30, 84),
+        high: clamp(midpoint + Math.floor(CALIBRATION_MIN_SPAN / 2), 38, 92)
+    };
+};
+
+const yForMidi = (midi, lowestMidi, highestMidi) => {
+    const safeRange = Math.max(1, highestMidi - lowestMidi);
+    const normalized = clamp((highestMidi - midi) / safeRange, 0, 1);
+    return TOP_PCT + (normalized * (FLOOR_TOP_PCT - TOP_PCT));
+};
+
+const buildDisplayMidiList = (lowestMidi, highestMidi) => {
+    const list = [];
+    const top = clamp(Math.round(highestMidi + RANGE_PADDING), 36, 96);
+    const bottom = clamp(Math.round(lowestMidi - RANGE_PADDING), 24, top - 6);
+    for (let value = top; value >= bottom; value -= 1) {
+        list.push(value);
+    }
+    return list;
+};
+
+const buildTrailPath = (points = []) => {
+    if (!Array.isArray(points) || points.length < 2) return '';
+    return points.reduce((path, point, index) => {
+        const prefix = index === 0 ? 'M' : 'L';
+        return `${path}${prefix}${point.x},${point.y}`;
+    }, '');
+};
+
+const buildObstacle = ({ targetMidi, difficulty, seed }) => ({
+    id: seed,
+    x: 104,
+    targetMidi,
+    label: labelFromMidi(targetMidi),
+    gapSemitones: DIFFICULTY_CONFIG[difficulty].gapSemitones,
+    scored: false
+});
+
+const obstacleGapBounds = (obstacle, lowestMidi, highestMidi) => {
+    const halfGap = obstacle.gapSemitones / 2;
+    const topY = yForMidi(obstacle.targetMidi + halfGap, lowestMidi, highestMidi);
+    const bottomY = yForMidi(obstacle.targetMidi - halfGap, lowestMidi, highestMidi);
+    return {
+        topY: clamp(topY, TOP_PCT, FLOOR_TOP_PCT - 6),
+        bottomY: clamp(bottomY, TOP_PCT + 6, FLOOR_TOP_PCT)
+    };
+};
+
+const pickNextTargetMidi = ({ lowestMidi, highestMidi, previousMidi, difficulty }) => {
+    const config = DIFFICULTY_CONFIG[difficulty];
+    const paddedLow = clamp(lowestMidi + 1, 30, 90);
+    const paddedHigh = clamp(highestMidi - 1, paddedLow + 1, 92);
+    if (!previousMidi) {
+        return Math.round((paddedLow + paddedHigh) / 2);
+    }
+    const nextMidi = previousMidi + config.stepChoices[Math.floor(Math.random() * config.stepChoices.length)];
+    return clamp(nextMidi, paddedLow, paddedHigh);
+};
+
+const createBaseState = (data = {}) => {
+    const difficulty = normalizeDifficulty(data.difficulty || DEFAULT_DIFFICULTY);
+    const range = sanitizeRange(data.lowestMidi, data.highestMidi);
+    const midpoint = Math.round((range.low + range.high) / 2);
+    return {
+        status: String(data.status || 'waiting'),
+        difficulty,
+        score: Math.max(0, Number(data.score || 0)),
+        lives: clamp(Number(data.lives || MAX_LIVES), 0, MAX_LIVES),
+        lowestMidi: range.low,
+        highestMidi: range.high,
+        orbY: clamp(Number(data.orbY || yForMidi(midpoint, range.low, range.high)), TOP_PCT, FLOOR_FAIL_PCT),
+        currentMidi: Number(data.currentMidi || 0),
+        currentLabel: String(data.currentLabel || '--'),
+        targetMidi: Number(data.targetMidi || midpoint),
+        paused: Boolean(data.paused),
+        shieldUntil: Math.max(0, Number(data.shieldUntil || 0)),
+        obstacles: Array.isArray(data.obstacles) ? data.obstacles.map((item) => ({ ...item })) : [],
+        trail: Array.isArray(data.trail) ? data.trail.map((item) => ({ ...item })) : [],
+        timestamp: Math.max(0, Number(data.timestamp || Date.now()))
+    };
+};
+
+const defaultVoiceState = Object.freeze({
+    pitch: 0,
+    midi: 0,
+    label: '--',
+    confidence: 0,
+    volumeNormalized: 0,
+    stableNote: '-',
+    stability: 0,
+    calibrating: false
+});
+
+const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, gameState, view = 'tv' }) => {
+    const data = useMemo(() => playerData || gameState || {}, [playerData, gameState]);
     const controlSource = data.inputSource || inputSource || 'remote';
     const isRoomControlled = controlSource === 'ambient' || controlSource === 'crowd' || controlSource === 'local';
     const isController = isPlayer && (isRoomControlled ? view === 'tv' : view !== 'tv');
     const isLocalInput = isController && inputSource !== 'remote';
-    const { pitch, note, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, {
-        smoothingFactor: 0.42,
-        confidenceThreshold: 0.38,
+    const { pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging } = usePitch(isLocalInput, {
+        smoothingFactor: 0.36,
+        confidenceThreshold: 0.3,
         singingThreshold: 0.03,
-        stableNoteMs: 180,
-        noiseGateMultiplier: 1.25
-    }); 
-    const startsPlaying = isRoomControlled;
-    
-    // Create profiler instance
-    const profilerRef = useRef(createProfiler('FlappyBird'));
-    
-    // Game State
-    const [birdY, setBirdY] = useState(50); 
-    const [score, setScore] = useState(0); 
-    const [obstacles, setObstacles] = useState([]); 
-    const [coins, setCoins] = useState([]); 
-    const [gameStateLocal, setGameStateLocal] = useState(() => (startsPlaying ? 'playing' : 'ready')); 
-    const [lives, setLives] = useState(() => Number(data.lives || MAX_LIVES)); 
-    const [invincible, setInvincible] = useState(false); 
-    const [screechActive, setScreechActive] = useState(false); 
-    const [remoteVoice, setRemoteVoice] = useState({ note: '-', confidence: 0, volumeNormalized: 0, stableNote: '-', stability: 0, calibrating: false }); 
+        stableNoteMs: 170,
+        noiseGateMultiplier: 1.22
+    });
+
+    const initialState = useMemo(() => createBaseState(data), [data]);
+    const [gameStateLocal, setGameStateLocal] = useState(initialState);
+    const [remoteVoice, setRemoteVoice] = useState(defaultVoiceState);
+    const [rangeSetup, setRangeSetup] = useState(() => ({
+        low: null,
+        high: null,
+        sampleCount: 0
+    }));
     const [hostAssistBanner, setHostAssistBanner] = useState(null);
-    
-    // Refs for Loop
-    const birdYRef = useRef(50); 
-    const obstaclesRef = useRef([]); 
-    const coinsRef = useRef([]); 
-    const scoreRef = useRef(0); 
-    const speedRef = useRef(0.6); 
-    const voiceRef = useRef({ pitch: 0, confidence: 0, volumeNormalized: 0, stableNote: '-', stability: 0, isSinging: false }); 
-    const velocityRef = useRef(0);
-    const lastFlapRef = useRef(0);
-    const prevVolRef = useRef(0);
-    const voiceGateRef = useRef(false);
-    const lastObstacleSpawnAtRef = useRef(0);
-    const roundStartedAtRef = useRef(0);
-    const hostAssistShieldUntilRef = useRef(0);
-    const hostAssistBannerTimeoutRef = useRef(null);
+
+    const stateRef = useRef(initialState);
+    const voiceRef = useRef(defaultVoiceState);
+    const lastSpawnAtRef = useRef(0);
+    const lastTargetMidiRef = useRef(initialState.targetMidi || 0);
+    const gameOverCalledRef = useRef(false);
+    const rangeSetupRef = useRef(rangeSetup);
     const lastHostAssistIdRef = useRef('');
-
-    const triggerFlap = useCallback(() => {
-        if (!isController || gameStateLocal === 'gameover') return;
-        const now = performance.now();
-        if (now - lastFlapRef.current < 90) return;
-        velocityRef.current = FLAP_FORCE;
-        lastFlapRef.current = now;
-    }, [isController, gameStateLocal]);
+    const hostAssistBannerTimeoutRef = useRef(null);
 
     useEffect(() => {
-        if (!isController) return undefined;
-        const handleKeyDown = (event) => {
-            if (event.code !== 'Space' && event.code !== 'ArrowUp' && event.code !== 'KeyW') return;
-            event.preventDefault();
-            if (gameStateLocal === 'ready') setGameStateLocal('playing');
-            triggerFlap();
+        stateRef.current = gameStateLocal;
+    }, [gameStateLocal]);
+
+    useEffect(() => {
+        rangeSetupRef.current = rangeSetup;
+    }, [rangeSetup]);
+
+    useEffect(() => {
+        const nextMidi = isSinging && confidence >= 0.24 ? clamp(midiFromPitch(pitch), 24, 96) : 0;
+        voiceRef.current = {
+            pitch,
+            midi: nextMidi,
+            label: nextMidi ? labelFromMidi(nextMidi) : '--',
+            confidence,
+            volumeNormalized,
+            stableNote,
+            stability,
+            calibrating
         };
-        window.addEventListener('keydown', handleKeyDown, { passive: false });
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isController, gameStateLocal, triggerFlap]);
+    }, [pitch, confidence, volumeNormalized, stableNote, stability, calibrating, isSinging]);
 
     useEffect(() => {
-        if (!isController || gameStateLocal !== 'ready' || !startsPlaying) return;
-        const t = setTimeout(() => setGameStateLocal('playing'), START_COUNTDOWN_MS);
-        return () => clearTimeout(t);
-    }, [isController, gameStateLocal, startsPlaying]);
-
-    // 1. SYNC: Player sends state to Firebase
-    useEffect(() => { 
-        if(!isController) return; 
-        let writeInFlight = false;
-        const sync = setInterval(async () => { 
-            const syncMark = profilerRef.current.markStart('firebaseSync');
-            if (writeInFlight) {
-                profilerRef.current.markEnd(syncMark);
-                return;
-            }
-            writeInFlight = true;
-            try {
-                const batch = writeBatch(db);
-                const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-                batch.update(roomRef, { 
-                    'gameData.birdY': birdYRef.current, 
-                    'gameData.score': scoreRef.current, 
-                    'gameData.lives': lives, 
-                    'gameData.status': gameStateLocal, 
-                    'gameData.obstacles': obstaclesRef.current, 
-                    'gameData.coins': coinsRef.current,
-                    'gameData.voice': {
-                        note: voiceRef.current.stableNote !== '-' ? voiceRef.current.stableNote : note,
-                        confidence: voiceRef.current.confidence,
-                        volumeNormalized: voiceRef.current.volumeNormalized,
-                        stableNote: voiceRef.current.stableNote,
-                        stability: voiceRef.current.stability
-                    }
+        if (isController) return;
+        const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), (snapshot) => {
+            const nextData = snapshot.data()?.gameData;
+            if (!nextData) return;
+            setGameStateLocal(createBaseState(nextData));
+            if (nextData.voice) {
+                setRemoteVoice({
+                    ...defaultVoiceState,
+                    ...nextData.voice
                 });
-                await batch.commit();
-            } catch (e) {
-                console.error("Sync error:", e);
-            } finally {
-                writeInFlight = false;
-                profilerRef.current.markEnd(syncMark);
             }
-        }, 200); 
-        return () => clearInterval(sync); 
-    }, [score, lives, gameStateLocal, isController, roomCode, note]);
-
-    useEffect(() => {
-        if (!isController || gameStateLocal !== 'gameover') return;
-        updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-            'gameData.birdY': birdYRef.current,
-            'gameData.score': scoreRef.current,
-            'gameData.lives': lives,
-            'gameData.status': 'gameover',
-            'gameData.obstacles': obstaclesRef.current,
-            'gameData.coins': coinsRef.current,
-            'gameData.voice': {
-                note: voiceRef.current.stableNote !== '-' ? voiceRef.current.stableNote : note,
-                confidence: voiceRef.current.confidence,
-                volumeNormalized: voiceRef.current.volumeNormalized,
-                stableNote: voiceRef.current.stableNote,
-                stability: voiceRef.current.stability
-            }
-        }).catch((e) => {
-            console.error('Final sync error:', e);
         });
-    }, [isController, gameStateLocal, roomCode, lives, note]);
-
-    // 2. SYNC: Spectator listens to Firebase
-    useEffect(() => { 
-        if(isController) return; 
-        const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => { 
-            const d = s.data()?.gameData; 
-            if(d) { 
-                setBirdY(d.birdY || 50); 
-                setScore(d.score || 0); 
-                setLives(d.lives || MAX_LIVES); 
-                setObstacles(d.obstacles || []); 
-                setCoins(d.coins || []); 
-                setGameStateLocal(d.status || 'ready');
-                if (d.voice) setRemoteVoice(d.voice);
-            } 
-        }); 
-        return () => unsub(); 
+        return () => unsub();
     }, [isController, roomCode]);
 
     useEffect(() => {
-        voiceRef.current = { pitch, confidence, volumeNormalized, stableNote, stability, isSinging };
-    }, [pitch, confidence, volumeNormalized, stableNote, stability, isSinging]);
+        if (!isController || stateRef.current.status !== 'waiting') return;
+        const midi = voiceRef.current.midi;
+        if (!midi) return;
+        setRangeSetup((previous) => {
+            const low = previous.low === null ? midi : Math.min(previous.low, midi);
+            const high = previous.high === null ? midi : Math.max(previous.high, midi);
+            return {
+                low,
+                high,
+                sampleCount: previous.sampleCount + 1
+            };
+        });
+    }, [isController, gameStateLocal.status, pitch, confidence, isSinging, stableNote]);
+
+    const syncToRoom = useCallback(async () => {
+        if (!isController) return;
+        const nextState = stateRef.current;
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+            gameData: {
+                ...nextState,
+                voice: {
+                    ...voiceRef.current
+                },
+                timestamp: Date.now()
+            }
+        }).catch((error) => {
+            console.error('Pitch Runner sync error:', error);
+        });
+    }, [isController, roomCode]);
+
+    useEffect(() => {
+        if (!isController) return undefined;
+        const interval = setInterval(() => {
+            syncToRoom();
+        }, 180);
+        return () => clearInterval(interval);
+    }, [isController, syncToRoom]);
 
     useEffect(() => {
         const hostAssist = data?.hostAssist;
         const assistId = String(hostAssist?.id || '').trim();
         if (!assistId || assistId === lastHostAssistIdRef.current) return;
 
-        const durationMs = Math.max(1200, Number(hostAssist?.durationMs || HOST_ASSIST_DEFAULT_MS));
-        const triggeredAt = Number(hostAssist?.triggeredAt || 0);
-        if (triggeredAt && Date.now() - triggeredAt > durationMs + HOST_ASSIST_BANNER_MS + 1500) {
-            lastHostAssistIdRef.current = assistId;
-            return;
-        }
-
         lastHostAssistIdRef.current = assistId;
-        hostAssistShieldUntilRef.current = Date.now() + durationMs;
-        setHostAssistBanner({
-            label: hostAssist?.label || 'HOST RESCUE',
-            by: hostAssist?.by || 'Host'
-        });
-        if (hostAssistBannerTimeoutRef.current) {
-            clearTimeout(hostAssistBannerTimeoutRef.current);
-        }
-        hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), HOST_ASSIST_BANNER_MS);
+        const durationMs = Math.max(1200, Number(hostAssist?.durationMs || HOST_ASSIST_DEFAULT_MS));
+        const triggeredAt = Number(hostAssist?.triggeredAt || Date.now());
+        if (Date.now() - triggeredAt > durationMs + HOST_ASSIST_BANNER_MS + 1200) return;
 
-        if (isController && gameStateLocal === 'playing') {
-            velocityRef.current = Math.min(velocityRef.current, FLAP_FORCE - 0.5);
-            birdYRef.current = clamp(birdYRef.current - HOST_ASSIST_LIFT, 8, 100);
-            setBirdY(birdYRef.current);
-            setScreechActive(true);
-        }
-    }, [data, gameStateLocal, isController]);
+        const bannerTimer = setTimeout(() => {
+            setHostAssistBanner({
+                label: hostAssist?.label || 'Pitch Lock',
+                by: hostAssist?.by || 'Host'
+            });
+            if (hostAssistBannerTimeoutRef.current) {
+                clearTimeout(hostAssistBannerTimeoutRef.current);
+            }
+            hostAssistBannerTimeoutRef.current = setTimeout(() => setHostAssistBanner(null), HOST_ASSIST_BANNER_MS);
+
+            setGameStateLocal((previous) => {
+                const next = { ...previous };
+                next.shieldUntil = Date.now() + durationMs;
+                const activeObstacle = next.obstacles.find((item) => item.x > ORB_X - 2) || next.obstacles[0];
+                const targetMidi = activeObstacle?.targetMidi || next.targetMidi || Math.round((next.lowestMidi + next.highestMidi) / 2);
+                next.orbY = yForMidi(targetMidi, next.lowestMidi, next.highestMidi);
+                return next;
+            });
+        }, 0);
+        return () => clearTimeout(bannerTimer);
+    }, [data]);
 
     useEffect(() => () => {
         if (hostAssistBannerTimeoutRef.current) {
@@ -220,275 +309,529 @@ const FlappyGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSource, g
         }
     }, []);
 
-    useEffect(() => {
-        if (gameStateLocal !== 'playing') return;
-        if (!roundStartedAtRef.current) {
-            roundStartedAtRef.current = performance.now();
-        }
-    }, [gameStateLocal]);
+    const lockRange = useCallback(() => {
+        const liveMidi = voiceRef.current.midi || 57;
+        const lowCandidate = rangeSetupRef.current.low ?? (liveMidi - 5);
+        const highCandidate = rangeSetupRef.current.high ?? (liveMidi + 5);
+        const range = sanitizeRange(lowCandidate, highCandidate);
+        const midpoint = Math.round((range.low + range.high) / 2);
+        lastTargetMidiRef.current = midpoint;
+        setGameStateLocal((previous) => ({
+            ...previous,
+            status: 'ready',
+            paused: false,
+            score: 0,
+            lives: MAX_LIVES,
+            lowestMidi: range.low,
+            highestMidi: range.high,
+            orbY: yForMidi(midpoint, range.low, range.high),
+            currentMidi: 0,
+            currentLabel: '--',
+            targetMidi: midpoint,
+            obstacles: [],
+            trail: []
+        }));
+    }, []);
+
+    const startRun = useCallback(() => {
+        setGameStateLocal((previous) => {
+            const midpoint = Math.round((previous.lowestMidi + previous.highestMidi) / 2);
+            lastSpawnAtRef.current = 0;
+            lastTargetMidiRef.current = midpoint;
+            gameOverCalledRef.current = false;
+            return {
+                ...previous,
+                status: 'playing',
+                paused: false,
+                score: 0,
+                lives: MAX_LIVES,
+                orbY: yForMidi(midpoint, previous.lowestMidi, previous.highestMidi),
+                currentMidi: 0,
+                currentLabel: '--',
+                targetMidi: midpoint,
+                shieldUntil: 0,
+                obstacles: [],
+                trail: []
+            };
+        });
+    }, []);
+
+    const resetRun = useCallback(() => {
+        setRangeSetup({ low: null, high: null, sampleCount: 0 });
+        setGameStateLocal((previous) => ({
+            ...previous,
+            status: 'waiting',
+            paused: false,
+            score: 0,
+            lives: MAX_LIVES,
+            obstacles: [],
+            trail: []
+        }));
+    }, []);
+
+    const togglePause = useCallback(() => {
+        setGameStateLocal((previous) => ({
+            ...previous,
+            paused: !previous.paused
+        }));
+    }, []);
 
     useEffect(() => {
-        if (gameStateLocal !== 'ready') return;
-        birdYRef.current = 50;
-        velocityRef.current = 0;
-        prevVolRef.current = 0;
-        voiceGateRef.current = false;
-        lastObstacleSpawnAtRef.current = 0;
-        roundStartedAtRef.current = 0;
-        hostAssistShieldUntilRef.current = 0;
-        obstaclesRef.current = [];
-        coinsRef.current = [];
-        setBirdY(50);
-        setObstacles([]);
-        setCoins([]);
-        setLives(Number(data.lives || MAX_LIVES));
-        setScreechActive(false);
-        setHostAssistBanner(null);
-    }, [gameStateLocal]);
-    
-    // 3. GAME LOOP (Player Only)
-    useEffect(() => {
-        if(!isController || gameStateLocal !== 'playing') return;
-        let raf;
+        if (!isController || stateRef.current.status !== 'playing') return undefined;
+        let frameId = 0;
+
         const loop = () => {
-            const loopMark = profilerRef.current.markStart('gameLoop');
-            const voiceMark = profilerRef.current.markStart('voiceProcess');
-            
-            const voice = voiceRef.current;
-            const stableBoost = voice.volumeNormalized >= FLAPPY_BIRD_TUNING.stableBoostThreshold;
-            const shieldActive = voice.volumeNormalized >= SHIELD_THRESHOLD;
-            const hostAssistShieldActive = hostAssistShieldUntilRef.current > Date.now();
-
-            profilerRef.current.markEnd(voiceMark);
-
-            // Physics
-            const now = performance.now();
-            const roundElapsedMs = roundStartedAtRef.current ? now - roundStartedAtRef.current : 0;
-            const warmupFlightActive = roundElapsedMs < WARMUP_FLIGHT_MS;
-            const vol = voice.volumeNormalized || 0;
-            const delta = vol - prevVolRef.current;
-            prevVolRef.current = vol;
-            const voiceActive = voice.isSinging || vol >= GLIDE_THRESHOLD;
-            const canFlap = now - lastFlapRef.current > 110;
-            const crossedHigh = vol >= FLAP_THRESHOLD && !voiceGateRef.current;
-            const voiceSpike = vol >= GLIDE_THRESHOLD && delta >= SPIKE_THRESHOLD;
-            if (vol <= FLAP_RESET_THRESHOLD) {
-                voiceGateRef.current = false;
-            }
-            if ((crossedHigh || voiceSpike) && canFlap) {
-                velocityRef.current = FLAP_FORCE;
-                lastFlapRef.current = now;
-                voiceGateRef.current = true;
-            }
-            const glideAssist = voiceActive ? clamp((vol - GLIDE_THRESHOLD) * 0.28, 0, 0.18) : 0;
-            const sustainedLift = voiceActive ? clamp((vol - FLAP_THRESHOLD) * 0.42, 0, 0.24) : 0;
-            const warmupLift = warmupFlightActive ? (isRoomControlled ? 0.12 : 0.08) : 0;
-            const gravity = clamp((warmupFlightActive ? BASE_GRAVITY * 0.45 : BASE_GRAVITY) - glideAssist, 0.04, BASE_GRAVITY);
-            velocityRef.current = clamp(velocityRef.current + gravity - sustainedLift - warmupLift, -4.9, warmupFlightActive ? 2.4 : 3.8);
-            let targetY = birdYRef.current + velocityRef.current;
-
-            targetY = clamp(targetY, 0, 100); 
-            birdYRef.current = targetY; 
-            setBirdY(targetY); 
-            setScreechActive(shieldActive || hostAssistShieldActive);
-
-            // Spawning
-            if (!lastObstacleSpawnAtRef.current) {
-                lastObstacleSpawnAtRef.current = now;
-            }
-            if (roundElapsedMs >= FIRST_OBSTACLE_DELAY_MS && now - lastObstacleSpawnAtRef.current >= MIN_SPAWN_MS) { 
-                const gapHeight = Math.random() * 18 + 42; 
-                const gapTop = Math.random() * (100 - gapHeight - 16) + 8; 
-                const obstacleId = now;
-                obstaclesRef.current.push({ x: 100, gapTop, gapHeight, id: obstacleId }); 
-                if(Math.random() > 0.4) coinsRef.current.push({ x: 100, y: gapTop + gapHeight / 2, id: obstacleId + 1 }); 
-                lastObstacleSpawnAtRef.current = now;
+            const state = stateRef.current;
+            if (state.status !== 'playing') return;
+            if (state.paused) {
+                frameId = requestAnimationFrame(loop);
+                return;
             }
 
-            // Movement
-            speedRef.current = stableBoost ? FLAPPY_BIRD_TUNING.speedBoostPerFrame : FLAPPY_BIRD_TUNING.speedNormalPerFrame;
-            obstaclesRef.current = obstaclesRef.current.map(o => ({...o, x: o.x - speedRef.current})).filter(o => o.x > -20);
-            coinsRef.current = coinsRef.current.map(c => ({...c, x: c.x - speedRef.current})).filter(c => c.x > -20);
-            
-            // Cap array sizes to prevent memory growth (Phase 1 optimization)
-            if (obstaclesRef.current.length > 100) {
-                obstaclesRef.current = obstaclesRef.current.slice(-100);
+            const difficulty = normalizeDifficulty(state.difficulty);
+            const config = DIFFICULTY_CONFIG[difficulty];
+            const lowestMidi = state.lowestMidi;
+            const highestMidi = state.highestMidi;
+            const detectedMidi = voiceRef.current.midi
+                ? clamp(voiceRef.current.midi, lowestMidi - 2, highestMidi + 2)
+                : 0;
+
+            let orbY = state.orbY;
+            if (detectedMidi) {
+                const targetY = yForMidi(detectedMidi, lowestMidi, highestMidi);
+                orbY = lerp(orbY, targetY, 0.26);
+            } else {
+                orbY = clamp(orbY + 0.78, TOP_PCT, 94);
             }
-            if (coinsRef.current.length > 100) {
-                coinsRef.current = coinsRef.current.slice(-100);
+
+            let obstacles = state.obstacles
+                .map((item) => ({ ...item, x: item.x - config.speedPerFrame }))
+                .filter((item) => item.x > -18);
+
+            if (!lastSpawnAtRef.current) {
+                lastSpawnAtRef.current = performance.now();
             }
-            
-            // Collision: Coins
-            const collisionMark = profilerRef.current.markStart('collisionDetection');
-            coinsRef.current = coinsRef.current.filter(c => { 
-                const collected = c.x < 20 && c.x > 10 && Math.abs(c.y - targetY) < 5; 
-                if(collected) { scoreRef.current += stableBoost ? 15 : 10; playSfx(GAME_ASSETS.coin); } 
-                return !collected; 
-            }); 
-            setCoins([...coinsRef.current]);
+            if (performance.now() - lastSpawnAtRef.current >= config.spawnMs) {
+                const targetMidi = pickNextTargetMidi({
+                    lowestMidi,
+                    highestMidi,
+                    previousMidi: lastTargetMidiRef.current,
+                    difficulty
+                });
+                lastTargetMidiRef.current = targetMidi;
+                obstacles = [
+                    ...obstacles,
+                    buildObstacle({
+                        targetMidi,
+                        difficulty,
+                        seed: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                    })
+                ];
+                lastSpawnAtRef.current = performance.now();
+            }
 
-            // Collision: Obstacles
-            if (!invincible && !shieldActive && !hostAssistShieldActive && now - roundStartedAtRef.current > START_GRACE_MS) { 
-                let hit = false; 
-                const gapForgiveness = isRoomControlled ? FLAPPY_BIRD_TUNING.crowdGapForgiveness : FLAPPY_BIRD_TUNING.soloGapForgiveness;
-                obstaclesRef.current.forEach(o => { 
-                    if (o.x < 20 && o.x > 0) { 
-                        if (targetY < o.gapTop - gapForgiveness || targetY > o.gapTop + o.gapHeight + gapForgiveness) hit = true; 
-                    } 
-                }); 
-                if (hit) { 
-                    playSfx(GAME_ASSETS.fail); 
-                    setLives(prev => { 
-                        const newLives = prev - 1; 
-                        if (newLives <= 0) { 
-                            setGameStateLocal('gameover'); 
-                            setScore(scoreRef.current);
-                            if(onGameOver) onGameOver(scoreRef.current); 
-                        } else { 
-                            birdYRef.current = 50;
-                            velocityRef.current = FLAPPY_BIRD_TUNING.initialRecoveryVelocity;
-                            setBirdY(50);
-                            setInvincible(true); 
-                            setTimeout(() => setInvincible(false), FLAPPY_BIRD_TUNING.invincibleMs); 
-                        } 
-                        return newLives; 
-                    }); 
-                } 
-            } 
-            profilerRef.current.markEnd(collisionMark);
-            
-            scoreRef.current += 1; 
-            if(scoreRef.current % 50 === 0) setScore(scoreRef.current); 
-            
-            profilerRef.current.markEnd(loopMark);
-            profilerRef.current.trackFrameComplete();
-            raf = requestAnimationFrame(loop);
-        }; 
-        raf = requestAnimationFrame(loop); 
-        return () => cancelAnimationFrame(raf);
-    }, [gameStateLocal, isController, isRoomControlled, invincible, onGameOver]);
+            let trail = state.trail
+                .map((point) => ({ ...point, x: point.x - config.speedPerFrame }))
+                .filter((point) => point.x > -5);
+            trail.push({ x: ORB_X, y: orbY });
+            if (trail.length > TRAIL_LIMIT) {
+                trail = trail.slice(trail.length - TRAIL_LIMIT);
+            }
 
-    const spectatorMessage = (() => {
-        if (view === 'mobile' && isRoomControlled) {
-            return 'Crowd mic mode is running. Bird control is on Public TV. Ask host for Solo Flappy to control from your phone.';
-        }
-        if (view === 'mobile' && !isRoomControlled) {
-            return `Waiting for ${data.playerName || 'the active player'} to play.`;
-        }
-        return 'WATCHING LIVE FEED';
-    })();
-    const displayedVolume = clamp(((isController ? volumeNormalized : remoteVoice?.volumeNormalized) || 0) * 100, 0, 100);
-    const flapThresholdPct = Math.round(FLAP_THRESHOLD * 100);
-    const shieldThresholdPct = Math.round(SHIELD_THRESHOLD * 100);
+            let score = state.score;
+            let lives = state.lives;
+            let status = state.status;
+            let shieldUntil = state.shieldUntil;
+            const shieldActive = Number(shieldUntil || 0) > Date.now();
 
-    const handleControlSurfaceTap = (event) => {
-        if (!isController || gameStateLocal === 'gameover') return;
-        const tag = String(event?.target?.tagName || '').toLowerCase();
-        if (tag === 'button' || tag === 'a' || tag === 'input' || tag === 'textarea') return;
-        if (gameStateLocal === 'ready') setGameStateLocal('playing');
-        triggerFlap();
+            const loseLife = (safeTargetMidi) => {
+                playSfx(GAME_ASSETS.fail);
+                lives -= 1;
+                if (lives <= 0) {
+                    status = 'gameover';
+                    return;
+                }
+                shieldUntil = Date.now() + RECOVERY_SHIELD_MS;
+                orbY = yForMidi(safeTargetMidi, lowestMidi, highestMidi);
+                obstacles = obstacles.filter((item) => item.x > ORB_X + 4);
+                trail = [{ x: ORB_X, y: orbY }];
+            };
+
+            for (const obstacle of obstacles) {
+                const bounds = obstacleGapBounds(obstacle, lowestMidi, highestMidi);
+                if (!obstacle.scored && (obstacle.x + OBSTACLE_WIDTH) < ORB_X) {
+                    obstacle.scored = true;
+                    score += 35;
+                    playSfx(GAME_ASSETS.coin);
+                }
+                const inCollisionX = obstacle.x < (ORB_X + 2.4) && (obstacle.x + OBSTACLE_WIDTH) > (ORB_X - 2.4);
+                const outsideGap = orbY < bounds.topY || orbY > bounds.bottomY;
+                if (status === 'playing' && inCollisionX && outsideGap && !shieldActive) {
+                    loseLife(obstacle.targetMidi);
+                    break;
+                }
+            }
+
+            const currentObstacle = obstacles.find((item) => item.x > ORB_X - 2) || obstacles[0];
+            const currentTargetMidi = currentObstacle?.targetMidi || lastTargetMidiRef.current || Math.round((lowestMidi + highestMidi) / 2);
+
+            if (status === 'playing' && orbY >= FLOOR_FAIL_PCT && !shieldActive) {
+                loseLife(currentTargetMidi);
+            }
+
+            const nextState = {
+                ...state,
+                score,
+                lives,
+                status,
+                shieldUntil,
+                orbY,
+                currentMidi: detectedMidi,
+                currentLabel: detectedMidi ? labelFromMidi(detectedMidi) : '--',
+                targetMidi: currentTargetMidi,
+                obstacles,
+                trail,
+                timestamp: Date.now()
+            };
+            stateRef.current = nextState;
+            setGameStateLocal(nextState);
+
+            if (status === 'gameover' && !gameOverCalledRef.current) {
+                gameOverCalledRef.current = true;
+                if (typeof onGameOver === 'function') {
+                    onGameOver(score);
+                }
+            }
+
+            frameId = requestAnimationFrame(loop);
+        };
+
+        frameId = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(frameId);
+    }, [gameStateLocal.status, isController, onGameOver]);
+
+    const setDifficulty = (difficultyKey) => {
+        if (!isController) return;
+        const nextDifficulty = normalizeDifficulty(difficultyKey);
+        setGameStateLocal((previous) => ({
+            ...previous,
+            difficulty: nextDifficulty
+        }));
     };
 
-    return ( 
-        <div
-            className="relative w-full h-full bg-cyan-900 overflow-hidden font-pixel"
-            onPointerDown={handleControlSurfaceTap}
-        > 
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-20 scrolling-bg-slow"></div> 
-            <div className="absolute inset-0 flex flex-col justify-evenly opacity-30 pointer-events-none">
-                {[1,2,3,4,5].map(i => <div key={i} className="w-full h-0.5 bg-white shadow-[0_0_10px_white]"></div>)}
-            </div>
-            
-            {/* HUD */}
-            <div className="absolute top-4 left-4 z-20 flex gap-4"> 
-                <div className="bg-black/50 p-2 rounded text-yellow-400 border-2 border-white">SCORE: {score}</div> 
-                <div className="bg-black/50 p-2 rounded text-red-500 border-2 border-white flex gap-1">{[...Array(MAX_LIVES)].map((_,i) => <span key={i}>{i < lives ? EMOJI.heart : EMOJI.skull}</span>)}</div> 
-            </div> 
-            {hostAssistBanner && (
-                <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-                    <div className="rounded-2xl border border-yellow-200/40 bg-gradient-to-r from-yellow-500/90 via-amber-400/95 to-orange-500/90 px-6 py-3 text-center shadow-[0_0_35px_rgba(251,191,36,0.45)] animate-pulse">
-                        <div className="text-xs uppercase tracking-[0.35em] text-black/70">Host Assist</div>
-                        <div className="text-2xl md:text-3xl font-black text-black">{hostAssistBanner.label}</div>
-                        <div className="text-sm md:text-base font-bold text-black/80">Lift + shield from {hostAssistBanner.by}</div>
-                    </div>
-                </div>
-            )}
-            {view === 'tv' && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-[min(86vw,980px)]">
-                    <div className="rounded-2xl border border-white/20 bg-black/58 px-5 py-3 shadow-[0_0_30px_rgba(0,0,0,0.4)]">
-                        <div className="text-[clamp(1rem,1.5vw,1.45rem)] uppercase tracking-[0.14em] text-cyan-100 text-center">
-                            Keep an "ahhh" going for lift | Burst above {flapThresholdPct}% to flap | Hold above {shieldThresholdPct}% for shield assist
-                        </div>
-                        <div className="mt-2 h-3 rounded-full bg-white/10 border border-white/20 relative overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-cyan-300 via-emerald-300 to-yellow-300 transition-all duration-120" style={{ width: `${displayedVolume}%` }} />
-                            <div className="absolute inset-y-0 w-[2px] bg-cyan-100/80" style={{ left: `${flapThresholdPct}%` }} />
-                            <div className="absolute inset-y-0 w-[2px] bg-yellow-100/80" style={{ left: `${shieldThresholdPct}%` }} />
-                        </div>
-                        <div className="mt-1 text-sm md:text-base text-zinc-200 text-center uppercase tracking-[0.1em]">
-                            Live input {Math.round(displayedVolume)}%
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {/* Player */}
-            <div className={`absolute left-[15%] w-12 h-12 transition-transform duration-75 flex items-center justify-center text-4xl bird-flap ${invincible ? 'opacity-50 animate-pulse' : ''} ${screechActive ? 'drop-shadow-[0_0_15px_rgba(255,255,0,0.8)] scale-125' : ''}`} style={{ top: `${birdY}%`, transform: `translateY(-50%)` }}>
-                {playerData?.playerAvatar || gameState?.playerAvatar || 'O'}
-            </div> 
-            
-            {/* Obstacles */}
-            {obstacles.map(o => ( 
-                <div key={o.id} className="absolute w-[10%] bg-green-800 border-4 border-green-900" style={{ left: `${o.x}%`, top: 0, height: '100%' }}>
-                    <div className="absolute w-full bg-cyan-900" style={{ top: `${o.gapTop}%`, height: `${o.gapHeight}%`, left: '-4px', width: 'calc(100% + 8px)', borderTop: '4px solid #14532d', borderBottom: '4px solid #14532d' }}></div>
-                </div> 
-            ))} 
-            {/* Coins */}
-            {coins.map(c => (<div key={c.id} className="absolute text-3xl animate-spin" style={{left: `${c.x}%`, top: `${c.y}%`}}>{EMOJI.coin}</div>))} 
-            
-            {/* Screens */}
-            {!isController && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-6">
-                    <div className="max-w-2xl text-white/80 bg-black/45 border border-white/15 rounded-2xl px-5 py-4 text-center">
-                        {view === 'tv'
-                            ? <div className="text-xl animate-pulse">{spectatorMessage}</div>
-                            : <div className="text-sm md:text-base">{spectatorMessage}</div>}
-                    </div>
-                </div>
-            )} 
-            
-            {isController && gameStateLocal === 'ready' && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50 text-center p-4">
-                    <h1 className="text-5xl md:text-7xl text-yellow-400 mb-5">{isRoomControlled ? 'CROWD MIC CONTROL' : 'SOLO CONTROL'}</h1>
-                    <div className="max-w-4xl rounded-3xl border border-white/15 bg-black/45 px-8 py-6 space-y-3">
-                        <p className="text-2xl md:text-3xl">1. Keep an easy "ahhh" going to help the bird float.</p>
-                        <p className="text-2xl md:text-3xl">2. Burst above <span className="text-cyan-300 font-black">{flapThresholdPct}%</span> to hop upward.</p>
-                        <p className="text-2xl md:text-3xl">3. Hold above <span className="text-yellow-300 font-black">{shieldThresholdPct}%</span> for extra protection.</p>
-                        <p className="text-xl md:text-2xl text-zinc-200">{view === 'tv' ? 'You can also click or press Space to flap.' : 'Tap screen to flap at any time.'}</p>
-                    </div>
-                    <button onClick={()=>setGameStateLocal('playing')} className="bg-green-600 px-10 py-4 rounded text-white font-bold animate-bounce mt-5 text-3xl">START</button>
-                </div>
-            )} 
-            
-            {gameStateLocal === 'gameover' && (
-                <div className="absolute inset-0 bg-red-900/90 flex flex-col items-center justify-center z-50 text-center">
-                    <h1 className="text-4xl text-white mb-4">GAME OVER</h1>
-                    <div className="text-2xl text-yellow-400 mb-8">SCORE: {score}</div>
-                    {isController && typeof onGameOver === 'function' && <button onClick={()=>onGameOver(score)} className="bg-white text-black px-6 py-2 rounded font-bold">SUBMIT SCORE</button>}
-                </div>
-            )} 
+    const visibleVoice = isController
+        ? {
+            pitch,
+            midi: isSinging && confidence >= 0.24 ? clamp(midiFromPitch(pitch), 24, 96) : 0,
+            label: isSinging && confidence >= 0.24 ? labelFromMidi(clamp(midiFromPitch(pitch), 24, 96)) : '--',
+            confidence,
+            volumeNormalized,
+            stableNote,
+            stability,
+            calibrating
+        }
+        : remoteVoice;
+    const visibleState = gameStateLocal;
+    const visibleRange = sanitizeRange(visibleState.lowestMidi, visibleState.highestMidi);
+    const displayMidi = buildDisplayMidiList(visibleRange.low, visibleRange.high);
+    const activeTargetMidi = visibleState.targetMidi || Math.round((visibleRange.low + visibleRange.high) / 2);
+    const activeTargetY = yForMidi(activeTargetMidi, visibleRange.low, visibleRange.high);
+    const trailPath = buildTrailPath(visibleState.trail);
+    const renderNowMs = Number(visibleState.timestamp || 0);
+    const shieldActive = Number(visibleState.shieldUntil || 0) > renderNowMs;
+    const spectatorMessage = view === 'mobile' && isRoomControlled
+        ? 'Crowd mic mode is active on the TV. Watch the run there or ask the host for solo mode.'
+        : `Watching ${data.playerName || 'the current singer'} play.`;
+    const hasLockedRange = visibleState.status !== 'waiting';
+    const previewRange = hasLockedRange
+        ? visibleRange
+        : sanitizeRange(rangeSetup.low ?? 46, rangeSetup.high ?? 71);
+    const previewLowLabel = hasLockedRange ? labelFromMidi(visibleRange.low) : labelFromMidi(previewRange.low);
+    const previewHighLabel = hasLockedRange ? labelFromMidi(visibleRange.high) : labelFromMidi(previewRange.high);
+    const previewLowY = yForMidi(previewRange.low, previewRange.low, previewRange.high);
+    const previewHighY = yForMidi(previewRange.high, previewRange.low, previewRange.high);
+    const currentLiveMidi = visibleVoice.midi || visibleState.currentMidi || 0;
+    const currentLiveY = currentLiveMidi
+        ? yForMidi(currentLiveMidi, previewRange.low, previewRange.high)
+        : null;
 
-            <VoiceHud
-                note={(isController ? note : remoteVoice.note) || '-'}
-                pitch={isController ? pitch : 0}
-                confidence={isController ? confidence : remoteVoice.confidence}
-                volumeNormalized={isController ? volumeNormalized : remoteVoice.volumeNormalized}
-                stableNote={isController ? stableNote : remoteVoice.stableNote}
-                stability={isController ? stability : remoteVoice.stability}
-                calibrating={isController ? calibrating : remoteVoice.calibrating}
-                view={view}
+    return (
+        <div className="relative h-full w-full overflow-hidden bg-[#0a0f1f] text-white">
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(34,211,238,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(34,211,238,0.08)_1px,transparent_1px)] bg-[size:14%_6.4%]" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(125,211,252,0.16),transparent_38%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.16),transparent_46%)]" />
+            <div className="absolute inset-x-0 bottom-0 h-[16%] border-t border-pink-400/60 bg-gradient-to-t from-pink-500/20 via-pink-500/10 to-transparent" />
+
+            <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs uppercase tracking-[0.28em] text-zinc-300">
+                    <span>Pitch Runner</span>
+                    <span className="text-white">{visibleState.score}</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/45 px-3 py-2">
+                    {['easy', 'normal', 'hard'].map((difficultyKey) => {
+                        const active = normalizeDifficulty(visibleState.difficulty) === difficultyKey;
+                        return (
+                            <button
+                                key={difficultyKey}
+                                type="button"
+                                onClick={() => setDifficulty(difficultyKey)}
+                                disabled={!isController}
+                                className={`min-w-[84px] rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.22em] transition ${
+                                    active
+                                        ? difficultyKey === 'easy'
+                                            ? 'bg-emerald-500 text-black'
+                                            : difficultyKey === 'hard'
+                                                ? 'bg-pink-500 text-white'
+                                                : 'bg-cyan-400 text-black'
+                                        : 'bg-white/10 text-zinc-300'
+                                } ${isController ? '' : 'cursor-default'}`}
+                            >
+                                {difficultyKey}
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="rounded-full border border-white/10 bg-black/45 px-4 py-2 text-right">
+                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-400">Lives</div>
+                    <div className="text-lg font-black text-white">{visibleState.lives}/{MAX_LIVES}</div>
+                </div>
+            </div>
+
+            <div className="absolute inset-y-0 right-5 z-10 w-12">
+                {displayMidi.map((midi) => {
+                    const y = yForMidi(midi, visibleRange.low, visibleRange.high);
+                    return (
+                        <div
+                            key={midi}
+                            className={`absolute right-0 -translate-y-1/2 text-xs font-semibold ${midi === activeTargetMidi ? 'text-pink-300' : 'text-zinc-400'}`}
+                            style={{ top: `${y}%` }}
+                        >
+                            {labelFromMidi(midi)}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div
+                className="absolute inset-x-0 z-10 border-t border-b border-emerald-400/30 bg-emerald-400/10"
+                style={{ top: `${previewHighY}%`, height: `${Math.max(3, previewLowY - previewHighY)}%` }}
             />
-        </div> 
+            <div className="absolute inset-x-0 z-10 border-t border-dashed border-emerald-300/70" style={{ top: `${previewHighY}%` }} />
+            <div className="absolute inset-x-0 z-10 border-t border-dashed border-cyan-300/70" style={{ top: `${previewLowY}%` }} />
+            <div className="absolute left-6 z-20 -translate-y-1/2 rounded-xl border border-emerald-400/30 bg-black/60 px-3 py-1 text-sm font-black text-emerald-300" style={{ top: `${previewHighY}%` }}>
+                Highest: {previewHighLabel}
+            </div>
+            <div className="absolute left-6 z-20 -translate-y-1/2 rounded-xl border border-cyan-400/30 bg-black/60 px-3 py-1 text-sm font-black text-cyan-300" style={{ top: `${previewLowY}%` }}>
+                Lowest: {previewLowLabel}
+            </div>
+
+            {visibleState.status === 'playing' && (
+                <div className="absolute inset-x-0 z-10 border-t border-dashed border-lime-300/80" style={{ top: `${activeTargetY}%` }} />
+            )}
+
+            {visibleState.status === 'playing' && (
+                <div className="absolute right-20 z-20 -translate-y-1/2 rounded-xl border border-lime-300/30 bg-black/65 px-3 py-1 text-sm font-black text-lime-200" style={{ top: `${activeTargetY}%` }}>
+                    Target {labelFromMidi(activeTargetMidi)}
+                </div>
+            )}
+
+            {visibleState.obstacles.map((obstacle) => {
+                const bounds = obstacleGapBounds(obstacle, visibleRange.low, visibleRange.high);
+                return (
+                    <div
+                        key={obstacle.id}
+                        className={`absolute top-0 bottom-0 z-20 w-[11%] ${shieldActive ? 'opacity-70' : ''}`}
+                        style={{ left: `${obstacle.x}%` }}
+                    >
+                        <div className="absolute inset-x-0 top-0 rounded-b-[20px] border border-emerald-400/50 bg-emerald-400/10 shadow-[0_0_20px_rgba(74,222,128,0.35)]" style={{ height: `${bounds.topY}%` }} />
+                        <div className="absolute inset-x-0 bottom-0 rounded-t-[20px] border border-emerald-400/50 bg-emerald-400/10 shadow-[0_0_20px_rgba(74,222,128,0.35)]" style={{ top: `${bounds.bottomY}%` }} />
+                    </div>
+                );
+            })}
+
+            <svg className="absolute inset-0 z-20 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                {trailPath ? (
+                    <>
+                        <path d={trailPath} fill="none" stroke="rgba(34,211,238,0.25)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d={trailPath} fill="none" stroke="rgba(34,211,238,0.9)" strokeWidth="0.75" strokeLinecap="round" strokeLinejoin="round" />
+                    </>
+                ) : null}
+            </svg>
+
+            <div
+                className={`absolute z-30 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200 shadow-[0_0_28px_rgba(103,232,249,0.95)] transition-transform ${shieldActive ? 'ring-4 ring-emerald-300/45 scale-110' : ''}`}
+                style={{ left: `${ORB_X}%`, top: `${visibleState.orbY}%` }}
+            >
+                <div className="absolute inset-[18%] rounded-full bg-cyan-100/80" />
+            </div>
+
+            {currentLiveY && visibleState.status !== 'playing' && (
+                <div
+                    className="absolute z-20 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200/70 shadow-[0_0_18px_rgba(103,232,249,0.55)]"
+                    style={{ left: '20%', top: `${currentLiveY}%` }}
+                />
+            )}
+
+            <div className="absolute bottom-5 left-5 z-30 rounded-2xl border border-white/10 bg-black/55 px-4 py-3 text-sm uppercase tracking-[0.18em] text-zinc-200">
+                <div className="text-[10px] text-zinc-500">Voice</div>
+                <div className="mt-1 flex items-center gap-3">
+                    <span className="text-white">{visibleVoice.label || visibleState.currentLabel || '--'}</span>
+                    <span className="text-zinc-400">{Math.round((visibleVoice.confidence || 0) * 100)}%</span>
+                    <span className="text-zinc-400">{Math.round((visibleVoice.volumeNormalized || 0) * 100)}%</span>
+                </div>
+            </div>
+
+            {hostAssistBanner && (
+                <div className="absolute left-1/2 top-24 z-40 -translate-x-1/2">
+                    <div className="rounded-2xl border border-cyan-200/40 bg-gradient-to-r from-cyan-300/95 via-emerald-300/92 to-sky-300/92 px-6 py-3 text-center text-black shadow-[0_0_34px_rgba(34,211,238,0.35)]">
+                        <div className="text-[10px] font-black uppercase tracking-[0.34em] text-black/70">Host Assist</div>
+                        <div className="mt-1 text-2xl font-black">{hostAssistBanner.label}</div>
+                        <div className="text-sm font-bold text-black/75">Safe lane lock from {hostAssistBanner.by}</div>
+                    </div>
+                </div>
+            )}
+
+            {isController && visibleState.status === 'playing' && (
+                <button
+                    type="button"
+                    onClick={togglePause}
+                    className="absolute bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full border border-white/10 bg-black/60 px-5 py-2 text-sm font-black uppercase tracking-[0.18em] text-white"
+                >
+                    {visibleState.paused ? 'Resume' : 'Breath'}
+                </button>
+            )}
+
+            {!isController && view !== 'tv' && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-6 text-center">
+                    <div className="max-w-xl rounded-3xl border border-white/10 bg-black/65 px-6 py-5 text-base text-zinc-200">
+                        {spectatorMessage}
+                    </div>
+                </div>
+            )}
+
+            {isController && visibleState.status === 'waiting' && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/65 px-6">
+                    <div className="w-full max-w-3xl rounded-[28px] border border-white/10 bg-[#0d1326]/92 px-8 py-7 text-center shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Range Setup</div>
+                        <div className="mt-3 text-5xl font-black text-cyan-200">Find Your Lane</div>
+                        <div className="mt-3 text-lg text-zinc-300">
+                            Sing your lowest comfortable note, then your highest. When the lines look right, lock the range and start.
+                        </div>
+                        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="rounded-3xl border border-white/10 bg-black/35 px-5 py-4">
+                                <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Detected Lowest</div>
+                                <div className="mt-2 text-4xl font-black text-cyan-300">{rangeSetup.low ? labelFromMidi(rangeSetup.low) : '--'}</div>
+                            </div>
+                            <div className="rounded-3xl border border-white/10 bg-black/35 px-5 py-4">
+                                <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Detected Highest</div>
+                                <div className="mt-2 text-4xl font-black text-emerald-300">{rangeSetup.high ? labelFromMidi(rangeSetup.high) : '--'}</div>
+                            </div>
+                        </div>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                            <button
+                                type="button"
+                                onClick={lockRange}
+                                className="rounded-full bg-cyan-400 px-6 py-3 text-sm font-black uppercase tracking-[0.22em] text-black"
+                            >
+                                Lock Range
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const range = sanitizeRange(46, 71);
+                                    const midpoint = Math.round((range.low + range.high) / 2);
+                                    setRangeSetup({ low: range.low, high: range.high, sampleCount: 0 });
+                                    lastTargetMidiRef.current = midpoint;
+                                    setGameStateLocal((previous) => ({
+                                        ...previous,
+                                        status: 'ready',
+                                        paused: false,
+                                        score: 0,
+                                        lives: MAX_LIVES,
+                                        lowestMidi: range.low,
+                                        highestMidi: range.high,
+                                        orbY: yForMidi(midpoint, range.low, range.high),
+                                        currentMidi: 0,
+                                        currentLabel: '--',
+                                        targetMidi: midpoint,
+                                        obstacles: [],
+                                        trail: []
+                                    }));
+                                }}
+                                className="rounded-full border border-white/10 bg-white/10 px-6 py-3 text-sm font-black uppercase tracking-[0.22em] text-white"
+                            >
+                                Use Demo Range
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isController && visibleState.status === 'ready' && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/58 px-6">
+                    <div className="w-full max-w-3xl rounded-[28px] border border-white/10 bg-[#0d1326]/92 px-8 py-7 text-center shadow-[0_0_60px_rgba(0,0,0,0.4)]">
+                        <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Pitch Runner</div>
+                        <div className="mt-3 text-5xl font-black text-cyan-200">Ride The Note Gap</div>
+                        <div className="mt-3 text-lg text-zinc-300">
+                            Match the target note line and keep the orb inside the opening. Your range is locked to {previewLowLabel} through {previewHighLabel}.
+                        </div>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                            <button
+                                type="button"
+                                onClick={startRun}
+                                className="rounded-full bg-cyan-400 px-8 py-3 text-sm font-black uppercase tracking-[0.22em] text-black"
+                            >
+                                Start Run
+                            </button>
+                            <button
+                                type="button"
+                                onClick={resetRun}
+                                className="rounded-full border border-white/10 bg-white/10 px-8 py-3 text-sm font-black uppercase tracking-[0.22em] text-white"
+                            >
+                                Recalibrate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {visibleState.paused && visibleState.status === 'playing' && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/45 px-6">
+                    <div className="rounded-[28px] border border-white/10 bg-black/75 px-8 py-6 text-center">
+                        <div className="text-xs uppercase tracking-[0.36em] text-zinc-400">Breath Pause</div>
+                        <div className="mt-3 text-4xl font-black text-white">Catch your breath</div>
+                    </div>
+                </div>
+            )}
+
+            {visibleState.status === 'gameover' && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
+                    <div className="w-full max-w-2xl rounded-[28px] border border-pink-400/25 bg-[#111729]/94 px-8 py-7 text-center">
+                        <div className="text-xs uppercase tracking-[0.36em] text-zinc-400">Run Over</div>
+                        <div className="mt-3 text-5xl font-black text-pink-300">Score {visibleState.score}</div>
+                        <div className="mt-2 text-lg text-zinc-300">Locked range {previewLowLabel} to {previewHighLabel}</div>
+                        {isController && (
+                            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={startRun}
+                                    className="rounded-full bg-cyan-400 px-8 py-3 text-sm font-black uppercase tracking-[0.22em] text-black"
+                                >
+                                    Run Again
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={resetRun}
+                                    className="rounded-full border border-white/10 bg-white/10 px-8 py-3 text-sm font-black uppercase tracking-[0.22em] text-white"
+                                >
+                                    New Range
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 };
 
-export default FlappyGame;
+export default PitchRunnerGame;

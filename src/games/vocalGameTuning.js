@@ -2,7 +2,8 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const VOICE_GAME_FUN_DEFAULTS = Object.freeze({
     flappyBird: {
-        lives: 4
+        lives: 4,
+        difficulty: 'normal'
     },
     vocalChallenge: {
         durationSec: 45,
@@ -94,4 +95,3 @@ export const getRidingScalesHoldMs = (difficulty = 'easy') => {
     if (difficulty === 'standard') return 130;
     return 110;
 };
-

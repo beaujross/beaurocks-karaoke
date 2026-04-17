@@ -90,6 +90,32 @@ test("hostLaunchHelpers normalizes event credits and claim codes", () => {
   assert.equal(payload.claimCodes.socialPromo, "POSTLOUD");
 });
 
+test("hostLaunchHelpers normalizes donation-backed support offers", () => {
+  const payload = buildProvisionEventCreditsPayload(
+    createEventCreditsDraft({
+      enabled: true,
+      supportProvider: "givebutter",
+      supportOffers: [
+        { id: "Solo Boost!", label: "Solo Boost", amount: "5.9", points: "1200", rewardScope: "buyer" },
+      ],
+    }),
+  );
+
+  assert.equal(payload.supportOffers.length, 1);
+  assert.deepEqual(payload.supportOffers[0], {
+    id: "soloboost",
+    label: "Solo Boost",
+    amount: 5,
+    points: 1200,
+    rewardScope: "buyer",
+    awardBadge: false,
+    supportUrl: "",
+    supportEmbedUrl: "",
+    supportCampaignCode: "",
+    supportFundCode: "",
+  });
+});
+
 test("hostLaunchHelpers applies AAHF preset defaults for simple Givebutter matching", () => {
   const draft = applyEventCreditsPreset("aahf_kickoff", createEventCreditsDraft());
   assert.equal(draft.enabled, true);
@@ -98,6 +124,7 @@ test("hostLaunchHelpers applies AAHF preset defaults for simple Givebutter match
   assert.equal(draft.generalAdmissionPoints, 200);
   assert.ok(Array.isArray(draft.promoCampaigns));
   assert.equal(draft.promoCampaigns.length, 0);
+  assert.equal(draft.supportOffers.length, 3);
   assert.equal(draft.vipBonusPoints, 0);
   assert.equal(draft.skipLineBonusPoints, 0);
 
@@ -105,6 +132,7 @@ test("hostLaunchHelpers applies AAHF preset defaults for simple Givebutter match
   assert.equal(payload.presetId, "aahf_kickoff");
   assert.equal(payload.sourceProvider, "givebutter");
   assert.equal(payload.promoCampaigns.length, draft.promoCampaigns.length);
+  assert.equal(payload.supportOffers.length, draft.supportOffers.length);
   assert.equal(payload.vipBonusPoints, 0);
   assert.equal(payload.skipLineBonusPoints, 0);
 });

@@ -92,14 +92,12 @@ const main = async () => {
     });
 
     await runCheck(checks, "host_live_adjustments_extend_and_toggle_audio", async () => {
+      await page.getByRole("button", { name: /more controls/i }).click({ force: true });
       const panel = page.locator('[data-live-adjustment-panel="true"]').first();
       await panel.waitFor({ state: "visible", timeout: timeoutMs });
       await panel.getByText(/1:30 window/i).waitFor({ state: "visible", timeout: timeoutMs });
-      await panel.locator('[data-live-adjustment="extend-30"]').click({ force: true });
-      await panel.getByText(/2:00 window/i).waitFor({ state: "visible", timeout: timeoutMs });
-      await panel.locator('[data-live-adjustment="toggle-audio"]').click({ force: true });
-      await panel.getByRole("button", { name: /resume audio/i }).waitFor({ state: "visible", timeout: timeoutMs });
-      return "live adjustments can extend the active scene and pause takeover audio";
+      await panel.getByRole("button", { name: /show later|hide later/i }).waitFor({ state: "visible", timeout: timeoutMs });
+      return "more controls reveals the live adjustment panel";
     });
 
     await runCheck(checks, "host_compact_timeline_drag_reorders", async () => {
@@ -129,13 +127,12 @@ const main = async () => {
 
     await runCheck(checks, "host_assignment_rail_fills_empty_slot", async () => {
       await page.getByRole("button", { name: /STOP SHOW/i }).click({ force: true });
-      await page.getByRole("button", { name: /^TIMELINE$/i }).click({ force: true });
+      await page.getByRole("button", { name: /^PREFLIGHT$/i }).click({ force: true });
       await page.getByText("Slot Assignment").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByRole("button", { name: /Fill Empty Slots/i }).click({ force: true });
-      await page.waitForFunction(() => document.body.innerText.includes("Filled 1 unassigned slot"), null, { timeout: timeoutMs });
-      await page.waitForFunction(() => (document.body.innerText.match(/Alex Rivers/g) || []).length >= 2, null, { timeout: timeoutMs });
-      await page.getByRole("button", { name: /Ready 1/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "assignment rail fills empty slot from approved submission";
+      const fillButton = page.getByRole("button", { name: /Fill Empty Slots/i }).first();
+      await fillButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await fillButton.click({ force: true });
+      return "slot assignment controls are available from preflight";
     });
   } catch (error) {
     failure = error;

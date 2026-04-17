@@ -35,6 +35,7 @@ import {
     MONEYBAGS_BADGE_LABEL,
     normalizeAudienceExperience,
     buildAudienceSupportOffer,
+    buildGivebutterSupportLaunchUrl,
     normalizePurchaseCelebration,
 } from '../../lib/roomMonetization';
 import {
@@ -2447,6 +2448,20 @@ const SingerApp = ({ roomCode, uid }) => {
             supportCampaignCode: String(source.supportCampaignCode || '').trim(),
             supportPoints: Math.max(0, Number(source.supportPoints || 0) || 0),
             supportBadge: source.supportBadge !== false,
+            supportOffers: Array.isArray(source.supportOffers)
+                ? source.supportOffers.map((offer, index) => ({
+                    id: String(offer?.id || `offer_${index + 1}`).trim(),
+                    label: String(offer?.label || `Offer ${index + 1}`).trim(),
+                    amount: Math.max(0, Number(offer?.amount || 0) || 0),
+                    points: Math.max(0, Number(offer?.points || 0) || 0),
+                    rewardScope: String(offer?.rewardScope || '').trim().toLowerCase(),
+                    awardBadge: offer?.awardBadge === true,
+                    supportUrl: String(offer?.supportUrl || '').trim(),
+                    supportEmbedUrl: String(offer?.supportEmbedUrl || '').trim(),
+                    supportCampaignCode: String(offer?.supportCampaignCode || '').trim(),
+                    supportFundCode: String(offer?.supportFundCode || '').trim(),
+                })).filter((offer) => offer.id && offer.amount > 0 && offer.points > 0)
+                : [],
             audienceAccessMode: String(source.audienceAccessMode || '').trim().toLowerCase(),
             supportCelebrationStyle: String(source.supportCelebrationStyle || '').trim().toLowerCase(),
             promoCampaignCount: Math.max(0, Number(source.promoCampaignCount || 0) || 0),
@@ -2476,6 +2491,22 @@ const SingerApp = ({ roomCode, uid }) => {
         };
     }, [activeEventCredits]);
     const roomSupportOffer = useMemo(() => buildAudienceSupportOffer(activeEventCredits), [activeEventCredits]);
+    const donationPointOffers = useMemo(() => (
+        Array.isArray(roomSupportOffer?.supportOffers)
+            ? roomSupportOffer.supportOffers.map((offer) => ({ ...offer, offerType: 'support_offer' }))
+            : []
+    ), [roomSupportOffer]);
+    const hasDonationPointOffers = donationPointOffers.length > 0;
+    const personalShopOffers = useMemo(() => (
+        hasDonationPointOffers
+            ? donationPointOffers.filter((offer) => ['buyer', 'buyer_and_room'].includes(String(offer.rewardScope || '').trim().toLowerCase()))
+            : personalPointOffers
+    ), [donationPointOffers, hasDonationPointOffers, personalPointOffers]);
+    const roomShopOffers = useMemo(() => (
+        hasDonationPointOffers
+            ? donationPointOffers.filter((offer) => ['room', 'buyer_and_room'].includes(String(offer.rewardScope || '').trim().toLowerCase()))
+            : roomBoostOffers
+    ), [donationPointOffers, hasDonationPointOffers, roomBoostOffers]);
     const audienceExperience = useMemo(
         () => normalizeAudienceExperience(activeEventCredits),
         [activeEventCredits]
@@ -4939,6 +4970,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const startTipCrateCheckout = async (crate) => {
+        if (crate?.offerType === 'support_offer') {
+            startGivebutterSupportCheckout(crate);
+            return;
+        }
         try {
             const payload = await billingProvider.purchaseTipCrate({
                 crate,
@@ -4964,7 +4999,37 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
-    const startPersonalPackCheckout = async (pack) => {
+    const startGivebutterSupportCheckout = useCallback((offer) => {
+        const baseUrl = offer?.supportUrl
+            || roomSupportOffer?.supportUrl
+            || offer?.supportEmbedUrl
+            || roomSupportOffer?.supportEmbedUrl
+            || '';
+        const launchUrl = buildGivebutterSupportLaunchUrl(baseUrl, {
+            amount: offer?.amount,
+            fundCode: offer?.supportFundCode,
+            extraParams: {
+                utm_source: 'beaurocks',
+                utm_medium: 'audience_points_shop',
+                utm_campaign: String(roomCode || '').trim().toLowerCase(),
+                utm_content: String(offer?.id || 'support_offer').trim().toLowerCase(),
+            },
+        });
+        if (!launchUrl) {
+            toast('Givebutter is not configured for this offer yet.');
+            return;
+        }
+        const opened = window.open(launchUrl, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+            window.location.href = launchUrl;
+        }
+    }, [roomCode, roomSupportOffer, toast]);
+
+    const startPersonalPackCheckout = useCallback(async (pack) => {
+        if (pack?.offerType === 'support_offer') {
+            startGivebutterSupportCheckout(pack);
+            return;
+        }
         try {
             const payload = await billingProvider.purchasePointsPack({
                 pack,
@@ -4984,7 +5049,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             toast('Checkout is unavailable right now.');
         }
-    };
+    }, [billingPlatform, billingProvider, roomCode, startGivebutterSupportCheckout, toast, uid, user?.name]);
 
     const _startSubscriptionCheckout = async (plan) => {
         try {
@@ -7015,6 +7080,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         });
     }, [roomCode, shellVariant, songsTab, socialTab, tab]);
+
+    useEffect(() => {
+        if (!isStreamlinedAudienceShell || tab !== 'social') return;
+        setTab('home');
+    }, [isStreamlinedAudienceShell, tab]);
 
     // --- RENDER ---
     const joinScreen = (
@@ -9270,13 +9340,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="space-y-5">
                             <div>
                                 <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For you</div>
-                                <div className="text-base text-zinc-400 mb-3">Standard packs plus any room-specific personal boosts configured by the host.</div>
+                                <div className="text-base text-zinc-400 mb-3">
+                                    {hasDonationPointOffers
+                                        ? 'Donation-backed Givebutter boosts for your points wallet.'
+                                        : 'Standard packs plus any room-specific personal boosts configured by the host.'}
+                                </div>
                                 <div className="grid gap-3">
-                                    {personalPointOffers.map((pack, idx) => {
+                                    {personalShopOffers.map((pack, idx) => {
                                         const amount = pack.amount ? `$${pack.amount}` : '$';
                                         const points = pack.points ? `+${pack.points} pts` : '';
-                                        const isBest = idx === personalPointOffers.length - 1;
+                                        const isBest = idx === personalShopOffers.length - 1;
                                         const isRoomOffer = pack.offerType === 'tip_crate';
+                                        const isDonationOffer = pack.offerType === 'support_offer';
                                         return (
                                             <button
                                                 key={pack.id || `${pack.label}-${idx}`}
@@ -9286,13 +9361,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <div className="flex items-center justify-between">
                                                     <div>
                                                         <div className="text-sm uppercase tracking-widest text-zinc-300">
-                                                            {isRoomOffer ? 'Room special' : isBest ? 'Big refill' : 'Quick boost'}
+                                                            {isDonationOffer
+                                                                ? 'Givebutter'
+                                                                : isRoomOffer
+                                                                    ? 'Room special'
+                                                                    : isBest ? 'Big refill' : 'Quick boost'}
                                                         </div>
                                                         <div className="text-2xl font-bold text-white flex items-center gap-2">
                                                             <span className="text-2xl">{EMOJI.gift}</span>
                                                             {pack.label}
                                                         </div>
-                                                        <div className="text-base text-zinc-200">You get {points}</div>
+                                                        <div className="text-base text-zinc-200">
+                                                            You get {points}
+                                                            {isDonationOffer ? ' after the Givebutter donation clears.' : ''}
+                                                        </div>
                                                     </div>
                                                     <div className="text-pink-200 font-black text-2xl">{amount}</div>
                                                 </div>
@@ -9301,11 +9383,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     })}
                                 </div>
                             </div>
+                            {roomShopOffers.length > 0 && (
                             <div>
                                 <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For everyone</div>
-                                <div className="text-base text-zinc-400 mb-3">Buy a room-wide points burst for the whole crowd.</div>
+                                <div className="text-base text-zinc-400 mb-3">
+                                    {hasDonationPointOffers
+                                        ? 'Donation-backed room bursts for the whole crowd.'
+                                        : 'Buy a room-wide points burst for the whole crowd.'}
+                                </div>
                                 <div className="grid gap-3">
-                                    {roomBoostOffers.map((crate, idx) => {
+                                    {roomShopOffers.map((crate, idx) => {
                                         const label = crate.label || `Room Boost ${idx + 1}`;
                                         const amount = crate.amount ? `$${crate.amount}` : '$';
                                         const points = crate.points ? `+${crate.points} pts` : '';
@@ -9337,7 +9424,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     })}
                                 </div>
                             </div>
-                            {roomSupportOffer && (
+                            )}
+                            {roomSupportOffer && !hasDonationPointOffers && (
                                 <div>
                                     <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">Support the room</div>
                                     <div className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4">
@@ -9868,7 +9956,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         timedOut: lobbyVolleyTimedOut,
         relayActive: lobbyRelayObjective.active
     });
-    const primaryStageTabs = ['home', 'request', 'social'];
+    const primaryStageTabs = isStreamlinedAudienceShell ? ['home', 'request'] : ['home', 'request', 'social'];
     const activePrimaryStageTab = primaryStageTabs.includes(tab) ? tab : 'home';
     const activePrimaryStageTabLabel = activePrimaryStageTab === 'request'
         ? 'Songs'
@@ -10023,6 +10111,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
     const openLoungeChat = () => {
+        if (isStreamlinedAudienceShell) return;
         setTab('social');
         setSocialTab('lounge');
     };
@@ -10032,17 +10121,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setTab('request');
             return;
         }
-        if (nextTab === 'social') {
-            setTab('social');
-            handleSocialTabChange('lounge');
-            return;
-        }
         setTab('home');
     };
     const openStreamlinedSongsStageTab = (nextSongsTab) => {
         pulseNativeUiFeedback();
         setTab('request');
         setSongsTab(nextSongsTab);
+    };
+    const openAudienceProfileShortcut = () => {
+        pulseNativeUiFeedback();
+        if (isStreamlinedAudienceShell) {
+            openEditProfile();
+            return;
+        }
+        setTab('social');
+        setSocialTab('profile');
     };
     const setStagePanelCollapsedForTab = (collapsed, targetTab = tab) => {
         if (!primaryStageTabs.includes(targetTab)) return;
@@ -10108,7 +10201,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       <div className="grid grid-cols-[minmax(0,140px)_auto_minmax(0,140px)] items-center h-full gap-2 px-4" style={{ paddingLeft: mobileSideInsetLeft, paddingRight: mobileSideInsetRight }}>
                       {/* Left: User Emoji & Name */}
                       <div className="flex items-center justify-start min-w-0 relative z-10">
-                          <button onClick={() => { pulseNativeUiFeedback(); setTab('social'); setSocialTab('profile'); }} className={`bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-10 w-[118px] sm:w-[132px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
+                          <button onClick={openAudienceProfileShortcut} className={`bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/10 flex items-center gap-2 shadow-lg h-10 w-[118px] sm:w-[132px] min-w-0 ${isNativeMobileLayout ? 'mobile-native-pill' : ''}`}>
                               <span className="text-2xl">{user?.avatar}</span>
                               <span className="font-bold truncate text-sm text-white">{user?.name}</span>
                           </button>
@@ -10219,12 +10312,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 >
                                     {getEmojiChar('drink')} Cheers
                                 </button>
+                            {!isStreamlinedAudienceShell && (
                                 <button
                                     onClick={openLoungeChat}
                                     className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
                                 >
                                     <i className="fa-solid fa-comments mr-1"></i> Chat
                                 </button>
+                            )}
                             </div>
                         </div>
                     </div>
@@ -10252,12 +10347,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 >
                                     {getEmojiChar('clap')} Clap
                                 </button>
+                            {!isStreamlinedAudienceShell && (
                                 <button
                                     onClick={openLoungeChat}
                                     className="rounded-xl border border-white/25 bg-white/10 px-2 py-2 text-[11px] font-bold text-white active:scale-95 transition-transform"
                                 >
                                     <i className="fa-solid fa-comments mr-1"></i> Chat
                                 </button>
+                            )}
                             </div>
                         </div>
                     </div>
@@ -10319,7 +10416,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <i className="fa-solid fa-clock text-[10px]"></i>
                                     {formatWaitTime(queueWaitTimeSec)}
                                 </span>
-                                {room?.hostName ? (
+                                {room?.hostName && !isStreamlinedAudienceShell ? (
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -10381,7 +10478,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             )}
                         </div>
                     )}
-                    {bracketSignupActive && bracketSignupSummary && (
+                    {bracketSignupActive && bracketSignupSummary && !(isStreamlinedAudienceShell && noSingerOnStage) && (
                         <div data-feature-id="singer-bracket-signup-banner" className="mb-4 rounded-3xl border border-rose-300/30 bg-gradient-to-r from-rose-500/18 via-black/60 to-cyan-500/14 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -10476,10 +10573,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <span className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">ROOM</span>
                                             <span className="text-[1.2rem] font-bebas text-cyan-200 tracking-[0.25em]">{roomCode}</span>
                                         </div>
-                                        <button onClick={() => { setTab('social'); setSocialTab('lobby'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
-                                            <i className="fa-solid fa-users stage-icon text-white/70"></i>
-                                            {allUsers.length || 0}
-                                        </button>
+                                        {isStreamlinedAudienceShell ? (
+                                            <div className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
+                                                <i className="fa-solid fa-users stage-icon text-white/70"></i>
+                                                {allUsers.length || 0}
+                                            </div>
+                                        ) : (
+                                            <button onClick={() => { setTab('social'); setSocialTab('lobby'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
+                                                <i className="fa-solid fa-users stage-icon text-white/70"></i>
+                                                {allUsers.length || 0}
+                                            </button>
+                                        )}
                                         <button onClick={() => { setTab('request'); setSongsTab('queue'); }} className="flex items-center gap-1 text-base font-bold text-white/85 bg-black/40 border border-white/10 px-3 py-1.5 rounded-full min-h-[28px] leading-none">
                                             <i className="fa-solid fa-list stage-icon text-white/70"></i>
                                             {queueSongsView.length}
@@ -11067,7 +11171,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Party</div>
                                      <div className="mt-1 text-xl font-black text-white">No one&apos;s on stage</div>
                                      <div className="mt-1 text-sm text-zinc-300">
-                                         Next singer is coming up. Jump in or hang in the lobby.
+                                         {isStreamlinedAudienceShell
+                                             ? 'Next singer is coming up. Jump in or keep an eye on the queue.'
+                                             : 'Next singer is coming up. Jump in or hang in the lobby.'}
                                      </div>
                                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                          <button
@@ -11081,13 +11187,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          <button
                                              type="button"
                                              onClick={() => {
+                                                 if (isStreamlinedAudienceShell) {
+                                                     setTab('request');
+                                                     setSongsTab('queue');
+                                                     return;
+                                                 }
                                                  setTab('social');
                                                  setSocialTab('lobby');
                                              }}
                                              className="rounded-2xl border border-white/12 bg-black/30 px-4 py-4 text-left text-zinc-100 hover:bg-white/8"
                                          >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Crowd</div>
-                                             <div className="mt-1 text-base font-black">Open Lobby</div>
+                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                                                 {isStreamlinedAudienceShell ? 'Queue' : 'Crowd'}
+                                             </div>
+                                             <div className="mt-1 text-base font-black">
+                                                 {isStreamlinedAudienceShell ? 'View Queue' : 'Open Lobby'}
+                                             </div>
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import GameContainer from '../../components/GameContainer';
-import { FLAPPY_BIRD_TUNING, VOICE_GAME_FUN_DEFAULTS } from '../../games/vocalGameTuning';
+import { VOICE_GAME_FUN_DEFAULTS } from '../../games/vocalGameTuning';
 
 const formatChip = (label, value) => (
     <div className="rounded-full border border-white/12 bg-black/35 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-200">
@@ -14,34 +14,45 @@ const buildFixtures = (nowMs = Date.now()) => {
     return [
         {
             id: 'flappy_bird',
-            title: 'Flappy Bird',
-            subtitle: 'Static TV-state preview with the tuned thresholds and extra life budget visible.',
+            title: 'Pitch Runner',
+            subtitle: 'Portrait pitch-lane preview with note gates, calibrated range, and the breath pause surface.',
             chips: [
                 formatChip('Lives', `${VOICE_GAME_FUN_DEFAULTS.flappyBird.lives}`),
-                formatChip('Flap', `${Math.round(FLAPPY_BIRD_TUNING.flapThreshold * 100)}%`),
-                formatChip('Shield', `${Math.round(FLAPPY_BIRD_TUNING.shieldThreshold * 100)}%`),
+                formatChip('Difficulty', `${VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal'}`),
+                formatChip('Range', 'A#2-B4'),
             ],
             gameState: {
                 playerId: 'AMBIENT',
                 playerName: 'THE CROWD',
-                playerAvatar: 'O',
                 inputSource: 'ambient',
                 status: 'playing',
-                score: 12,
-                lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives,
-                birdY: 48,
+                score: 105,
+                lives: 3,
+                difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal',
+                lowestMidi: 46,
+                highestMidi: 71,
+                orbY: 35,
+                currentMidi: 59,
+                currentLabel: 'B3',
+                targetMidi: 59,
                 obstacles: [
-                    { id: 'qa_ob_1', x: 58, gapTop: 18, gapHeight: 48 },
-                    { id: 'qa_ob_2', x: 84, gapTop: 28, gapHeight: 46 },
+                    { id: 'qa_ob_1', x: 58, targetMidi: 59, label: 'B3', gapSemitones: 9, scored: false },
+                    { id: 'qa_ob_2', x: 85, targetMidi: 66, label: 'F#4', gapSemitones: 9, scored: false },
                 ],
-                coins: [
-                    { id: 'qa_coin_1', x: 66, y: 42 },
+                trail: [
+                    { x: 2, y: 82 },
+                    { x: 6, y: 60 },
+                    { x: 10, y: 44 },
+                    { x: 14, y: 37 },
+                    { x: 18, y: 35 },
                 ],
                 voice: {
-                    note: 'A',
+                    pitch: 247,
+                    midi: 59,
+                    label: 'B3',
                     confidence: 0.82,
                     volumeNormalized: 0.47,
-                    stableNote: 'A',
+                    stableNote: 'B',
                     stability: 0.76,
                     calibrating: false,
                 },
@@ -172,7 +183,7 @@ const VoiceGamePanel = ({ fixture, roomCode = '', index = 0 }) => {
 };
 
 export default function VoiceGamesQaHarness({ roomCode = 'DEMOVOICE' }) {
-    const fixtures = useMemo(() => buildFixtures(Date.now()), []);
+    const [fixtures] = useState(() => buildFixtures(Date.now()));
 
     return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_22%),linear-gradient(180deg,#020617_0%,#09090b_50%,#020617_100%)] px-6 py-8 text-white">

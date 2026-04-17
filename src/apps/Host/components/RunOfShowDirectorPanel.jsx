@@ -189,7 +189,7 @@ const SPOTLIGHT_TIMELINE_OPTIONS = Object.freeze([
     { id: 'karaoke_bracket', label: 'Bracket', detail: 'Tournament progression.', icon: 'fa-trophy', tone: 'rose' },
     { id: 'vocal_challenge', label: 'Vocal Challenge', detail: 'Pitch target game.', icon: 'fa-wave-square', tone: 'sky' },
     { id: 'riding_scales', label: 'Riding Scales', detail: 'Scale memory challenge.', icon: 'fa-music', tone: 'violet' },
-    { id: 'flappy_bird', label: 'Flappy Bird', detail: 'Voice-volume obstacle spike.', icon: 'fa-feather-pointed', tone: 'emerald' },
+    { id: 'flappy_bird', label: 'Pitch Runner', detail: 'Pitch lane obstacle sprint.', icon: 'fa-wave-square', tone: 'emerald' },
     { id: 'applause_countdown', label: 'Applause Meter', detail: 'Crowd-volume payoff.', icon: 'fa-hands-clapping', tone: 'amber' },
     { id: 'selfie_cam', label: 'Selfie Cam', detail: 'Roaming spotlight camera.', icon: 'fa-camera', tone: 'cyan' },
 ]);
@@ -961,7 +961,7 @@ const itemSummary = (item = {}) => {
         const performer = String(item?.assignedPerformerName || '').trim();
         const song = String(item?.songTitle || '').trim();
         const artist = String(item?.artistName || '').trim();
-        return [performer, song, artist].filter(Boolean).join(' · ') || 'Performer and song still open';
+        return [performer, song, artist].filter(Boolean).join(' Ãƒâ€šÃ‚Â· ') || 'Performer and song still open';
     }
     if (item?.type === 'announcement' || item?.type === 'intro' || item?.type === 'closing') {
         return item?.presentationPlan?.headline || item?.notes || 'Presentation block';
@@ -1739,7 +1739,7 @@ const BoardCard = ({ label, item, readiness, emptyLabel, actionLabel, actionTone
                 </div>
                 <div className="text-lg font-bold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
                 <div className="text-sm text-zinc-300">{itemSummary(item)}</div>
-                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">{formatStart(item.startsAtMs)} · {Math.max(0, Number(item.plannedDurationSec || 0))} sec</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">{formatStart(item.startsAtMs)} Ãƒâ€šÃ‚Â· {Math.max(0, Number(item.plannedDurationSec || 0))} sec</div>
                 <ReadinessPanel readiness={readiness} compact />
                 {actionLabel ? <ControlButton tone={actionTone} onClick={onAction}>{actionLabel}</ControlButton> : null}
             </div>
@@ -1782,6 +1782,104 @@ const IssueJumpRail = ({ issues = [], onJump }) => {
                 ))}
             </div>
         </div>
+    );
+};
+
+const IssueQueuePanel = ({
+    entries = [],
+    open = true,
+    onToggle,
+    onOpenItem,
+    onOpenIssue,
+    onSubmissionDecision,
+    canReviewSubmissions = false,
+    compact = false,
+}) => {
+    if (!entries.length) return null;
+    return (
+        <article className={`${surfaceClass} ${compact ? 'p-3' : 'p-4'}`} aria-label="Run of show issue queue">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/80">Repair Queue</div>
+                    <div className="mt-1 text-sm text-zinc-300">Handle blockers in one place, then drop back into the builder only when a scene needs deeper edits.</div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                        {entries.length} open
+                    </div>
+                    {typeof onToggle === 'function' ? (
+                        <ControlButton onClick={onToggle}>{open ? 'Collapse Queue' : 'Open Queue'}</ControlButton>
+                    ) : null}
+                </div>
+            </div>
+            {open ? (
+                <div className="mt-3 grid gap-3">
+                    {entries.map((entry) => {
+                        const toneClass = entry.tone === 'risk'
+                            ? 'border-cyan-300/16 bg-cyan-500/8'
+                            : 'border-amber-300/18 bg-amber-500/10';
+                        const badgeClass = entry.tone === 'risk'
+                            ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
+                            : 'border-amber-300/25 bg-amber-500/10 text-amber-100';
+                        return (
+                            <div key={entry.key} className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                                Scene {entry.sequence || '?'} Ãƒâ€šÃ‚Â· {entry.kindLabel}
+                                            </div>
+                                            <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${badgeClass}`}>
+                                                {entry.badge}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 text-sm font-semibold text-white">{entry.title}</div>
+                                        <div className="mt-1 text-sm text-zinc-300">{entry.summary}</div>
+                                        {entry.detail ? <div className="mt-1 text-xs text-zinc-400">{entry.detail}</div> : null}
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {entry.itemId ? (
+                                            <ControlButton onClick={() => onOpenItem?.(entry.itemId)}>
+                                                Open Scene
+                                            </ControlButton>
+                                        ) : null}
+                                        {entry.actionLabel ? (
+                                            <ControlButton tone={entry.actionTone || 'warning'} onClick={() => onOpenIssue?.(entry)}>
+                                                {entry.actionLabel}
+                                            </ControlButton>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                {entry.kind === 'approval' && entry.submissions?.length ? (
+                                    <div className="mt-3 grid gap-2">
+                                        {entry.submissions.map((submission) => (
+                                            <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-sm font-semibold text-white">{submission.displayName || 'Singer'}</div>
+                                                    <div className="truncate text-xs text-zinc-400">
+                                                        {submission.songTitle || 'Untitled Song'}
+                                                        {submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}
+                                                        {submission.backingUrl || submission.mediaUrl || submission.youtubeId ? ' Ãƒâ€šÃ‚Â· backing attached' : ' Ãƒâ€šÃ‚Â· song only'}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <ControlButton tone="success" disabled={!canReviewSubmissions} onClick={() => onSubmissionDecision?.(submission.id, 'approved', entry.item)}>
+                                                        Approve + Assign
+                                                    </ControlButton>
+                                                    <ControlButton tone="danger" disabled={!canReviewSubmissions} onClick={() => onSubmissionDecision?.(submission.id, 'declined', entry.item)}>
+                                                        Decline
+                                                    </ControlButton>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : null}
+        </article>
     );
 };
 
@@ -2461,7 +2559,7 @@ const QuickDraftPanel = ({
                                 : 'Start with a fast draft, then fine-tune the scenes one at a time below.'}
                         </span>
                         <ControlButton tone="primary" className="shrink-0 justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                            {generatorBusy ? 'Applying…' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                            {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
                         </ControlButton>
                     </div>
                 </>
@@ -2511,7 +2609,7 @@ const QuickDraftPanel = ({
                                 ))}
                             </div>
                             <ControlButton tone="primary" className="w-full justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                                {generatorBusy ? 'Applying…' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                                {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
                             </ControlButton>
                         </div>
                     </div>
@@ -3152,7 +3250,7 @@ const ShowMapCard = ({
                                                     </div>
                                                 ) : null}
                                                 {inlinePickerError ? <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{inlinePickerError}</div> : null}
-                                                {inlinePickerLoading ? <div className="mt-3 text-sm text-cyan-100/80">Loading YouTube matches here…</div> : null}
+                                                {inlinePickerLoading ? <div className="mt-3 text-sm text-cyan-100/80">Loading YouTube matches hereÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div> : null}
                                                 {inlineSuggestedOptions.length ? (
                                                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
                                                         {inlineSuggestedOptions.map((option) => (
@@ -3330,8 +3428,8 @@ export default function RunOfShowDirectorPanel({
     const [templateDraftName, setTemplateDraftName] = useState('');
     const [modeActionBusy, setModeActionBusy] = useState(false);
     const [studioMode, setStudioMode] = useState('build');
-    const [goLiveSheetOpen, setGoLiveSheetOpen] = useState(false);
     const [liveTimelineOpen, setLiveTimelineOpen] = useState(false);
+    const [liveControlsOpen, setLiveControlsOpen] = useState(false);
     const [coHostSearch, setCoHostSearch] = useState('');
     const [generatorOpen, setGeneratorOpen] = useState(items.length === 0);
     const [generatorConfig, setGeneratorConfig] = useState({ ...GENERATOR_DEFAULTS });
@@ -3534,7 +3632,7 @@ export default function RunOfShowDirectorPanel({
         if (action === 'approval') {
             setApprovalInboxOpen(true);
             setExpandedItemId(targetId);
-            setStudioMode('review');
+            setStudioMode(isRunOfShowActive ? 'build' : 'preflight');
             setPendingSetupScrollItemId('');
             return;
         }
@@ -3565,7 +3663,7 @@ export default function RunOfShowDirectorPanel({
         }
         setRepairFocus({ itemId: targetItem.id, action: 'setup', token: Date.now() });
         openItem(targetItem.id, { preserveRepair: true, scrollToSetup: targetItem.type === 'performance' });
-    }, [focusRequest?.action, focusRequest?.itemId, focusRequest?.token, items, onUpdateItem, openItem]);
+    }, [focusRequest?.action, focusRequest?.itemId, focusRequest?.token, isRunOfShowActive, items, onUpdateItem, openItem]);
     useEffect(() => {
         if (!pendingSetupScrollItemId || studioMode !== 'build') return;
         const targetId = pendingSetupScrollItemId;
@@ -3760,14 +3858,6 @@ export default function RunOfShowDirectorPanel({
         if (pickerSourceType === 'user_submitted') return pickerSubmissionResults;
         return [];
     }, [mediaPicker.remoteResults, pickerIndexedYouTubeResults, pickerLocalResults, pickerSourceType, pickerSubmissionResults]);
-    const reviewItems = useMemo(
-        () => items.filter((item) => {
-            const pendingCount = pendingCountsById[item.id] || 0;
-            const blockers = readinessById[item.id]?.blockers || [];
-            return pendingCount > 0 || blockers.length > 0;
-        }),
-        [items, pendingCountsById, readinessById]
-    );
     const performerIssueItems = useMemo(
         () => items.filter((item) => item.type === 'performance')
             .filter((item) => (readinessById[item.id]?.blockers || []).some((entry) => String(entry?.key || '').startsWith('performer_'))),
@@ -3808,6 +3898,86 @@ export default function RunOfShowDirectorPanel({
         () => issueJumpTargets.reduce((sum, issue) => sum + Number(issue?.count || 0), 0),
         [issueJumpTargets]
     );
+    const issueQueueEntries = useMemo(() => {
+        const entries = [];
+        const pendingById = new Set();
+        pendingApprovalGroups.forEach((group) => {
+            const item = items.find((entry) => entry.id === group.itemId) || group.item || null;
+            if (!item) return;
+            pendingById.add(group.itemId);
+            entries.push({
+                key: `approval:${group.itemId}`,
+                itemId: group.itemId,
+                item,
+                sequence: Number(item.sequence || 0),
+                kind: 'approval',
+                kindLabel: 'Singer Review',
+                badge: `${group.submissions.length} pending`,
+                title: item.title || getRunOfShowItemLabel(item.type),
+                summary: group.submissions.length === 1
+                    ? 'One singer submission is waiting for review before this slot can move.'
+                    : `${group.submissions.length} singer submissions are waiting for review before this slot can move.`,
+                detail: readinessById[group.itemId]?.summary || '',
+                tone: 'critical',
+                actionLabel: 'Review submissions',
+                actionTone: 'warning',
+                action: 'approval',
+                submissions: group.submissions,
+            });
+        });
+        (safePreflightReport.criticalItems || []).forEach((entry) => {
+            if (!entry?.itemId || pendingById.has(entry.itemId)) return;
+            const item = items.find((candidate) => candidate.id === entry.itemId) || null;
+            const firstBlockerKey = String(entry?.blockers?.[0]?.key || '').trim().toLowerCase();
+            entries.push({
+                key: `critical:${entry.itemId}`,
+                itemId: entry.itemId,
+                item,
+                sequence: Number(entry.sequence || 0),
+                kind: 'critical',
+                kindLabel: 'Critical',
+                badge: 'must fix',
+                title: entry.title || item?.title || getRunOfShowItemLabel(entry.type),
+                summary: entry.summary || 'This scene needs setup.',
+                detail: entry.blockers?.[0]?.label || '',
+                tone: 'critical',
+                actionLabel: firstBlockerKey.startsWith('backing_')
+                    ? 'Fix track'
+                    : firstBlockerKey === 'song_missing'
+                        ? 'Add song'
+                        : firstBlockerKey.startsWith('performer_')
+                            ? 'Assign singer'
+                            : 'Open repair',
+                actionTone: 'warning',
+                action: firstBlockerKey.startsWith('backing_') ? 'backing' : 'setup',
+            });
+        });
+        (safePreflightReport.riskyItems || []).forEach((entry) => {
+            const item = items.find((candidate) => candidate.id === entry.itemId) || null;
+            entries.push({
+                key: `risk:${entry.itemId}`,
+                itemId: entry.itemId,
+                item,
+                sequence: Number(entry.sequence || 0),
+                kind: 'risk',
+                kindLabel: 'Review',
+                badge: 'check first',
+                title: entry.title || item?.title || getRunOfShowItemLabel(entry.type),
+                summary: entry.summary || 'Review this scene before launch.',
+                detail: Array.isArray(entry.reasons) ? entry.reasons.slice(1, 2).join(' ') : '',
+                tone: 'risk',
+                actionLabel: 'Review item',
+                actionTone: 'default',
+                action: 'setup',
+            });
+        });
+        return entries.sort((left, right) => {
+            const leftWeight = left.tone === 'critical' ? 0 : 1;
+            const rightWeight = right.tone === 'critical' ? 0 : 1;
+            if (leftWeight !== rightWeight) return leftWeight - rightWeight;
+            return Number(left.sequence || 0) - Number(right.sequence || 0);
+        });
+    }, [items, pendingApprovalGroups, readinessById, safePreflightReport]);
     const filteredOperatorCandidates = useMemo(() => {
         const query = normalizeSearch(coHostSearch);
         return roomUserCandidates.filter((candidate) => {
@@ -3984,7 +4154,7 @@ export default function RunOfShowDirectorPanel({
         } else if (items.length) {
             parts.push('timeline prep');
         }
-        return parts.join(' · ');
+        return parts.join(' Ãƒâ€šÃ‚Â· ');
     }, [automationPaused, isRunOfShowActive, items.length, totalOpenIssues]);
     useEffect(() => {
         const preferred = currentItemId || liveItem?.id || stagedItem?.id || nextItem?.id || items[0]?.id || '';
@@ -3993,7 +4163,6 @@ export default function RunOfShowDirectorPanel({
     useEffect(() => {
         if (!isRunOfShowActive) return;
         setStudioMode('run');
-        setGoLiveSheetOpen(false);
         setWorkspaceToolsOpen(false);
         setQuickDraftModalOpen(false);
         setTopBoardCollapsed(true);
@@ -4001,6 +4170,7 @@ export default function RunOfShowDirectorPanel({
     useEffect(() => {
         if (!isRunOfShowActive) {
             setLiveTimelineOpen(false);
+            setLiveControlsOpen(false);
         }
     }, [isRunOfShowActive]);
     useEffect(() => {
@@ -4135,7 +4305,7 @@ export default function RunOfShowDirectorPanel({
                 }
             } else if (typeof onStartRunOfShow === 'function') {
                 if (!safePreflightReport.readyToStart || safePreflightReport.criticalCount > 0 || safePreflightReport.riskyCount > 0) {
-                    setGoLiveSheetOpen(true);
+                    setStudioMode('preflight');
                     return;
                 }
                 await onStartRunOfShow();
@@ -4151,7 +4321,7 @@ export default function RunOfShowDirectorPanel({
         setModeActionBusy(true);
         try {
             await onStartRunOfShow({ allowUnsafe: options.allowUnsafe === true });
-            setGoLiveSheetOpen(false);
+            setStudioMode('run');
         } finally {
             setModeActionBusy(false);
         }
@@ -4166,6 +4336,7 @@ export default function RunOfShowDirectorPanel({
         const firstPending = pendingApprovals[0];
         if (!firstPending?.itemId) return;
         setApprovalInboxOpen(true);
+        setStudioMode(isRunOfShowActive ? 'build' : 'preflight');
         openItem(firstPending.itemId);
     };
     const handleSubmissionDecision = async (submissionId = '', decision = '', targetItem = null) => {
@@ -4271,6 +4442,7 @@ export default function RunOfShowDirectorPanel({
         if (!itemId) return;
         if (issue?.action === 'approval') {
             setApprovalInboxOpen(true);
+            setStudioMode(isRunOfShowActive ? 'build' : 'preflight');
             openItem(itemId);
             return;
         }
@@ -4288,7 +4460,8 @@ export default function RunOfShowDirectorPanel({
     const focusFirstRiskyPreflightItem = () => {
         const firstRisky = safePreflightReport.riskyItems?.[0] || null;
         if (!firstRisky?.itemId) {
-            setStudioMode('review');
+            setApprovalInboxOpen(true);
+            setStudioMode('preflight');
             return;
         }
         const targetItem = items.find((entry) => entry.id === firstRisky.itemId);
@@ -4353,7 +4526,7 @@ export default function RunOfShowDirectorPanel({
             return {
                 label: 'Go Live Check',
                 tone: 'primary',
-                onClick: () => setGoLiveSheetOpen(true)
+                onClick: () => setStudioMode('preflight')
             };
         }
         if (liveHudActionKey === 'start_show') {
@@ -4720,26 +4893,26 @@ export default function RunOfShowDirectorPanel({
                             <button
                                 type="button"
                                 onClick={() => setStudioMode('build')}
-                                    className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'build' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
+                                className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'build' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
                             >
-                                {isRunOfShowActive ? 'Full Timeline' : 'Timeline'}
+                                Build
                             </button>
+                            {!isRunOfShowActive ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setStudioMode('preflight')}
+                                    className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'preflight' ? 'border-emerald-300/45 bg-emerald-500/15 text-emerald-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-emerald-300/25'}`}
+                                >
+                                    Preflight
+                                </button>
+                            ) : null}
                             {isRunOfShowActive ? (
                                 <button
                                     type="button"
                                     onClick={() => setStudioMode('run')}
                                     className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'run' ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-cyan-300/25'}`}
                                 >
-                                    Show HUD
-                                </button>
-                            ) : null}
-                            {(totalOpenIssues || studioMode === 'review') ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setStudioMode('review')}
-                                    className={`rounded-full border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] transition ${studioMode === 'review' ? 'border-amber-300/45 bg-amber-500/15 text-amber-50' : 'border-white/10 bg-black/25 text-zinc-300 hover:border-amber-300/25'}`}
-                                >
-                                    Issues {totalOpenIssues ? totalOpenIssues : ''}
+                                    Run
                                 </button>
                             ) : null}
                             {!isRunOfShowActive ? (
@@ -4781,12 +4954,11 @@ export default function RunOfShowDirectorPanel({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setLiveTimelineOpen((prev) => !prev)}
+                                        onClick={() => setLiveControlsOpen((prev) => !prev)}
                                         className="rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25"
                                     >
-                                        {liveTimelineOpen ? 'Hide Later' : 'Show Later'}
+                                        {liveControlsOpen ? 'Hide Controls' : 'More Controls'}
                                     </button>
-                                    {previewActiveId ? <button type="button" onClick={() => onClearPreview?.()} className="rounded-full border border-violet-300/35 bg-violet-500/12 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-violet-100">Clear Preview</button> : null}
                                 </>
                             ) : null}
                             <button
@@ -4833,7 +5005,7 @@ export default function RunOfShowDirectorPanel({
                             onDropItem={handleStoryboardDrop}
                             showHeader={false}
                         />
-                        {isRunOfShowActive && liveAdjustmentTarget ? (
+                        {isRunOfShowActive && studioMode === 'run' && liveControlsOpen && liveAdjustmentTarget ? (
                             <div
                                 data-live-adjustment-panel="true"
                                 className="rounded-[20px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(7,20,34,0.92),rgba(12,18,31,0.88))] px-3 py-3"
@@ -4845,9 +5017,9 @@ export default function RunOfShowDirectorPanel({
                                             {liveAdjustmentTarget.title || getRunOfShowItemLabel(liveAdjustmentTarget.type)}
                                         </div>
                                         <div className="mt-1 text-xs text-zinc-400">
-                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} · {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
-                                            {liveAdjustmentRequiresHostAdvance ? ` · ${liveAdjustmentAdvanceSummary}` : ''}
-                                            {liveAdjustmentSoundtrackConfigured ? ` · takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
+                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} Ãƒâ€šÃ‚Â· {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
+                                            {liveAdjustmentRequiresHostAdvance ? ` Ãƒâ€šÃ‚Â· ${liveAdjustmentAdvanceSummary}` : ''}
+                                            {liveAdjustmentSoundtrackConfigured ? ` Ãƒâ€šÃ‚Â· takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -4885,6 +5057,22 @@ export default function RunOfShowDirectorPanel({
                                                 className="rounded-full border border-rose-300/25 bg-rose-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-rose-100"
                                             >
                                                 Skip Next
+                                            </button>
+                                        ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={() => setLiveTimelineOpen((prev) => !prev)}
+                                            className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
+                                        >
+                                            {liveTimelineOpen ? 'Hide Later' : 'Show Later'}
+                                        </button>
+                                        {previewActiveId ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => onClearPreview?.()}
+                                                className="rounded-full border border-violet-300/35 bg-violet-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-violet-100"
+                                            >
+                                                Clear Preview
                                             </button>
                                         ) : null}
                                     </div>
@@ -4976,6 +5164,18 @@ export default function RunOfShowDirectorPanel({
                                 </div>
                             </div>
                         ) : null}
+                        {studioMode === 'build' && issueQueueEntries.length ? (
+                            <IssueQueuePanel
+                                entries={issueQueueEntries}
+                                open={approvalInboxOpen}
+                                onToggle={() => setApprovalInboxOpen((prev) => !prev)}
+                                onOpenItem={(itemId) => openItem(itemId)}
+                                onOpenIssue={(entry) => jumpToIssue(entry)}
+                                onSubmissionDecision={handleSubmissionDecision}
+                                canReviewSubmissions={safeOperatorCapabilities.canReviewSubmissions}
+                                compact
+                            />
+                        ) : null}
                     </>
                 )}
             </div>
@@ -5014,64 +5214,150 @@ export default function RunOfShowDirectorPanel({
                 lastArchiveId={safeTemplateMeta.lastArchiveId || ''}
             />
 
-            {goLiveSheetOpen && !isRunOfShowActive ? (
-                <article className={`${surfaceClass} border-emerald-300/20 bg-emerald-500/8 p-4`} aria-label="Go live preflight">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-200">Go Live Check</div>
-                            <div className="mt-1 text-base font-semibold text-white">
-                                {safePreflightReport.criticalCount > 0
-                                    ? 'Fix the blockers before the show starts.'
-                                    : safePreflightReport.riskyCount > 0
-                                        ? 'The show can start, but a few items still need a host eye.'
-                                        : 'The show is clear to start.'}
+            {studioMode === 'preflight' && !isRunOfShowActive ? (
+                <div className="space-y-3">
+                    <article className={`${surfaceClass} border-emerald-300/20 bg-emerald-500/8 p-4`} aria-label="Go live preflight">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-emerald-200">Preflight</div>
+                                <div className="mt-1 text-base font-semibold text-white">
+                                    {safePreflightReport.criticalCount > 0
+                                        ? 'Fix the blockers before the show starts.'
+                                        : safePreflightReport.riskyCount > 0
+                                            ? 'The show can start, but a few items still need a host eye.'
+                                            : 'The show is clear to start.'}
+                                </div>
+                                <div className="mt-2 text-sm text-zinc-300">{safePreflightReport.summary}</div>
                             </div>
-                            <div className="mt-2 text-sm text-zinc-300">{safePreflightReport.summary}</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <ControlButton onClick={() => setGoLiveSheetOpen(false)}>Back</ControlButton>
-                            {safePreflightReport.criticalCount > 0 ? (
-                                <ControlButton tone="warning" onClick={focusFirstCriticalPreflightIssue}>Fix Critical</ControlButton>
-                            ) : null}
-                            {safePreflightReport.riskyCount > 0 ? (
-                                <ControlButton onClick={focusFirstRiskyPreflightItem}>Review Risk</ControlButton>
-                            ) : null}
-                            <ControlButton
-                                tone="primary"
-                                disabled={modeActionBusy || !safePreflightReport.readyToStart || safePreflightReport.criticalCount > 0}
-                                onClick={() => handleLaunchFromGoLive()}
-                            >
-                                {modeActionBusy ? 'Starting...' : 'Start Show'}
-                            </ControlButton>
-                            {safePreflightReport.criticalCount > 0 && safePreflightReport.readyToStart ? (
+                            <div className="flex flex-wrap gap-2">
+                                <ControlButton onClick={() => setStudioMode('build')}>Back To Build</ControlButton>
+                                {safePreflightReport.criticalCount > 0 ? (
+                                    <ControlButton tone="warning" onClick={focusFirstCriticalPreflightIssue}>Fix Critical</ControlButton>
+                                ) : null}
+                                {safePreflightReport.riskyCount > 0 ? (
+                                    <ControlButton onClick={focusFirstRiskyPreflightItem}>Review Risk</ControlButton>
+                                ) : null}
                                 <ControlButton
-                                    tone="warning"
-                                    disabled={modeActionBusy}
-                                    onClick={() => handleLaunchFromGoLive({ allowUnsafe: true })}
+                                    tone="primary"
+                                    disabled={modeActionBusy || !safePreflightReport.readyToStart || safePreflightReport.criticalCount > 0}
+                                    onClick={() => handleLaunchFromGoLive()}
                                 >
-                                    {modeActionBusy ? 'Starting...' : 'Start Anyway'}
+                                    {modeActionBusy ? 'Starting...' : 'Start Show'}
                                 </ControlButton>
-                            ) : null}
+                                {safePreflightReport.criticalCount > 0 && safePreflightReport.readyToStart ? (
+                                    <ControlButton
+                                        tone="warning"
+                                        disabled={modeActionBusy}
+                                        onClick={() => handleLaunchFromGoLive({ allowUnsafe: true })}
+                                    >
+                                        {modeActionBusy ? 'Starting...' : 'Start Anyway'}
+                                    </ControlButton>
+                                ) : null}
+                            </div>
                         </div>
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ready</div>
-                            <div className="mt-2 text-2xl font-black text-white">{safePreflightReport.readyCount}</div>
-                            <div className="text-xs text-zinc-400">Blocks fully ready</div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Ready</div>
+                                <div className="mt-2 text-2xl font-black text-white">{safePreflightReport.readyCount}</div>
+                                <div className="text-xs text-zinc-400">Blocks fully ready</div>
+                            </div>
+                            <div className="rounded-2xl border border-amber-300/18 bg-amber-500/10 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-amber-100/80">Critical</div>
+                                <div className="mt-2 text-2xl font-black text-amber-50">{safePreflightReport.criticalCount}</div>
+                                <div className="text-xs text-amber-100/80">Must-fix blockers</div>
+                            </div>
+                            <div className="rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Risky</div>
+                                <div className="mt-2 text-2xl font-black text-cyan-50">{safePreflightReport.riskyCount}</div>
+                                <div className="text-xs text-cyan-100/80">Items to watch</div>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-amber-300/18 bg-amber-500/10 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-amber-100/80">Critical</div>
-                            <div className="mt-2 text-2xl font-black text-amber-50">{safePreflightReport.criticalCount}</div>
-                            <div className="text-xs text-amber-100/80">Must-fix blockers</div>
+                    </article>
+
+                    <IssueQueuePanel
+                        entries={issueQueueEntries}
+                        open={approvalInboxOpen}
+                        onToggle={() => setApprovalInboxOpen((prev) => !prev)}
+                        onOpenItem={(itemId) => openItem(itemId)}
+                        onOpenIssue={(entry) => jumpToIssue(entry)}
+                        onSubmissionDecision={handleSubmissionDecision}
+                        canReviewSubmissions={safeOperatorCapabilities.canReviewSubmissions}
+                    />
+
+                    <article className={`${surfaceClass} p-4`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="max-w-3xl">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Slot Assignment</div>
+                                <div className="mt-1 text-sm text-zinc-200">Fill obvious performance slots before launch, then review only the exceptions.</div>
+                                <div className="mt-2 text-xs text-zinc-400">Approved slot submissions fill first. After that, empty slots pull from the live queue in order. Existing assignments stay untouched.</div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <ControlButton
+                                    tone="primary"
+                                    disabled={!safeOperatorCapabilities.canEditFlow || slotFillBusy || slotFillCandidateCount === 0}
+                                    onClick={handleFillEmptySlots}
+                                >
+                                    {slotFillBusy ? 'Filling...' : 'Fill Empty Slots'}
+                                </ControlButton>
+                            </div>
                         </div>
-                        <div className="rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Risky</div>
-                            <div className="mt-2 text-2xl font-black text-cyan-50">{safePreflightReport.riskyCount}</div>
-                            <div className="text-xs text-cyan-100/80">Items to watch</div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {[
+                                ['all', 'All'],
+                                ['needs_review', 'Needs Review'],
+                                ['empty', 'Empty'],
+                                ['ready', 'Ready'],
+                            ].map(([value, label]) => {
+                                const active = slotAssignmentFilter === value;
+                                const count = Number(slotAssignmentCounts[value] || 0);
+                                return (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => setSlotAssignmentFilter(value)}
+                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300 hover:bg-black/40'}`}
+                                    >
+                                        {label} {count}
+                                    </button>
+                                );
+                            })}
                         </div>
-                    </div>
-                </article>
+                        {slotAssignmentNotice ? (
+                            <div className="mt-3 rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-3 py-2 text-sm text-cyan-100/90">
+                                {slotAssignmentNotice}
+                            </div>
+                        ) : null}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {filteredAssignmentItems.length ? filteredAssignmentItems.map((item) => {
+                                const state = assignmentStateById[item.id] || 'needs_review';
+                                const stateTone = state === 'ready'
+                                    ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
+                                    : state === 'empty'
+                                        ? 'border-white/10 bg-black/25 text-zinc-300'
+                                        : 'border-amber-300/25 bg-amber-500/10 text-amber-100';
+                                return (
+                                    <button
+                                        key={`preflight-assignment:${item.id}`}
+                                        type="button"
+                                        onClick={() => openItem(item.id)}
+                                        className={`rounded-2xl border px-3 py-2 text-left transition ${focusedBuildItemId === item.id ? 'border-violet-300/35 bg-violet-500/10' : 'border-white/10 bg-black/20 hover:bg-black/30'}`}
+                                    >
+                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Slot {item.sequence || '?'}</div>
+                                        <div className="mt-1 text-sm font-semibold text-white">{item.assignedPerformerName || item.songTitle || item.title || 'Performance Slot'}</div>
+                                        <div className="mt-1 text-xs text-zinc-400">{formatSummaryLine(item.assignedPerformerName || 'Singer open', item.songTitle || 'Song open', item.artistName || '') || 'Needs assignment'}</div>
+                                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${stateTone}`}>
+                                            {state === 'needs_review' ? 'Needs Review' : state === 'empty' ? 'Empty' : 'Ready'}
+                                        </div>
+                                    </button>
+                                );
+                            }) : (
+                                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
+                                    No performance slots match this filter.
+                                </div>
+                            )}
+                        </div>
+                    </article>
+                </div>
             ) : null}
 
             {workspaceToolsOpen ? (
@@ -5214,29 +5500,6 @@ export default function RunOfShowDirectorPanel({
 
             {studioMode === 'build' ? (
             <>
-                {repairModeActive && focusedBuildItem && repairFocusMeta ? (
-                    <article className={`${surfaceClass} p-4`}>
-                        <div className={`rounded-[26px] border px-4 py-4 ${repairFocusMeta.toneClass}`}>
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-current/80">{repairFocusMeta.eyebrow}</div>
-                                    <div className="mt-1 text-lg font-black text-white">{repairFocusMeta.title}</div>
-                                    <div className="mt-2 text-sm text-current/90">{repairFocusMeta.detail}</div>
-                                    <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-current/80">
-                                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${repairFocusMeta.chipClass}`}>
-                                            {focusedBuildItem.title || getRunOfShowItemLabel(focusedBuildItem.type)}
-                                        </span>
-                                        <span>{readinessById[focusedBuildItem.id]?.summary || 'Needs attention'}</span>
-                                    </div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <ControlButton onClick={() => setStudioMode('review')}>Open Issues</ControlButton>
-                                    <ControlButton tone="primary" onClick={() => setRepairFocus(null)}>Open Full Builder</ControlButton>
-                                </div>
-                            </div>
-                        </div>
-                    </article>
-                ) : (
                 <article className={`${surfaceClass} p-4`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="max-w-3xl">
@@ -5322,7 +5585,7 @@ export default function RunOfShowDirectorPanel({
                         </div>
                     )}
                 </article>
-                )}
+
                 {showAdvancedDraftBuilder ? (
                     <>
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -5474,7 +5737,7 @@ export default function RunOfShowDirectorPanel({
                                                 : 'This room does not have a timeline yet. Applying will create the first draft.'}
                                         </div>
                                         <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                                            {generatorBusy ? 'Applying…' : generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Apply Draft'}
+                                            {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Apply Draft'}
                                         </ControlButton>
                                     </div>
                                 </div>
@@ -5484,53 +5747,6 @@ export default function RunOfShowDirectorPanel({
                     </>
                 ) : null}
             </>
-            ) : null}
-
-            {studioMode === 'review' ? (
-            <article className={`${surfaceClass} p-3`}>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Approval Inbox</div>
-                        <div className="mt-1 text-sm text-zinc-300">Handle pending singer submissions and blockers here, then jump into Build only when a scene needs deeper edits.</div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                        <ControlButton tone="warning" disabled={!safeOperatorCapabilities.canReviewSubmissions || !pendingApprovals.length} onClick={focusFirstPendingApproval}>Review First Pending</ControlButton>
-                        <ControlButton onClick={() => setApprovalInboxOpen((prev) => !prev)}>{approvalInboxOpen ? 'Collapse Inbox' : 'Open Inbox'}</ControlButton>
-                    </div>
-                </div>
-                {approvalInboxOpen ? (
-                    <div className="mt-3 grid gap-2">
-                        {pendingApprovalGroups.length ? pendingApprovalGroups.map((group) => (
-                            <div key={group.itemId} className="rounded-2xl border border-amber-300/18 bg-amber-500/10 px-3 py-2.5">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-[0.16em] text-amber-100/80">{group.item?.title || 'Open performance slot'}</div>
-                                        <div className="mt-1 text-sm text-amber-50">{group.submissions.length} pending singer submission{group.submissions.length === 1 ? '' : 's'}.</div>
-                                        <div className="mt-1 text-xs text-amber-100/80">{group.item?.songTitle ? `${group.item.songTitle}${group.item.artistName ? ` · ${group.item.artistName}` : ''}` : 'Song still open'}{` · ${readinessById[group.itemId]?.summary || 'Needs review'}`}</div>
-                                    </div>
-                                    <ControlButton onClick={() => openItem(group.itemId)}>Open Slot</ControlButton>
-                                </div>
-                                <div className="mt-2 grid gap-2">
-                                    {group.submissions.map((submission) => (
-                                        <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-2">
-                                            <div>
-                                                <div className="text-sm font-bold text-white">{submission.displayName || 'Singer'}</div>
-                                                <div className="text-xs text-zinc-400">{submission.songTitle || 'Untitled Song'}{submission.artistName ? ` · ${submission.artistName}` : ''}{submission.backingUrl || submission.mediaUrl || submission.youtubeId ? ' · backing attached' : ' · song only'}</div>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2">
-                                                <ControlButton tone="success" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => handleSubmissionDecision(submission.id, 'approved', group.item)}>Approve + Assign</ControlButton>
-                                                <ControlButton tone="danger" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => onReviewSubmission?.(submission.id, 'declined')}>Decline</ControlButton>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )) : (
-                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400">No pending singer approvals right now.</div>
-                        )}
-                    </div>
-                ) : null}
-            </article>
             ) : null}
 
             {studioMode === 'run' ? (
@@ -5558,7 +5774,14 @@ export default function RunOfShowDirectorPanel({
                                 </ControlButton>
                             ) : null}
                             {(automationPaused || totalOpenIssues) ? (
-                                <ControlButton onClick={() => setStudioMode(totalOpenIssues ? 'review' : 'build')}>
+                                <ControlButton onClick={() => {
+                                    if (totalOpenIssues) {
+                                        setApprovalInboxOpen(true);
+                                        setStudioMode('build');
+                                        return;
+                                    }
+                                    setStudioMode('build');
+                                }}>
                                     {totalOpenIssues ? 'Open Issues' : 'Open Timeline'}
                                 </ControlButton>
                             ) : null}
@@ -5835,9 +6058,9 @@ export default function RunOfShowDirectorPanel({
                                 label: 'Song',
                                 done: slotNeedsQueueAssignment ? false : (songReady && artistReady),
                                 detail: slotNeedsQueueAssignment
-                                    ? `${bestQueueCandidate?.songTitle || 'Queued song'}${bestQueueCandidate?.artist ? ` • ${bestQueueCandidate.artist}` : ''}`
+                                    ? `${bestQueueCandidate?.songTitle || 'Queued song'}${bestQueueCandidate?.artist ? ` ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${bestQueueCandidate.artist}` : ''}`
                                     : songReady
-                                        ? `${item.songTitle || 'Song'}${artistReady ? ` • ${item.artistName}` : ''}`
+                                        ? `${item.songTitle || 'Song'}${artistReady ? ` ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${item.artistName}` : ''}`
                                         : 'Add title + artist'
                             },
                             {
@@ -5974,7 +6197,7 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">State</div>
                                                     <div className={`mt-1 text-sm font-semibold ${Array.isArray(readiness?.blockers) && readiness.blockers.length ? 'text-amber-100' : 'text-emerald-100'}`}>{readiness.summary}</div>
                                                     <div className="mt-1 text-xs text-zinc-400">
-                                                        {formatStart(item.startsAtMs)} • {formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}
+                                                        {formatStart(item.startsAtMs)} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap items-center gap-2">
@@ -6216,7 +6439,7 @@ export default function RunOfShowDirectorPanel({
                                                                             <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                             {roomUserCandidates.map((candidate) => (
                                                                                 <option key={candidate.uid} value={candidate.uid}>
-                                                                                    {candidate.label}{candidate.meta ? ` · ${candidate.meta}` : ''}
+                                                                                    {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
                                                                                 </option>
                                                                             ))}
                                                                         </SelectControl>
@@ -6328,7 +6551,7 @@ export default function RunOfShowDirectorPanel({
                                                                             <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                             {roomUserCandidates.map((candidate) => (
                                                                                 <option key={candidate.uid} value={candidate.uid}>
-                                                                                    {candidate.label}{candidate.meta ? ` · ${candidate.meta}` : ''}
+                                                                                    {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
                                                                                 </option>
                                                                             ))}
                                                                         </SelectControl>
@@ -6444,7 +6667,7 @@ export default function RunOfShowDirectorPanel({
                                                                     <div key={`${item.id}:prep:${submission.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-3">
                                                                         <div className="min-w-0">
                                                                             <div className="truncate text-sm font-semibold text-white">{submission.songTitle || 'Untitled Song'}</div>
-                                                                            <div className="truncate text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` · ${submission.artistName}` : ''}</div>
+                                                                            <div className="truncate text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}</div>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2">
                                                                             <ControlButton tone="success" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => handleSubmissionDecision(submission.id, 'approved', item)}>Approve + Assign</ControlButton>
@@ -6456,7 +6679,7 @@ export default function RunOfShowDirectorPanel({
                                                                     <div key={`${item.id}:prepqueue:${queueSong.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-3">
                                                                         <div className="min-w-0">
                                                                             <div className="truncate text-sm font-semibold text-white">{queueSong.songTitle || 'Queued Song'}</div>
-                                                                            <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` · ${queueSong.artist}` : ''}</div>
+                                                                            <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` Ãƒâ€šÃ‚Â· ${queueSong.artist}` : ''}</div>
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
                                                                             {queueSong._queueFitScore > 0 ? (
@@ -6488,7 +6711,7 @@ export default function RunOfShowDirectorPanel({
                                                         {
                                                             key: 'song',
                                                             title: 'Song',
-                                                            detail: songReady && artistReady ? `${item.songTitle || 'Song'}${item.artistName ? ` · ${item.artistName}` : ''}` : 'Needs title and artist',
+                                                            detail: songReady && artistReady ? `${item.songTitle || 'Song'}${item.artistName ? ` Ãƒâ€šÃ‚Â· ${item.artistName}` : ''}` : 'Needs title and artist',
                                                             done: songReady && artistReady,
                                                         },
                                                         {
@@ -6581,7 +6804,7 @@ export default function RunOfShowDirectorPanel({
                                                                         <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                         {roomUserCandidates.map((candidate) => (
                                                                             <option key={candidate.uid} value={candidate.uid}>
-                                                                                {candidate.label}{candidate.meta ? ` · ${candidate.meta}` : ''}
+                                                                                {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
                                                                             </option>
                                                                         ))}
                                                                     </SelectControl>
@@ -6680,7 +6903,7 @@ export default function RunOfShowDirectorPanel({
                                                                         <div key={`${item.id}:${queueSong.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-black/10 px-3 py-2">
                                                                             <div className="min-w-0">
                                                                                 <div className="truncate text-sm font-semibold text-white">{queueSong.songTitle || 'Queued Song'}</div>
-                                                                                <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` · ${queueSong.artist}` : ''}</div>
+                                                                                <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` Ãƒâ€šÃ‚Â· ${queueSong.artist}` : ''}</div>
                                                                             </div>
                                                                             <div className="flex items-center gap-2">
                                                                                 {queueSong._queueFitScore > 0 ? (
@@ -6760,7 +6983,7 @@ export default function RunOfShowDirectorPanel({
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track Setup</div>
                                                             <div className="mt-1 text-sm text-zinc-300">Choose the working track for this slot. Open details only if the main path is not enough.</div>
                                                         </div>
-                                                        {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading…</span> : null}
+                                                        {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">LoadingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span> : null}
                                                     </div>
                                                     <div className="rounded-xl bg-black/10 px-3 py-3">
                                                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -7002,7 +7225,7 @@ export default function RunOfShowDirectorPanel({
                                                             <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
                                                                 <div>
                                                                     <div className="text-sm font-bold text-white">{submission.songTitle || 'Untitled Song'}</div>
-                                                                <div className="text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` · ${submission.artistName}` : ''}{` · ${submission.submissionStatus || 'pending'}`}</div>
+                                                                <div className="text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}{` Ãƒâ€šÃ‚Â· ${submission.submissionStatus || 'pending'}`}</div>
                                                                 </div>
                                                                 <div className="flex gap-2">
                                                                     <ControlButton tone="success" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => handleSubmissionDecision(submission.id, 'approved', item)}>Approve + Assign</ControlButton>
@@ -7492,50 +7715,6 @@ export default function RunOfShowDirectorPanel({
                     })}
                 </div>
             )) : null}
-
-            {studioMode === 'review' ? (
-                <div className="grid gap-3 lg:grid-cols-2">
-                    {reviewItems.length ? reviewItems.map((item) => {
-                        const blockers = formatChecklist(readinessById[item.id]?.blockers);
-                        const pendingCount = pendingCountsById[item.id] || 0;
-                        return (
-                            <article key={`review-${item.id}`} className={`${surfaceClass} p-4`}>
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{getRunOfShowItemLabel(item.type)}</div>
-                                        <div className="mt-1 text-lg font-black text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
-                                        <div className="mt-1 text-sm text-zinc-400">{itemSummary(item)}</div>
-                                        <div className="mt-2 text-xs text-zinc-500">Performer, song, and backing edits live in the build inspector.</div>
-                                    </div>
-                                    <button type="button" onClick={() => openItem(item.id)} className="rounded-full border border-cyan-300/35 bg-cyan-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                        Open In Builder
-                                    </button>
-                                </div>
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    {pendingCount > 0 ? (
-                                        <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
-                                            {pendingCount} pending approval{pendingCount === 1 ? '' : 's'}
-                                        </span>
-                                    ) : null}
-                                    {blockers.length ? blockers.map((blocker) => (
-                                        <span key={`${item.id}-${blocker.key || blocker.label}`} className="rounded-full border border-rose-300/30 bg-rose-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-rose-100">
-                                            {blocker.label || 'Needs attention'}
-                                        </span>
-                                    )) : (
-                                        <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
-                                            Review ready
-                                        </span>
-                                    )}
-                                </div>
-                            </article>
-                        );
-                    }) : (
-                        <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-400">
-                            No approvals or blockers need review right now.
-                        </div>
-                    )}
-                </div>
-            ) : null}
         </section>
     );
 }

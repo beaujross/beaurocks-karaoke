@@ -1,6 +1,6 @@
 # Host Operator UI Simplification Spec
 
-Last updated: 2026-04-04
+Last updated: 2026-04-16
 Owner: Product / Host surface
 
 ## Goal
@@ -27,6 +27,41 @@ Companion docs:
 - `RUN_OF_SHOW_LOW_INTERACTION_SPEC.md`
 - `HOST_CONSOLE_MOMENT_AUDIO_SPEC.md`
 - `RUN_OF_SHOW_LOW_INTERACTION_SPEC.md`
+
+## 2026-04-16 Run Of Show Admin Notes
+
+The admin-side run-of-show surface now follows three explicit phases inside `src/apps/Host/components/RunOfShowDirectorPanel.jsx`:
+
+1. `Build`
+   - timeline editing
+   - scene inspector
+   - repair queue shown inline when issues exist
+
+2. `Preflight`
+   - launch readiness summary
+   - one repair queue for approvals, critical blockers, and risky items
+   - slot assignment lives here, not in the build lane
+
+3. `Run`
+   - live HUD and next/later state
+   - low-frequency controls sit behind `More Controls`
+
+Applied simplification decisions:
+
+- separate `review` mode was removed from the run-of-show admin flow
+- pending approvals, critical blockers, and risky items now share one `Repair Queue`
+- `Slot Assignment` moved out of `Build` and into `Preflight`
+- live-only controls such as `Show Later` and `Clear Preview` are hidden until `More Controls` is opened
+
+QA surfaces that assume this phase model:
+
+- `scripts/qa/host-run-of-show-console-playwright.mjs`
+- `scripts/qa/host-run-of-show-hostapp-playwright.mjs`
+- `tests/unit/runOfShowDirector.test.mjs`
+- `tests/integration/runOfShowActions.test.cjs`
+- `tests/integration/runOfShowSlotSubmissions.test.cjs`
+
+If the run-of-show labels or phase boundaries change again, update those checks in the same pass.
 
 ## Core Principle
 

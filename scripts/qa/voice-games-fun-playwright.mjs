@@ -20,13 +20,13 @@ const FIXED_QA_NOW_MS = 1777687200000;
 const FIXTURES = Object.freeze([
   {
     id: "flappy_bird",
-    title: "Flappy Bird",
+    title: "Pitch Runner",
     liveTexts: [
-      /Burst above 22% to flap/i,
-      /Hold above 42% for shield assist/i,
-      /WATCHING LIVE FEED/i,
+      /Target\s+B3/i,
+      /Highest:\s*B4/i,
+      /Lowest:\s*A#2/i,
     ],
-    chips: [/Lives\s+4/i, /Flap\s+22%/i, /Shield\s+42%/i],
+    chips: [/Lives\s+4/i, /Difficulty\s+normal/i, /Range\s+A#2-B4/i],
   },
   {
     id: "vocal_challenge",

@@ -3,6 +3,8 @@ import {
     AUDIENCE_ACCESS_MODES,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
+    buildAudienceSupportOffer,
+    buildGivebutterSupportLaunchUrl,
     normalizeAudienceExperience,
     normalizePurchaseCelebration,
 } from '../../src/lib/roomMonetization.js';
@@ -38,5 +40,30 @@ describe('roomMonetization', () => {
             celebrationStyle: SUPPORT_CELEBRATION_STYLES.moneybagsBurst,
             badgeLabel: MONEYBAGS_BADGE_LABEL,
         });
+    });
+
+    test('builds donation-backed audience offers from event credits', () => {
+        const offer = buildAudienceSupportOffer({
+            supportProvider: 'givebutter',
+            supportUrl: 'https://givebutter.com/aahf-kickoff',
+            supportOffers: [
+                { id: 'solo_boost', label: 'Solo Boost', amount: 5, points: 1200, rewardScope: 'buyer' },
+            ],
+        });
+
+        expect(offer?.supportOffers).toHaveLength(1);
+        expect(offer?.supportOffers?.[0]).toMatchObject({
+            id: 'solo_boost',
+            amount: 5,
+            points: 1200,
+            rewardScope: 'buyer',
+        });
+    });
+
+    test('builds Givebutter launch URLs with donate path and amount', () => {
+        expect(buildGivebutterSupportLaunchUrl('https://givebutter.com/aahf-kickoff', {
+            amount: 10,
+            fundCode: '12345',
+        })).toBe('https://givebutter.com/aahf-kickoff/donate?amount=10&fund=12345');
     });
 });
