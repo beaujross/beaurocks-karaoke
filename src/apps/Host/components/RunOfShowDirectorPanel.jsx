@@ -33,6 +33,7 @@ import {
     formatHostMomentCueSummary,
     getHostMomentCueMeta
 } from '../../../lib/hostMomentCues';
+import { BG_TRACK_OPTIONS, getBgTrackById } from '../../../lib/bgTrackOptions';
 
 const ITEM_TYPE_OPTIONS = RUN_OF_SHOW_ITEM_TYPES
     .filter((type) => type !== 'trivia_break')
@@ -474,7 +475,7 @@ const TIMELINE_LANE_META = Object.freeze({
     audience: { label: 'Audience Beats', detail: 'Trivia, games, buffers, breaks', tone: 'emerald' },
 });
 
-const textInputClass = 'w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none';
+const textInputClass = 'w-full rounded-xl border border-cyan-300/24 bg-zinc-950/88 px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 outline-none shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-300/20 disabled:opacity-60';
 const selectInputClass = `${textInputClass} appearance-none pr-10`;
 const surfaceClass = 'rounded-[28px] border border-white/10 bg-black/25';
 const _miniSurfaceClass = 'rounded-2xl border border-white/10 bg-black/20';
@@ -523,7 +524,7 @@ const buildWyrLaunchConfigFromEntry = (entry = {}) => {
         points: normalized.points
     };
 };
-const FieldLabel = ({ children }) => <label className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{children}</label>;
+const FieldLabel = ({ children }) => <label className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">{children}</label>;
 const normalizeSearch = (value = '') => String(value || '').trim().toLowerCase();
 const formatMediaLabel = (title = '', artist = '') => [String(title || '').trim(), String(artist || '').trim()].filter(Boolean).join(' - ');
 const buildMediaQuery = (item = {}) => [item?.songTitle, item?.artistName].map((value) => String(value || '').trim()).filter(Boolean).join(' ').trim();
@@ -1117,6 +1118,11 @@ const TAKEOVER_SOUNDTRACK_SOURCE_META = Object.freeze({
         primaryFieldLabel: 'Apple Music Track ID',
         primaryPlaceholder: 'pl.u-...'
     },
+    bg_track: {
+        label: 'Built-In BG Track',
+        primaryFieldLabel: 'Background Track',
+        primaryPlaceholder: ''
+    },
     manual_external: {
         label: 'Direct Media URL',
         primaryFieldLabel: 'Media URL',
@@ -1158,10 +1164,15 @@ const RunOfShowTakeoverSoundtrackEditor = ({
     const sourceType = String(presentationPlan?.soundtrackSourceType || '').trim().toLowerCase();
     const sourceMeta = getTakeoverSoundtrackSourceMeta(sourceType);
     const sourceLabel = sourceMeta?.label || 'None';
+    const selectedBgTrack = sourceType === 'bg_track'
+        ? getBgTrackById(presentationPlan?.soundtrackBgTrackId || '')
+        : null;
     const primaryValue = sourceType === 'youtube'
         ? (presentationPlan?.soundtrackYoutubeId || '')
         : sourceType === 'apple_music'
             ? (presentationPlan?.soundtrackAppleMusicId || '')
+            : sourceType === 'bg_track'
+                ? (presentationPlan?.soundtrackBgTrackId || '')
             : (presentationPlan?.soundtrackMediaUrl || '');
     const setSourceType = (nextType = '') => {
         if (typeof onUpdatePresentationPlan !== 'function') return;
@@ -1169,9 +1180,14 @@ const RunOfShowTakeoverSoundtrackEditor = ({
             soundtrackSourceType: nextType,
             soundtrackYoutubeId: nextType === 'youtube' ? (presentationPlan?.soundtrackYoutubeId || '') : '',
             soundtrackAppleMusicId: nextType === 'apple_music' ? (presentationPlan?.soundtrackAppleMusicId || '') : '',
+            soundtrackBgTrackId: nextType === 'bg_track' ? (presentationPlan?.soundtrackBgTrackId || '') : '',
             soundtrackMediaUrl: nextType === 'manual_external'
                 ? (presentationPlan?.soundtrackMediaUrl || '')
-                : (nextType === 'youtube' ? (presentationPlan?.soundtrackMediaUrl || '') : ''),
+                : nextType === 'youtube'
+                    ? (presentationPlan?.soundtrackMediaUrl || '')
+                    : nextType === 'bg_track'
+                        ? (selectedBgTrack?.url || presentationPlan?.soundtrackMediaUrl || '')
+                        : '',
         });
     };
     const setPrimaryValue = (nextValue = '') => {
@@ -1182,6 +1198,14 @@ const RunOfShowTakeoverSoundtrackEditor = ({
         }
         if (sourceType === 'apple_music') {
             onUpdatePresentationPlan({ soundtrackAppleMusicId: nextValue });
+            return;
+        }
+        if (sourceType === 'bg_track') {
+            const nextTrack = getBgTrackById(nextValue);
+            onUpdatePresentationPlan({
+                soundtrackBgTrackId: nextValue,
+                soundtrackMediaUrl: nextTrack?.url || ''
+            });
             return;
         }
         onUpdatePresentationPlan({ soundtrackMediaUrl: nextValue });
@@ -1222,19 +1246,41 @@ const RunOfShowTakeoverSoundtrackEditor = ({
                         <option value="">None</option>
                         <option value="youtube">YouTube</option>
                         <option value="apple_music">Apple Music</option>
+                        <option value="bg_track">Built-In BG Track</option>
                         <option value="manual_external">Direct Media URL</option>
                     </SelectControl>
                 </div>
                 {sourceMeta ? (
                     <div className="md:col-span-1 xl:col-span-2">
                         <FieldLabel>{sourceMeta.primaryFieldLabel}</FieldLabel>
-                        <input
-                            value={primaryValue}
-                            onChange={(e) => setPrimaryValue(e.target.value)}
-                            disabled={disabled}
-                            className={textInputClass}
-                            placeholder={sourceMeta.primaryPlaceholder}
-                        />
+                        {sourceType === 'bg_track' ? (
+                            <SelectControl
+                                value={primaryValue}
+                                onChange={(e) => setPrimaryValue(e.target.value)}
+                                disabled={disabled}
+                                className={textInputClass}
+                            >
+                                <option value="">Choose a built-in background track</option>
+                                {BG_TRACK_OPTIONS.map((track) => (
+                                    <option key={track.id} value={track.id}>{track.name}</option>
+                                ))}
+                            </SelectControl>
+                        ) : (
+                            <input
+                                value={primaryValue}
+                                onChange={(e) => setPrimaryValue(e.target.value)}
+                                disabled={disabled}
+                                className={textInputClass}
+                                placeholder={sourceMeta.primaryPlaceholder}
+                            />
+                        )}
+                        {sourceType === 'bg_track' ? (
+                            <div className="mt-2 text-xs text-zinc-500">
+                                {selectedBgTrack?.name
+                                    ? `${selectedBgTrack.name} will play from the built-in BeauRocks background-track library.`
+                                    : 'Choose from the built-in BeauRocks background tracks.'}
+                            </div>
+                        ) : null}
                     </div>
                 ) : (
                     <div className="md:col-span-1 xl:col-span-2 rounded-2xl border border-dashed border-white/10 bg-black/15 px-3 py-3 text-sm text-zinc-500">
@@ -3307,7 +3353,9 @@ export default function RunOfShowDirectorPanel({
         }
     ]);
     const [workspaceToolsOpen, setWorkspaceToolsOpen] = useState(false);
-    const [topBoardCollapsed, setTopBoardCollapsed] = useState(false);
+    const [buildSequenceOpen, setBuildSequenceOpen] = useState(items.length === 0);
+    const [buildMapOpen, setBuildMapOpen] = useState(false);
+    const [topBoardCollapsed, setTopBoardCollapsed] = useState(items.length > 0);
     const [pendingSetupScrollItemId, setPendingSetupScrollItemId] = useState('');
     const [repairFocus, setRepairFocus] = useState(null);
     const [sectionOpenState, setSectionOpenState] = useState({});
@@ -3315,6 +3363,14 @@ export default function RunOfShowDirectorPanel({
     const [interactiveLibraryFilter, setInteractiveLibraryFilter] = useState('');
     const [interactiveLibrarySelection, setInteractiveLibrarySelection] = useState('');
     const [slotAssignmentFilter, setSlotAssignmentFilter] = useState('all');
+
+    useEffect(() => {
+        if (items.length === 0) {
+            setBuildSequenceOpen(true);
+            setBuildMapOpen(false);
+            setTopBoardCollapsed(false);
+        }
+    }, [items.length]);
     const [slotFillBusy, setSlotFillBusy] = useState(false);
     const [slotAssignmentNotice, setSlotAssignmentNotice] = useState('');
     const [mediaPicker, setMediaPicker] = useState({
@@ -5181,133 +5237,91 @@ export default function RunOfShowDirectorPanel({
                         </div>
                     </article>
                 ) : (
-                    <>
-                        <article className={`${surfaceClass} p-4`}>
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="max-w-3xl">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Slot Assignment</div>
-                                    <div className="mt-1 text-sm text-zinc-200">Fill the obvious performance slots automatically, then review only the exceptions.</div>
-                                    <div className="mt-2 text-xs text-zinc-400">Approved slot submissions fill first. After that, empty slots pull from the live queue in order. Existing assignments stay untouched.</div>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <ControlButton
-                                        tone="primary"
-                                        disabled={!safeOperatorCapabilities.canEditFlow || slotFillBusy || slotFillCandidateCount === 0}
-                                        onClick={handleFillEmptySlots}
-                                    >
-                                        {slotFillBusy ? 'Filling...' : 'Fill Empty Slots'}
-                                    </ControlButton>
-                                </div>
+                <article className={`${surfaceClass} p-4`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="max-w-3xl">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Sequence Tools</div>
+                            <div className="mt-1 text-sm text-zinc-200">Use this tray when you need to add or reorder scenes. The focused inspector below is the main editing workspace.</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                {items.length} scene{items.length === 1 ? '' : 's'}
+                            </span>
+                            <ControlButton onClick={() => setBuildSequenceOpen((prev) => !prev)}>
+                                {buildSequenceOpen ? 'Hide Sequence Tools' : 'Open Sequence Tools'}
+                            </ControlButton>
+                        </div>
+                    </div>
+                    {buildSequenceOpen ? (
+                        <div className="mt-4 space-y-3">
+                            <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-3 text-sm text-zinc-200">
+                                Keep this closed while editing scene details to avoid stacking the board, timeline, and inspector on top of each other.
                             </div>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                                {[
-                                    ['all', 'All'],
-                                    ['needs_review', 'Needs Review'],
-                                    ['empty', 'Empty'],
-                                    ['ready', 'Ready'],
-                                ].map(([value, label]) => {
-                                    const active = slotAssignmentFilter === value;
-                                    const count = Number(slotAssignmentCounts[value] || 0);
-                                    return (
-                                        <button
-                                            key={value}
-                                            type="button"
-                                            onClick={() => setSlotAssignmentFilter(value)}
-                                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition ${active ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300 hover:bg-black/40'}`}
-                                        >
-                                            {label} {count}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            {slotAssignmentNotice ? (
-                                <div className="mt-3 rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-3 py-2 text-sm text-cyan-100/90">
-                                    {slotAssignmentNotice}
-                                </div>
-                            ) : null}
-                            <div className="mt-4 flex flex-wrap gap-2">
-                                {filteredAssignmentItems.length ? filteredAssignmentItems.map((item) => {
-                                    const state = assignmentStateById[item.id] || 'needs_review';
-                                    const stateTone = state === 'ready'
-                                        ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
-                                        : state === 'empty'
-                                            ? 'border-white/10 bg-black/25 text-zinc-300'
-                                            : 'border-amber-300/25 bg-amber-500/10 text-amber-100';
-                                    return (
-                                        <button
-                                            key={`assignment-jump:${item.id}`}
-                                            type="button"
-                                            onClick={() => openItem(item.id)}
-                                            className={`rounded-2xl border px-3 py-2 text-left transition ${focusedBuildItemId === item.id ? 'border-violet-300/35 bg-violet-500/10' : 'border-white/10 bg-black/20 hover:bg-black/30'}`}
-                                        >
-                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Slot {item.sequence || '?'}</div>
-                                            <div className="mt-1 text-sm font-semibold text-white">{item.assignedPerformerName || item.songTitle || item.title || 'Performance Slot'}</div>
-                                            <div className="mt-1 text-xs text-zinc-400">{formatSummaryLine(item.assignedPerformerName || 'Singer open', item.songTitle || 'Song open', item.artistName || '') || 'Needs assignment'}</div>
-                                            <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${stateTone}`}>
-                                                {state === 'needs_review' ? 'Needs Review' : state === 'empty' ? 'Empty' : 'Ready'}
-                                            </div>
-                                        </button>
-                                    );
-                                }) : (
-                                    <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
-                                        No performance slots match this filter.
-                                    </div>
-                                )}
-                            </div>
-                        </article>
-                        <div className="space-y-3">
-                            <ShowMapCard
+                            <TimelineStudio
                                 items={items}
                                 liveItemId={liveItem?.id || ''}
                                 stagedItemId={stagedItem?.id || ''}
                                 nextItemId={nextItem?.id || ''}
-                                expandedItemId={focusedBuildItemId}
+                                currentItemId={currentItemId}
                                 readinessById={readinessById}
                                 pendingCountsById={pendingCountsById}
+                                expandedItemId={expandedItemId}
+                                canEditFlow={safeOperatorCapabilities.canEditFlow}
+                                onMoveItem={onMoveItem}
+                                onDeleteItem={onDeleteItem}
+                                onAddItem={handleAddItemAndFocus}
+                                onAddScenePack={applyScenePack}
+                                onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
+                                generatorOpen={generatorOpen}
                                 getPrimaryAction={getPrimaryActionForItem}
                                 onFocus={openItem}
-                                canEditFlow={safeOperatorCapabilities.canEditFlow}
-                                roomUserCandidates={roomUserCandidates}
-                                onAssignLobbyPerformer={assignLobbyPerformer}
-                                onClearLobbyPerformer={clearLobbyPerformer}
-                                onUpdateItem={onUpdateItem}
-                                onLoadSuggestedBacking={loadSuggestedBacking}
-                                mediaPicker={mediaPicker}
-                                getSuggestedOptionsForItem={getSuggestedOptionsForItem}
-                                onApplyMediaSelection={applyMediaSelection}
+                                dragState={dragState}
+                                onDragStart={(event, itemId) => {
+                                    if (!safeOperatorCapabilities.canEditFlow) return;
+                                    event.dataTransfer.effectAllowed = 'move';
+                                    setDragState({ itemId, targetId: itemId, position: 'after' });
+                                }}
+                                onDragEnd={clearDragState}
+                                onDragTarget={updateDragTarget}
+                                onDropItem={handleStoryboardDrop}
                             />
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-sm text-zinc-300">Scene map is available when you need a denser overview of slot readiness.</div>
+                                <ControlButton onClick={() => setBuildMapOpen((prev) => !prev)}>
+                                    {buildMapOpen ? 'Hide Scene Map' : 'Show Scene Map'}
+                                </ControlButton>
+                            </div>
+                            {buildMapOpen ? (
+                                <ShowMapCard
+                                    items={items}
+                                    liveItemId={liveItem?.id || ''}
+                                    stagedItemId={stagedItem?.id || ''}
+                                    nextItemId={nextItem?.id || ''}
+                                    expandedItemId={focusedBuildItemId}
+                                    readinessById={readinessById}
+                                    pendingCountsById={pendingCountsById}
+                                    getPrimaryAction={getPrimaryActionForItem}
+                                    onFocus={openItem}
+                                    canEditFlow={safeOperatorCapabilities.canEditFlow}
+                                    roomUserCandidates={roomUserCandidates}
+                                    onAssignLobbyPerformer={assignLobbyPerformer}
+                                    onClearLobbyPerformer={clearLobbyPerformer}
+                                    onUpdateItem={onUpdateItem}
+                                    onLoadSuggestedBacking={loadSuggestedBacking}
+                                    mediaPicker={mediaPicker}
+                                    getSuggestedOptionsForItem={getSuggestedOptionsForItem}
+                                    onApplyMediaSelection={applyMediaSelection}
+                                />
+                            ) : null}
                         </div>
-                        {studioMode === 'build' ? (
-                        <TimelineStudio
-                            items={items}
-                            liveItemId={liveItem?.id || ''}
-                            stagedItemId={stagedItem?.id || ''}
-                            nextItemId={nextItem?.id || ''}
-                            currentItemId={currentItemId}
-                            readinessById={readinessById}
-                            pendingCountsById={pendingCountsById}
-                            expandedItemId={expandedItemId}
-                            canEditFlow={safeOperatorCapabilities.canEditFlow}
-                            onMoveItem={onMoveItem}
-                            onDeleteItem={onDeleteItem}
-                            onAddItem={handleAddItemAndFocus}
-                            onAddScenePack={applyScenePack}
-                            onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}
-                            generatorOpen={generatorOpen}
-                            getPrimaryAction={getPrimaryActionForItem}
-                            onFocus={openItem}
-                            dragState={dragState}
-                            onDragStart={(event, itemId) => {
-                                if (!safeOperatorCapabilities.canEditFlow) return;
-                                event.dataTransfer.effectAllowed = 'move';
-                                setDragState({ itemId, targetId: itemId, position: 'after' });
-                            }}
-                            onDragEnd={clearDragState}
-                            onDragTarget={updateDragTarget}
-                            onDropItem={handleStoryboardDrop}
-                        />
-                        ) : null}
-                    </>
+                    ) : (
+                        <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1">Focused scene {focusedBuildItemIndex >= 0 ? focusedBuildItemIndex + 1 : 1}</span>
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1">{liveItem?.title ? `Live: ${liveItem.title}` : 'Timeline ready'}</span>
+                            {safeOperatorCapabilities.canEditFlow ? <span className="rounded-full border border-emerald-300/18 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">Inspector editing active</span> : null}
+                        </div>
+                    )}
+                </article>
                 )}
                 {showAdvancedDraftBuilder ? (
                     <>
@@ -5688,6 +5702,7 @@ export default function RunOfShowDirectorPanel({
                         const hasCustomSoundtrackOptions = Boolean(String(presentationPlan?.soundtrackLabel || '').trim())
                             || presentationPlan?.soundtrackAutoPlay === true
                             || audioPlan?.duckBackingEnabled === true
+                            || soundtrackSourceType === 'bg_track'
                             || (soundtrackSourceType === 'youtube' && Boolean(String(presentationPlan?.soundtrackMediaUrl || '').trim()));
                         const soundtrackCustomizeOpen = isSectionOpen(item.id, 'presentation_soundtrack_customize', hasCustomSoundtrackOptions);
                         const roomMomentPlan = item?.roomMomentPlan && typeof item.roomMomentPlan === 'object' ? item.roomMomentPlan : {};
@@ -5706,7 +5721,14 @@ export default function RunOfShowDirectorPanel({
                             if (!safeOperatorCapabilities.canEditFlow) return;
                             setSectionOpen(item.id, 'presentation_soundtrack', enabled);
                             if (enabled) {
-                                if (!soundtrackConfigured) updatePresentationPlan({ soundtrackSourceType: 'youtube' });
+                                if (!soundtrackConfigured) {
+                                    const defaultBgTrack = BG_TRACK_OPTIONS[0] || null;
+                                    updatePresentationPlan({
+                                        soundtrackSourceType: defaultBgTrack ? 'bg_track' : 'youtube',
+                                        soundtrackBgTrackId: defaultBgTrack?.id || '',
+                                        soundtrackMediaUrl: defaultBgTrack?.url || ''
+                                    });
+                                }
                                 return;
                             }
                             setSectionOpen(item.id, 'presentation_soundtrack_customize', false);
@@ -5716,6 +5738,7 @@ export default function RunOfShowDirectorPanel({
                                     soundtrackSourceType: '',
                                     soundtrackYoutubeId: '',
                                     soundtrackAppleMusicId: '',
+                                    soundtrackBgTrackId: '',
                                     soundtrackMediaUrl: '',
                                     soundtrackLabel: '',
                                     soundtrackAutoPlay: false
@@ -5938,7 +5961,7 @@ export default function RunOfShowDirectorPanel({
                                                 ) : null}
                                             </div>
                                         </button>
-                                        {isExpanded && !repairModeActive ? (
+                                        {isExpanded && !repairModeActive && buildSequenceOpen && buildMapOpen ? (
                                             <QuickInlineSceneEditor
                                                 item={item}
                                                 onUpdateItem={onUpdateItem}

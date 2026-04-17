@@ -69,15 +69,6 @@ const AddToQueueFormBody = ({
                             <i className="fa-brands fa-apple mr-1"></i>
                             Apple Music
                         </button>
-                        <button
-                            type="button"
-                            disabled
-                            className="px-2 py-1 rounded-full border text-[10px] uppercase tracking-[0.12em] border-zinc-800 bg-zinc-900/60 text-zinc-600 cursor-not-allowed"
-                            title="Coming soon"
-                        >
-                            <i className="fa-brands fa-spotify mr-1"></i>
-                            Spotify (Soon)
-                        </button>
                     </div>
                 </div>
                 {queueSearchSourceNote && (

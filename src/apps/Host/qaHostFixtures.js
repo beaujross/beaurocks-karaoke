@@ -16,6 +16,11 @@ export const QA_HOST_SCENARIOS = Object.freeze([
         id: 'run-of-show-console',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Run Of Show Director', 'Now', 'Next', 'Apply For A Slot']
+    },
+    {
+        id: 'run-of-show-stage-live',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Live Stage', 'Performance Controls', 'Post-Performance Timing']
     }
 ]);
 
@@ -104,135 +109,189 @@ const buildDirector = (nowMs = FIXED_QA_HOST_NOW_MS) => createDefaultRunOfShowDi
     ]
 }, nowMs);
 
-export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS } = {}) => {
-    const safeId = String(fixtureId || '').trim().toLowerCase();
-    if (safeId !== 'run-of-show-console') return null;
-    return {
+const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS) => ({
+    roomCode,
+    settingsTab: 'general',
+    room: {
         roomCode,
-        tab: 'run_of_show',
-        settingsTab: 'general',
-        room: {
+        hostUid: 'fixture_host',
+        hostUids: ['fixture_host'],
+        hostName: 'AAHF Host',
+        eventProfileId: QA_AAHF_EVENT_PROFILE_ID,
+        eventProfileLabel: 'AAHF Kick-Off',
+        eventProfileVersion: 1,
+        activeMode: 'karaoke',
+        logoUrl: AAHF_LOGO_URL,
+        lobbyOrbSkinUrl: AAHF_LOGO_URL,
+        audienceShellVariant: 'streamlined',
+        audienceBrandTheme: QA_AAHF_AUDIENCE_BRAND_THEME,
+        roomPlan: {
+            startsAtLocal: '2026-05-01T19:00',
+            startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+        },
+        runOfShowEnabled: true,
+        programMode: 'run_of_show',
+        runOfShowPolicy: {
+            defaultAutomationMode: 'auto',
+            lateBlockPolicy: 'compress',
+            noShowPolicy: 'pull_from_queue',
+            queueDivergencePolicy: 'queue_can_fill_gaps',
+            blockedActionPolicy: 'manual_override_allowed'
+        },
+        runOfShowRoles: {
+            coHosts: ['co_host_1'],
+            stageManagers: ['stage_mgr_1'],
+            mediaCurators: ['media_curator_1']
+        },
+        runOfShowTemplateMeta: {
+            currentTemplateId: 'aahf_template',
+            currentTemplateName: 'AAHF Kick-Off',
+            lastArchiveId: 'archive_prev',
+            archivedAtMs: nowMs - 86400000
+        },
+        runOfShowDirector: buildDirector(nowMs),
+        tvPreviewOverlay: {
+            active: true,
+            itemId: 'perf_next'
+        }
+    },
+    songs: [
+        { id: 'queue_1', title: 'Dreams', singer: 'Alex Rivers', status: 'queued' }
+    ],
+    localLibrary: [
+        {
+            id: 'local_dreams_master',
+            title: 'Dreams (Local Master)',
+            artist: 'Fleetwood Mac',
+            fileName: 'dreams-local-master.mp3',
+            url: 'https://media.example.com/local/dreams-local-master.mp3',
+            _local: true
+        },
+        {
+            id: 'local_valerie_cut',
+            title: 'Valerie (Alt Cut)',
+            artist: 'Amy Winehouse',
+            fileName: 'valerie-alt-cut.mp3',
+            url: 'https://media.example.com/local/valerie-alt-cut.mp3',
+            _local: true
+        }
+    ],
+    ytIndex: [
+        {
+            videoId: 'yt_demo_backing_01',
+            trackName: 'Dreams Karaoke Version',
+            artistName: 'Venue Backing Library',
+            url: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+            durationSec: 212,
+            playable: true
+        },
+        {
+            videoId: 'yt_demo_valerie_02',
+            trackName: 'Valerie Karaoke Backing',
+            artistName: 'Venue Backing Library',
+            url: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
+            durationSec: 198,
+            playable: true
+        }
+    ],
+    users: [
+        { id: 'aud_1', name: 'Taylor' },
+        { id: 'aud_2', name: 'Jordan' }
+    ],
+    runOfShowSubmissions: [
+        {
+            id: 'submission_1',
+            itemId: 'open_slot',
+            songTitle: 'Valerie',
+            artistName: 'Amy Winehouse',
+            displayName: 'Sam Lee',
+            submissionStatus: 'pending'
+        },
+        {
+            id: 'submission_approved_1',
+            itemId: 'open_slot',
+            songTitle: 'Dreams',
+            artistName: 'Fleetwood Mac',
+            displayName: 'Alex Rivers',
+            submissionStatus: 'approved',
+            mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+            youtubeId: 'yt_demo_backing_01'
+        }
+    ],
+    runOfShowTemplates: [
+        {
+            id: 'aahf_template',
+            templateId: 'aahf_template',
+            templateName: 'AAHF Kick-Off',
+            templateType: 'template',
             roomCode,
-            hostUid: 'fixture_host',
-            hostUids: ['fixture_host'],
-            hostName: 'AAHF Host',
-            eventProfileId: QA_AAHF_EVENT_PROFILE_ID,
-            eventProfileLabel: 'AAHF Kick-Off',
-            eventProfileVersion: 1,
-            activeMode: 'karaoke',
-            logoUrl: AAHF_LOGO_URL,
-            lobbyOrbSkinUrl: AAHF_LOGO_URL,
-            audienceShellVariant: 'streamlined',
-            audienceBrandTheme: QA_AAHF_AUDIENCE_BRAND_THEME,
-            roomPlan: {
-                startsAtLocal: '2026-05-01T19:00',
-                startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
-            },
-            runOfShowEnabled: true,
-            programMode: 'run_of_show',
+            runOfShowDirector: buildDirector(nowMs),
             runOfShowPolicy: {
                 defaultAutomationMode: 'auto',
                 lateBlockPolicy: 'compress',
                 noShowPolicy: 'pull_from_queue',
                 queueDivergencePolicy: 'queue_can_fill_gaps',
                 blockedActionPolicy: 'manual_override_allowed'
-            },
-            runOfShowRoles: {
-                coHosts: ['co_host_1'],
-                stageManagers: ['stage_mgr_1'],
-                mediaCurators: ['media_curator_1']
-            },
-            runOfShowTemplateMeta: {
-                currentTemplateId: 'aahf_template',
-                currentTemplateName: 'AAHF Kick-Off',
-                lastArchiveId: 'archive_prev',
-                archivedAtMs: nowMs - 86400000
-            },
-            runOfShowDirector: buildDirector(nowMs),
-            tvPreviewOverlay: {
-                active: true,
-                itemId: 'perf_next'
             }
-        },
-        songs: [
-            { id: 'queue_1', title: 'Dreams', singer: 'Alex Rivers', status: 'queued' }
-        ],
-        localLibrary: [
-            {
-                id: 'local_dreams_master',
-                title: 'Dreams (Local Master)',
-                artist: 'Fleetwood Mac',
-                fileName: 'dreams-local-master.mp3',
-                url: 'https://media.example.com/local/dreams-local-master.mp3',
-                _local: true
+        }
+    ]
+});
+
+export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS } = {}) => {
+    const safeId = String(fixtureId || '').trim().toLowerCase();
+    if (safeId === 'run-of-show-console') {
+        return {
+            ...buildBaseFixture(roomCode, nowMs),
+            tab: 'run_of_show',
+        };
+    }
+    if (safeId === 'run-of-show-stage-live') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                videoPlaying: true,
+                videoStartTimestamp: nowMs - 45000,
+                pausedAt: null,
+                showPerformanceRecap: true,
+                applauseWarmupSec: 4,
+                applauseCountdownSec: 4,
+                applauseMeasureSec: 5,
+                performanceRecapBreakdownMs: 5000,
+                performanceRecapLeaderboardMs: 6000,
             },
-            {
-                id: 'local_valerie_cut',
-                title: 'Valerie (Alt Cut)',
-                artist: 'Amy Winehouse',
-                fileName: 'valerie-alt-cut.mp3',
-                url: 'https://media.example.com/local/valerie-alt-cut.mp3',
-                _local: true
-            }
-        ],
-        ytIndex: [
-            {
-                videoId: 'yt_demo_backing_01',
-                trackName: 'Dreams Karaoke Version',
-                artistName: 'Venue Backing Library',
-                url: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
-                durationSec: 212,
-                playable: true
-            },
-            {
-                videoId: 'yt_demo_valerie_02',
-                trackName: 'Valerie Karaoke Backing',
-                artistName: 'Venue Backing Library',
-                url: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
-                durationSec: 198,
-                playable: true
-            }
-        ],
-        users: [
-            { id: 'aud_1', name: 'Taylor' },
-            { id: 'aud_2', name: 'Jordan' }
-        ],
-        runOfShowSubmissions: [
-            {
-                id: 'submission_1',
-                itemId: 'open_slot',
-                songTitle: 'Valerie',
-                artistName: 'Amy Winehouse',
-                displayName: 'Sam Lee',
-                submissionStatus: 'pending'
-            },
-            {
-                id: 'submission_approved_1',
-                itemId: 'open_slot',
-                songTitle: 'Dreams',
-                artistName: 'Fleetwood Mac',
-                displayName: 'Alex Rivers',
-                submissionStatus: 'approved',
-                mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
-                youtubeId: 'yt_demo_backing_01'
-            }
-        ],
-        runOfShowTemplates: [
-            {
-                id: 'aahf_template',
-                templateId: 'aahf_template',
-                templateName: 'AAHF Kick-Off',
-                templateType: 'template',
-                roomCode,
-                runOfShowDirector: buildDirector(nowMs),
-                runOfShowPolicy: {
-                    defaultAutomationMode: 'auto',
-                    lateBlockPolicy: 'compress',
-                    noShowPolicy: 'pull_from_queue',
-                    queueDivergencePolicy: 'queue_can_fill_gaps',
-                    blockedActionPolicy: 'manual_override_allowed'
+            songs: [
+                {
+                    id: 'perf_live_1',
+                    singerName: 'Alex Rivers',
+                    singer: 'Alex Rivers',
+                    songTitle: 'Dreams',
+                    title: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    status: 'performing',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    albumArtUrl: AAHF_LOGO_URL,
+                    hostBonus: 25,
+                    lyrics: 'Thunder only happens when it\'s raining',
+                },
+                {
+                    id: 'queue_next_1',
+                    singerName: 'Jordan',
+                    singer: 'Jordan',
+                    songTitle: 'Valerie',
+                    title: 'Valerie',
+                    artist: 'Amy Winehouse',
+                    artistName: 'Amy Winehouse',
+                    status: 'requested',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
+                    youtubeId: 'yt_demo_valerie_02',
                 }
-            }
-        ]
-    };
+            ],
+        };
+    }
+    return null;
 };

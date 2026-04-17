@@ -16,7 +16,7 @@ export const RUN_OF_SHOW_BLOCKED_ACTION_POLICIES = Object.freeze(['focus_next_fi
 export const RUN_OF_SHOW_DEFAULT_AUTOMATION_POLICIES = Object.freeze(['auto', 'manual']);
 export const RUN_OF_SHOW_MOMENT_CUE_IDS = Object.freeze(['', 'hype', 'celebrate', 'reveal', 'next_up', 'reset']);
 export const RUN_OF_SHOW_MOMENT_CUE_TIMINGS = Object.freeze(['start', 'end']);
-export const RUN_OF_SHOW_TAKEOVER_SOUNDTRACK_SOURCES = Object.freeze(['', 'youtube', 'apple_music', 'manual_external']);
+export const RUN_OF_SHOW_TAKEOVER_SOUNDTRACK_SOURCES = Object.freeze(['', 'youtube', 'apple_music', 'bg_track', 'manual_external']);
 
 export const RUN_OF_SHOW_ITEM_TYPES = Object.freeze([
     'intro',
@@ -262,6 +262,7 @@ const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     soundtrackMediaUrl: cleanText(overrides.soundtrackMediaUrl),
     soundtrackYoutubeId: cleanText(overrides.soundtrackYoutubeId),
     soundtrackAppleMusicId: cleanText(overrides.soundtrackAppleMusicId),
+    soundtrackBgTrackId: cleanText(overrides.soundtrackBgTrackId).toLowerCase(),
     soundtrackAutoPlay: overrides.soundtrackAutoPlay === true
 });
 
@@ -574,6 +575,9 @@ export const hasRunOfShowTakeoverSoundtrackIdentity = (presentationPlan = {}) =>
     if (sourceType === 'apple_music') {
         return !!cleanText(presentationPlan?.soundtrackAppleMusicId);
     }
+    if (sourceType === 'bg_track') {
+        return !!cleanText(presentationPlan?.soundtrackBgTrackId) || !!cleanText(presentationPlan?.soundtrackMediaUrl);
+    }
     if (sourceType === 'manual_external') {
         return !!cleanText(presentationPlan?.soundtrackMediaUrl);
     }
@@ -663,6 +667,8 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
                 pushBlocker('takeover_soundtrack_missing', 'Add a YouTube ID or media URL for the takeover soundtrack.');
             } else if (soundtrackSourceType === 'apple_music') {
                 pushBlocker('takeover_soundtrack_missing', 'Add an Apple Music track id for the takeover soundtrack.');
+            } else if (soundtrackSourceType === 'bg_track') {
+                pushBlocker('takeover_soundtrack_missing', 'Pick one of the built-in background tracks for the takeover soundtrack.');
             } else {
                 pushBlocker('takeover_soundtrack_missing', 'Add a direct media URL for the takeover soundtrack.');
             }

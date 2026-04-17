@@ -45,6 +45,20 @@ const ensureShowWorkspace = async (page, timeoutMs) => {
   await page.getByText("Run Of Show Board").first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
+const ensureStageWorkspace = async (page, timeoutMs) => {
+  await clickHostTab(page, "stage", timeoutMs);
+  await waitForHostState(page, { tab: "stage", timeoutMs });
+  await page.getByText("Live Stage").first().waitFor({ state: "visible", timeout: timeoutMs });
+};
+
+const gotoHostFixture = async (page, server, fixtureId, timeoutMs) => {
+  await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=${encodeURIComponent(fixtureId)}`, {
+    waitUntil: "domcontentloaded",
+    timeout: timeoutMs,
+  });
+  await delay(2500);
+};
+
 const ensureDetailsSectionOpen = async (page, label) => {
   const details = page.locator("details").filter({
     has: page.getByText(label, { exact: false }),
@@ -96,11 +110,7 @@ const main = async () => {
       pageErrors.push(String(error?.stack || error?.message || error));
     });
 
-    await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=run-of-show-console`, {
-      waitUntil: "domcontentloaded",
-      timeout: timeoutMs,
-    });
-    await delay(2500);
+    await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
     await ensureShowWorkspace(page, timeoutMs);
 
     await runCheck(checks, "host_app_fixture_loaded", async () => {
@@ -134,6 +144,68 @@ const main = async () => {
       return "board controls and issue rail rendered";
     });
 
+    await runCheck(checks, "host_app_sequence_tools_tray_visible", async () => {
+      await ensureShowWorkspace(page, timeoutMs);
+      const buildButton = page.getByRole("button", { name: /^BUILD$/i }).first();
+      await buildButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await buildButton.click({ force: true });
+      await page.getByText("Sequence Tools").first().waitFor({ state: "visible", timeout: timeoutMs });
+      const trayToggle = page.getByRole("button", { name: /Hide Sequence Tools|Open Sequence Tools/i }).first();
+      await trayToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      return "build workspace exposes the collapsible sequence tools tray";
+    });
+
+    await runCheck(checks, "host_app_audio_dropdown_and_quick_volume_controls_visible", async () => {
+      await ensureStageWorkspace(page, timeoutMs);
+      const audioToggle = page.locator('[data-feature-id="deck-audio-menu-toggle"]').first();
+      await audioToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/^Stage$/).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await audioToggle.click({ force: true });
+      await page.getByText("Audio + Mix").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText(/Keep stage backing, room music, and the blend in one place\./i).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "audio quick controls stay visible and the dropdown reveals the full mix panel";
+    });
+
+    await runCheck(checks, "host_app_launch_catalogue_routes_to_queue_catalog", async () => {
+      await ensureStageWorkspace(page, timeoutMs);
+      const launchToggle = page.locator('button').filter({ has: page.locator('.fa-rocket') }).first();
+      await launchToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      await page.evaluate(() => {
+        window.__qaLastLaunchTarget = "";
+        window.open = ((url) => {
+          window.__qaLastLaunchTarget = String(url || "");
+          return null;
+        });
+      });
+      await launchToggle.click({ force: true });
+      const launchCatalogueButton = page.getByRole("button", { name: /Launch Catalogue/i }).first();
+      await launchCatalogueButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await launchCatalogueButton.click({ force: true });
+      const launchTarget = await page.evaluate(() => String(window.__qaLastLaunchTarget || ""));
+      if (!launchTarget) throw new Error("Launch Catalogue did not call window.open.");
+      const parsed = new URL(launchTarget, page.url());
+      if (parsed.searchParams.get("mode") !== "host") throw new Error(`Unexpected launch mode: ${parsed.toString()}`);
+      if (parsed.searchParams.get("view") !== "queue") throw new Error(`Unexpected launch view: ${parsed.toString()}`);
+      if (parsed.searchParams.get("section") !== "queue.catalog") throw new Error(`Unexpected launch section: ${parsed.toString()}`);
+      return "launch menu opens the queue catalog workspace";
+    });
+
+    await runCheck(checks, "host_app_stage_timing_uses_pace_slider_with_advanced_toggle", async () => {
+      await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
+      await ensureStageWorkspace(page, timeoutMs);
+      const moreControlsButton = page.getByRole("button", { name: /More Controls/i }).first();
+      await moreControlsButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await moreControlsButton.click({ force: true });
+      await page.getByText("Post-Performance Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Show Pace").first().waitFor({ state: "visible", timeout: timeoutMs });
+      const customizeButton = page.getByRole("button", { name: /Customize Timing/i }).first();
+      await customizeButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await customizeButton.click({ force: true });
+      await page.getByText("Leaderboard beat").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage timing uses the new pace slider with optional advanced controls";
+    });
+
+    await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
     await ensureAdminRoomSetup(page, timeoutMs);
 
     await runCheck(checks, "host_app_event_profile_active", async () => {

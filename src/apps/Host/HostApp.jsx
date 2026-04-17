@@ -117,6 +117,7 @@ import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
+import { getBgTrackById } from '../../lib/bgTrackOptions';
 import { createLogger } from '../../lib/logger';
 import {
     getAppCheckRetryDelayMs,
@@ -7511,18 +7512,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (presentationPlan?.soundtrackAutoPlay !== true) return null;
         const sourceType = String(presentationPlan?.soundtrackSourceType || '').trim().toLowerCase();
         if (!sourceType) return null;
-        const mediaUrl = String(presentationPlan?.soundtrackMediaUrl || '').trim();
+        const bgTrackId = String(presentationPlan?.soundtrackBgTrackId || '').trim().toLowerCase();
+        const resolvedBgTrack = sourceType === 'bg_track' ? getBgTrackById(bgTrackId) : null;
+        const mediaUrl = String(presentationPlan?.soundtrackMediaUrl || resolvedBgTrack?.url || '').trim();
         const youtubeId = String(presentationPlan?.soundtrackYoutubeId || '').trim();
         const appleMusicId = String(presentationPlan?.soundtrackAppleMusicId || '').trim();
         if (sourceType === 'youtube' && !youtubeId && !mediaUrl) return null;
         if (sourceType === 'apple_music' && !appleMusicId) return null;
+        if (sourceType === 'bg_track' && !mediaUrl) return null;
         if (sourceType === 'manual_external' && !mediaUrl) return null;
         return {
             sourceType,
-            label: String(presentationPlan?.soundtrackLabel || item?.title || getRunOfShowItemLabel(item?.type || '')).trim(),
+            label: String(
+                presentationPlan?.soundtrackLabel
+                || resolvedBgTrack?.name
+                || item?.title
+                || getRunOfShowItemLabel(item?.type || '')
+            ).trim(),
             mediaUrl,
             youtubeId,
             appleMusicId,
+            bgTrackId: resolvedBgTrack?.id || bgTrackId,
             startedAtMs,
             durationSec: Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10))
         };
@@ -9857,7 +9867,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     // Data Sync
     useEffect(() => {
-        if(!roomCode || isMarketingDemoFixture) return;
+        if(!roomCode || isMarketingDemoFixture || qaHostFixtureId) return;
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => {
             if(s.exists()) setRoom(s.data());
         });
@@ -9886,7 +9896,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); };
-    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture]);
+    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId]);
     useEffect(() => () => {
         localUploadsRef.current.forEach(url => URL.revokeObjectURL(url));
         localUploadsRef.current = [];
@@ -10916,7 +10926,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [roomCode, toast, updateRoom]);
 
     useEffect(() => {
-        if (!normalizedInitialCode || isMarketingDemoFixture) return;
+        if (!normalizedInitialCode || isMarketingDemoFixture || qaHostFixtureId) return;
         const authMarker = uid || authError?.code || authError?.message || 'boot';
         const attemptKey = `${normalizedInitialCode}:${authMarker}`;
         if (autoJoinAttemptKeyRef.current === attemptKey) return;
@@ -10924,7 +10934,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setRoomCodeInput(normalizedInitialCode);
         joinRoom(normalizedInitialCode, { silent: (!uid && !authError) || isMarketingDemoEmbed });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [normalizedInitialCode, uid, authError, isMarketingDemoEmbed, isMarketingDemoFixture]);
+    }, [normalizedInitialCode, uid, authError, isMarketingDemoEmbed, isMarketingDemoFixture, qaHostFixtureId]);
 
     const toggleHowToPlay = async () => {
         const active = !room?.howToPlay?.active;

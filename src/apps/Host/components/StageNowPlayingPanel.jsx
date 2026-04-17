@@ -46,6 +46,7 @@ const StageNowPlayingPanel = ({
     emoji
 }) => {
     const [showStageDetails, setShowStageDetails] = React.useState(false);
+    const [showTimingAdvanced, setShowTimingAdvanced] = React.useState(false);
     const currentBackingUrl = String(currentMediaUrl || current?.mediaUrl || '').trim();
     const lastBackingUrl = String(lastPerformance?.mediaUrl || '').trim();
     const currentHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(currentBackingUrl);
@@ -64,84 +65,162 @@ const StageNowPlayingPanel = ({
     const applauseMeasureSec = normalizeTimingValue(room?.applauseMeasureSec, { fallback: 5, min: 2, max: 10 });
     const recapBreakdownMs = normalizeTimingValue(room?.performanceRecapBreakdownMs, { fallback: 7000, min: 3000, max: 12000 });
     const recapLeaderboardMs = normalizeTimingValue(room?.performanceRecapLeaderboardMs, { fallback: 7000, min: 3000, max: 12000 });
+    const normalizeSpeedPercent = (value, { min, max }) => {
+        if (max <= min) return 50;
+        const ratio = (max - value) / (max - min);
+        return Math.max(0, Math.min(100, Math.round(ratio * 100)));
+    };
+    const postPerformancePace = Math.round((
+        normalizeSpeedPercent(applauseWarmupSec, { min: 0, max: 8 })
+        + normalizeSpeedPercent(applauseCountdownSec, { min: 1, max: 8 })
+        + normalizeSpeedPercent(applauseMeasureSec, { min: 2, max: 10 })
+        + normalizeSpeedPercent(recapBreakdownMs, { min: 3000, max: 12000 })
+        + normalizeSpeedPercent(recapLeaderboardMs, { min: 3000, max: 12000 })
+    ) / 5);
+    const postPerformancePaceLabel = postPerformancePace >= 68
+        ? 'Fast'
+        : postPerformancePace <= 32
+            ? 'Relaxed'
+            : 'Balanced';
+    const applyPostPerformancePace = React.useCallback((rawValue) => {
+        const pace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
+        const scaleRange = (min, max, step = 1) => {
+            const span = max - min;
+            const scaled = max - ((pace / 100) * span);
+            return Math.round(scaled / step) * step;
+        };
+        updateRoom({
+            applauseWarmupSec: scaleRange(0, 8),
+            applauseCountdownSec: scaleRange(1, 8),
+            applauseMeasureSec: scaleRange(2, 10),
+            performanceRecapBreakdownMs: scaleRange(3000, 12000, 1000),
+            performanceRecapLeaderboardMs: scaleRange(3000, 12000, 1000),
+        });
+    }, [postPerformancePace, updateRoom]);
 
     const postPerformanceTimingCard = (
         <div className="mt-3 bg-black/30 border border-white/10 rounded-lg p-3">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Post-Performance Timing</div>
-                    <div className="mt-1 text-[11px] text-zinc-500">Applause, recap, and leaderboard timing for Public TV.</div>
+                    <div className="mt-1 text-[11px] text-zinc-500">Control the overall pace first, then fine-tune only if the default curve needs help.</div>
                 </div>
-                <button
-                    onClick={() => updateRoom({ showPerformanceRecap: room?.showPerformanceRecap === false })}
-                    className={`${styles.btnStd} ${room?.showPerformanceRecap === false ? styles.btnNeutral : styles.btnHighlight} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] whitespace-nowrap`}
-                    title="Toggle the post-performance recap sequence on Public TV"
-                >
-                    {room?.showPerformanceRecap === false ? 'Recap Off' : 'Recap On'}
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                        onClick={() => updateRoom({ showPerformanceRecap: room?.showPerformanceRecap === false })}
+                        className={`${styles.btnStd} ${room?.showPerformanceRecap === false ? styles.btnNeutral : styles.btnHighlight} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] whitespace-nowrap`}
+                        title="Toggle the post-performance recap sequence on Public TV"
+                    >
+                        {room?.showPerformanceRecap === false ? 'Recap Off' : 'Recap On'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowTimingAdvanced((prev) => !prev)}
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] whitespace-nowrap`}
+                    >
+                        {showTimingAdvanced ? 'Hide Advanced' : 'Customize Timing'}
+                    </button>
+                </div>
             </div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                    Warm-up
-                    <select
-                        value={applauseWarmupSec}
-                        onChange={(event) => updateRoom({ applauseWarmupSec: Number(event.target.value) })}
-                        className={`${styles.input} mt-1`}
-                    >
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
-                            <option key={`applause-warmup-${value}`} value={value}>{value}s</option>
-                        ))}
-                    </select>
-                </label>
-                <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                    Meter countdown
-                    <select
-                        value={applauseCountdownSec}
-                        onChange={(event) => updateRoom({ applauseCountdownSec: Number(event.target.value) })}
-                        className={`${styles.input} mt-1`}
-                    >
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
-                            <option key={`applause-countdown-${value}`} value={value}>{value}s</option>
-                        ))}
-                    </select>
-                </label>
-                <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                    Meter live
-                    <select
-                        value={applauseMeasureSec}
-                        onChange={(event) => updateRoom({ applauseMeasureSec: Number(event.target.value) })}
-                        className={`${styles.input} mt-1`}
-                    >
-                        {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
-                            <option key={`applause-measure-${value}`} value={value}>{value}s</option>
-                        ))}
-                    </select>
-                </label>
-                <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                    Recap beat
-                    <select
-                        value={recapBreakdownMs}
-                        onChange={(event) => updateRoom({ performanceRecapBreakdownMs: Number(event.target.value) })}
-                        className={`${styles.input} mt-1`}
-                    >
-                        {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
-                            <option key={`recap-breakdown-${value}`} value={value}>{Math.round(value / 1000)}s</option>
-                        ))}
-                    </select>
-                </label>
-                <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400 sm:col-span-2">
-                    Leaderboard beat
-                    <select
-                        value={recapLeaderboardMs}
-                        onChange={(event) => updateRoom({ performanceRecapLeaderboardMs: Number(event.target.value) })}
-                        className={`${styles.input} mt-1`}
-                    >
-                        {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
-                            <option key={`recap-leaderboard-${value}`} value={value}>{Math.round(value / 1000)}s</option>
-                        ))}
-                    </select>
-                </label>
+            <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Show Pace</div>
+                        <div className="mt-1 text-xs text-zinc-300">{postPerformancePaceLabel} automation timing for applause, recap, and leaderboard beats.</div>
+                    </div>
+                    <span className="rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                        {postPerformancePaceLabel}
+                    </span>
+                </div>
+                <div className="mt-3">
+                    <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={postPerformancePace}
+                        onChange={(event) => applyPostPerformancePace(event.target.value)}
+                        className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800"
+                        style={{ background: `linear-gradient(90deg, #22d3ee ${postPerformancePace}%, #27272a ${postPerformancePace}%)` }}
+                    />
+                    <div className="mt-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
+                        <span>Relaxed</span>
+                        <span>Balanced</span>
+                        <span>Fast</span>
+                    </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Warm-up {applauseWarmupSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Countdown {applauseCountdownSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Meter {applauseMeasureSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Recap {Math.round(recapBreakdownMs / 1000)}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Leaderboard {Math.round(recapLeaderboardMs / 1000)}s</span>
+                </div>
             </div>
+            {showTimingAdvanced ? (
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                        Warm-up
+                        <select
+                            value={applauseWarmupSec}
+                            onChange={(event) => updateRoom({ applauseWarmupSec: Number(event.target.value) })}
+                            className={`${styles.input} mt-1`}
+                        >
+                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                <option key={`applause-warmup-${value}`} value={value}>{value}s</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                        Meter countdown
+                        <select
+                            value={applauseCountdownSec}
+                            onChange={(event) => updateRoom({ applauseCountdownSec: Number(event.target.value) })}
+                            className={`${styles.input} mt-1`}
+                        >
+                            {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                <option key={`applause-countdown-${value}`} value={value}>{value}s</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                        Meter live
+                        <select
+                            value={applauseMeasureSec}
+                            onChange={(event) => updateRoom({ applauseMeasureSec: Number(event.target.value) })}
+                            className={`${styles.input} mt-1`}
+                        >
+                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
+                                <option key={`applause-measure-${value}`} value={value}>{value}s</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                        Recap beat
+                        <select
+                            value={recapBreakdownMs}
+                            onChange={(event) => updateRoom({ performanceRecapBreakdownMs: Number(event.target.value) })}
+                            className={`${styles.input} mt-1`}
+                        >
+                            {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
+                                <option key={`recap-breakdown-${value}`} value={value}>{Math.round(value / 1000)}s</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400 sm:col-span-2">
+                        Leaderboard beat
+                        <select
+                            value={recapLeaderboardMs}
+                            onChange={(event) => updateRoom({ performanceRecapLeaderboardMs: Number(event.target.value) })}
+                            className={`${styles.input} mt-1`}
+                        >
+                            {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
+                                <option key={`recap-leaderboard-${value}`} value={value}>{Math.round(value / 1000)}s</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+            ) : null}
         </div>
     );
 

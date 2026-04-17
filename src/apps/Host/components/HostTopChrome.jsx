@@ -218,6 +218,7 @@ const HostTopChrome = ({
     const navMenuRef = React.useRef(null);
     const quickStartMenuRef = React.useRef(null);
     const automationMenuRef = React.useRef(null);
+    const audioMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
     const overlaysMenuRef = React.useRef(null);
     const sfxQuickMenuRef = React.useRef(null);
@@ -319,8 +320,10 @@ const HostTopChrome = ({
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
+    const quickAudioControlClass = 'flex min-w-[170px] items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-2';
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
+        || audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
         || showSfxQuickMenu
@@ -640,11 +643,12 @@ const HostTopChrome = ({
     const closeAllDeckMenus = React.useCallback(() => {
         setShowQuickStartMenu(false);
         setShowAutomationMenu(false);
+        setAudioPanelOpen?.(false);
         setShowTvQuickMenu(false);
         setShowOverlaysMenu(false);
         setShowSfxQuickMenu(false);
         setShowVibeQuickMenu(false);
-    }, []);
+    }, [setAudioPanelOpen]);
     const closeAllTopMenus = React.useCallback(() => {
         closeAllDeckMenus();
         setShowLaunchMenu(false);
@@ -852,6 +856,7 @@ const HostTopChrome = ({
             const menuRefs = [
                 quickStartMenuRef,
                 automationMenuRef,
+                audioMenuRef,
                 tvQuickMenuRef,
                 overlaysMenuRef,
                 sfxQuickMenuRef,
@@ -1115,7 +1120,7 @@ const HostTopChrome = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${roomCode}&mode=host&tab=browse&catalogue=1`)}
+                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog`)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue
@@ -1509,6 +1514,209 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
+                {!runOfShowFocusMode ? (
+                    <div className="relative" ref={audioMenuRef}>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                data-feature-id="deck-audio-menu-toggle"
+                                onClick={() => {
+                                    const next = !audioPanelOpen;
+                                    closeAllTopMenus();
+                                    setAudioPanelOpen(next);
+                                }}
+                                className={`${quickMenuToggleClass} min-w-[132px] justify-between`}
+                                title="Audio and mix controls"
+                                style={{ touchAction: 'manipulation' }}
+                            >
+                                <span className="inline-flex items-center gap-2">
+                                    <i className="fa-solid fa-sliders"></i>
+                                    Audio
+                                </span>
+                                <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${audioPanelOpen ? 'rotate-180' : ''}`}></i>
+                            </button>
+                            <div className={quickAudioControlClass}>
+                                <button
+                                    type="button"
+                                    onClick={toggleSongMute}
+                                    className={`${styles.btnStd} ${stageVolumeDraft === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
+                                    title="Mute stage audio"
+                                >
+                                    <i className={`fa-solid ${stageVolumeDraft === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400">Stage</div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        step="1"
+                                        value={stageVolumeDraft}
+                                        onPointerDown={() => { sliderDraggingRef.current.stage = true; }}
+                                        onChange={(e) => handleStageVolumeDraftChange(e.target.value)}
+                                        onPointerUp={(e) => commitStageVolumeChange(e.target.value)}
+                                        onPointerCancel={(e) => commitStageVolumeChange(e.target.value)}
+                                        onBlur={(e) => commitStageVolumeChange(e.target.value)}
+                                        onWheelCapture={blockRangeWheelDefault}
+                                        className="mt-1 h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 stage-volume-slider"
+                                        style={{ background: `linear-gradient(90deg, #00C4D9 ${stageVolumeDraft}%, #27272a ${stageVolumeDraft}%)` }}
+                                    />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{stageVolumeDraft}%</span>
+                            </div>
+                            <div className={quickAudioControlClass}>
+                                <button
+                                    type="button"
+                                    onClick={toggleBgMute}
+                                    className={`${styles.btnStd} ${bgVolume === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
+                                    title="Mute background music"
+                                >
+                                    <i className={`fa-solid ${bgVolume === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                        <span>BG</span>
+                                        <span className="truncate text-zinc-500">{currentTrackName || 'Track'}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="100"
+                                        step="1"
+                                        value={bgVolumeDraftPct}
+                                        onPointerDown={() => { sliderDraggingRef.current.bg = true; }}
+                                        onChange={(e) => handleBgVolumeDraftChange(e.target.value)}
+                                        onPointerUp={(e) => commitBgVolumeChange(e.target.value)}
+                                        onPointerCancel={(e) => commitBgVolumeChange(e.target.value)}
+                                        onBlur={(e) => commitBgVolumeChange(e.target.value)}
+                                        onWheelCapture={blockRangeWheelDefault}
+                                        className="mt-1 h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 bg-volume-slider"
+                                        style={{ background: `linear-gradient(90deg, #EC4899 ${bgVolumeDraftPct}%, #27272a ${bgVolumeDraftPct}%)` }}
+                                    />
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{bgVolumeDraftPct}%</span>
+                            </div>
+                        </div>
+                        {audioPanelOpen ? (
+                            <div className={`${quickMenuPanelClass} left-0 w-[min(560px,96vw)] p-3.5`}>
+                                <div className={quickMenuSectionTitleClass}>Audio + Mix</div>
+                                <div className={quickMenuSectionHintClass}>
+                                    Keep stage backing, room music, and the blend in one place.
+                                </div>
+                                <div className="mt-2.5 space-y-2.5">
+                                    <div className={`${quickMenuCardClass} flex items-center gap-3`}>
+                                        <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Stage</div>
+                                        <SmallWaveform level={stageMeterLevel} className="h-10 w-20" color="rgba(236,72,153,0.9)" />
+                                        {!stageMicReady ? (
+                                            <button
+                                                onClick={requestStageMic}
+                                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px]`}
+                                                title={stageMicError ? 'Enable mic for stage meter' : 'Enable stage meter'}
+                                            >
+                                                <i className={`fa-solid ${stageMicError ? 'fa-microphone-slash' : 'fa-microphone'} w-4 text-center`}></i>
+                                            </button>
+                                        ) : null}
+                                        <button onClick={toggleSongMute} className={`${styles.btnStd} ${stageVolumeDraft === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
+                                            <i className={`fa-solid ${stageVolumeDraft === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
+                                        </button>
+                                        <div className="min-w-0 flex-1">
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                step="1"
+                                                value={stageVolumeDraft}
+                                                onPointerDown={() => { sliderDraggingRef.current.stage = true; }}
+                                                onChange={(e) => handleStageVolumeDraftChange(e.target.value)}
+                                                onPointerUp={(e) => commitStageVolumeChange(e.target.value)}
+                                                onPointerCancel={(e) => commitStageVolumeChange(e.target.value)}
+                                                onBlur={(e) => commitStageVolumeChange(e.target.value)}
+                                                onWheelCapture={blockRangeWheelDefault}
+                                                className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 stage-volume-slider"
+                                                style={{ background: `linear-gradient(90deg, #00C4D9 ${stageVolumeDraft}%, #27272a ${stageVolumeDraft}%)` }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className={`${quickMenuCardClass} space-y-2`}>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">BG</div>
+                                            <SmallWaveform level={bgAnalyserActive ? bgMeterLevel : Math.round(bgVolume * 100)} className="h-10 w-20" color="rgba(0,196,217,0.95)" />
+                                            <button onClick={toggleBgMusic} className={`${styles.btnStd} ${playingBg ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Toggle BG music">
+                                                <i className={`fa-solid ${playingBg ? 'fa-pause' : 'fa-play'} w-4 text-center`}></i>
+                                            </button>
+                                            <button onClick={skipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Skip BG track">
+                                                <i className="fa-solid fa-forward-step w-4 text-center"></i>
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    const next = !autoBgMusic;
+                                                    setAutoBgMusic(next);
+                                                    await updateRoom({ autoBgMusic: next });
+                                                    if (next && !playingBg) setBgMusicState(true);
+                                                }}
+                                                className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
+                                                title="Keep BG music rolling between songs"
+                                            >
+                                                <i className="fa-solid fa-compact-disc w-4 text-center"></i>
+                                            </button>
+                                            <button onClick={toggleBgMute} className={`${styles.btnStd} ${bgVolume === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
+                                                <i className={`fa-solid ${bgVolume === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
+                                            </button>
+                                            <div className="min-w-0 flex-1">
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    step="1"
+                                                    value={bgVolumeDraftPct}
+                                                    onPointerDown={() => { sliderDraggingRef.current.bg = true; }}
+                                                    onChange={(e) => handleBgVolumeDraftChange(e.target.value)}
+                                                    onPointerUp={(e) => commitBgVolumeChange(e.target.value)}
+                                                    onPointerCancel={(e) => commitBgVolumeChange(e.target.value)}
+                                                    onBlur={(e) => commitBgVolumeChange(e.target.value)}
+                                                    onWheelCapture={blockRangeWheelDefault}
+                                                    className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 bg-volume-slider"
+                                                    style={{ background: `linear-gradient(90deg, #EC4899 ${bgVolumeDraftPct}%, #27272a ${bgVolumeDraftPct}%)` }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="truncate text-xs text-zinc-400">
+                                            <i className="fa-solid fa-music mr-1"></i>
+                                            {currentTrackName || 'BG Track'}
+                                        </div>
+                                    </div>
+                                    <div className={`${quickMenuCardClass} flex items-center gap-3`}>
+                                        <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Mix</div>
+                                        <div className="flex-1">
+                                            <div className="relative">
+                                                <span className="absolute left-1/2 top-1/2 h-5 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40"></span>
+                                                <input
+                                                    type="range"
+                                                    min="0"
+                                                    max="100"
+                                                    step="1"
+                                                    value={mixFaderDraft}
+                                                    onPointerDown={() => { sliderDraggingRef.current.mix = true; }}
+                                                    onChange={(e) => handleMixFaderDraftChange(e.target.value)}
+                                                    onPointerUp={(e) => commitMixFaderChange(e.target.value)}
+                                                    onPointerCancel={(e) => commitMixFaderChange(e.target.value)}
+                                                    onBlur={(e) => commitMixFaderChange(e.target.value)}
+                                                    onWheelCapture={blockRangeWheelDefault}
+                                                    className="mix-slider relative z-10 w-full"
+                                                    style={{ '--mix-split': `${mixFaderDraft}%` }}
+                                                />
+                                            </div>
+                                            <div className="mt-2 flex items-center justify-between text-xs text-zinc-400">
+                                                <span className="text-[#00C4D9]">BG Music {mixFaderDraft}%</span>
+                                                <span className="text-pink-300">Stage Audio {100 - mixFaderDraft}%</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+                    </div>
+                ) : null}
                 <div className="relative" ref={tvQuickMenuRef}>
                     <button
                         data-feature-id="deck-tv-menu-toggle"
@@ -2357,128 +2565,6 @@ const HostTopChrome = ({
                 </div>
             </div>
         )}
-        {!runOfShowFocusMode ? (
-        <div className="w-full">
-            <button
-                onClick={() => setAudioPanelOpen(v => !v)}
-                className={`w-full flex items-center justify-between ${styles.header}`}
-            >
-                <span className="flex items-center gap-2">
-                    <i className="fa-solid fa-sliders"></i>
-                    Audio + Mix
-                </span>
-                <i className={`fa-solid fa-chevron-down transition-transform ${audioPanelOpen ? 'rotate-180' : ''}`}></i>
-            </button>
-            <div className={audioPanelOpen ? 'block' : 'hidden'}>
-                <div className="w-full bg-gradient-to-r from-[#00E5FF]/12 via-[#2BD4C8]/10 to-[#EC4899]/12 border border-white/10 rounded-2xl p-3 overflow-hidden">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14">
-                            <div className="text-xs uppercase tracking-widest text-zinc-400">Stage Audio</div>
-                            <SmallWaveform level={stageMeterLevel} className="h-10 w-20" color="rgba(236,72,153,0.9)" />
-                            {!stageMicReady && (
-                                <button
-                                    onClick={requestStageMic}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px]`}
-                                    title={stageMicError ? 'Enable mic for stage meter' : 'Enable stage meter'}
-                                >
-                                    <i className={`fa-solid ${stageMicError ? 'fa-microphone-slash' : 'fa-microphone'} w-4 text-center`}></i>
-                                </button>
-                            )}
-                            <button onClick={toggleSongMute} className={`${styles.btnStd} ${stageVolumeDraft === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
-                                <i className={`fa-solid ${stageVolumeDraft === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                            </button>
-                            <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={stageVolumeDraft}
-                                onPointerDown={() => { sliderDraggingRef.current.stage = true; }}
-                                onChange={e => handleStageVolumeDraftChange(e.target.value)}
-                                onPointerUp={e => commitStageVolumeChange(e.target.value)}
-                                onPointerCancel={e => commitStageVolumeChange(e.target.value)}
-                                onBlur={e => commitStageVolumeChange(e.target.value)}
-                                onWheelCapture={blockRangeWheelDefault}
-                                className="w-32 h-3 bg-zinc-800 accent-pink-500 rounded-lg appearance-none cursor-pointer stage-volume-slider"
-                                style={{ background: `linear-gradient(90deg, #00C4D9 ${stageVolumeDraft}%, #27272a ${stageVolumeDraft}%)` }}
-                            />
-                        </div>
-                        <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14">
-                            <div className="text-xs uppercase tracking-widest text-zinc-400">BG</div>
-                            <SmallWaveform level={bgAnalyserActive ? bgMeterLevel : Math.round(bgVolume * 100)} className="h-10 w-20" color="rgba(0,196,217,0.95)" />
-                            <button onClick={toggleBgMusic} className={`${styles.btnStd} ${playingBg ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Toggle BG music">
-                                <i className={`fa-solid ${playingBg ? 'fa-pause' : 'fa-play'} w-4 text-center`}></i>
-                            </button>
-                            <button onClick={skipBg} className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`} title="Skip BG track">
-                                <i className="fa-solid fa-forward-step w-4 text-center"></i>
-                            </button>
-                            <button
-                                onClick={async () => {
-                                    const next = !autoBgMusic;
-                                    setAutoBgMusic(next);
-                                    await updateRoom({ autoBgMusic: next });
-                                    if (next && !playingBg) setBgMusicState(true);
-                                }}
-                                className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
-                                title="Keep BG music rolling between songs"
-                            >
-                                <i className="fa-solid fa-compact-disc w-4 text-center"></i>
-                            </button>
-                            <button onClick={toggleBgMute} className={`${styles.btnStd} ${bgVolume === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}>
-                                <i className={`fa-solid ${bgVolume === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                            </button>
-                            <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="1"
-                                value={bgVolumeDraftPct}
-                                onPointerDown={() => { sliderDraggingRef.current.bg = true; }}
-                                onChange={e => handleBgVolumeDraftChange(e.target.value)}
-                                onPointerUp={e => commitBgVolumeChange(e.target.value)}
-                                onPointerCancel={e => commitBgVolumeChange(e.target.value)}
-                                onBlur={e => commitBgVolumeChange(e.target.value)}
-                                onWheelCapture={blockRangeWheelDefault}
-                                className="w-32 h-3 bg-zinc-800 accent-cyan-500 rounded-lg appearance-none cursor-pointer bg-volume-slider"
-                                style={{ background: `linear-gradient(90deg, #EC4899 ${bgVolumeDraftPct}%, #27272a ${bgVolumeDraftPct}%)` }}
-                            />
-                            <div className="text-sm text-zinc-400 truncate max-w-[120px]">
-                                <i className="fa-solid fa-music mr-1"></i>
-                                {currentTrackName || 'BG Track'}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 bg-zinc-900/80 px-3 py-3 rounded-xl border border-white/10 h-14 mt-4">
-                        <div className="text-sm uppercase tracking-widest text-zinc-400">Mix</div>
-                        <div className="flex flex-col gap-3 flex-1">
-                            <div className="relative">
-                                <span className="absolute left-1/2 top-1/2 -translate-y-1/2 -translate-x-1/2 w-0.5 h-5 bg-white/40 rounded-full"></span>
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="100"
-                                    step="1"
-                                    value={mixFaderDraft}
-                                    onPointerDown={() => { sliderDraggingRef.current.mix = true; }}
-                                    onChange={e => handleMixFaderDraftChange(e.target.value)}
-                                    onPointerUp={e => commitMixFaderChange(e.target.value)}
-                                    onPointerCancel={e => commitMixFaderChange(e.target.value)}
-                                    onBlur={e => commitMixFaderChange(e.target.value)}
-                                    onWheelCapture={blockRangeWheelDefault}
-                                    className="mix-slider w-full relative z-10"
-                                    style={{ '--mix-split': `${mixFaderDraft}%` }}
-                                />
-                            </div>
-                            <div className="flex items-center justify-between text-sm text-zinc-400">
-                                <span className="text-[#00C4D9]">BG Music {mixFaderDraft}%</span>
-                                <span className="text-pink-300">Stage Audio {100 - mixFaderDraft}%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        ) : null}
     </div>
     );
 };

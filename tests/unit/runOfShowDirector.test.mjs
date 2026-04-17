@@ -19,6 +19,7 @@ import {
   getRunOfShowPublicItems,
   getRunOfShowProgressionDecision,
   hasRunOfShowBackingIdentity,
+  hasRunOfShowTakeoverSoundtrackIdentity,
   isApprovedAutomationSource,
   isRunOfShowItemReady,
   normalizeRunOfShowPolicy,
@@ -161,6 +162,37 @@ test("runOfShowDirector reports actionable readiness blockers for host UI", () =
     ],
   );
   assert.match(readiness.summary, /Approve one of the 2 pending submissions/i);
+});
+
+test("runOfShowDirector supports built-in background tracks for takeover soundtracks", () => {
+  const readyItem = createRunOfShowItem("announcement", {
+    title: "Intro",
+    presentationPlan: {
+      publicTvTakeoverEnabled: true,
+      takeoverScene: "intro",
+      headline: "Welcome in",
+      soundtrackSourceType: "bg_track",
+      soundtrackBgTrackId: "retro_lounge",
+      soundtrackMediaUrl: "https://cdn.example.com/retro-lounge.mp3",
+      soundtrackAutoPlay: true,
+    },
+  });
+  const missingTrackItem = createRunOfShowItem("announcement", {
+    title: "Intermission",
+    presentationPlan: {
+      publicTvTakeoverEnabled: true,
+      takeoverScene: "intermission",
+      headline: "Quick reset",
+      soundtrackSourceType: "bg_track",
+      soundtrackAutoPlay: true,
+    },
+  });
+
+  assert.equal(hasRunOfShowTakeoverSoundtrackIdentity(readyItem.presentationPlan), true);
+
+  const readiness = getRunOfShowItemReadiness(missingTrackItem);
+  assert.equal(readiness.ready, false);
+  assert.match(readiness.summary, /built-in background tracks/i);
 });
 
 test("runOfShowDirector normalizes operator roles and template metadata", () => {
