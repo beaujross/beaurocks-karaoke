@@ -74,4 +74,26 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     /isStreamlinedAudienceShell \? 'View Queue' : 'Open Lobby'/,
     "SingerApp should swap the empty-stage secondary action to queue in streamlined mode",
   );
+  assert.match(
+    source,
+    /const showStreamlinedStageNav = isStreamlinedAudienceShell && \['home', 'request', 'social'\]\.includes\(tab\);/,
+    "SingerApp should keep the streamlined top nav eligible across home, songs, and stale social states",
+  );
+  const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
+  const omnipresentStageAreaIndex = source.indexOf("/* Omnipresent Stage Area */");
+
+  assert.notEqual(
+    streamlinedStageNavRenderIndex,
+    -1,
+    "SingerApp should render the streamlined top nav in the main shell",
+  );
+  assert.notEqual(
+    omnipresentStageAreaIndex,
+    -1,
+    "SingerApp omnipresent stage area marker should exist",
+  );
+  assert.ok(
+    streamlinedStageNavRenderIndex < omnipresentStageAreaIndex,
+    "SingerApp should render the streamlined top nav outside the omnipresent stage gate so it stays visible when the stage is idle",
+  );
 });

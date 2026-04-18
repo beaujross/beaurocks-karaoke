@@ -18,6 +18,7 @@ export const DEFAULT_TIP_CRATES = Object.freeze([
 
 export const DEFAULT_LOGO_PRESETS = Object.freeze([
     { id: 'default-bross', label: 'BeauRocks Neon Default', url: ASSETS.logo },
+    { id: 'aahf-badge-flower-outside', label: 'AAHF Badge Flower Outside', url: '/images/logo-library/AAHF-Badge-FlowerOutside.png' },
     { id: 'bross-entertainment', label: 'Bross Entertainment', url: '/images/logo-library/bross-entertainment.png' },
     { id: 'bross-entertainment-chrome', label: 'Bross Chrome', url: '/images/logo-library/bross-entertainment-chrome.png' },
     { id: 'beaurocks-logo-neon-transparent', label: 'BeauRocks Neon Transparent', url: '/images/logo-library/beaurocks-logo-neon trasnparent.png' },

@@ -10109,6 +10109,100 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             : roomCode;
     const compactEmptyStageMetaHint = 'Tap to expand';
     const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
+    const showStreamlinedStageNav = isStreamlinedAudienceShell && ['home', 'request', 'social'].includes(tab);
+    const streamlinedStageNav = showStreamlinedStageNav ? (
+        <div
+            className="relative z-10 border-b border-white/10 bg-black/35 px-4 py-3"
+            style={{
+                paddingLeft: 'max(16px, env(safe-area-inset-left))',
+                paddingRight: 'max(16px, env(safe-area-inset-right))'
+            }}
+        >
+            <div className="space-y-2">
+                <div
+                    className="grid gap-2"
+                    style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
+                >
+                    {streamlinedPrimaryNavItems.map((item) => {
+                        const isActive = item.key === 'home'
+                            ? (tab === 'home' || tab === 'social')
+                            : activePrimaryStageTab === item.key;
+                        return (
+                            <button
+                                key={item.key}
+                                type="button"
+                                onClick={() => openStreamlinedPrimaryStageTab(item.key)}
+                                className={`rounded-2xl border px-3 py-2.5 text-left transition-all ${
+                                    isActive
+                                        ? ''
+                                        : 'border-white/10 bg-black/30 text-zinc-200 hover:border-white/20 hover:bg-black/40'
+                                }`}
+                                style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
+                            >
+                                <div className="flex items-center justify-center gap-2">
+                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/35 text-sm">
+                                        <i className={`fa-solid ${item.icon}`}></i>
+                                    </span>
+                                    <div className="text-xs font-black uppercase tracking-[0.16em]">
+                                        {item.label}
+                                    </div>
+                                </div>
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
+                        <i className="fa-solid fa-list text-[10px]"></i>
+                        {queueSongsView.length}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
+                        <i className="fa-solid fa-clock text-[10px]"></i>
+                        {formatWaitTime(queueWaitTimeSec)}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            pulseNativeUiFeedback();
+                            copyInviteLink();
+                        }}
+                        className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
+                    >
+                        <i className="fa-solid fa-link text-[10px]"></i>
+                        <span>Share</span>
+                    </button>
+                </div>
+                {activePrimaryStageTab === 'request' && (
+                    <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
+                        {streamlinedSongsNavItems.map((item) => {
+                            const isActive = songsTab === item.key;
+                            return (
+                                <button
+                                    key={item.key}
+                                    type="button"
+                                    onClick={() => openStreamlinedSongsStageTab(item.key)}
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-all ${
+                                        isActive
+                                            ? ''
+                                            : 'border-white/10 bg-black/35 text-zinc-300 hover:border-white/20 hover:bg-black/45'
+                                    }`}
+                                    style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
+                                >
+                                    <i className={`fa-solid ${item.icon} text-[10px]`}></i>
+                                    <span>{item.label}</span>
+                                    {typeof item.badge === 'number' ? (
+                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-black/25 text-cyan-50' : 'bg-white/10 text-zinc-100'}`}>
+                                            {item.badge}
+                                        </span>
+                                    ) : null}
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        </div>
+    ) : null;
 
     const chatTitle = socialTab === 'host' ? 'DM Host' : premiumLoungeLabel;
     const chatStatusLabel = !room?.chatEnabled
@@ -10390,6 +10484,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
             )}
 
+            {streamlinedStageNav}
+
             {/* Omnipresent Stage Area */}
             {((tab === 'home' || tab === 'request' || tab === 'social') && (!showHomeIdlePartyCard || bracketSignupActive)) && (
                 <div
@@ -10402,111 +10498,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         paddingBottom: '16px'
                     }}
                 >
-                    {isStreamlinedAudienceShell && (
-                        <div className="mb-3 space-y-2">
-                            <div
-                                className="grid gap-2"
-                                style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
-                            >
-                                {streamlinedPrimaryNavItems.map((item) => {
-                                    const isActive = item.key === 'home'
-                                        ? (tab === 'home' || tab === 'social')
-                                        : activePrimaryStageTab === item.key;
-                                    return (
-                                        <button
-                                            key={item.key}
-                                            type="button"
-                                            onClick={() => openStreamlinedPrimaryStageTab(item.key)}
-                                            className={`rounded-2xl border px-3 py-2.5 text-left transition-all ${
-                                                isActive
-                                                    ? ''
-                                                    : 'border-white/10 bg-black/30 text-zinc-200 hover:border-white/20 hover:bg-black/40'
-                                            }`}
-                                            style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
-                                        >
-                                            <div className="flex items-center justify-center gap-2">
-                                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/35 text-sm">
-                                                    <i className={`fa-solid ${item.icon}`}></i>
-                                                </span>
-                                                <div className="text-xs font-black uppercase tracking-[0.16em]">
-                                                    {item.label}
-                                                </div>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
-                                    <i className="fa-solid fa-list text-[10px]"></i>
-                                    {queueSongsView.length}
-                                </span>
-                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-1" style={audienceBrandPalette.primaryPillStyle}>
-                                    <i className="fa-solid fa-clock text-[10px]"></i>
-                                    {formatWaitTime(queueWaitTimeSec)}
-                                </span>
-                                {room?.hostName && !isStreamlinedAudienceShell ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            pulseNativeUiFeedback();
-                                            setTab('social');
-                                            setSocialTab('host');
-                                            const newest = getNewestRelevantChatTimestamp(dmMessages);
-                                            if (newest) chatLastSeenRef.current = newest;
-                                            setChatUnread(false);
-                                        }}
-                                        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
-                                    >
-                                        <i className="fa-solid fa-crown text-[10px]"></i>
-                                        <span>Host</span>
-                                        {chatUnread ? (
-                                            <span className="h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(255,103,182,0.8)]"></span>
-                                        ) : null}
-                                    </button>
-                                ) : null}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        pulseNativeUiFeedback();
-                                        copyInviteLink();
-                                    }}
-                                    className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-zinc-100 hover:border-white/20 hover:bg-black/45"
-                                >
-                                    <i className="fa-solid fa-link text-[10px]"></i>
-                                    <span>Share</span>
-                                </button>
-                            </div>
-                            {activePrimaryStageTab === 'request' && (
-                                <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
-                                    {streamlinedSongsNavItems.map((item) => {
-                                        const isActive = songsTab === item.key;
-                                        return (
-                                            <button
-                                            key={item.key}
-                                            type="button"
-                                            onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-all ${
-                                                isActive
-                                                    ? ''
-                                                    : 'border-white/10 bg-black/35 text-zinc-300 hover:border-white/20 hover:bg-black/45'
-                                            }`}
-                                            style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
-                                        >
-                                                <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                                <span>{item.label}</span>
-                                                {typeof item.badge === 'number' ? (
-                                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-black/25 text-cyan-50' : 'bg-white/10 text-zinc-100'}`}>
-                                                        {item.badge}
-                                                    </span>
-                                                ) : null}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    )}
                     {bracketSignupActive && bracketSignupSummary && !(isStreamlinedAudienceShell && noSingerOnStage) && (
                         <div data-feature-id="singer-bracket-signup-banner" className="mb-4 rounded-3xl border border-rose-300/30 bg-gradient-to-r from-rose-500/18 via-black/60 to-cyan-500/14 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
                             <div className="flex items-start justify-between gap-3">

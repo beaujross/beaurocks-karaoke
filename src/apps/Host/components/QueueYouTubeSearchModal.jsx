@@ -21,7 +21,7 @@ const getEmbedStatusMeta = (status) => {
             chipClass: 'text-sm text-orange-300 font-bold',
             chipIcon: 'fa-up-right-from-square',
             chipLabel: 'Not embeddable',
-            helper: 'Host launches this backing in a separate window instead of the TV embed.',
+            helper: 'YouTube blocks iframe playback for this video, so the host has to launch it in a separate backing window instead of the TV embed.',
             actionClass: 'bg-orange-900/50 text-orange-200 hover:bg-orange-800/50',
             actionLabel: 'USE EXTERNAL',
             recheckClass: 'bg-orange-950/50 text-orange-200 hover:bg-orange-900/50',
@@ -165,7 +165,7 @@ const QueueYouTubeSearchModal = ({
                 <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-400">
                     <span className="text-emerald-300 font-semibold">Embeds on TV</span> keeps playback in the in-room player.
                     {' '}
-                    <span className="text-orange-300 font-semibold">Not embeddable</span> uses a separate host-controlled window, but the queue item and performance flow still stay in the app.
+                    <span className="text-orange-300 font-semibold">Not embeddable</span> means YouTube does not allow iframe/API playback for that video, so it uses a separate host-controlled window while the queue item and performance flow still stay in the app.
                 </div>
 
                 {ytSearchQ && ytResults.length === 0 && !ytLoading && (

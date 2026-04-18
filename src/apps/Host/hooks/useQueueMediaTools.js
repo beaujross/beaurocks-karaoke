@@ -178,7 +178,7 @@ const useQueueMediaTools = ({
                         youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
                         backingAudioOnly: playbackState.backingAudioOnly,
                         sourceDetail: playbackState.backingAudioOnly
-                            ? 'YouTube karaoke search result. This backing does not embed on Public TV.'
+                            ? 'YouTube karaoke search result. This backing does not embed on Public TV, so the host must launch it in the external backing window.'
                             : 'YouTube karaoke search result. Verified to embed on Public TV.'
                     };
                 })

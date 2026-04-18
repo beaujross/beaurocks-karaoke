@@ -102,6 +102,7 @@ export default function RunOfShowQueueHud({
     onAdvance,
     onRewind,
     onStop,
+    onClear,
     onToggleAutomationPause,
     styles,
 }) {
@@ -308,6 +309,21 @@ export default function RunOfShowQueueHud({
                             Stop Show
                         </button>
                     ) : null}
+                    {typeof onClear === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoreOpen(false);
+                                onClear();
+                            }}
+                            className={`${styles?.btnStd} ${styles?.btnDanger || styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                        >
+                            Clear Show
+                        </button>
+                    ) : null}
+                    <div className="w-full text-[11px] leading-relaxed text-zinc-400">
+                        YouTube only lets the in-app TV/player iframe start videos that allow embedding. When a backing is marked not embeddable, the host can still use it, but playback has to open in the separate backing window instead of the synced TV embed.
+                    </div>
                 </div>
             ) : null}
 

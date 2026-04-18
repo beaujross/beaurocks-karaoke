@@ -187,7 +187,10 @@ import {
     RUN_OF_SHOW_PROGRAM_MODES,
     RUN_OF_SHOW_PERFORMER_MODES,
     buildRunOfShowQueueDocId,
+    createDefaultRunOfShowPolicy,
     createDefaultRunOfShowDirector,
+    createDefaultRunOfShowRoles,
+    createDefaultRunOfShowTemplateMeta,
     createRunOfShowItem,
     getNextRunOfShowItem,
     getRunOfShowItemLabel,
@@ -3639,7 +3642,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -5500,6 +5503,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     onAdvance={onAdvanceRunOfShow}
                     onRewind={onRewindRunOfShow}
                     onStop={onStopRunOfShow}
+                    onClear={onClearRunOfShow}
                     onToggleAutomationPause={onToggleRunOfShowPause}
                     styles={STYLES}
                 />
@@ -8423,6 +8427,74 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await stopAppleMusic?.();
         return result;
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, stopAppleMusic]);
+    const clearRunOfShowNow = useCallback(async () => {
+        const shouldClear = typeof window === 'undefined'
+            ? true
+            : window.confirm('Clear this run of show and return the room to the straight queue? This removes the loaded show outline from the room.');
+        if (!shouldClear) return null;
+
+        const nextDirector = createDefaultRunOfShowDirector();
+        const nextPolicy = createDefaultRunOfShowPolicy();
+        const nextRoles = createDefaultRunOfShowRoles();
+        const nextTemplateMeta = createDefaultRunOfShowTemplateMeta();
+
+        clearRunOfShowPerformanceIntroTimer();
+        runOfShowAutomationBusyRef.current = false;
+        runOfShowAutomationTaskRef.current = '';
+        runOfShowAutoPrepareCooldownUntilRef.current = 0;
+        runOfShowAutoStartCooldownUntilRef.current = 0;
+        runOfShowAutoCompleteKeyRef.current = '';
+        runOfShowPerformanceHandledRef.current = '';
+        setProgramMode(RUN_OF_SHOW_PROGRAM_MODES.standard);
+        setRunOfShowEnabled(false);
+        setRunOfShowDirectorState(nextDirector);
+        setRunOfShowPolicy(nextPolicy);
+        setRunOfShowRoles(nextRoles);
+        setRunOfShowTemplateMeta(nextTemplateMeta);
+        setRunOfShowFocusRequest(null);
+        runOfShowLocalEditAtRef.current = Date.now();
+        runOfShowRemoteSyncRef.current.director = JSON.stringify(nextDirector);
+        runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
+        runOfShowRemoteSyncRef.current.roles = JSON.stringify(nextRoles);
+        runOfShowRemoteSyncRef.current.templateMeta = JSON.stringify(nextTemplateMeta);
+        runOfShowRemoteSyncRef.current.programMode = RUN_OF_SHOW_PROGRAM_MODES.standard;
+        runOfShowRemoteSyncRef.current.enabled = false;
+
+        const queuedAssignments = (Array.isArray(songs) ? songs : []).filter((song) => {
+            const assignedItemId = String(song?.runOfShowItemId || '').trim();
+            const status = String(song?.status || '').trim().toLowerCase();
+            return assignedItemId && status !== 'performing';
+        });
+        if (queuedAssignments.length) {
+            const batch = writeBatch(db);
+            queuedAssignments.forEach((song) => {
+                const nextStatus = String(song?.status || '').trim().toLowerCase() === 'assigned'
+                    ? 'pending'
+                    : song?.status || null;
+                batch.update(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id), {
+                    status: nextStatus,
+                    runOfShowItemId: null,
+                    runOfShowAssignedAt: null
+                });
+            });
+            await batch.commit();
+        }
+
+        await updateRoom({
+            programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
+            runOfShowEnabled: false,
+            runOfShowDirector: nextDirector,
+            runOfShowPolicy: nextPolicy,
+            runOfShowRoles: nextRoles,
+            runOfShowTemplateMeta: nextTemplateMeta,
+            tvPreviewOverlay: null,
+            announcement: null,
+            appleMusicPlayback: null
+        });
+        await stopAppleMusic?.();
+        toast('Run of show cleared. Room is back on the straight queue.');
+        return nextDirector;
+    }, [clearRunOfShowPerformanceIntroTimer, songs, stopAppleMusic, toast, updateRoom]);
     const advanceRunOfShowNext = useCallback(async () => {
         const currentDirector = getCurrentRunOfShowDirector();
         const liveItem = getRunOfShowLiveItem(currentDirector);
@@ -16239,6 +16311,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onRewindRunOfShow: rewindRunOfShowPrevious,
         onToggleRunOfShowPause: toggleRunOfShowAutomationPause,
         onStopRunOfShow: stopRunOfShowNow,
+        onClearRunOfShow: clearRunOfShowNow,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
         getYtDiagnosticsKey,
@@ -16453,6 +16526,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     }}
                     onStartRunOfShow={startRunOfShowNow}
                     onStopRunOfShow={stopRunOfShowNow}
+                    onClearRunOfShow={clearRunOfShowNow}
                     onAdvanceRunOfShow={advanceRunOfShowNext}
                     onRewindRunOfShow={rewindRunOfShowPrevious}
                     onToggleRunOfShowAutomationPause={toggleRunOfShowAutomationPause}
@@ -16558,6 +16632,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onToggleAutomationPause={toggleRunOfShowAutomationPause}
                                     onStartRunOfShow={startRunOfShowNow}
                                     onStopRunOfShow={stopRunOfShowNow}
+                                    onClearRunOfShow={clearRunOfShowNow}
                                     onRestartRunOfShow={restartRunOfShowFromTop}
                                     onPrepareItem={prepareRunOfShowItem}
                                     onPreviewItem={previewRunOfShowItem}

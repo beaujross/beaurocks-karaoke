@@ -3366,6 +3366,7 @@ export default function RunOfShowDirectorPanel({
     onToggleAutomationPause,
     onStartRunOfShow,
     onStopRunOfShow,
+    onClearRunOfShow,
     onPrepareItem,
     onPreviewItem,
     onClearPreview,
@@ -4942,6 +4943,16 @@ export default function RunOfShowDirectorPanel({
                             >
                                 {modeActionBusy ? 'Updating...' : isRunOfShowActive ? 'Stop Show' : 'Go Live'}
                             </button>
+                            {(items.length > 0 || safeTemplateMeta.currentTemplateId || safeTemplateMeta.currentTemplateName) && typeof onClearRunOfShow === 'function' ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onClearRunOfShow()}
+                                    disabled={!isHostOperator || modeActionBusy}
+                                    className="rounded-full border border-rose-300/25 bg-rose-500/8 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-rose-100 disabled:opacity-40"
+                                >
+                                    Clear Show
+                                </button>
+                            ) : null}
                             {isRunOfShowActive ? (
                                 <>
                                     <button

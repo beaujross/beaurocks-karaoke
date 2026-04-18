@@ -167,10 +167,10 @@ const QueueSongCard = ({
                                 {isAssignedToRunOfShow
                                     ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
                                     : queueUsesExternalWindow
-                                        ? 'This backing opens in a separate window instead of the TV embed.'
-                                    : isAudienceSelectedUnverified
-                                        ? 'Guest-picked backing. Keep it or send it back to review.'
-                                        : lyricsSupportText}
+                                        ? 'YouTube does not allow this backing to run inside the TV embed, so it opens in a separate host window.'
+                                        : isAudienceSelectedUnverified
+                                            ? 'Guest-picked backing. Keep it or send it back to review.'
+                                            : lyricsSupportText}
                             </div>
                         ) : null}
                         {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
