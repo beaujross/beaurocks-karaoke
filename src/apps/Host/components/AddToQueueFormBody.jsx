@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+    YOUTUBE_PLAYBACK_STATUSES,
+    normalizeYouTubePlaybackState
+} from '../../../lib/youtubePlaybackStatus';
 
 const AddToQueueFormBody = ({
     searchQ,
@@ -103,6 +107,9 @@ const AddToQueueFormBody = ({
                             (() => {
                                 const rowKey = getResultRowKey(r, idx);
                                 const isAdding = quickAddLoadingKey === rowKey;
+                                const playbackState = r.source === 'youtube'
+                                    ? normalizeYouTubePlaybackState(r)
+                                    : null;
                                 return (
                                     <div
                                         key={rowKey}
@@ -146,8 +153,8 @@ const AddToQueueFormBody = ({
                                                         {r.source === 'itunes' ? 'Apple lookup' : r.source === 'youtube' ? 'Karaoke backing' : 'Local library'}
                                                     </span>
                                                     {r.source === 'youtube' ? (
-                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${r.playable === false || r.backingAudioOnly ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                                            {r.playable === false || r.backingAudioOnly ? 'External window' : 'Embeds on TV'}
+                                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
+                                                            {playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'Not embeddable' : 'Embeds on TV'}
                                                         </span>
                                                     ) : null}
                                                 </div>

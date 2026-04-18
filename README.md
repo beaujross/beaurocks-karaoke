@@ -26,6 +26,15 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 - Standard audience UX should remain guest-first and clean; backstage/co-host/operator tools should stay hidden unless explicitly granted.
 - Event points/credits should prefer ticket-linked or promo-campaign records over reusable shared codes for paid or scarce rewards.
 
+## Default Working Rules
+
+- Change the contract, change the checks.
+- Live data beats fallback data.
+- One feature, one runtime owner.
+- One obvious next action.
+- Verify important behavior below the browser layer.
+- Match deploy scope to change scope.
+
 ## Development
 
 - Create local env file before running dev:

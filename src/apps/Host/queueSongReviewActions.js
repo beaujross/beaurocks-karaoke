@@ -16,6 +16,7 @@ import {
     RESOLUTION_STATUSES,
     isAudienceSelectedUnverifiedResolution,
 } from '../../lib/requestModes';
+import { normalizeYouTubePlaybackState } from '../../lib/youtubePlaybackStatus';
 
 const getQueueSongRef = (songId = '') => doc(
     db,
@@ -36,6 +37,29 @@ const getHostLibraryRef = (roomCode = '') => doc(
     String(roomCode || '').trim()
 );
 const nowMs = () => Date.now();
+
+const buildQueueSongYouTubePlaybackPatch = (candidate = null) => {
+    const candidateSource = String(candidate?.source || '').trim().toLowerCase();
+    const candidateMediaUrl = String(candidate?.mediaUrl || '').trim();
+    const isYouTube = candidateSource === 'youtube' || !!extractYouTubeId(candidateMediaUrl);
+    if (!isYouTube) {
+        return {
+            backingAudioOnly: false,
+            youtubeEmbeddable: null,
+            youtubeUploadStatus: '',
+            youtubePrivacyStatus: '',
+            youtubePlaybackStatus: '',
+        };
+    }
+    const playbackState = normalizeYouTubePlaybackState(candidate || {});
+    return {
+        backingAudioOnly: playbackState.backingAudioOnly,
+        youtubeEmbeddable: playbackState.embeddable,
+        youtubeUploadStatus: playbackState.uploadStatus,
+        youtubePrivacyStatus: playbackState.privacyStatus,
+        youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+    };
+};
 
 export const markQueueReviewAutoSuggestionProcessing = async ({ songId, searchQuery = '' } = {}) => (
     updateDoc(getQueueSongRef(songId), {
@@ -80,6 +104,7 @@ export const applyQueueReviewAutoResolvedCandidate = async ({
         trackSource: candidateSource || null,
         mediaUrl: candidateMediaUrl,
         appleMusicId: candidateAppleMusicId,
+        ...buildQueueSongYouTubePlaybackPatch(candidate),
         ...buildResolvedReviewState({
             currentStatus: song?.status,
             candidateLayer: String(candidate?.layer || 'host_auto').trim() || 'host_auto',
@@ -113,6 +138,7 @@ export const applyResolvedQueueReviewSelection = async ({
         trackSource: candidateSource || null,
         mediaUrl: candidate?.mediaUrl || '',
         appleMusicId: candidate?.appleMusicId || '',
+        ...buildQueueSongYouTubePlaybackPatch(candidate),
         ...buildResolvedReviewState({
             currentStatus: song?.status,
             candidateLayer: candidate?.layer || 'room_recent',
@@ -368,7 +394,12 @@ export const saveHostBackingPreferenceForRoom = async ({
         artistName: artist || existingEntry?.artistName || 'YouTube',
         artworkUrl100: songLike?.albumArtUrl || existingEntry?.artworkUrl100 || '',
         url: mediaUrl,
-        playable: true,
+        playable: candidate?.playable === true || existingEntry?.playable === true,
+        embeddable: candidate?.embeddable === true || existingEntry?.embeddable === true,
+        uploadStatus: candidate?.uploadStatus || existingEntry?.uploadStatus || '',
+        privacyStatus: candidate?.privacyStatus || existingEntry?.privacyStatus || '',
+        youtubePlaybackStatus: candidate?.youtubePlaybackStatus || existingEntry?.youtubePlaybackStatus || '',
+        backingAudioOnly: candidate?.backingAudioOnly === true || existingEntry?.backingAudioOnly === true,
         qualityScore: Math.max(baseQualityScore, 140),
         sourceDetail: 'Host marked this track as a good fit for future requests.'
     }]);

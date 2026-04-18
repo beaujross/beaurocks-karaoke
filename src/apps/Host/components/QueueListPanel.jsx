@@ -22,6 +22,8 @@ const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
 
 const QueueListPanel = ({
     showQueueList,
+    showQueueSummaryBar = true,
+    onToggleQueueSummaryBar,
     pending,
     pendingQueueOpen = true,
     onTogglePendingQueue,
@@ -59,51 +61,90 @@ const QueueListPanel = ({
 
     const queueSummary = pending.length > 0
         ? {
-            title: 'Next action: review incoming requests.',
-            detail: `${pending.length} request${pending.length === 1 ? '' : 's'} still need host review before they enter the live queue.`,
-            toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+            eyebrow: 'Queue needs review',
+            title: `${pending.length} request${pending.length === 1 ? '' : 's'} waiting on host approval`,
+            detail: 'Clear the review stack first so the live queue reflects what can actually go on stage.',
+            toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+            accentClass: 'text-amber-100'
         }
         : queue.length === 0 && assigned.length === 0
             ? {
-                title: 'Queue is empty.',
-                detail: 'Add songs to keep the room moving.',
-                toneClass: 'border-white/10 bg-black/25 text-zinc-300'
+                eyebrow: 'Queue status',
+                title: 'Queue is empty',
+                detail: 'Add songs or approve requests to keep the room moving.',
+                toneClass: 'border-white/10 bg-black/25 text-zinc-300',
+                accentClass: 'text-zinc-100'
             }
             : runOfShowAssignableSlots.length > 0 && queue.length > 0
                 ? {
-                    title: 'Queue can feed the show right now.',
-                    detail: `${runOfShowAssignableSlots.length} show slot${runOfShowAssignableSlots.length === 1 ? '' : 's'} can pull from the live queue.`,
-                    toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
+                    eyebrow: 'Run of show ready',
+                    title: `${runOfShowAssignableSlots.length} slot${runOfShowAssignableSlots.length === 1 ? '' : 's'} can pull from queue`,
+                    detail: 'Use slot assignment on any ready song when you want the show plan to absorb it.',
+                    toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+                    accentClass: 'text-cyan-100'
                 }
                 : queue.length > 0
                     ? {
-                        title: 'Songs are ready to run.',
-                        detail: `${queue.length} song${queue.length === 1 ? '' : 's'} are ready in the live queue.`,
-                        toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
+                        eyebrow: 'Queue ready',
+                        title: `${queue.length} song${queue.length === 1 ? '' : 's'} ready to run`,
+                        detail: 'Stage can advance without touching review or slot assignment.',
+                        toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
+                        accentClass: 'text-emerald-100'
                     }
                     : {
-                        title: 'Queue is supporting the show.',
-                        detail: `${assigned.length} song${assigned.length === 1 ? '' : 's'} already tied to show slots.`,
-                        toneClass: 'border-violet-300/25 bg-violet-500/10 text-violet-100'
+                        eyebrow: 'Run of show linked',
+                        title: `${assigned.length} song${assigned.length === 1 ? '' : 's'} already assigned`,
+                        detail: 'These songs are tied to show slots and will move through the run-of-show lane.',
+                        toneClass: 'border-violet-300/25 bg-violet-500/10 text-violet-100',
+                        accentClass: 'text-violet-100'
                     };
 
     return (
         <>
-            <div className={`sticky top-0 z-10 mb-3 rounded-2xl border border-white/10 bg-zinc-950/92 backdrop-blur px-3 ${compactViewport ? 'py-2' : 'py-2.5'}`}>
-                <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Live Queue</div>
-                        <div className="mt-0.5 text-xs font-semibold text-zinc-300 truncate">{queueSummary.title}</div>
+            {showQueueSummaryBar ? (
+                <div className={`sticky top-0 z-10 mb-3 rounded-2xl border px-3 backdrop-blur shadow-[0_10px_26px_rgba(0,0,0,0.22)] ${queueSummary.toneClass} ${compactViewport ? 'py-2.5' : 'py-3'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                            <div className={`text-[10px] uppercase tracking-[0.22em] ${queueSummary.accentClass}`}>{queueSummary.eyebrow}</div>
+                            <div className="mt-1 text-sm font-semibold text-white">{queueSummary.title}</div>
+                            <div className="mt-1 text-xs text-zinc-300">{queueSummary.detail}</div>
+                        </div>
+                        {typeof onToggleQueueSummaryBar === 'function' ? (
+                            <button
+                                type="button"
+                                onClick={onToggleQueueSummaryBar}
+                                className="inline-flex min-h-[34px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 transition hover:border-cyan-300/35 hover:text-white"
+                            >
+                                Hide Bar
+                            </button>
+                        ) : null}
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-1.5 text-[10px] uppercase tracking-[0.15em]">
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
                         <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
                         <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {queue.length}</span>
                         {assigned.length ? (
                             <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Assigned {assigned.length}</span>
                         ) : null}
+                        {runOfShowAssignableSlots.length ? (
+                            <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-emerald-100">
+                                Open Slots {runOfShowAssignableSlots.length}
+                            </span>
+                        ) : null}
                     </div>
                 </div>
-            </div>
+            ) : (
+                typeof onToggleQueueSummaryBar === 'function' ? (
+                    <div className="mb-3 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={onToggleQueueSummaryBar}
+                            className="inline-flex min-h-[34px] items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300 transition hover:border-cyan-300/35 hover:text-white"
+                        >
+                            Show Queue Bar
+                        </button>
+                    </div>
+                ) : null
+            )}
             {pending.length > 0 ? (
                 <div className={`mb-3 border-b border-white/10 ${compactViewport ? 'pb-1.5' : 'pb-2'}`}>
                     <QueueSectionToggle

@@ -26,9 +26,31 @@ import { normalizeBackingChoice } from '../../../lib/playbackSource';
 import { requiresBackingHostReview } from '../../../lib/requestModes';
 import { buildHostEditedReviewState } from '../../../lib/queueSongReviewState';
 import { getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
+import { normalizeYouTubePlaybackState } from '../../../lib/youtubePlaybackStatus';
 
 const YOUTUBE_PLAYLIST_QUEUE_MAX = 1000;
 let catalogPermissionSkipLogged = false;
+
+const buildQueueSongYouTubePlaybackPatch = (value = {}, { clearWhenNotYouTube = true } = {}) => {
+    const mediaUrl = String(value?.mediaUrl || value?.url || '').trim();
+    if (!extractYouTubeId(mediaUrl)) {
+        return clearWhenNotYouTube ? {
+            backingAudioOnly: false,
+            youtubeEmbeddable: null,
+            youtubeUploadStatus: '',
+            youtubePrivacyStatus: '',
+            youtubePlaybackStatus: ''
+        } : {};
+    }
+    const playbackState = normalizeYouTubePlaybackState(value);
+    return {
+        backingAudioOnly: playbackState.backingAudioOnly,
+        youtubeEmbeddable: playbackState.embeddable,
+        youtubeUploadStatus: playbackState.uploadStatus,
+        youtubePrivacyStatus: playbackState.privacyStatus,
+        youtubePlaybackStatus: playbackState.youtubePlaybackStatus
+    };
+};
 
 const isCatalogPermissionDeniedError = (error) => {
     const code = String(error?.code || '').toLowerCase();
@@ -437,7 +459,11 @@ const useQueueSongActions = ({
                     appleMusicId: '',
                     duration: 180,
                     backingAudioOnly: false,
-                    audioOnly: false
+                    audioOnly: false,
+                    youtubeEmbeddable: null,
+                    youtubeUploadStatus: '',
+                    youtubePrivacyStatus: '',
+                    youtubePlaybackStatus: ''
                 });
                 setSearchQ('');
                 toast(`Queued ${queuedCount} songs from YouTube playlist`);
@@ -478,6 +504,13 @@ const useQueueSongActions = ({
             const hasManualTimedLyrics = Array.isArray(manual.lyricsTimed) && manual.lyricsTimed.length > 0;
             const hasManualLyrics = !!String(manual.lyrics || '').trim();
             const shouldAttemptLyricsEnrichment = !hasManualTimedLyrics && !hasManualLyrics && !!room?.autoLyricsOnQueue;
+            const manualYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
+                mediaUrl: manualUrl,
+                embeddable: manual.youtubeEmbeddable,
+                uploadStatus: manual.youtubeUploadStatus,
+                privacyStatus: manual.youtubePrivacyStatus,
+                playable: manual.youtubePlaybackStatus === 'embeddable'
+            });
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
                 roomCode,
                 songId: initialSongId,
@@ -509,7 +542,8 @@ const useQueueSongActions = ({
                 timestamp: serverTimestamp(),
                 priorityScore: Date.now(),
                 emoji: EMOJI.mic,
-                backingAudioOnly: manual.backingAudioOnly || false,
+                ...manualYouTubePlaybackPatch,
+                backingAudioOnly: manual.backingAudioOnly || manualYouTubePlaybackPatch.backingAudioOnly || false,
                 audioOnly: manual.audioOnly || isAudioUrl(manualUrl)
             });
 
@@ -601,7 +635,11 @@ const useQueueSongActions = ({
                 appleMusicId: '',
                 duration: 180,
                 backingAudioOnly: false,
-                audioOnly: false
+                audioOnly: false,
+                youtubeEmbeddable: null,
+                youtubeUploadStatus: '',
+                youtubePrivacyStatus: '',
+                youtubePlaybackStatus: ''
             });
             setSearchQ('');
         } catch (err) {
@@ -629,6 +667,14 @@ const useQueueSongActions = ({
                 selectedDuration,
                 r.mediaType === 'audio' || isAudioUrl(r.url)
             );
+        const queueYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
+            mediaUrl,
+            embeddable: r.embeddable,
+            uploadStatus: r.uploadStatus,
+            privacyStatus: r.privacyStatus,
+            playable: r.playable,
+            youtubePlaybackStatus: r.youtubePlaybackStatus
+        });
         const nextSong = {
             song: r.trackName,
             artist: r.artistName || '',
@@ -637,7 +683,7 @@ const useQueueSongActions = ({
             art: r.source === 'itunes' ? itunesArt : r.artworkUrl100 || '',
             appleMusicId: preferAppleDefault ? explicitAppleId : '',
             duration: resolvedDuration,
-            backingAudioOnly: false,
+            backingAudioOnly: queueYouTubePlaybackPatch.backingAudioOnly || false,
             audioOnly: trackSource === 'apple' ? true : r.mediaType === 'audio' || isAudioUrl(r.url)
         };
         const initialSongId = buildSongKey(r.trackName, r.artistName || 'Unknown');
@@ -667,6 +713,7 @@ const useQueueSongActions = ({
                 timestamp: serverTimestamp(),
                 priorityScore: Date.now(),
                 emoji: EMOJI.mic,
+                ...queueYouTubePlaybackPatch,
                 backingAudioOnly: nextSong.backingAudioOnly || false,
                 audioOnly: nextSong.audioOnly || isAudioUrl(nextSong.url)
             });
@@ -787,7 +834,11 @@ const useQueueSongActions = ({
             originalUrl: song.mediaUrl || '',
             originalLyrics: song.lyrics || '',
             originalLyricsTimed: song.lyricsTimed || null,
-            originalAppleMusicId: song.appleMusicId || ''
+            originalAppleMusicId: song.appleMusicId || '',
+            youtubeEmbeddable: song.youtubeEmbeddable ?? null,
+            youtubeUploadStatus: song.youtubeUploadStatus || '',
+            youtubePrivacyStatus: song.youtubePrivacyStatus || '',
+            youtubePlaybackStatus: song.youtubePlaybackStatus || ''
         });
     };
 
@@ -830,9 +881,18 @@ const useQueueSongActions = ({
             trackSource: trackSource || null
         };
         if (playbackChanged) {
+            const nextYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
+                mediaUrl: normalizedUrl,
+                embeddable: editForm.youtubeEmbeddable,
+                uploadStatus: editForm.youtubeUploadStatus,
+                privacyStatus: editForm.youtubePrivacyStatus,
+                playable: editForm.youtubePlaybackStatus === 'embeddable',
+                youtubePlaybackStatus: editForm.youtubePlaybackStatus
+            });
             updates.mediaUrl = normalizedUrl;
             updates.appleMusicId = normalizedAppleMusicId;
             updates.musicSource = normalizedAppleMusicId ? 'apple' : '';
+            Object.assign(updates, nextYouTubePlaybackPatch);
             if (normalizedUrl && !normalizedAppleMusicId) {
                 updates.duration = await resolvePreferredDuration(
                     normalizedUrl,

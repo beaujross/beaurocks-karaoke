@@ -1,0 +1,359 @@
+import React from 'react';
+import {
+    getRunOfShowHudActionKey,
+    getRunOfShowHudState,
+    getRunOfShowHudToneClass,
+    getRunOfShowItemLabel,
+    normalizeRunOfShowDirector
+} from '../../../lib/runOfShowDirector';
+
+const getItemDurationSec = (item = {}) => Math.max(
+    0,
+    Math.round(Number(
+        String(item?.plannedDurationSource || '').trim().toLowerCase() === 'backing'
+            ? (item?.backingPlan?.durationSec || item?.plannedDurationSec || 0)
+            : (item?.plannedDurationSec || item?.backingPlan?.durationSec || 0)
+    ) || 0)
+);
+
+const formatDuration = (value = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(value || 0) || 0));
+    if (!totalSec) return 'TBD';
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    if (mins >= 60) {
+        const hours = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+    }
+    if (mins > 0) return `${mins}:${String(secs).padStart(2, '0')}`;
+    return `${secs}s`;
+};
+
+const formatTotalDuration = (value = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(value || 0) || 0));
+    if (!totalSec) return '0m';
+    const mins = Math.ceil(totalSec / 60);
+    const hours = Math.floor(mins / 60);
+    const remMins = mins % 60;
+    if (hours > 0) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+    return `${mins}m`;
+};
+
+const formatItemSummary = (item = {}) => {
+    const type = String(item?.type || '').trim().toLowerCase();
+    if (type === 'performance') {
+        return [item?.assignedPerformerName || '', item?.songTitle || '', item?.artistName || '']
+            .filter(Boolean)
+            .join(' | ') || 'Slot prep still open';
+    }
+    if (type === 'announcement' || type === 'intro' || type === 'closing') {
+        return String(item?.presentationPlan?.headline || item?.notes || '').trim() || 'Show cue';
+    }
+    if (type === 'trivia_break' || type === 'game_break' || type === 'would_you_rather_break') {
+        return String(item?.modeLaunchPlan?.modeKey || item?.notes || '').trim() || 'Audience moment';
+    }
+    return String(item?.notes || '').trim() || getRunOfShowItemLabel(type);
+};
+
+const buildHudItems = ({ items = [], liveItemId = '', stagedItemId = '', nextItemId = '' } = {}) => (
+    items.map((item, index) => {
+        const status = String(item?.status || '').trim().toLowerCase();
+        const type = String(item?.type || '').trim().toLowerCase();
+        const isLive = !!item?.id && item.id === liveItemId;
+        const isStaged = !!item?.id && item.id === stagedItemId;
+        const isNext = !!item?.id && item.id === nextItemId;
+        const isComplete = status === 'complete' || status === 'skipped';
+        return {
+            id: item?.id || `run-of-show-${index}`,
+            title: String(item?.title || '').trim() || getRunOfShowItemLabel(type),
+            summary: formatItemSummary(item),
+            durationLabel: formatDuration(getItemDurationSec(item)),
+            badgeLabel: isLive ? 'Live' : isStaged ? 'Staged' : isNext ? 'Next' : status === 'blocked' ? 'Blocked' : `#${Number(item?.sequence || index + 1)}`,
+            toneClass: isLive
+                ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
+                : isStaged
+                    ? 'border-sky-300/35 bg-sky-500/12 text-sky-100'
+                    : isNext
+                        ? 'border-amber-300/35 bg-amber-500/12 text-amber-100'
+                        : isComplete
+                            ? 'border-zinc-700 bg-zinc-900/75 text-zinc-400'
+                            : status === 'blocked'
+                                ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
+                                : 'border-white/10 bg-black/25 text-zinc-200',
+            isLive,
+            isStaged,
+            isNext,
+            isComplete
+        };
+    })
+);
+
+export default function RunOfShowQueueHud({
+    enabled = false,
+    director = null,
+    liveItem = null,
+    stagedItem = null,
+    nextItem = null,
+    preflightReport = null,
+    onOpenShowWorkspace,
+    onOpenIssue,
+    onStartShow,
+    onAdvance,
+    onRewind,
+    onStop,
+    onToggleAutomationPause,
+    styles,
+}) {
+    const [moreOpen, setMoreOpen] = React.useState(false);
+    const [laterOpen, setLaterOpen] = React.useState(true);
+    const normalizedDirector = React.useMemo(
+        () => normalizeRunOfShowDirector(director || {}),
+        [director]
+    );
+    const hudItems = React.useMemo(
+        () => buildHudItems({
+            items: Array.isArray(normalizedDirector.items) ? normalizedDirector.items : [],
+            liveItemId: String(liveItem?.id || '').trim(),
+            stagedItemId: String(stagedItem?.id || '').trim(),
+            nextItemId: String(nextItem?.id || '').trim(),
+        }),
+        [liveItem?.id, nextItem?.id, normalizedDirector.items, stagedItem?.id]
+    );
+    const hasPlan = hudItems.length > 0;
+    if (!enabled && !hasPlan) return null;
+
+    const safeReport = preflightReport && typeof preflightReport === 'object'
+        ? preflightReport
+        : {
+            readyToStart: hasPlan,
+            criticalCount: 0,
+            riskyCount: 0,
+            criticalItems: [],
+            riskyItems: [],
+            summary: hasPlan ? 'Show plan is loaded.' : 'Add at least one block before the show starts.'
+        };
+    const automationPaused = normalizedDirector?.automationPaused === true;
+    const topCriticalItem = safeReport?.criticalItems?.[0] || null;
+    const topRiskyItem = safeReport?.riskyItems?.[0] || null;
+    const hudState = getRunOfShowHudState({
+        hasPlan,
+        runEnabled: enabled,
+        automationPaused,
+        preflightReport: safeReport,
+        issueDetail: topCriticalItem?.summary || topRiskyItem?.summary || '',
+        liveItemId: liveItem?.id,
+        stagedItemId: stagedItem?.id,
+        nextItemId: nextItem?.id
+    });
+    const hudToneClass = getRunOfShowHudToneClass(hudState.tone);
+    const hudActionKey = getRunOfShowHudActionKey({
+        hasPlan,
+        runEnabled: enabled,
+        automationPaused,
+        preflightReport: safeReport,
+        hasIssue: !!(topCriticalItem || topRiskyItem)
+    });
+    const primaryAction = (() => {
+        if (hudActionKey === 'open_show') {
+            return {
+                label: 'Open Show',
+                onClick: onOpenShowWorkspace,
+                className: styles?.btnNeutral,
+                disabled: typeof onOpenShowWorkspace !== 'function'
+            };
+        }
+        if (hudActionKey === 'go_live_check') {
+            return {
+                label: 'Go Live Check',
+                onClick: onOpenIssue || onOpenShowWorkspace,
+                className: styles?.btnHighlight,
+                disabled: typeof (onOpenIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        if (hudActionKey === 'start_show') {
+            return {
+                label: 'Start Show',
+                onClick: onStartShow,
+                className: styles?.btnHighlight,
+                disabled: typeof onStartShow !== 'function'
+            };
+        }
+        if (hudActionKey === 'resume') {
+            return {
+                label: 'Resume',
+                onClick: typeof onToggleAutomationPause === 'function'
+                    ? () => onToggleAutomationPause(false)
+                    : (onOpenIssue || onOpenShowWorkspace),
+                className: styles?.btnHighlight,
+                disabled: typeof (onToggleAutomationPause || onOpenIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        if (hudActionKey === 'fix_issue') {
+            return {
+                label: 'Fix Issue',
+                onClick: () => (onOpenIssue || onOpenShowWorkspace)?.({
+                    itemId: topCriticalItem?.itemId || topRiskyItem?.itemId || ''
+                }),
+                className: styles?.btnHighlight,
+                disabled: typeof (onOpenIssue || onOpenShowWorkspace) !== 'function'
+            };
+        }
+        return {
+            label: 'Advance',
+            onClick: onAdvance,
+            className: styles?.btnHighlight,
+            disabled: typeof onAdvance !== 'function' || !enabled
+        };
+    })();
+
+    const fallbackNowItem = hudItems[0] || null;
+    const fallbackNowIndex = fallbackNowItem ? hudItems.findIndex((item) => item.id === fallbackNowItem.id) : -1;
+    const nowItem = hudItems.find((item) => item.isLive) || hudItems.find((item) => item.isStaged) || fallbackNowItem;
+    const nowIndex = nowItem ? hudItems.findIndex((item) => item.id === nowItem.id) : fallbackNowIndex;
+    const nextVisibleItem = hudItems.find((item) => item.isNext) || hudItems[nowIndex >= 0 ? nowIndex + 1 : 1] || null;
+    const laterItems = hudItems.filter((item) => item.id !== nowItem?.id && item.id !== nextVisibleItem?.id).slice(0, 5);
+    const actualTotalDurationSec = (Array.isArray(normalizedDirector.items) ? normalizedDirector.items : [])
+        .reduce((sum, item) => sum + getItemDurationSec(item), 0);
+
+    return (
+        <div className="mb-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Run Of Show</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${hudToneClass}`}>
+                            {hudState.title}
+                        </span>
+                        {hasPlan ? (
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                {Math.max(1, nowIndex + 1)} of {hudItems.length}
+                            </span>
+                        ) : null}
+                    </div>
+                    <div className="mt-2 text-sm text-zinc-300">{hudState.detail}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                        <span>Total show {formatTotalDuration(actualTotalDurationSec)}</span>
+                        <span>{hudItems.length} slot{hudItems.length === 1 ? '' : 's'}</span>
+                        {enabled ? <span>Live queue owns execution</span> : <span>Ready for launch</span>}
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                    {primaryAction?.label ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoreOpen(false);
+                                primaryAction.onClick?.();
+                            }}
+                            disabled={primaryAction.disabled}
+                            className={`${styles?.btnStd} ${primaryAction.className} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                        >
+                            {primaryAction.label}
+                        </button>
+                    ) : null}
+                    {typeof onOpenShowWorkspace === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoreOpen(false);
+                                onOpenShowWorkspace();
+                            }}
+                            className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                        >
+                            Show Workspace
+                        </button>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={() => setMoreOpen((value) => !value)}
+                        className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                    >
+                        {moreOpen ? 'Less' : 'More'}
+                    </button>
+                </div>
+            </div>
+
+            {moreOpen ? (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
+                    <button
+                        type="button"
+                        onClick={() => setLaterOpen((value) => !value)}
+                        className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                    >
+                        {laterOpen ? 'Hide Later' : 'Show Later'}
+                    </button>
+                    {enabled && typeof onRewind === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoreOpen(false);
+                                onRewind();
+                            }}
+                            disabled={hudItems.length < 2}
+                            className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                        >
+                            Previous
+                        </button>
+                    ) : null}
+                    {enabled && typeof onStop === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setMoreOpen(false);
+                                onStop();
+                            }}
+                            className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                        >
+                            Stop Show
+                        </button>
+                    ) : null}
+                </div>
+            ) : null}
+
+            <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                <div className={`rounded-2xl border px-3 py-3 ${nowItem?.toneClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Now</div>
+                    <div className="mt-1 text-sm font-black text-white">{nowItem?.title || (enabled ? 'No live slot yet' : 'Show not started')}</div>
+                    <div className="mt-1 text-xs text-zinc-300">{nowItem?.summary || (enabled ? 'Use the primary action to keep the next move obvious.' : 'Go live check owns the last launch fixes.')}</div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                        {nowItem?.badgeLabel ? <span>{nowItem.badgeLabel}</span> : null}
+                        {nowItem?.durationLabel ? <span>{nowItem.durationLabel}</span> : null}
+                    </div>
+                </div>
+                <div className={`rounded-2xl border px-3 py-3 ${nextVisibleItem?.toneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Next</div>
+                    <div className="mt-1 text-sm font-black text-white">{nextVisibleItem?.title || 'No next slot queued'}</div>
+                    <div className="mt-1 text-xs text-zinc-300">{nextVisibleItem?.summary || 'Queue can keep feeding the show once the next slot is ready.'}</div>
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                        {nextVisibleItem?.badgeLabel ? <span>{nextVisibleItem.badgeLabel}</span> : null}
+                        {nextVisibleItem?.durationLabel ? <span>{nextVisibleItem.durationLabel}</span> : null}
+                    </div>
+                </div>
+            </div>
+
+            {laterOpen && laterItems.length ? (
+                <div className="mt-3">
+                    <div className="mb-2 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Later</div>
+                    <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
+                        {laterItems.map((item) => (
+                            <div
+                                key={item.id}
+                                className={`min-w-[168px] max-w-[220px] shrink-0 rounded-xl border px-3 py-2 ${item.toneClass}`}
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em]">
+                                        {item.badgeLabel}
+                                    </span>
+                                    <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-300">{item.durationLabel}</span>
+                                </div>
+                                <div className="mt-1 truncate text-[12px] font-black text-white">{item.title}</div>
+                                <div className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{item.summary}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
+        </div>
+    );
+}

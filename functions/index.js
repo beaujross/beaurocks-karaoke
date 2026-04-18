@@ -1802,6 +1802,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "guitarVictory",
   "guitarWinner",
   "hideCornerOverlay",
+  "hideNonEmbeddableYouTube",
   "hideJoinOverlay",
   "hideLogo",
   "hideOverlay",
@@ -1909,6 +1910,7 @@ const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "chatEnabled",
   "chatShowOnTv",
   "hideCornerOverlay",
+  "hideNonEmbeddableYouTube",
   "hideJoinOverlay",
   "hideLogo",
   "hideOverlay",
@@ -8643,10 +8645,20 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     throw new HttpsError("unavailable", `YouTube status failed: ${text}`);
   }
   const data = await res.json();
-  const items = (data.items || []).map((item) => ({
-    id: item.id,
-    embeddable: !!item.status?.embeddable,
-  }));
+  const items = (data.items || []).map((item) => {
+    const embeddable = !!item.status?.embeddable;
+    const uploadStatus = String(item.status?.uploadStatus || "").toLowerCase();
+    const privacyStatus = String(item.status?.privacyStatus || "").toLowerCase();
+    const isUploadReady = uploadStatus === "processed" || uploadStatus === "uploaded";
+    const isAllowedPrivacy = privacyStatus === "public" || privacyStatus === "unlisted";
+    return {
+      id: item.id,
+      embeddable,
+      uploadStatus,
+      privacyStatus,
+      playable: embeddable && isUploadReady && isAllowedPrivacy,
+    };
+  });
   return { items };
 });
 

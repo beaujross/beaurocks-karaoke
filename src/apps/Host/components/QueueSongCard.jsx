@@ -138,7 +138,7 @@ const QueueSongCard = ({
                             {queueUsesExternalWindow ? (
                                 <span className={`${statusPill} border-orange-300/40 text-orange-100 bg-orange-500/10`}>
                                     <i className="fa-solid fa-window-restore mr-1"></i>
-                                    Popup
+                                    Not Embeddable
                                 </span>
                             ) : null}
                             <span className={`${statusPill}${lyricsChipTone}`} title={lyricsResolution || 'lyrics status'}>

@@ -15,6 +15,7 @@ import HostTopChrome from './components/HostTopChrome';
 import ModerationInboxDrawer from './components/ModerationInboxDrawer';
 import HostQaDebugPanel from './components/HostQaDebugPanel';
 import RunOfShowDirectorPanel from './components/RunOfShowDirectorPanel';
+import RunOfShowQueueHud from './components/RunOfShowQueueHud';
 import HostRoomLaunchPad from './components/HostRoomLaunchPad';
 import EventCreditsConfigPanel from './components/EventCreditsConfigPanel';
 import { buildQaHostFixture } from './qaHostFixtures';
@@ -117,6 +118,12 @@ import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
+import {
+    getYouTubeEmbedCacheStatus,
+    isYouTubeEmbeddable,
+    normalizeYouTubePlaybackState,
+    YOUTUBE_PLAYBACK_STATUSES
+} from '../../lib/youtubePlaybackStatus';
 import { getBgTrackById } from '../../lib/bgTrackOptions';
 import { createLogger } from '../../lib/logger';
 import {
@@ -1569,13 +1576,13 @@ const normalizeHostMusicPrefs = (value = {}) => {
     };
 };
 
-const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search' } = {}) => (
+const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search', hideNonEmbeddable = false } = {}) => (
     (rawItems || [])
         .map((item) => {
             const videoId = String(item?.id || '').trim();
             if (!videoId) return null;
-            const playable = item?.playable !== false;
-            if (!playable) return null;
+            const playbackState = normalizeYouTubePlaybackState(item);
+            if (hideNonEmbeddable && !isYouTubeEmbeddable(playbackState)) return null;
             const durationSec = Math.max(0, Math.round(Number(item?.durationSec || 0)));
             return {
                 source: 'youtube',
@@ -1585,11 +1592,20 @@ const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search' 
                 artworkUrl100: item?.thumbnails?.medium?.url || item?.thumbnails?.default?.url || '',
                 url: `https://www.youtube.com/watch?v=${videoId}`,
                 durationSec,
-                playable: true,
+                playable: playbackState.playable,
+                embeddable: playbackState.embeddable,
+                uploadStatus: playbackState.uploadStatus,
+                privacyStatus: playbackState.privacyStatus,
+                youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                backingAudioOnly: playbackState.backingAudioOnly,
                 sourceReason: reason,
                 sourceDetail: reason === 'apple_missing'
-                    ? 'Apple Music account not connected. Showing verified YouTube playable tracks.'
-                    : 'Verified YouTube playable track.'
+                    ? (playbackState.backingAudioOnly
+                        ? 'Apple Music account not connected. This YouTube track opens in an external host window.'
+                        : 'Apple Music account not connected. Showing verified embeddable YouTube tracks.')
+                    : (playbackState.backingAudioOnly
+                        ? 'YouTube track is not embeddable and opens in an external host window.'
+                        : 'Verified YouTube embeddable track.')
             };
         })
         .filter(Boolean)
@@ -1626,7 +1642,7 @@ const fetchYouTubeEmbeddableStatusMap = async (
                     usageContext: { source: 'host_playlist_status_refresh' }
                 });
                 (statusData?.items || []).forEach((entry) => {
-                    statusMap.set(entry.id, !!entry.embeddable);
+                    statusMap.set(entry.id, normalizeYouTubePlaybackState(entry));
                 });
             } catch (error) {
                 hostLogger.warn('YouTube status chunk failed', error);
@@ -3623,7 +3639,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowAutomationPaused = false, onOpenRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3668,6 +3684,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         setCustomBonus,
         showQueueList,
         setShowQueueList,
+        showQueueSummaryBar,
+        setShowQueueSummaryBar,
         ytSearchOpen,
         setYtSearchOpen,
         ytSearchTarget,
@@ -4024,7 +4042,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         setYtResults,
         setYtLoading,
         setYtSearchError,
-        setEmbedCache
+        setEmbedCache,
+        hideNonEmbeddableYouTube
     });
     const persistTrustedCatalogChoiceRef = useRef(null);
     const upsertYtIndexEntriesRef = useRef(null);
@@ -4150,7 +4169,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 s.trackName.toLowerCase().includes(normalizedLower) ||
                 s.artistName.toLowerCase().includes(normalizedLower)
             );
-            const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => entry?.playable === true), {
+            const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => (
+                hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true
+            )), {
                 sourceReason: 'youtube_index',
                 sourceDetail: 'Indexed YouTube playlist match.'
             });
@@ -4159,28 +4180,33 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 const ytFallbackData = await callFunction('youtubeSearch', {
                     query: `${normalizedQuery} karaoke`,
                     maxResults: 6,
-                    playableOnly: true,
+                    playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
                     usageContext: { source: 'host_queue_search_youtube_fallback' }
                 });
                 if (cancelled) return;
                 liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
-                    reason: 'youtube_search'
+                    reason: 'youtube_search',
+                    hideNonEmbeddable: hideNonEmbeddableYouTube
                 });
             } catch(e) { 
                 if (cancelled) return;
                 hostLogger.debug('YouTube autocomplete search failed', e);
             } 
             if (cancelled) return;
-            setQueueSearchSourceNote('Autocomplete source: YouTube verified tracks + local library.');
-            setQueueSearchNoResultHint('No playable YouTube tracks found. Try artist + song or use manual YouTube search.');
+            setQueueSearchSourceNote(hideNonEmbeddableYouTube
+                ? 'Autocomplete source: YouTube embeddable tracks + local library.'
+                : 'Autocomplete source: YouTube tracks + local library. Non-embeddable picks are labeled.');
+            setQueueSearchNoResultHint(hideNonEmbeddableYouTube
+                ? 'No embeddable YouTube tracks found. Try artist + song or use manual YouTube search.'
+                : 'No YouTube tracks found. Try artist + song or use manual YouTube search.');
             setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches));
         }, 500); 
         return () => {
             cancelled = true;
             clearTimeout(t);
         }; 
-    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized, roomCode]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -4444,12 +4470,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         const ytData = await callFunction('youtubeSearch', {
                             query: `${searchQuery} karaoke`,
                             maxResults: 5,
-                            playableOnly: true,
+                            playableOnly: hideNonEmbeddableYouTube === true,
                             roomCode,
                             usageContext: { source: 'host_queue_review_auto_youtube' }
                         });
                         liveMatches = normalizeYouTubeSearchItems(ytData?.items || [], {
-                            reason: 'queue_review_auto'
+                            reason: 'queue_review_auto',
+                            hideNonEmbeddable: hideNonEmbeddableYouTube
                         });
                         if (liveMatches.length && !cancelled) {
                             await onUpsertYtIndexEntries(liveMatches.map((match) => ({
@@ -4458,7 +4485,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 artistName: match.artistName,
                                 artworkUrl100: match.artworkUrl100,
                                 url: match.url,
-                                playable: true,
+                                playable: match.playable === true,
+                                embeddable: match.embeddable === true,
+                                uploadStatus: match.uploadStatus || '',
+                                privacyStatus: match.privacyStatus || '',
+                                youtubePlaybackStatus: match.youtubePlaybackStatus || '',
+                                backingAudioOnly: match.backingAudioOnly === true,
                                 sourceDetail: 'Auto-suggested from singer queue review.'
                             })));
                             rankedCandidates = resolveReviewCandidates(nextSong, liveMatches);
@@ -4504,7 +4536,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         return () => {
             cancelled = true;
         };
-    }, [reviewRequired, roomCode, trustedCatalog, ytIndex, onUpsertYtIndexEntries]);
+    }, [reviewRequired, roomCode, trustedCatalog, ytIndex, onUpsertYtIndexEntries, hideNonEmbeddableYouTube]);
 
     const resolveReviewRequest = useCallback(async (song, candidate, options = {}) => {
         if (!song?.id || !candidate) return;
@@ -4594,7 +4626,18 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
       };
 
       const selectYouTubeVideo = (video) => {
-          const isFailed = embedCache[video.id] === 'fail';
+          const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
+          const playbackState = normalizeYouTubePlaybackState({
+              ...video,
+              playable: embedStatus === 'ok' ? true : video.playable,
+              embeddable: embedStatus === 'fail' ? false : video.embeddable,
+              youtubePlaybackStatus: embedStatus === 'ok'
+                  ? YOUTUBE_PLAYBACK_STATUSES.embeddable
+                  : embedStatus === 'fail'
+                      ? YOUTUBE_PLAYBACK_STATUSES.notEmbeddable
+                      : video.youtubePlaybackStatus
+          });
+          const isFailed = playbackState.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable;
           const displayTitle = video.title.replace(' (Karaoke)', '').replace(' Karaoke', '');
           
           if (ytSearchTarget === 'edit') {
@@ -4602,7 +4645,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                   ...prev,
                   title: prev.title || displayTitle || '',
                   artist: prev.artist || video.channel || '',
-                  url: video.url || prev.url
+                  url: video.url || prev.url,
+                  youtubeEmbeddable: playbackState.embeddable,
+                  youtubeUploadStatus: playbackState.uploadStatus,
+                  youtubePrivacyStatus: playbackState.privacyStatus,
+                  youtubePlaybackStatus: playbackState.youtubePlaybackStatus
               }));
               applyDurationToEdit(video.url || editForm.url);
           } else {
@@ -4612,15 +4659,18 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                   artist: prev.artist || video.channel || '',
                   url: video.url,
                   duration: prev.duration || 180,
-                  // Mark if this is a backing audio only (failed embed)
-                  backingAudioOnly: isFailed ? true : false
+                  backingAudioOnly: playbackState.backingAudioOnly,
+                  youtubeEmbeddable: playbackState.embeddable,
+                  youtubeUploadStatus: playbackState.uploadStatus,
+                  youtubePrivacyStatus: playbackState.privacyStatus,
+                  youtubePlaybackStatus: playbackState.youtubePlaybackStatus
               }));
               applyDurationToManual(video.url);
           }
           setYtSearchOpen(false);
           setYtSearchQ('');
           setYtResults([]);
-          toast(isFailed ? `${EMOJI.radio} Opens in external backing window` : `${EMOJI.check} Embeds on TV`);
+          toast(isFailed ? `${EMOJI.radio} Not embeddable - opens in external backing window` : `${EMOJI.check} Embeds on TV`);
       };
 
     const testEmbedVideo = async (video) => {
@@ -4633,7 +4683,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             if (status === 'ok') {
                 toast(`${EMOJI.check} Embeds on the TV player`);
             } else if (status === 'fail') {
-                toast(`${EMOJI.radio} Opens in an external backing window`);
+                toast(`${EMOJI.radio} Not embeddable - opens in an external backing window`);
             } else {
                 toast(`${EMOJI.cross} Could not confirm embed status`);
             }
@@ -5366,12 +5416,26 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const isMobileLayout = layoutMode === 'mobile';
     const isTightLayout = layoutMode === 'laptop-tight';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
+    const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
+    const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
+    const autoCollapsedRunOfShowAddFormRef = useRef(false);
 
     useEffect(() => {
         if (!isMobileLayout && !isTightLayout) return;
         if (showAddForm || showQueueList) return;
         setShowQueueList(true);
     }, [isMobileLayout, isTightLayout, showAddForm, showQueueList, setShowQueueList]);
+
+    useEffect(() => {
+        if (runOfShowEnabled && hasRunOfShowQueueWork && showAddForm && !autoCollapsedRunOfShowAddFormRef.current) {
+            setShowAddForm(false);
+            autoCollapsedRunOfShowAddFormRef.current = true;
+            return;
+        }
+        if (!runOfShowEnabled || !hasRunOfShowQueueWork) {
+            autoCollapsedRunOfShowAddFormRef.current = false;
+        }
+    }, [hasRunOfShowQueueWork, runOfShowEnabled, setShowAddForm, showAddForm]);
 
     const addToQueueSection = (
         <div className="p-3 border-b border-white/10 bg-black/20 relative">
@@ -5422,6 +5486,24 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
 
     const queueListSection = (
         <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
+            {(runOfShowEnabled || hasRunOfShowPlan) ? (
+                <RunOfShowQueueHud
+                    enabled={runOfShowEnabled}
+                    director={runOfShowDirector}
+                    liveItem={runOfShowLiveItem}
+                    stagedItem={runOfShowStagedItem}
+                    nextItem={runOfShowNextItem}
+                    preflightReport={runOfShowPreflightReport}
+                    onOpenShowWorkspace={onOpenRunOfShow}
+                    onOpenIssue={onOpenRunOfShowIssue}
+                    onStartShow={onStartRunOfShow}
+                    onAdvance={onAdvanceRunOfShow}
+                    onRewind={onRewindRunOfShow}
+                    onStop={onStopRunOfShow}
+                    onToggleAutomationPause={onToggleRunOfShowPause}
+                    styles={STYLES}
+                />
+            ) : null}
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
@@ -5576,7 +5658,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                             {song.collaborationCandidates.slice(0, 3).map((entry) => (
                                                 <span key={entry.requestId} className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-xs text-zinc-100">
                                                     {(entry.emoji || EMOJI.mic)} {entry.singerName}
-                                                    {entry.tight15Overlap ? ' • Tight 15 overlap' : ' • Same song'}
+                                                    {entry.tight15Overlap ? ' | Tight 15 overlap' : ' | Same song'}
                                                 </span>
                                             ))}
                                         </div>
@@ -5604,6 +5686,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             )}
             <QueueListPanel
                 showQueueList={showQueueList}
+                showQueueSummaryBar={!(runOfShowEnabled || hasRunOfShowPlan) && showQueueSummaryBar}
+                onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
                 pending={pending}
                 pendingQueueOpen={pendingQueueOpen}
                 onTogglePendingQueue={() => setPendingQueueOpen((v) => !v)}
@@ -5832,11 +5916,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 onEndPerformance={(songId) => handleEndPerformance(songId)}
                                 onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
                                 progressStageToNext={progressStageToNext}
-                                runOfShowEnabled={runOfShowEnabled}
-                                runOfShowAutomationPaused={runOfShowAutomationPaused}
-                                onOpenRunOfShow={onOpenRunOfShow}
-                                onToggleRunOfShowPause={onToggleRunOfShowPause}
-                                onStopRunOfShow={onStopRunOfShow}
                                 styles={STYLES}
                                 emoji={EMOJI}
                             />
@@ -6397,6 +6476,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [localLibrary, setLocalLibrary] = useState(() => LOCAL_LIBRARY);
     const [ytIndex, setYtIndex] = useState([]);
     const [searchSources, setSearchSources] = useState({ local: true, youtube: true, itunes: true });
+    const [hideNonEmbeddableYouTube, setHideNonEmbeddableYouTube] = useState(false);
     const [ytPlaylistUrl, setYtPlaylistUrl] = useState('');
     const [qaYtPlaylistUrl, setQaYtPlaylistUrl] = useState(() => {
         try {
@@ -6687,7 +6767,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 const data = await callFunction('youtubeSearch', {
                     query: `${query} karaoke`,
                     maxResults: 8,
-                    playableOnly: true,
+                    playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
                     usageContext: { source: 'host_youtube_curate_search' }
                 });
@@ -6699,12 +6779,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         channelTitle: item.channelTitle,
                         thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
                         url: item.id ? `https://www.youtube.com/watch?v=${item.id}` : '',
-                        playable: true,
-                        sourceDetail: 'Verified YouTube playable track.',
+                        playable: item.playable === true,
+                        embeddable: item.embeddable === true,
+                        uploadStatus: item.uploadStatus || '',
+                        privacyStatus: item.privacyStatus || '',
+                        sourceDetail: item.playable === true
+                            ? 'Verified YouTube embeddable track.'
+                            : 'YouTube track opens in an external host window.',
                     }))
+                    .filter((item) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(item) : true))
                     .filter(Boolean);
                 setYtCurateResults(items);
-                setYtCurateStatus(items.length ? '' : 'No playable YouTube karaoke results found.');
+                setYtCurateStatus(items.length ? '' : (
+                    hideNonEmbeddableYouTube
+                        ? 'No embeddable YouTube karaoke results found.'
+                        : 'No YouTube karaoke results found.'
+                ));
             } catch (error) {
                 if (canceled) return;
                 hostLogger.error(error);
@@ -6718,7 +6808,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             canceled = true;
             clearTimeout(timer);
         };
-    }, [showYtIndex, ytCurateQuery, roomCode]);
+    }, [showYtIndex, ytCurateQuery, roomCode, hideNonEmbeddableYouTube]);
     useEffect(() => {
         if (!showSettings) {
             setSettingsNavOpen(false);
@@ -7294,10 +7384,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ? ytIndex.filter(s =>
                     s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
                     s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
-                ).filter((entry) => entry?.playable === true)
+                ).filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true))
                 : [], {
                     sourceReason: 'youtube_index',
-                    sourceDetail: 'Indexed YouTube playable match.'
+                    sourceDetail: hideNonEmbeddableYouTube
+                        ? 'Indexed YouTube embeddable match.'
+                        : 'Indexed YouTube match.'
                 });
             let liveYouTubeMatches = [];
             if (shouldUseYouTubeFallback) {
@@ -7305,12 +7397,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     const ytFallbackData = await callFunction('youtubeSearch', {
                         query: `${normalizedQuery} karaoke`,
                         maxResults: 8,
-                        playableOnly: true,
+                        playableOnly: hideNonEmbeddableYouTube === true,
                         roomCode,
                         usageContext: { source: 'host_catalog_search_youtube_fallback' }
                     });
                     liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
-                        reason: 'apple_missing'
+                        reason: 'apple_missing',
+                        hideNonEmbeddable: hideNonEmbeddableYouTube
                     });
                 } catch (ytErr) {
                     hostLogger.debug('Catalogue YouTube fallback search failed', ytErr);
@@ -7342,7 +7435,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearTimeout(t);
             if (controller) controller.abort();
         };
-    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized, roomCode]);
+    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
 
     const bgAudio = useRef(null);
     const bgCtxRef = useRef(null);
@@ -9313,6 +9406,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requestMode: room?.requestMode,
             allowSingerTrackSelect: room?.allowSingerTrackSelect,
         }));
+        setHideNonEmbeddableYouTube(room?.hideNonEmbeddableYouTube === true);
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
@@ -9359,7 +9453,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled === true);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.hideNonEmbeddableYouTube, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
     useEffect(() => {
         if (isMarketingDemoFixture) return () => {};
         if (!roomCode || !isRunOfShowRoom) {
@@ -12146,6 +12240,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const usageCount = Math.max(0, Number(overrides.usageCount ?? entry.usageCount ?? 0) || 0);
         const successCount = Math.max(0, Number(overrides.successCount ?? entry.successCount ?? 0) || 0);
         const failureCount = Math.max(0, Number(overrides.failureCount ?? entry.failureCount ?? 0) || 0);
+        const playbackState = normalizeYouTubePlaybackState({
+            embeddable: overrides.embeddable ?? entry.embeddable,
+            uploadStatus: overrides.uploadStatus ?? entry.uploadStatus,
+            privacyStatus: overrides.privacyStatus ?? entry.privacyStatus,
+            playable: overrides.playable ?? entry.playable,
+            youtubePlaybackStatus: overrides.youtubePlaybackStatus || entry.youtubePlaybackStatus
+        });
         return {
             videoId,
             source: 'youtube',
@@ -12153,8 +12254,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             artistName: baseArtist,
             artworkUrl100,
             url,
-            playable: overrides.playable ?? entry.playable ?? true,
-            sourceDetail: String(overrides.sourceDetail || entry.sourceDetail || 'Verified YouTube playable track.').trim(),
+            playable: playbackState.playable,
+            embeddable: playbackState.embeddable,
+            uploadStatus: playbackState.uploadStatus,
+            privacyStatus: playbackState.privacyStatus,
+            youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+            backingAudioOnly: playbackState.backingAudioOnly,
+            sourceDetail: String(overrides.sourceDetail || entry.sourceDetail || (
+                playbackState.backingAudioOnly
+                    ? 'YouTube track opens in an external host window.'
+                    : 'Verified YouTube embeddable track.'
+            )).trim(),
             qualityScore,
             usageCount,
             successCount,
@@ -12177,7 +12287,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             concurrency: 4,
             roomCode
         });
-        const playableItems = items.filter((item) => playableMap.get(item.id) === true);
+        const playableItems = items.filter((item) => isYouTubeEmbeddable(playableMap.get(item.id)));
         await upsertYtIndexEntries(playableItems.map((item) => ({
             videoId: item.id,
             trackName: item.title,
@@ -12185,6 +12295,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             artworkUrl100: item.thumbnail,
             url: item.url,
             playable: true,
+            embeddable: true,
+            youtubePlaybackStatus: YOUTUBE_PLAYBACK_STATUSES.embeddable,
             sourceDetail: 'Indexed and embeddable YouTube track.'
         })));
         return playableItems;
@@ -12345,18 +12457,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 const data = await callFunction('youtubeSearch', {
                     query: `${query} karaoke`,
                     maxResults: 1,
-                    playableOnly: true,
+                    playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
                     usageContext: { source: 'host_manual_track_lookup_youtube' }
                 });
                 const first = (data?.items || [])[0];
-                if (!first) throw new Error('No verified playable results found');
+                if (!first) throw new Error(hideNonEmbeddableYouTube ? 'No embeddable results found' : 'No YouTube results found');
+                const playbackState = normalizeYouTubePlaybackState(first);
                 item = {
                     id: first.id,
                     title: first.title,
                     channel: first.channelTitle || artist || 'YouTube',
                     thumbnail: first.thumbnails?.medium?.url || first.thumbnails?.default?.url || '',
-                    url: `https://www.youtube.com/watch?v=${first.id}`
+                    url: `https://www.youtube.com/watch?v=${first.id}`,
+                    playable: playbackState.playable,
+                    embeddable: playbackState.embeddable,
+                    uploadStatus: playbackState.uploadStatus,
+                    privacyStatus: playbackState.privacyStatus,
+                    youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                    backingAudioOnly: playbackState.backingAudioOnly
                 };
             }
             await upsertYtIndexEntries([{
@@ -12365,8 +12484,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 artistName: item.channel,
                 artworkUrl100: item.thumbnail,
                 url: item.url,
-                playable: true,
-                sourceDetail: 'Verified YouTube playable track.'
+                playable: item.playable !== false,
+                embeddable: item.embeddable === true,
+                uploadStatus: item.uploadStatus || '',
+                privacyStatus: item.privacyStatus || '',
+                youtubePlaybackStatus: item.youtubePlaybackStatus || '',
+                backingAudioOnly: item.backingAudioOnly === true,
+                sourceDetail: item.backingAudioOnly
+                    ? 'YouTube track added to the room index. This one opens in an external host window.'
+                    : 'Verified YouTube embeddable track.'
             }]);
             setYtAddStatus(`Added "${item.title}"`);
             setYtAddTitle('');
@@ -15765,6 +15891,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requestMode,
             allowSingerTrackSelect,
         }),
+        hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
         audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
         programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
@@ -15816,6 +15943,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 requestMode: room.requestMode,
                 allowSingerTrackSelect: room.allowSingerTrackSelect,
             }),
+            hideNonEmbeddableYouTube: room.hideNonEmbeddableYouTube === true,
             audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
             audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
             programMode: normalizeRunOfShowProgramMode(room.programMode),
@@ -16036,6 +16164,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setSfxVolume,
         searchSources,
         setSearchSources,
+        hideNonEmbeddableYouTube,
         ytIndex,
         setYtIndex,
         persistYtIndex,
@@ -16098,8 +16227,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         layoutMode: hostStageLayoutMode,
         onUpsertYtIndexEntries: upsertYtIndexEntries,
         runOfShowEnabled,
-        runOfShowAutomationPaused: !!runOfShowDirector?.automationPaused,
+        runOfShowDirector,
+        runOfShowLiveItem,
+        runOfShowStagedItem,
+        runOfShowNextItem,
+        runOfShowPreflightReport,
         onOpenRunOfShow: () => setTab('run_of_show'),
+        onOpenRunOfShowIssue: openRunOfShowIssueFromChrome,
+        onStartRunOfShow: startRunOfShowNow,
+        onAdvanceRunOfShow: advanceRunOfShowNext,
+        onRewindRunOfShow: rewindRunOfShowPrevious,
         onToggleRunOfShowPause: toggleRunOfShowAutomationPause,
         onStopRunOfShow: stopRunOfShowNow,
         ytDiagnosticsMap,
@@ -16368,7 +16505,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/92 px-4 py-3 backdrop-blur">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Workspace</div>
-                                <div className="mt-1 text-sm text-zinc-400">Timeline-first planning and live control.</div>
+                                <div className="mt-1 text-sm text-zinc-400">Build, preflight, and repair live issues. Queue stays the runtime home.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -16376,7 +16513,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onClick={() => setTab('stage')}
                                     className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
                                 >
-                                    Back To Queue
+                                    Back To Live Queue
                                 </button>
                                 <button
                                     type="button"
@@ -17661,6 +17798,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     );
                                 })}
                             </div>
+                            {searchSources.youtube && (
+                                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm uppercase tracking-widest text-zinc-300">Hide Non-Embeddable YouTube</div>
+                                            <div className="host-form-helper mt-1">Audience YouTube search and host auto-search only show tracks that can embed on Public TV.</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                const next = !hideNonEmbeddableYouTube;
+                                                setHideNonEmbeddableYouTube(next);
+                                                try {
+                                                    await updateRoom({ hideNonEmbeddableYouTube: next });
+                                                } catch (error) {
+                                                    setHideNonEmbeddableYouTube(!next);
+                                                    hostLogger.error('hideNonEmbeddableYouTube update failed', error);
+                                                    toast('Could not update YouTube embeddable filter.');
+                                                }
+                                            }}
+                                            className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                hideNonEmbeddableYouTube
+                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                            }`}
+                                        >
+                                            {hideNonEmbeddableYouTube ? 'Embeddable Only' : 'Show All'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             <div className="pt-3">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400">Guest song requests</div>
                                 <div className="host-form-helper mt-2">Choose how much freedom guests have when the room does not already know a good backing track.</div>

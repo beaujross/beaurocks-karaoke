@@ -109,6 +109,10 @@ import {
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
 import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
+import {
+    normalizeYouTubePlaybackState,
+    YOUTUBE_PLAYBACK_STATUSES
+} from '../../lib/youtubePlaybackStatus';
 
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 
@@ -4273,12 +4277,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             .map((item) => {
                 const videoId = String(item?.id || '').trim();
                 if (!videoId) return null;
-                const embeddable = item?.embeddable === true;
-                const uploadStatus = String(item?.uploadStatus || '').trim().toLowerCase();
-                const privacyStatus = String(item?.privacyStatus || '').trim().toLowerCase();
-                const uploadReady = uploadStatus === 'processed' || uploadStatus === 'uploaded';
-                const allowedPrivacy = privacyStatus === 'public' || privacyStatus === 'unlisted';
-                const playable = item?.playable === true;
+                const playbackState = normalizeYouTubePlaybackState(item);
+                const embeddable = playbackState.embeddable;
+                const uploadStatus = playbackState.uploadStatus;
+                const privacyStatus = playbackState.privacyStatus;
+                const uploadReady = playbackState.uploadReady;
+                const allowedPrivacy = playbackState.allowedPrivacy;
+                const playable = playbackState.playable;
                 const canQueue = playable || (uploadReady && allowedPrivacy);
                 if (!canQueue) return null;
                 return {
@@ -4294,14 +4299,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     embeddable,
                     uploadStatus,
                     privacyStatus,
-                    backingAudioOnly: !playable,
+                    youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                    backingAudioOnly: playbackState.backingAudioOnly,
                 };
             })
             .filter(Boolean)
     ), []);
 
     const getAudienceYouTubeResultMeta = useCallback((result = {}) => {
-        if (result?.playable === true) {
+        const playbackState = normalizeYouTubePlaybackState(result);
+        if (playbackState.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable) {
             return {
                 label: 'Embeds on TV',
                 className: 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100',
@@ -4309,7 +4316,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             };
         }
         return {
-            label: 'External window',
+            label: 'Not embeddable',
             className: 'border-orange-300/40 bg-orange-500/10 text-orange-100',
             detail: 'The host can still run it, but it opens in a separate window.',
         };
@@ -4328,12 +4335,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 const data = await callFunction('youtubeSearch', {
                     query: `${searchQ} karaoke`,
                     maxResults: 8,
-                    playableOnly: false,
+                    playableOnly: room?.hideNonEmbeddableYouTube === true,
                     roomCode,
                     usageContext: { source: 'audience_request_youtube_search' }
                 });
                 if (cancelled) return;
-                setYoutubeResults(normalizeAudienceYouTubeSearchItems(data?.items || []));
+                const normalizedResults = normalizeAudienceYouTubeSearchItems(data?.items || [])
+                    .filter((item) => (
+                        room?.hideNonEmbeddableYouTube === true
+                            ? item.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable
+                            : true
+                    ));
+                setYoutubeResults(normalizedResults);
             } catch {
                 if (cancelled) return;
                 setYoutubeResults([]);
@@ -4347,7 +4360,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             cancelled = true;
             clearTimeout(t);
         };
-    }, [audienceManualBackingAllowed, catalogSearchMode, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
+    }, [audienceManualBackingAllowed, catalogSearchMode, normalizeAudienceYouTubeSearchItems, room?.hideNonEmbeddableYouTube, roomCode, searchQ]);
 
     const getAudienceBackingBadgeMeta = useCallback((candidate = null) => {
         const layer = String(candidate?.resolutionLayer || candidate?.layer || '').trim().toLowerCase();
@@ -5960,6 +5973,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const trackSource = options.trackSource || 'youtube';
             const explicitResolutionStatus = String(options.resolutionStatus || '').trim().toLowerCase();
             const explicitResolutionLayer = String(options.resolutionLayer || '').trim();
+            const requestedYoutubePlaybackStatus = String(options.youtubePlaybackStatus || '').trim();
+            const requestedYoutubeEmbeddable = options.youtubeEmbeddable === true
+                ? true
+                : options.youtubeEmbeddable === false
+                    ? false
+                    : null;
+            const requestedYoutubeUploadStatus = String(options.youtubeUploadStatus || '').trim().toLowerCase();
+            const requestedYoutubePrivacyStatus = String(options.youtubePrivacyStatus || '').trim().toLowerCase();
             if (backingUrl && trackSource === 'youtube' && !extractYouTubeId(backingUrl)) {
                 toast('Use a valid YouTube URL for the backing track.');
                 return;
@@ -6065,6 +6086,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 audioOnly: resolvedAudioOnly,
                 backingAudioOnly: resolvedAudioOnly,
                 playbackReady,
+                youtubeEmbeddable: requestedYoutubeEmbeddable,
+                youtubeUploadStatus: requestedYoutubeUploadStatus,
+                youtubePrivacyStatus: requestedYoutubePrivacyStatus,
+                youtubePlaybackStatus: requestedYoutubePlaybackStatus,
                 mediaResolutionStatus,
                 requestedBackingMode: roomRequestMode,
                 resolutionStatus,
@@ -6170,7 +6195,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 audioOnly: result.playable !== true,
                 allowTrack: true,
                 trackLabel: result.playable === true ? 'Audience YouTube pick' : 'Audience YouTube pick (external window)',
-                resolutionLayer: 'audience_youtube_search'
+                resolutionLayer: 'audience_youtube_search',
+                youtubeEmbeddable: result.embeddable === true,
+                youtubeUploadStatus: result.uploadStatus || '',
+                youtubePrivacyStatus: result.privacyStatus || '',
+                youtubePlaybackStatus: result.youtubePlaybackStatus || ''
             }
         );
         setYoutubeResults([]);
@@ -11931,7 +11960,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </div>
                                             ) : (
                                                 <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                    No YouTube karaoke matches yet. Try a more specific song + artist search.
+                                                    {room?.hideNonEmbeddableYouTube === true
+                                                        ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
+                                                        : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
                                                 </div>
                                             )
                                         ) : enrichedCatalogResults.length > 0 ? (

@@ -211,6 +211,18 @@ async function run() {
       assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
     }],
 
+    ["host can toggle the room YouTube embeddable-only filter", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        hideNonEmbeddableYouTube: true,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(new Set(result.updatedKeys), new Set(["hideNonEmbeddableYouTube"]));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("hideNonEmbeddableYouTube"), true);
+    }],
+
     ["host can update performance recap timing fields", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         performanceRecapBreakdownMs: 6000,

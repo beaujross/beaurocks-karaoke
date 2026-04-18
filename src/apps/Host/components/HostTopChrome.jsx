@@ -2348,7 +2348,7 @@ const HostTopChrome = ({
                 </div>
             ) : null}
         </div>
-        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
+        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && !queueWorkspaceMode && (
             <div className="w-full">
                 <div className={`rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] ${compactRunOfShowDense ? 'px-3 py-2' : 'px-3 py-3'}`}>
                     <div className={`flex flex-wrap justify-between gap-2.5 ${compactRunOfShowDense ? 'items-center' : 'items-start'}`}>

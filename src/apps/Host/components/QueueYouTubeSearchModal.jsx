@@ -1,4 +1,5 @@
 import React from 'react';
+import { getYouTubeEmbedCacheStatus } from '../../../lib/youtubePlaybackStatus';
 
 const getEmbedStatusMeta = (status) => {
     if (status === 'ok') {
@@ -19,7 +20,7 @@ const getEmbedStatusMeta = (status) => {
             tone: 'border-orange-400/50',
             chipClass: 'text-sm text-orange-300 font-bold',
             chipIcon: 'fa-up-right-from-square',
-            chipLabel: 'Opens externally',
+            chipLabel: 'Not embeddable',
             helper: 'Host launches this backing in a separate window instead of the TV embed.',
             actionClass: 'bg-orange-900/50 text-orange-200 hover:bg-orange-800/50',
             actionLabel: 'USE EXTERNAL',
@@ -118,7 +119,7 @@ const QueueYouTubeSearchModal = ({
                     {ytResults.length > 0 && (
                         <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
                             {ytResults.map(video => {
-                                const embedStatus = embedCache[video.id];
+                                const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
                                 const isTesting = embedStatus === 'testing';
                                 const statusMeta = getEmbedStatusMeta(embedStatus);
 
@@ -164,12 +165,12 @@ const QueueYouTubeSearchModal = ({
                 <div className="mt-3 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-[11px] text-zinc-400">
                     <span className="text-emerald-300 font-semibold">Embeds on TV</span> keeps playback in the in-room player.
                     {' '}
-                    <span className="text-orange-300 font-semibold">Opens externally</span> uses a separate host-controlled window, but the queue item and performance flow still stay in the app.
+                    <span className="text-orange-300 font-semibold">Not embeddable</span> uses a separate host-controlled window, but the queue item and performance flow still stay in the app.
                 </div>
 
                 {ytSearchQ && ytResults.length === 0 && !ytLoading && (
                     <div className="host-search-helper text-center py-8">
-                        No verified playable results. Try a different keyword or paste a direct YouTube URL.
+                        No YouTube karaoke results. Try a different keyword or paste a direct YouTube URL.
                     </div>
                 )}
             </div>

@@ -37,11 +37,6 @@ const StageNowPlayingPanel = ({
     onEndPerformance,
     onReturnCurrentToQueue,
     progressStageToNext,
-    runOfShowEnabled = false,
-    runOfShowAutomationPaused = false,
-    onOpenRunOfShow,
-    onToggleRunOfShowPause,
-    onStopRunOfShow,
     styles,
     emoji
 }) => {
@@ -223,34 +218,6 @@ const StageNowPlayingPanel = ({
             ) : null}
         </div>
     );
-
-    const runOfShowQuickControls = runOfShowEnabled ? (
-        <div className="mt-3 bg-black/30 border border-white/10 rounded-lg p-3">
-            <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Run Of Show</div>
-            <div className="mt-1 text-[11px] text-zinc-500">Live show controls without leaving the stage view.</div>
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <button
-                    onClick={() => onOpenRunOfShow?.()}
-                    className={`${styles.btnStd} ${styles.btnNeutral}`}
-                >
-                    <i className="fa-solid fa-table-cells-large mr-2"></i>Open Show
-                </button>
-                <button
-                    onClick={() => onToggleRunOfShowPause?.(!runOfShowAutomationPaused)}
-                    className={`${styles.btnStd} ${runOfShowAutomationPaused ? styles.btnHighlight : styles.btnSecondary}`}
-                >
-                    <i className={`fa-solid ${runOfShowAutomationPaused ? 'fa-play' : 'fa-pause'} mr-2`}></i>
-                    {runOfShowAutomationPaused ? 'Resume Show' : 'Pause Show'}
-                </button>
-                <button
-                    onClick={() => onStopRunOfShow?.()}
-                    className={`${styles.btnStd} ${styles.btnDanger}`}
-                >
-                    <i className="fa-solid fa-stop mr-2"></i>Stop Show
-                </button>
-            </div>
-        </div>
-    ) : null;
 
     return (
         <>
@@ -595,7 +562,6 @@ const StageNowPlayingPanel = ({
                 {currentUsesAppleBacking && appleMusicStatus ? (
                     <div className="mt-1 mb-3 text-sm text-zinc-400">{appleMusicStatus}</div>
                 ) : null}
-                {runOfShowQuickControls}
                 {postPerformanceTimingCard}
             </div>
         ) : (
@@ -630,7 +596,6 @@ const StageNowPlayingPanel = ({
                         </div>
                     </div>
                 ) : null}
-                {runOfShowQuickControls}
                 {postPerformanceTimingCard}
             </div>
         )}

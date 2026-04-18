@@ -10,6 +10,7 @@ const PANEL_LAYOUT_DEFAULTS = {
     automationOpen: true,
     showAddForm: true,
     showQueueList: true,
+    showQueueSummaryBar: true,
     reviewQueueOpen: true,
     pendingQueueOpen: true,
     readyQueueOpen: true,
@@ -102,6 +103,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     const [automationOpen, setAutomationOpen] = useState(PANEL_LAYOUT_DEFAULTS.automationOpen);
     const [showAddForm, setShowAddForm] = useState(PANEL_LAYOUT_DEFAULTS.showAddForm);
     const [showQueueList, setShowQueueList] = useState(PANEL_LAYOUT_DEFAULTS.showQueueList);
+    const [showQueueSummaryBar, setShowQueueSummaryBar] = useState(PANEL_LAYOUT_DEFAULTS.showQueueSummaryBar);
     const [reviewQueueOpen, setReviewQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.reviewQueueOpen);
     const [pendingQueueOpen, setPendingQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.pendingQueueOpen);
     const [readyQueueOpen, setReadyQueueOpen] = useState(PANEL_LAYOUT_DEFAULTS.readyQueueOpen);
@@ -186,6 +188,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         automationOpen,
         showAddForm,
         showQueueList,
+        showQueueSummaryBar,
         reviewQueueOpen,
         pendingQueueOpen,
         readyQueueOpen,
@@ -200,6 +203,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         automationOpen,
         showAddForm,
         showQueueList,
+        showQueueSummaryBar,
         reviewQueueOpen,
         pendingQueueOpen,
         readyQueueOpen,
@@ -217,6 +221,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setAutomationOpen(!!resolved.automationOpen);
         setShowAddForm(!!resolved.showAddForm);
         setShowQueueList(!!resolved.showQueueList);
+        setShowQueueSummaryBar(!!resolved.showQueueSummaryBar);
         setReviewQueueOpen(!!resolved.reviewQueueOpen);
         setPendingQueueOpen(!!resolved.pendingQueueOpen);
         setReadyQueueOpen(!!resolved.readyQueueOpen);
@@ -309,6 +314,8 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         setShowAddForm,
         showQueueList,
         setShowQueueList,
+        showQueueSummaryBar,
+        setShowQueueSummaryBar,
         reviewQueueOpen,
         setReviewQueueOpen,
         pendingQueueOpen,

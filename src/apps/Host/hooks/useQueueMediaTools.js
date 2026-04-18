@@ -1,5 +1,10 @@
 import { useCallback } from 'react';
 import { callFunction } from '../../../lib/firebase';
+import {
+    getYouTubeEmbedCacheStatus,
+    isYouTubeEmbeddable,
+    normalizeYouTubePlaybackState
+} from '../../../lib/youtubePlaybackStatus';
 
 const useQueueMediaTools = ({
     roomCode,
@@ -14,7 +19,8 @@ const useQueueMediaTools = ({
     setYtResults,
     setYtLoading,
     setYtSearchError,
-    setEmbedCache
+    setEmbedCache,
+    hideNonEmbeddableYouTube = false
 }) => {
     const parseYouTubeId = useCallback((url = '') => {
         const match = url.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{6,})/);
@@ -81,7 +87,7 @@ const useQueueMediaTools = ({
             });
             const statusMap = new Map();
             (data?.items || []).forEach(item => {
-                statusMap.set(item.id, item.embeddable ? 'ok' : 'fail');
+                statusMap.set(item.id, getYouTubeEmbedCacheStatus(item));
             });
             setEmbedCache(prev => {
                 const next = { ...prev };
@@ -116,7 +122,7 @@ const useQueueMediaTools = ({
         if (!q) return [];
         return ytIndex
             .filter(item => {
-                if (item?.playable !== true) return false;
+                if (hideNonEmbeddableYouTube && !isYouTubeEmbeddable(item)) return false;
                 const title = (item.trackName || '').toLowerCase();
                 const artist = (item.artistName || '').toLowerCase();
                 return title.includes(q) || artist.includes(q);
@@ -127,9 +133,16 @@ const useQueueMediaTools = ({
                 title: item.trackName,
                 channel: item.artistName || 'YouTube',
                 thumbnail: item.artworkUrl100,
-                url: item.url
+                url: item.url,
+                playable: item.playable === true,
+                embeddable: item.embeddable === true,
+                uploadStatus: item.uploadStatus || '',
+                privacyStatus: item.privacyStatus || '',
+                youtubePlaybackStatus: item.youtubePlaybackStatus || '',
+                backingAudioOnly: item.backingAudioOnly === true,
+                sourceDetail: item.sourceDetail || ''
             }));
-    }, [ytIndex]);
+    }, [hideNonEmbeddableYouTube, ytIndex]);
 
     const searchYouTube = useCallback(async (queryOverride) => {
         const query = (queryOverride ?? ytSearchQ).trim();
@@ -142,24 +155,48 @@ const useQueueMediaTools = ({
                 callFunction('youtubeSearch', {
                     query: `${query} karaoke`,
                     maxResults: 10,
-                    playableOnly: true,
+                    playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
                     usageContext: { source: 'host_queue_media_search' }
                 }),
                 timeout
             ]);
-            const results = (data?.items || []).map(item => ({
-                id: item.id,
-                title: item.title,
-                channel: item.channelTitle,
-                thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
-                url: `https://www.youtube.com/watch?v=${item.id}`,
-                playable: item.playable !== false,
-                sourceDetail: 'YouTube karaoke search result.'
-            }));
+            const results = (data?.items || [])
+                .map(item => {
+                    const playbackState = normalizeYouTubePlaybackState(item);
+                    if (hideNonEmbeddableYouTube && !isYouTubeEmbeddable(playbackState)) return null;
+                    return {
+                        id: item.id,
+                        title: item.title,
+                        channel: item.channelTitle,
+                        thumbnail: item.thumbnails?.medium?.url || item.thumbnails?.default?.url || '',
+                        url: `https://www.youtube.com/watch?v=${item.id}`,
+                        playable: playbackState.playable,
+                        embeddable: playbackState.embeddable,
+                        uploadStatus: playbackState.uploadStatus,
+                        privacyStatus: playbackState.privacyStatus,
+                        youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                        backingAudioOnly: playbackState.backingAudioOnly,
+                        sourceDetail: playbackState.backingAudioOnly
+                            ? 'YouTube karaoke search result. This backing does not embed on Public TV.'
+                            : 'YouTube karaoke search result. Verified to embed on Public TV.'
+                    };
+                })
+                .filter(Boolean);
             setYtResults(results);
+            setEmbedCache(prev => {
+                const next = { ...prev };
+                results.forEach((item) => {
+                    next[item.id] = getYouTubeEmbedCacheStatus(item);
+                });
+                return next;
+            });
             if (!results.length) {
-                setYtSearchError('No verified playable YouTube results found. Try a different keyword.');
+                setYtSearchError(
+                    hideNonEmbeddableYouTube
+                        ? 'No embeddable YouTube results found. Try a different keyword.'
+                        : 'No YouTube karaoke results found. Try a different keyword.'
+                );
             }
             const updated = (() => {
                 const existing = new Map(ytIndex.map(item => [item.videoId, item]));
@@ -171,8 +208,13 @@ const useQueueMediaTools = ({
                         artistName: item.channel,
                         artworkUrl100: item.thumbnail,
                         url: item.url,
-                        playable: item.playable !== false,
-                        sourceDetail: item.sourceDetail || 'Verified YouTube playable track.'
+                        playable: item.playable === true,
+                        embeddable: item.embeddable === true,
+                        uploadStatus: item.uploadStatus || '',
+                        privacyStatus: item.privacyStatus || '',
+                        youtubePlaybackStatus: item.youtubePlaybackStatus || '',
+                        backingAudioOnly: item.backingAudioOnly === true,
+                        sourceDetail: item.sourceDetail || 'YouTube karaoke search result.'
                     });
                 });
                 return Array.from(existing.values());
@@ -190,6 +232,13 @@ const useQueueMediaTools = ({
             const message = String(e?.message || '').trim();
             if (fallbackResults.length) {
                 setYtResults(fallbackResults);
+                setEmbedCache(prev => {
+                    const next = { ...prev };
+                    fallbackResults.forEach((item) => {
+                        next[item.id] = getYouTubeEmbedCacheStatus(item);
+                    });
+                    return next;
+                });
                 setYtSearchError('Live YouTube search failed. Showing indexed playlist results.');
             } else if (code.includes('permission-denied')) {
                 setYtSearchError('Live YouTube search is currently unavailable for this account. Use indexed tracks or paste a direct URL.');
@@ -208,6 +257,8 @@ const useQueueMediaTools = ({
         setYtResults,
         setYtSearchError,
         roomCode,
+        setEmbedCache,
+        hideNonEmbeddableYouTube,
         ytIndex,
         ytSearchQ
     ]);
