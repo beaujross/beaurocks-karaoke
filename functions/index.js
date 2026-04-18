@@ -5220,16 +5220,74 @@ const resolveUserEntitlements = async (uid) => {
   };
 };
 
-const requireCapability = async (request, capability) => {
+const resolveRoomScopedEntitlements = async ({ uid = "", roomCode = "", capability = "" } = {}) => {
+  const safeUid = String(uid || "").trim();
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeUid || !safeRoomCode || !capability) return null;
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${safeRoomCode}_${safeUid}`);
+  const [roomSnap, roomUserSnap] = await Promise.all([
+    roomRef.get(),
+    roomUserRef.get(),
+  ]);
+  if (!roomSnap.exists) return null;
+  const roomData = roomSnap.data() || {};
+  const roomOrgId = String(roomData?.orgId || "").trim();
+  const hostUids = new Set([
+    String(roomData?.hostUid || "").trim(),
+    ...(Array.isArray(roomData?.hostUids) ? roomData.hostUids : []),
+    ...(Array.isArray(roomData?.coHostUids) ? roomData.coHostUids : []),
+  ].map((entry) => String(entry || "").trim()).filter(Boolean));
+  const callerInRoom = roomUserSnap.exists || hostUids.has(safeUid);
+  if (!callerInRoom) return null;
+  if (roomOrgId) {
+    const entitlements = await readOrganizationEntitlements(roomOrgId);
+    if (entitlements.capabilities?.[capability]) {
+      return {
+        ...entitlements,
+        orgId: roomOrgId,
+        role: roomUserSnap.exists ? "room_audience" : "room_host",
+        source: "room_scope",
+      };
+    }
+  }
+  const primaryHostUid = String(
+    roomData?.hostUid
+      || (Array.isArray(roomData?.hostUids) ? roomData.hostUids.find(Boolean) : "")
+      || (Array.isArray(roomData?.coHostUids) ? roomData.coHostUids.find(Boolean) : "")
+      || ""
+  ).trim();
+  if (!primaryHostUid) return null;
+  const hostEntitlements = await resolveUserEntitlements(primaryHostUid);
+  if (!hostEntitlements?.capabilities?.[capability]) return null;
+  return {
+    ...hostEntitlements,
+    role: roomUserSnap.exists ? "room_audience" : "room_host",
+    source: "room_host_scope",
+  };
+};
+
+const requireCapability = async (request, capability, options = {}) => {
   const uid = requireAuth(request);
   const entitlements = await resolveUserEntitlements(uid);
-  if (!entitlements.capabilities?.[capability]) {
-    throw new HttpsError(
-      "permission-denied",
-      `Capability "${capability}" requires an active subscription.`
-    );
+  if (entitlements.capabilities?.[capability]) {
+    return { uid, entitlements };
   }
-  return { uid, entitlements };
+  if (options?.allowRoomScope === true) {
+    const scopedEntitlements = await resolveRoomScopedEntitlements({
+      uid,
+      roomCode: options?.roomCode || request.data?.roomCode || "",
+      capability,
+    });
+    if (scopedEntitlements?.capabilities?.[capability]) {
+      return { uid, entitlements: scopedEntitlements };
+    }
+  }
+  throw new HttpsError(
+    "permission-denied",
+    `Capability "${capability}" requires an active subscription.`
+  );
 };
 
 const hasHostApprovalAccess = async (uid = "", email = "") => {
@@ -8478,7 +8536,10 @@ exports.reconcilePerformanceRecap = onCall({ cors: true }, async (request) => {
 exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_search");
   await checkDurableRateLimit(request.rawRequest, "youtube_search", DEFAULT_LIMITS);
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const { entitlements } = await requireCapability(request, "api.youtube_data", {
+    allowRoomScope: true,
+    roomCode: request.data?.roomCode || "",
+  });
   enforceAppCheckIfEnabled(request, "youtube_search");
   const query = request.data?.query || "";
   ensureString(query, "query");
@@ -8576,7 +8637,10 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
 exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_playlist");
   await checkDurableRateLimit(request.rawRequest, "youtube_playlist", DEFAULT_LIMITS);
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const { entitlements } = await requireCapability(request, "api.youtube_data", {
+    allowRoomScope: true,
+    roomCode: request.data?.roomCode || "",
+  });
   enforceAppCheckIfEnabled(request, "youtube_playlist");
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
@@ -8621,7 +8685,10 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
 exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_status");
   await checkDurableRateLimit(request.rawRequest, "youtube_status", DEFAULT_LIMITS);
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const { entitlements } = await requireCapability(request, "api.youtube_data", {
+    allowRoomScope: true,
+    roomCode: request.data?.roomCode || "",
+  });
   enforceAppCheckIfEnabled(request, "youtube_status");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_status");
@@ -8738,7 +8805,10 @@ const fetchRoomReactionsInWindow = async ({
 exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_details");
   await checkDurableRateLimit(request.rawRequest, "youtube_details", DEFAULT_LIMITS);
-  const { entitlements } = await requireCapability(request, "api.youtube_data");
+  const { entitlements } = await requireCapability(request, "api.youtube_data", {
+    allowRoomScope: true,
+    roomCode: request.data?.roomCode || "",
+  });
   enforceAppCheckIfEnabled(request, "youtube_details");
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_details");

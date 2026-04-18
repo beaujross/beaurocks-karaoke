@@ -1165,6 +1165,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [searchQ, setSearchQ] = useState('');
     const [catalogSearchMode, setCatalogSearchMode] = useState('catalog');
     const [results, setResults] = useState([]);
+    const [catalogResultsLoading, setCatalogResultsLoading] = useState(false);
     const [youtubeResults, setYoutubeResults] = useState([]);
     const [youtubeResultsLoading, setYoutubeResultsLoading] = useState(false);
     const [catalogResolutionMap, setCatalogResolutionMap] = useState({});
@@ -1971,6 +1972,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const guestBackingAllowed = allowsGuestBackingSelection(roomRequestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode);
     const audienceBackingPickerAllowed = audienceBackingMode !== AUDIENCE_BACKING_MODES.canonicalOnly;
     const audienceManualBackingAllowed = guestBackingAllowed && unknownBackingPolicy !== UNKNOWN_BACKING_POLICIES.blockUnknown;
+    const preferredCatalogSearchMode = audienceManualBackingAllowed ? 'youtube' : 'catalog';
     const getAudienceRequestStateMeta = (request = {}) => {
         const normalizedResolutionStatus = String(request?.resolutionStatus || '').trim().toLowerCase();
         const normalizedStatus = String(request?.status || '').trim().toLowerCase();
@@ -4237,8 +4239,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     // Search via Functions to avoid CORS proxy failures
     useEffect(() => { 
-        if (catalogSearchMode !== 'catalog' || searchQ.length < 3) { setResults([]); return; } 
+        if (searchQ.length < 3) {
+            setResults([]);
+            setCatalogResultsLoading(false);
+            return;
+        }
         let canceled = false;
+        setCatalogResultsLoading(true);
         const t = setTimeout(async () => { 
             try {
                 const data = await callFunction('itunesSearch', {
@@ -4252,13 +4259,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             } catch {
                 if (canceled) return;
                 setResults([]);
+            } finally {
+                if (!canceled) {
+                    setCatalogResultsLoading(false);
+                }
             }
         }, 500); 
         return () => {
             clearTimeout(t);
             canceled = true;
         };
-    }, [catalogSearchMode, roomCode, searchQ]);
+    }, [roomCode, searchQ]);
 
     const getAudienceCatalogResultKey = useCallback((result = {}) => (
         buildSongKey(
@@ -4575,10 +4586,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     useEffect(() => {
         if (catalogSearchOpen) return;
-        setCatalogSearchMode('catalog');
+        setCatalogSearchMode(preferredCatalogSearchMode);
         setYoutubeResults([]);
         setYoutubeResultsLoading(false);
-    }, [catalogSearchOpen]);
+    }, [catalogSearchOpen, preferredCatalogSearchMode]);
+
+    useEffect(() => {
+        if (audienceManualBackingAllowed || catalogSearchMode !== 'youtube') return;
+        setCatalogSearchMode('catalog');
+    }, [audienceManualBackingAllowed, catalogSearchMode]);
 
     useEffect(() => {
         if (catalogSearchMode === 'catalog') return;
@@ -6169,7 +6185,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
     }, [catalogResolutionMap, getAudienceCatalogArtwork, getAudienceCatalogResultKey, isAudienceSelectableBackingCandidate, scoreAudienceBackingCandidate]);
 
-    const handleAudienceCatalogResultSelect = (result, requestOptions = null) => {
+    const openAudienceCatalogSearch = useCallback(() => {
+        setCatalogSearchMode(preferredCatalogSearchMode);
+        setCatalogSearchOpen(true);
+    }, [preferredCatalogSearchMode]);
+
+    const handleAudienceCatalogResultSelect = useCallback((result, requestOptions = null) => {
         if (!result) return;
         submitSong(
             result.trackName,
@@ -6180,7 +6201,51 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setResults([]);
         setSearchQ('');
         setCatalogSearchOpen(false);
-    };
+    }, [getAudienceCatalogArtwork, submitSong]);
+
+    const buildAudienceBackingRequestOptions = useCallback((option = null) => {
+        if (!option || typeof option !== 'object') return null;
+        const badge = getAudienceBackingBadgeMeta(option);
+        const selectedBackingResolution = deriveAudienceBackingResolution({
+            hasBacking: true,
+            explicitResolutionStatus: option.resolutionStatus,
+            explicitResolutionLayer: option.resolutionLayer || option.layer || 'audience_selected',
+            unknownBackingPolicy,
+            trustedCandidate: isAudienceTrustedBackingCandidate(option)
+        });
+        return {
+            mediaUrl: option.mediaUrl,
+            trackSource: option.source || 'youtube',
+            durationSec: Number(option.duration || option.durationSec || 0),
+            allowTrack: true,
+            trackLabel: option.label || badge.label,
+            resolutionStatus: selectedBackingResolution.resolutionStatus,
+            resolutionLayer: selectedBackingResolution.resolutionLayer,
+            youtubeEmbeddable: option.embeddable === true,
+            youtubeUploadStatus: option.uploadStatus || '',
+            youtubePrivacyStatus: option.privacyStatus || '',
+            youtubePlaybackStatus: option.youtubePlaybackStatus || ''
+        };
+    }, [getAudienceBackingBadgeMeta, isAudienceTrustedBackingCandidate, unknownBackingPolicy]);
+
+    const handleAudienceCatalogPrimaryAction = useCallback((result) => {
+        if (!result) return;
+        if (catalogSearchMode === 'youtube' && audienceManualBackingAllowed) {
+            if (Number(result.knownBackingCount || 0) > 1) {
+                openAudienceBackingPicker(result);
+                return;
+            }
+            const primaryOption = Array.isArray(result.youtubeBackingOptions) ? result.youtubeBackingOptions[0] : null;
+            if (primaryOption) {
+                const requestOptions = buildAudienceBackingRequestOptions(primaryOption);
+                handleAudienceCatalogResultSelect(result, requestOptions);
+                return;
+            }
+            toast('Pick one of the YouTube karaoke results below for this song.');
+            return;
+        }
+        handleAudienceCatalogResultSelect(result);
+    }, [audienceManualBackingAllowed, buildAudienceBackingRequestOptions, catalogSearchMode, handleAudienceCatalogResultSelect, openAudienceBackingPicker, toast]);
 
     const handleAudienceYouTubeResultSelect = (result) => {
         if (!result?.mediaUrl) return;
@@ -11832,7 +11897,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                             <div className="text-lg font-black text-white">
                                                 {searchQ.trim().length >= 3
-                                                    ? `${catalogSearchMode === 'youtube' ? youtubeResults.length : results.length} match${(catalogSearchMode === 'youtube' ? youtubeResults.length : results.length) === 1 ? '' : 'es'}`
+                                                    ? `${catalogSearchMode === 'youtube' ? (enrichedCatalogResults.length + youtubeResults.length) : results.length} match${(catalogSearchMode === 'youtube' ? (enrichedCatalogResults.length + youtubeResults.length) : results.length) === 1 ? '' : 'es'}`
                                                     : (catalogSearchMode === 'youtube' ? 'Search YouTube karaoke' : 'Search song + artist')}
                                             </div>
                                         </div>
@@ -11879,7 +11944,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                             <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
                                                 {catalogSearchMode === 'youtube'
-                                                    ? 'Search YouTube directly. Results show whether they embed on Public TV or need an external host window.'
+                                                    ? 'We show song matches first, then direct YouTube karaoke results. Results say whether they embed on Public TV or need an external host window.'
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                         </div>
@@ -11892,70 +11957,132 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     : 'Type at least 3 characters. Song + artist works best.'}
                                             </div>
                                         ) : catalogSearchMode === 'youtube' ? (
-                                            youtubeResultsLoading ? (
-                                                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                    Searching YouTube karaoke results...
-                                                </div>
-                                            ) : youtubeResults.length > 0 ? (
-                                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                                    {youtubeResults.map((result, index) => {
-                                                        const statusMeta = getAudienceYouTubeResultMeta(result);
-                                                        return (
-                                                            <button
-                                                                key={`audience-youtube:${result.videoId || index}`}
-                                                                type="button"
-                                                                onClick={() => handleAudienceYouTubeResultSelect(result)}
-                                                                className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-[linear-gradient(180deg,rgba(34,18,59,0.96),rgba(20,11,42,0.98))] text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)] transition hover:border-cyan-300/35"
-                                                            >
-                                                                <div className="flex gap-3 p-3">
-                                                                    <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-black/35">
-                                                                        {result.artworkUrl100 ? (
-                                                                            <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
-                                                                        ) : null}
-                                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
-                                                                        <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-100">
-                                                                            #{index + 1}
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <div className="flex items-start justify-between gap-3">
-                                                                            <div className="min-w-0">
-                                                                                <div className="line-clamp-2 text-base font-black leading-tight text-white">{result.trackName}</div>
-                                                                                <div className="mt-1 truncate text-sm text-zinc-300">{result.artistName}</div>
-                                                                            </div>
-                                                                            <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white">
-                                                                                <i className="fa-solid fa-plus"></i>
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="mt-3 flex flex-wrap gap-2">
-                                                                            <span className="rounded-full border border-red-300/35 bg-red-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-100">
-                                                                                YouTube
-                                                                            </span>
-                                                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
-                                                                                {statusMeta.label}
-                                                                            </span>
-                                                                            {result.durationSec > 0 ? (
-                                                                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
-                                                                                    {Math.max(1, Math.round(result.durationSec / 60))} min
-                                                                                </span>
+                                            <div className="space-y-4">
+                                                <div className="space-y-3">
+                                                    <div className="px-1 text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
+                                                        Song matches
+                                                    </div>
+                                                    {catalogResultsLoading && !enrichedCatalogResults.length ? (
+                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                            Searching song matches...
+                                                        </div>
+                                                    ) : enrichedCatalogResults.length > 0 ? (
+                                                        <div className="space-y-2">
+                                                            {enrichedCatalogResults.slice(0, 4).map((result, index) => {
+                                                                const actionLabel = result.knownBackingCount > 1
+                                                                    ? 'Choose version'
+                                                                    : result.knownBackingCount === 1
+                                                                        ? (result.primaryBadge?.label || 'Use ready version')
+                                                                        : 'Use YouTube results below';
+                                                                const summary = result.knownBackingCount > 0
+                                                                    ? `${result.knownBackingCount} ready karaoke version${result.knownBackingCount === 1 ? '' : 's'} found`
+                                                                    : result.isResolutionLoading
+                                                                        ? 'Checking known karaoke versions'
+                                                                        : 'No saved backing yet. Pick a direct YouTube result below.';
+                                                                return (
+                                                                    <button
+                                                                        key={`audience-song-match:${result.resultKey || index}`}
+                                                                        type="button"
+                                                                        onClick={() => handleAudienceCatalogPrimaryAction(result)}
+                                                                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-cyan-300/30"
+                                                                    >
+                                                                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-black/35">
+                                                                            {result.artworkUrl100 ? (
+                                                                                <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
                                                                             ) : null}
+                                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent"></div>
+                                                                            <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-100">
+                                                                                #{index + 1}
+                                                                            </div>
                                                                         </div>
-                                                                        <div className="mt-3 text-xs text-zinc-400">
-                                                                            {statusMeta.detail}
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="truncate text-sm font-black text-white">{result.trackName}</div>
+                                                                            <div className="mt-1 truncate text-xs text-zinc-300">{result.artistName}</div>
+                                                                            <div className="mt-2 line-clamp-2 text-xs text-zinc-400">{summary}</div>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-                                                            </button>
-                                                        );
-                                                    })}
+                                                                        <div className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                                                            {actionLabel}
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                            No song matches yet. Try a clearer song + artist search.
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            ) : (
-                                                <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                    {room?.hideNonEmbeddableYouTube === true
-                                                        ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
-                                                        : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
+                                                <div className="space-y-3">
+                                                    <div className="px-1 text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
+                                                        Direct YouTube Results
+                                                    </div>
+                                                    {youtubeResultsLoading ? (
+                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                            Searching YouTube karaoke results...
+                                                        </div>
+                                                    ) : youtubeResults.length > 0 ? (
+                                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                            {youtubeResults.map((result, index) => {
+                                                                const statusMeta = getAudienceYouTubeResultMeta(result);
+                                                                return (
+                                                                    <button
+                                                                        key={`audience-youtube:${result.videoId || index}`}
+                                                                        type="button"
+                                                                        onClick={() => handleAudienceYouTubeResultSelect(result)}
+                                                                        className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-[linear-gradient(180deg,rgba(34,18,59,0.96),rgba(20,11,42,0.98))] text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)] transition hover:border-cyan-300/35"
+                                                                    >
+                                                                        <div className="flex gap-3 p-3">
+                                                                            <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-black/35">
+                                                                                {result.artworkUrl100 ? (
+                                                                                    <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
+                                                                                ) : null}
+                                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
+                                                                                <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-100">
+                                                                                    #{index + 1}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="min-w-0 flex-1">
+                                                                                <div className="flex items-start justify-between gap-3">
+                                                                                    <div className="min-w-0">
+                                                                                        <div className="line-clamp-2 text-base font-black leading-tight text-white">{result.trackName}</div>
+                                                                                        <div className="mt-1 truncate text-sm text-zinc-300">{result.artistName}</div>
+                                                                                    </div>
+                                                                                    <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white">
+                                                                                        <i className="fa-solid fa-plus"></i>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                                                    <span className="rounded-full border border-red-300/35 bg-red-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-100">
+                                                                                        YouTube
+                                                                                    </span>
+                                                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
+                                                                                        {statusMeta.label}
+                                                                                    </span>
+                                                                                    {result.durationSec > 0 ? (
+                                                                                        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                                                                            {Math.max(1, Math.round(result.durationSec / 60))} min
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </div>
+                                                                                <div className="mt-3 text-xs text-zinc-400">
+                                                                                    {statusMeta.detail}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                            {room?.hideNonEmbeddableYouTube === true
+                                                                ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
+                                                                : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )
+                                            </div>
                                         ) : enrichedCatalogResults.length > 0 ? (
                                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                                                 {enrichedCatalogResults.map((r, index) => {
@@ -11973,7 +12100,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     >
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleAudienceCatalogResultSelect(r)}
+                                                            onClick={() => handleAudienceCatalogPrimaryAction(r)}
                                                             className="group w-full text-left transition hover:border-cyan-300/45 hover:bg-[linear-gradient(180deg,rgba(46,24,73,0.98),rgba(24,13,48,0.98))]"
                                                         >
                                                             <div className="relative aspect-[0.94] overflow-hidden bg-black/35">
@@ -12073,24 +12200,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                     artistName: backingChoiceState.artist,
                                                                     artworkUrl100: backingChoiceState.artworkUrl
                                                                 },
-                                                                (() => {
-                                                                    const selectedBackingResolution = deriveAudienceBackingResolution({
-                                                                        hasBacking: true,
-                                                                        explicitResolutionStatus: option.resolutionStatus,
-                                                                        explicitResolutionLayer: option.resolutionLayer || option.layer || 'audience_selected',
-                                                                        unknownBackingPolicy,
-                                                                        trustedCandidate: isAudienceTrustedBackingCandidate(option)
-                                                                    });
-                                                                    return {
-                                                                        mediaUrl: option.mediaUrl,
-                                                                        trackSource: option.source || 'youtube',
-                                                                        durationSec: Number(option.duration || option.durationSec || 0),
-                                                                        allowTrack: true,
-                                                                        trackLabel: option.label || badge.label,
-                                                                        resolutionStatus: selectedBackingResolution.resolutionStatus,
-                                                                        resolutionLayer: selectedBackingResolution.resolutionLayer
-                                                                    };
-                                                                })()
+                                                                buildAudienceBackingRequestOptions(option)
                                                             )}
                                                             className="w-full rounded-2xl border border-white/10 bg-zinc-900/55 px-4 py-3 text-left"
                                                         >
@@ -12243,7 +12353,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <button
                                             id="song-search"
                                             type="button"
-                                            onClick={() => setCatalogSearchOpen(true)}
+                                            onClick={openAudienceCatalogSearch}
                                             className={`flex w-full items-center gap-3 border px-3 py-3 text-left text-base text-white ${isStreamlinedAudienceShell ? 'rounded-2xl border-cyan-300/20 bg-black/25 shadow-[0_10px_24px_rgba(0,0,0,0.2)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
                                         >
                                             <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
@@ -12377,7 +12487,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="space-y-2">
                                     <button
                                         type="button"
-                                        onClick={() => setCatalogSearchOpen(true)}
+                                        onClick={openAudienceCatalogSearch}
                                         className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-4 text-left text-base text-white ${isStreamlinedAudienceShell ? 'border-cyan-300/20 bg-black/25 shadow-[0_10px_24px_rgba(0,0,0,0.2)]' : 'border-zinc-700 bg-zinc-900/60'}`}
                                     >
                                         <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>

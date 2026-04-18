@@ -97,3 +97,53 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     "SingerApp should render the streamlined top nav outside the omnipresent stage gate so it stays visible when the stage is idle",
   );
 });
+
+test("SingerApp defaults guest backing rooms to YouTube search", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const preferredCatalogSearchMode = audienceManualBackingAllowed \? 'youtube' : 'catalog';/,
+    "SingerApp should derive a preferred audience search mode from the room backing policy",
+  );
+  assert.match(
+    source,
+    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[preferredCatalogSearchMode\]\);/,
+    "SingerApp should open the audience search sheet in the preferred mode instead of always starting in catalog",
+  );
+  assert.match(
+    source,
+    /if \(catalogSearchOpen\) return;\s*setCatalogSearchMode\(preferredCatalogSearchMode\);/,
+    "SingerApp should reset closed audience searches back to the preferred mode for the next open",
+  );
+  assert.match(
+    source,
+    /if \(audienceManualBackingAllowed \|\| catalogSearchMode !== 'youtube'\) return;\s*setCatalogSearchMode\('catalog'\);/,
+    "SingerApp should fall back to catalog mode if guest YouTube selection stops being allowed",
+  );
+  assert.match(
+    source,
+    /onClick=\{openAudienceCatalogSearch\}/,
+    "SingerApp should route audience search entry points through the preferred-mode opener",
+  );
+  assert.match(
+    source,
+    /if \(searchQ.length < 3\) \{\s*setResults\(\[\]\);\s*setCatalogResultsLoading\(false\);\s*return;\s*\}/,
+    "SingerApp should keep catalog song matching active for typed audience searches instead of gating it behind catalog-only mode",
+  );
+  assert.match(
+    source,
+    /Song matches/,
+    "SingerApp should show song matches in YouTube mode so guest-pick search starts with canonical song lookup context",
+  );
+  assert.match(
+    source,
+    /Direct YouTube Results/,
+    "SingerApp should still show direct YouTube karaoke hits in guest-pick mode",
+  );
+  assert.match(
+    source,
+    /const handleAudienceCatalogPrimaryAction = useCallback\(/,
+    "SingerApp should route catalog result presses through a YouTube-first audience action",
+  );
+});

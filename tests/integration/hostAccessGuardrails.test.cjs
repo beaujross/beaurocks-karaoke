@@ -12,6 +12,10 @@ const {
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const ADMIN_UID = "host-guard-admin";
 const USER_UID = "host-guard-user";
+const AUDIENCE_UID = "host-guard-audience";
+const ROOM_CODE = "GUARD1";
+const APP_ID = "bross-app";
+const ROOT = `artifacts/${APP_ID}/public/data`;
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -55,6 +59,11 @@ async function resetState() {
     name: "Guardrail User",
     subscription: { tier: "free" },
   }, { merge: true });
+  await db.doc(`users/${AUDIENCE_UID}`).set({
+    uid: AUDIENCE_UID,
+    name: "Guardrail Audience",
+    subscription: { tier: "free" },
+  }, { merge: true });
   await db.doc(`directory_roles/${ADMIN_UID}`).set({
     roles: ["directory_admin"],
   }, { merge: true });
@@ -68,6 +77,56 @@ async function grantPrivateHostAccess(uid) {
       notes: "integration host access grant",
     })
   );
+}
+
+async function grantRoomYoutubeAccessForAudience(uid) {
+  const roomOrgId = "org_guard_room";
+  await db.doc(`organizations/${roomOrgId}`).set({
+    orgId: roomOrgId,
+    name: "Guard Room Org",
+    ownerUid: ADMIN_UID,
+    status: "active",
+  }, { merge: true });
+  await db.doc(`organizations/${roomOrgId}/subscription/current`).set({
+    orgId: roomOrgId,
+    planId: "host_annual",
+    status: "active",
+    provider: "integration_test",
+  }, { merge: true });
+  await db.doc(`organizations/${roomOrgId}/entitlements/current`).set({
+    orgId: roomOrgId,
+    planId: "host_annual",
+    status: "active",
+    source: "integration_test",
+    capabilities: {
+      "api.youtube_data": true,
+    },
+  }, { merge: true });
+  await db.doc(`${ROOT}/rooms/${ROOM_CODE}`).set({
+    roomCode: ROOM_CODE,
+    orgId: roomOrgId,
+    hostUid: ADMIN_UID,
+    hostUids: [ADMIN_UID],
+  }, { merge: true });
+  await db.doc(`${ROOT}/room_users/${ROOM_CODE}_${uid}`).set({
+    roomCode: ROOM_CODE,
+    uid,
+    name: "Audience Member",
+  }, { merge: true });
+}
+
+async function grantHostScopedYoutubeAccessForAudience(uid) {
+  await grantPrivateHostAccess(ADMIN_UID);
+  await db.doc(`${ROOT}/rooms/${ROOM_CODE}`).set({
+    roomCode: ROOM_CODE,
+    hostUid: ADMIN_UID,
+    hostUids: [ADMIN_UID],
+  }, { merge: true });
+  await db.doc(`${ROOT}/room_users/${ROOM_CODE}_${uid}`).set({
+    roomCode: ROOM_CODE,
+    uid,
+    name: "Audience Member",
+  }, { merge: true });
 }
 
 async function expectHttpsError(run, expectedCode) {
@@ -133,6 +192,24 @@ async function run() {
       await expectHttpsError(
         () => youtubeSearch.run(
           requestFor(USER_UID, { query: "karaoke test" })
+        ),
+        "failed-precondition"
+      );
+    }],
+    ["room audience can reach youtube data api guardrail layer through room org entitlements", async () => {
+      await grantRoomYoutubeAccessForAudience(AUDIENCE_UID);
+      await expectHttpsError(
+        () => youtubeSearch.run(
+          requestFor(AUDIENCE_UID, { query: "karaoke test", roomCode: ROOM_CODE })
+        ),
+        "failed-precondition"
+      );
+    }],
+    ["room audience can reach youtube data api guardrail layer through host entitlements when room org is missing", async () => {
+      await grantHostScopedYoutubeAccessForAudience(AUDIENCE_UID);
+      await expectHttpsError(
+        () => youtubeSearch.run(
+          requestFor(AUDIENCE_UID, { query: "karaoke test", roomCode: ROOM_CODE })
         ),
         "failed-precondition"
       );
