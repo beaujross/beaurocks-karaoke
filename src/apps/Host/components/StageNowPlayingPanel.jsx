@@ -42,6 +42,9 @@ const StageNowPlayingPanel = ({
 }) => {
     const [showStageDetails, setShowStageDetails] = React.useState(false);
     const [showTimingAdvanced, setShowTimingAdvanced] = React.useState(false);
+    const [postPerformancePaceDraft, setPostPerformancePaceDraft] = React.useState(50);
+    const [postPerformancePaceDragging, setPostPerformancePaceDragging] = React.useState(false);
+    const [pendingPostPerformancePace, setPendingPostPerformancePace] = React.useState(null);
     const currentBackingUrl = String(currentMediaUrl || current?.mediaUrl || '').trim();
     const lastBackingUrl = String(lastPerformance?.mediaUrl || '').trim();
     const currentHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(currentBackingUrl);
@@ -72,26 +75,58 @@ const StageNowPlayingPanel = ({
         + normalizeSpeedPercent(recapBreakdownMs, { min: 3000, max: 12000 })
         + normalizeSpeedPercent(recapLeaderboardMs, { min: 3000, max: 12000 })
     ) / 5);
-    const postPerformancePaceLabel = postPerformancePace >= 68
-        ? 'Fast'
-        : postPerformancePace <= 32
-            ? 'Relaxed'
-            : 'Balanced';
-    const applyPostPerformancePace = React.useCallback((rawValue) => {
-        const pace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
+    const buildPostPerformanceTimingPatch = React.useCallback((rawValue, fallback = postPerformancePace) => {
+        const pace = normalizeTimingValue(rawValue, { fallback, min: 0, max: 100 });
         const scaleRange = (min, max, step = 1) => {
             const span = max - min;
             const scaled = max - ((pace / 100) * span);
             return Math.round(scaled / step) * step;
         };
-        updateRoom({
+        return {
             applauseWarmupSec: scaleRange(0, 8),
             applauseCountdownSec: scaleRange(1, 8),
             applauseMeasureSec: scaleRange(2, 10),
             performanceRecapBreakdownMs: scaleRange(3000, 12000, 1000),
             performanceRecapLeaderboardMs: scaleRange(3000, 12000, 1000),
-        });
-    }, [postPerformancePace, updateRoom]);
+        };
+    }, [postPerformancePace]);
+    const usingDraftPace = postPerformancePaceDragging || pendingPostPerformancePace !== null;
+    const effectivePostPerformancePace = usingDraftPace
+        ? normalizeTimingValue(postPerformancePaceDraft, { fallback: postPerformancePace, min: 0, max: 100 })
+        : postPerformancePace;
+    const effectiveTimingPatch = usingDraftPace
+        ? buildPostPerformanceTimingPatch(effectivePostPerformancePace, postPerformancePace)
+        : null;
+    const effectiveApplauseWarmupSec = effectiveTimingPatch?.applauseWarmupSec ?? applauseWarmupSec;
+    const effectiveApplauseCountdownSec = effectiveTimingPatch?.applauseCountdownSec ?? applauseCountdownSec;
+    const effectiveApplauseMeasureSec = effectiveTimingPatch?.applauseMeasureSec ?? applauseMeasureSec;
+    const effectiveRecapBreakdownMs = effectiveTimingPatch?.performanceRecapBreakdownMs ?? recapBreakdownMs;
+    const effectiveRecapLeaderboardMs = effectiveTimingPatch?.performanceRecapLeaderboardMs ?? recapLeaderboardMs;
+    const postPerformancePaceLabel = effectivePostPerformancePace >= 68
+        ? 'Fast'
+        : effectivePostPerformancePace <= 32
+            ? 'Relaxed'
+            : 'Balanced';
+    React.useEffect(() => {
+        if (pendingPostPerformancePace !== null && postPerformancePace === pendingPostPerformancePace) {
+            setPendingPostPerformancePace(null);
+        }
+        if (!postPerformancePaceDragging) {
+            setPostPerformancePaceDraft(postPerformancePace);
+        }
+    }, [pendingPostPerformancePace, postPerformancePace, postPerformancePaceDragging]);
+    const commitPostPerformancePace = React.useCallback(async (rawValue) => {
+        const nextPace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
+        setPostPerformancePaceDraft(nextPace);
+        setPostPerformancePaceDragging(false);
+        if (pendingPostPerformancePace === nextPace || nextPace === postPerformancePace) return;
+        setPendingPostPerformancePace(nextPace);
+        try {
+            await updateRoom(buildPostPerformanceTimingPatch(nextPace, postPerformancePace));
+        } catch (_error) {
+            setPendingPostPerformancePace(null);
+        }
+    }, [buildPostPerformanceTimingPatch, pendingPostPerformancePace, postPerformancePace, updateRoom]);
 
     const postPerformanceTimingCard = (
         <div className="mt-3 bg-black/30 border border-white/10 rounded-lg p-3">
@@ -133,10 +168,19 @@ const StageNowPlayingPanel = ({
                         min="0"
                         max="100"
                         step="1"
-                        value={postPerformancePace}
-                        onChange={(event) => applyPostPerformancePace(event.target.value)}
+                        value={effectivePostPerformancePace}
+                        onPointerDown={() => setPostPerformancePaceDragging(true)}
+                        onPointerUp={(event) => { void commitPostPerformancePace(event.currentTarget.value); }}
+                        onPointerCancel={() => setPostPerformancePaceDragging(false)}
+                        onChange={(event) => setPostPerformancePaceDraft(Number(event.target.value))}
+                        onBlur={(event) => { void commitPostPerformancePace(event.currentTarget.value); }}
+                        onKeyUp={(event) => {
+                            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+                                void commitPostPerformancePace(event.currentTarget.value);
+                            }
+                        }}
                         className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800"
-                        style={{ background: `linear-gradient(90deg, #22d3ee ${postPerformancePace}%, #27272a ${postPerformancePace}%)` }}
+                        style={{ background: `linear-gradient(90deg, #22d3ee ${effectivePostPerformancePace}%, #27272a ${effectivePostPerformancePace}%)` }}
                     />
                     <div className="mt-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
                         <span>Relaxed</span>
@@ -145,11 +189,11 @@ const StageNowPlayingPanel = ({
                     </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Warm-up {applauseWarmupSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Countdown {applauseCountdownSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Meter {applauseMeasureSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Recap {Math.round(recapBreakdownMs / 1000)}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Leaderboard {Math.round(recapLeaderboardMs / 1000)}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Warm-up {effectiveApplauseWarmupSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Countdown {effectiveApplauseCountdownSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Meter {effectiveApplauseMeasureSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Recap {Math.round(effectiveRecapBreakdownMs / 1000)}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Leaderboard {Math.round(effectiveRecapLeaderboardMs / 1000)}s</span>
                 </div>
             </div>
             {showTimingAdvanced ? (

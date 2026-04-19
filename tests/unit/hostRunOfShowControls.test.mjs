@@ -31,3 +31,37 @@ test("Run of show queue and board surfaces expose clear-show controls", () => {
   assert.match(directorPanelSource, /onClearRunOfShow,/);
   assert.match(directorPanelSource, />\s*Clear Show\s*</);
 });
+
+test("HostApp restores queue tools after stop and previews the audience app", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const handleStopRunOfShowAndRestoreQueueTools = useCallback\(async \(\) => \{/);
+  assert.match(source, /setShowAddForm\(true\);/);
+  assert.match(source, /setShowQueueList\(true\);/);
+  assert.match(source, /normalizeAudiencePreviewMode/);
+  assert.match(source, /audienceLaunchUrl=\{activeRoomLaunchUrls\.audienceUrl\}/);
+  assert.match(source, /title="Audience app live preview"/);
+  assert.match(source, /const shouldApplyRunOfShowRemoteSync = Date\.now\(\) - runOfShowLocalEditAtRef\.current > 1500;/);
+});
+
+test("Run-of-show performance launch resolves real media duration before seeding auto-end timing", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /await resolveHostDurationForUrl\(nextMediaUrl, isAudioUrl\(nextMediaUrl\)\)\.catch\(\(\) => null\)/);
+  assert.match(source, /queueSong\.performanceStartedDurationSec = performanceDurationSec;/);
+  assert.match(source, /currentPerformanceMeta:\s*\{[\s\S]*durationSec:\s*performanceDurationSec,/);
+});
+
+test("Run-of-show automation respects room auto mode and pauses for missing singers", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const runOfShowAutomationEnabled = isRunOfShowRoom && \(runOfShowPolicy\?\.defaultAutomationMode \|\| 'auto'\) !== 'manual';/);
+  assert.match(source, /const maybePauseRunOfShowAutomationForMissingSinger = useCallback\(async \(\) => \{/);
+  assert.match(source, /const maybeResumeRunOfShowAutomationAfterSingerReady = useCallback\(async \(\) => \{/);
+  assert.match(source, /getRunOfShowAutomationPauseState\(\{/);
+  assert.match(source, /automationStatus:\s*pauseState\.status,/);
+  assert.match(source, /toast\(pauseState\.detail \|\| 'Automation paused while the next performance waits on a singer\.'\);/);
+  assert.match(source, /String\(runOfShowDirector\?\.automationStatus \|\| ''\)\.trim\(\)\.toLowerCase\(\) !== 'waiting_for_performer'/);
+  assert.match(source, /automationPaused:\s*false,/);
+  assert.match(source, /toast\('Singer ready\. Automation resumed\.'\);/);
+});

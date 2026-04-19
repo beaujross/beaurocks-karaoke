@@ -6,9 +6,11 @@ import {
   RUN_OF_SHOW_PROGRAM_MODES,
   RUN_OF_SHOW_PERFORMER_MODES,
   buildRunOfShowQueueDocId,
+  getRunOfShowAutomationPauseState,
   getRunOfShowBlockedActionLabel,
   getRunOfShowAdvanceMode,
   getRunOfShowHostAdvanceMinSec,
+  getRunOfShowHudState,
   createRunOfShowItem,
   createDefaultRunOfShowDirector,
   getRunOfShowOperatorRole,
@@ -243,6 +245,69 @@ test("runOfShowDirector operating hints reflect blocked policy decisions", () =>
 
   assert.match(getRunOfShowBlockedActionLabel(readiness, item, policy), /pull a queue-ready replacement/i);
   assert.match(getRunOfShowOperatingHint({ item, readiness, policy }), /pull a queue-ready replacement/i);
+});
+
+test("runOfShowDirector derives auto-pause state when the next performance is waiting on a singer", () => {
+  const policy = normalizeRunOfShowPolicy({
+    noShowPolicy: "pull_from_queue",
+  });
+  const pendingApprovalItem = createRunOfShowItem("performance", {
+    performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+    title: "Open Slot",
+    songTitle: "Dreams",
+    backingPlan: {
+      sourceType: "youtube",
+      youtubeId: "abc123xyz89",
+      approvalStatus: "approved",
+      playbackReady: true,
+    },
+  });
+  const missingSingerItem = createRunOfShowItem("performance", {
+    title: "Featured Guest",
+    songTitle: "Dreams",
+    backingPlan: {
+      sourceType: "youtube",
+      youtubeId: "abc123xyz89",
+      approvalStatus: "approved",
+      playbackReady: true,
+    },
+  });
+
+  assert.deepEqual(
+    getRunOfShowAutomationPauseState({
+      item: pendingApprovalItem,
+      policy,
+      pendingSubmissionCount: 2,
+    }),
+    {
+      status: "waiting_for_performer",
+      detail: "Approve one of the 2 pending submissions or assign a performer manually.",
+    },
+  );
+  assert.match(
+    getRunOfShowAutomationPauseState({
+      item: missingSingerItem,
+      policy,
+      pendingSubmissionCount: 0,
+    }).detail,
+    /pull a queue-ready replacement/i,
+  );
+});
+
+test("runOfShowDirector paused hud surfaces the active issue detail", () => {
+  assert.deepEqual(
+    getRunOfShowHudState({
+      hasPlan: true,
+      runEnabled: true,
+      automationPaused: true,
+      issueDetail: "Approve the next singer before auto can continue.",
+    }),
+    {
+      title: "Needs attention",
+      detail: "Approve the next singer before auto can continue.",
+      tone: "warning",
+    },
+  );
 });
 
 test("runOfShowDirector progression decisions block timed completion when host advance is required", () => {

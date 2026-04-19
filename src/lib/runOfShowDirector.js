@@ -230,6 +230,37 @@ export const getRunOfShowOperatingHint = ({ item = {}, readiness = null, policy 
         : 'This room defaults to auto-when-ready progression with host override.';
 };
 
+export const getRunOfShowAutomationPauseState = ({
+    item = null,
+    policy = {},
+    pendingSubmissionCount = 0
+} = {}) => {
+    const safeItem = item && typeof item === 'object'
+        ? createRunOfShowItem(item?.type || 'buffer', item)
+        : null;
+    if (!safeItem || cleanText(safeItem?.type).toLowerCase() !== 'performance') return null;
+
+    const readiness = getRunOfShowItemReadiness(safeItem, { pendingSubmissionCount });
+    const blockerKeys = new Set(
+        (Array.isArray(readiness?.blockers) ? readiness.blockers : [])
+            .map((entry) => cleanText(entry?.key).toLowerCase())
+            .filter(Boolean)
+    );
+    const waitingOnSinger = blockerKeys.has('performer_missing')
+        || blockerKeys.has('performer_open_slot')
+        || blockerKeys.has('performer_submission_pending');
+    if (!waitingOnSinger) return null;
+
+    const detail = blockerKeys.has('performer_submission_pending')
+        ? (cleanText(readiness?.summary) || 'The next block still needs singer approval.')
+        : (cleanText(getRunOfShowBlockedActionLabel(readiness, safeItem, policy)) || 'The next performance is waiting on a singer.');
+
+    return {
+        status: 'waiting_for_performer',
+        detail
+    };
+};
+
 export const createDefaultBackingPlan = (overrides = {}) => ({
     sourceType: ALLOWED_BACKING_SOURCES.has(cleanText(overrides.sourceType).toLowerCase())
         ? cleanText(overrides.sourceType).toLowerCase()
@@ -810,7 +841,7 @@ export const getRunOfShowHudState = ({
     if (automationPaused) {
         return {
             title: 'Needs attention',
-            detail: 'Automation is paused. Resume when the room is ready.',
+            detail: cleanText(issueDetail) || 'Automation is paused. Resume when the room is ready.',
             tone: 'warning'
         };
     }

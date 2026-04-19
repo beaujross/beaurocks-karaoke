@@ -25,6 +25,11 @@ export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
         startsAtLocal: AAHF_KICKOFF_STARTS_AT_LOCAL,
         startsAtMs: AAHF_KICKOFF_STARTS_AT_MS,
         description: 'AAHF kickoff defaults for Friday, May 1, 2026 from 7 PM to midnight, with explicit lyrics opening after 9 PM.',
+        setupHighlights: Object.freeze([
+            'Loads the AAHF logo and streamlined audience theme.',
+            'Turns off marquee messages and pop-up trivia.',
+            'Seeds a run of show with full-screen WYR and trivia breaks.'
+        ]),
     }),
 ]);
 
@@ -33,6 +38,18 @@ export const getRoomEventProfileMeta = (profileId = '') => (
 );
 
 export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
+    const roundOneSlots = Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
+        title: `Round One Slot ${index + 1}`,
+        plannedDurationSec: 210,
+        performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+        status: 'blocked',
+    }, now + index + 2));
+    const roundTwoSlots = Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
+        title: `Round Two Slot ${index + 1}`,
+        plannedDurationSec: 210,
+        performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+        status: 'blocked',
+    }, now + index + 20));
     const items = resequenceRunOfShowItems([
         createRunOfShowItem('intro', {
             title: 'AAHF Kick-Off',
@@ -66,12 +83,59 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 accentTheme: 'cyan'
             }
         }, now + 1),
-        ...Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
-            title: `Round One Slot ${index + 1}`,
-            plannedDurationSec: 210,
-            performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
-            status: 'blocked',
-        }, now + index + 2)),
+        roundOneSlots[0],
+        roundOneSlots[1],
+        createRunOfShowItem('would_you_rather_break', {
+            title: 'Crowd Reset Vote',
+            plannedDurationSec: 35,
+            status: 'ready',
+            modeLaunchPlan: {
+                modeKey: 'wyr',
+                launchConfig: {
+                    question: 'Would you rather open the next set with a power ballad or a singalong anthem?',
+                    options: ['Power ballad', 'Singalong anthem'],
+                    durationSec: 35,
+                    points: 50,
+                    autoReveal: true,
+                }
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'would_you_rather_break',
+                headline: 'Crowd vote break',
+                subhead: 'Reset the room between singers without falling back to pop-up trivia.',
+                accentTheme: 'emerald'
+            }
+        }, now + 4),
+        roundOneSlots[2],
+        roundOneSlots[3],
+        createRunOfShowItem('trivia_break', {
+            title: 'Karaoke Quick Hit',
+            plannedDurationSec: 40,
+            status: 'ready',
+            modeLaunchPlan: {
+                modeKey: 'trivia_pop',
+                launchConfig: {
+                    question: 'In karaoke, what does a duet mean?',
+                    options: [
+                        'Two singers share one song',
+                        'The same singer repeats the chorus',
+                        'The audience picks the next track'
+                    ],
+                    correctIndex: 0,
+                    durationSec: 40,
+                    points: 100,
+                    autoReveal: true,
+                }
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'trivia_break',
+                headline: 'Full-screen trivia break',
+                subhead: 'Keep the room engaged while the next singer gets to the stage.',
+                accentTheme: 'violet'
+            }
+        }, now + 7),
         createRunOfShowItem('announcement', {
             title: 'Support The Show',
             plannedDurationSec: 35,
@@ -123,12 +187,32 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 momentCueAutoFire: true,
             }
         }, now + 12),
-        ...Array.from({ length: 4 }, (_, index) => createRunOfShowItem('performance', {
-            title: `Round Two Slot ${index + 1}`,
-            plannedDurationSec: 210,
-            performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
-            status: 'blocked',
-        }, now + index + 20)),
+        roundTwoSlots[0],
+        roundTwoSlots[1],
+        createRunOfShowItem('would_you_rather_break', {
+            title: 'Encore Energy Check',
+            plannedDurationSec: 35,
+            status: 'ready',
+            modeLaunchPlan: {
+                modeKey: 'wyr',
+                launchConfig: {
+                    question: 'Would you rather close with a throwback anthem or a big modern singalong?',
+                    options: ['Throwback anthem', 'Modern singalong'],
+                    durationSec: 35,
+                    points: 50,
+                    autoReveal: true,
+                }
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'would_you_rather_break',
+                headline: 'Encore vote',
+                subhead: 'Quick room pulse check before the last two slots.',
+                accentTheme: 'cyan'
+            }
+        }, now + 22),
+        roundTwoSlots[2],
+        roundTwoSlots[3],
         createRunOfShowItem('closing', {
             title: 'Finale Push',
             plannedDurationSec: 60,

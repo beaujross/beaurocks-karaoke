@@ -109,6 +109,7 @@ const LOBBY_REACTION_LABELS = {
 
 const getLobbyReactionLabel = (type = '') => {
     const key = String(type || '').trim().toLowerCase();
+    if (key.startsWith('vote_')) return 'Vote';
     if (LOBBY_REACTION_LABELS[key]) return LOBBY_REACTION_LABELS[key];
     if (!key) return 'Reaction';
     return key
@@ -116,6 +117,8 @@ const getLobbyReactionLabel = (type = '') => {
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
 };
+
+const isVoteReactionType = (type = '') => String(type || '').trim().toLowerCase().startsWith('vote_');
 
 const decodeUriComponentSafe = (value = '') => {
     try {
@@ -2634,7 +2637,40 @@ const PublicTV = ({ roomCode }) => {
                     const d = c.doc.data();
                     // Filter old reactions (prevent flood on reload)
                     if(nowMs() - (d.timestamp?.seconds * 1000 || nowMs()) < 5000) {
-                        if (typeof d.type === 'string' && d.type.startsWith('vote_')) {
+                        if (isVoteReactionType(d.type)) {
+                            const count = Math.min(Math.max(1, Number(d.count || 1)), 3);
+                            const totalCount = Math.max(1, Number(d.count || 1));
+                            for (let i = 0; i < count; i += 1) {
+                                const left = Math.random() * 80 + 10;
+                                const motion = getTvReactionMotionSpec({ type: d.type, id: c.doc.id, index: i });
+                                setTimeout(() => {
+                                    setReactions(prev => [...prev, {
+                                        id: `${c.doc.id}_${i}`,
+                                        ...d,
+                                        left,
+                                        emojiChar: d.avatar || emoji(0x1F5F3, 0xFE0F),
+                                        labelOverride: 'Vote',
+                                        isVoteReaction: true,
+                                        motionVariant: motion.variant,
+                                        motionDurationMs: motion.durationMs,
+                                        motionDriftX: motion.driftX,
+                                        motionRiseY: motion.riseY,
+                                        motionRotateDeg: motion.rotateDeg,
+                                        motionScaleBoost: motion.scaleBoost,
+                                        points: 0,
+                                        basePoints: 0,
+                                        multiplier: 1,
+                                        createdAtMs: nowMs()
+                                    }]);
+                                }, i * 80);
+                            }
+                            pushLobbyLiveEvent({
+                                id: `reaction-vote-${c.doc.id}`,
+                                avatar: d.avatar || emoji(0x1F5F3, 0xFE0F),
+                                user: d.userName || d.user || 'Guest',
+                                text: `cast a ${totalCount > 1 ? `${totalCount}x ` : ''}vote`,
+                                timestampMs: nowMs()
+                            });
                             return;
                         }
                         if (d.type === 'photo') {
@@ -4953,13 +4989,15 @@ const PublicTV = ({ roomCode }) => {
     const strobeRemaining = Math.max(0, Math.ceil((strobeEndsAt - nowMs()) / 1000));
     const strobeMeter = Math.min(100, Math.round(strobeTotalTaps * 2));
     const vibeReactionEvents = useMemo(
-        () => reactions.map((reaction, idx) => ({
-            type: reaction?.type || '',
-            count: Math.max(1, Number(reaction?.count || 1)),
-            uid: reaction?.uid || `${reaction?.userName || reaction?.user || 'guest'}_${idx}`,
-            userName: reaction?.userName || reaction?.user || 'Guest',
-            timestampMs: toEpochMs(reaction?.timestamp) || nowMs()
-        })),
+        () => reactions
+            .filter((reaction) => reaction?.isVoteReaction !== true)
+            .map((reaction, idx) => ({
+                type: reaction?.type || '',
+                count: Math.max(1, Number(reaction?.count || 1)),
+                uid: reaction?.uid || `${reaction?.userName || reaction?.user || 'guest'}_${idx}`,
+                userName: reaction?.userName || reaction?.user || 'Guest',
+                timestampMs: toEpochMs(reaction?.timestamp) || nowMs()
+            })),
         [reactions]
     );
     const strobeModeEvents = useMemo(() => {
@@ -8288,7 +8326,7 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                             </div>
                             <div className="featured-reaction-emoji shrink-0 text-[3.8rem] leading-none md:text-[5.6rem] drop-shadow-[0_0_20px_rgba(255,255,255,0.18)]">
-                                {getEmojiChar(featuredReaction.type)}
+                                {featuredReaction.emojiChar || getEmojiChar(featuredReaction.type)}
                             </div>
                         </div>
                     </div>
@@ -8313,7 +8351,7 @@ const PublicTV = ({ roomCode }) => {
                         )}
                         <div className="relative flex flex-col items-center">
                             <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
-                                {getEmojiChar(r.type)}
+                                {r.emojiChar || getEmojiChar(r.type)}
                                 {r.isVip && (
                                     <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                 )}
@@ -8325,11 +8363,13 @@ const PublicTV = ({ roomCode }) => {
                                     {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
                                 </div>
                                 <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
-                                    {getLobbyReactionLabel(r.type)}
+                                    {r.labelOverride || getLobbyReactionLabel(r.type)}
                                 </div>
-                                <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
-                                    +{r.points || 0} pts
-                                </div>
+                                {Number(r.points || 0) > 0 && (
+                                    <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
+                                        +{r.points || 0} pts
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

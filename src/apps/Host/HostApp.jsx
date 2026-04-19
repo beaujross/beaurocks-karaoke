@@ -194,6 +194,7 @@ import {
     createRunOfShowItem,
     getNextRunOfShowItem,
     getRunOfShowItemLabel,
+    getRunOfShowAutomationPauseState,
     getRunOfShowLiveItem,
     getRunOfShowHostAdvanceMinSec,
     getRunOfShowStagedItem,
@@ -1387,23 +1388,24 @@ const mergeMissionControlParty = (missionControl = {}, partyPatch = {}) => {
 const HOST_SETTINGS_SECTIONS = [
     {
         id: 'ops',
-        label: 'Operations',
+        label: 'Night Setup',
         items: [
             {
                 key: 'general',
-                label: 'Room Setup',
+                label: 'Night Setup',
                 icon: 'fa-sliders',
                 ownership: 'config',
-                description: 'Host identity, queue policy, room defaults, and operational controls.',
-                keywords: 'queue room tips presets identity'
+                description: 'Event preset, room identity, queue defaults, screen behavior, and between-song setup.',
+                keywords: 'night setup room queue branding screens breaks event preset'
             },
             {
                 key: 'automations',
                 label: 'Automation',
                 icon: 'fa-bolt',
                 ownership: 'config',
-                description: 'Auto-DJ, background behavior, and one-click night profiles.',
-                keywords: 'auto dj automation presets profile'
+                hiddenInAdminNav: true,
+                description: 'Auto-DJ, host assist, auto-advance, and other room automation rules.',
+                keywords: 'automation auto dj host assist auto advance profiles'
             }
         ]
     },
@@ -1439,23 +1441,24 @@ const HOST_SETTINGS_SECTIONS = [
     },
     {
         id: 'media',
-        label: 'Media & Displays',
+        label: 'Screens & Media',
         items: [
             {
                 key: 'media',
-                label: 'Playback',
+                label: 'Screens + Playback',
                 icon: 'fa-tv',
                 ownership: 'config',
-                description: 'Media pipelines, uploads, and playback source controls.',
-                keywords: 'media visuals playback upload youtube apple music'
+                description: 'TV display behavior, uploads, playback sources, and audience-facing screen defaults.',
+                keywords: 'screens tv media visuals playback upload youtube apple music'
             },
             {
                 key: 'marquee',
-                label: 'Marquee',
+                label: 'Overlays',
                 icon: 'fa-panorama',
                 ownership: 'config',
-                description: 'Marquee timing, rotation content, and idle messaging behavior.',
-                keywords: 'marquee design overlay idle message'
+                hiddenInAdminNav: true,
+                description: 'Marquee timing, overlay messaging, and idle-screen content.',
+                keywords: 'marquee overlays idle messages screen'
             }
         ]
     },
@@ -1467,9 +1470,10 @@ const HOST_SETTINGS_SECTIONS = [
                 key: 'gamepad',
                 label: 'Live Controls',
                 icon: 'fa-gamepad',
-                ownership: 'live',
-                description: 'Mode-specific host actions while games and specials are running.',
-                keywords: 'games mode gamepad launchpad doodle trivia bingo bracket'
+                ownership: 'handoff',
+                hiddenInAdminNav: true,
+                description: 'Launch and run games from the live surfaces, not from Admin.',
+                keywords: 'games mode gamepad launchpad doodle trivia bingo bracket handoff'
             }
         ]
     },
@@ -1489,15 +1493,16 @@ const HOST_SETTINGS_SECTIONS = [
     },
     {
         id: 'advanced',
-        label: 'Advanced Tools',
+        label: 'Diagnostics',
         items: [
             {
                 key: 'live_effects',
                 label: 'Live Effects',
                 icon: 'fa-wand-magic-sparkles',
-                ownership: 'fallback',
-                description: 'Special effects, vibe moments, and crowd-response controls.',
-                keywords: 'effects vibe storm beat drop soundboard'
+                ownership: 'handoff',
+                hiddenInAdminNav: true,
+                description: 'Live effects now run from the live deck. This page is a handoff and recovery surface.',
+                keywords: 'effects vibe storm beat drop soundboard handoff live deck'
             },
             {
                 key: 'qa',
@@ -1527,13 +1532,22 @@ const SETTINGS_OWNERSHIP_META = Object.freeze({
         label: 'Live',
         className: 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
     },
+    handoff: {
+        label: 'Handoff',
+        className: 'border-amber-400/35 bg-amber-500/10 text-amber-100'
+    },
     fallback: {
         label: 'Fallback',
         className: 'border-amber-400/35 bg-amber-500/10 text-amber-100'
     }
 });
+const isSettingsNavVisible = (item = {}) => item?.hiddenInAdminNav !== true;
 const ADMIN_WORKSPACE_VIEWS = HOST_WORKSPACE_VIEWS.filter((view) =>
-    HOST_WORKSPACE_SECTIONS.some((section) => section.view === view.id && !!SECTION_TO_SETTINGS_TAB[section.id])
+    view.id !== 'games'
+    && HOST_WORKSPACE_SECTIONS.some((section) => {
+        const mappedTab = SECTION_TO_SETTINGS_TAB[section.id];
+        return section.view === view.id && !!mappedTab && isSettingsNavVisible(HOST_SETTINGS_META[mappedTab]);
+    })
 );
 
 const loadMusicKitScript = () => new Promise((resolve, reject) => {
@@ -3449,11 +3463,17 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     );
 };
 
+const normalizeAudiencePreviewMode = (value = '') => {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (normalized === 'live_tv' || normalized === 'live_audience') return 'live_audience';
+    return 'thumbnail';
+};
+
 const AudienceMiniPreview = ({
     room,
     roomCode,
-    tvBase,
-    tvLaunchUrl = '',
+    audienceBase,
+    audienceLaunchUrl = '',
     currentSong,
     queueCount,
     collapsed = false,
@@ -3461,7 +3481,6 @@ const AudienceMiniPreview = ({
     previewSize = 'md',
     onSetPreviewMode,
     onSetPreviewSize,
-    allowLiveViewport = false,
     onToggleCollapsed,
     onHide
 }) => {
@@ -3486,12 +3505,10 @@ const AudienceMiniPreview = ({
     };
     const modeLabel = modeLabelMap[room?.activeMode] || (room?.activeMode || 'Karaoke');
     const layoutLabel = room?.layoutMode || 'standard';
-    const viewHref = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${roomCode}&mode=tv`;
-    const liveViewportHref = useMemo(() => {
-        const separator = viewHref.includes('?') ? '&' : '?';
-        return `${viewHref}${separator}hostPreview=1&previewMuted=1`;
-    }, [viewHref]);
-    const liveViewportEnabled = allowLiveViewport && previewMode === 'live_tv';
+    const normalizedPreviewMode = normalizeAudiencePreviewMode(previewMode);
+    const viewHref = String(audienceLaunchUrl || '').trim() || `${audienceBase}?room=${encodeURIComponent(roomCode)}`;
+    const liveViewportHref = useMemo(() => viewHref, [viewHref]);
+    const liveViewportEnabled = normalizedPreviewMode === 'live_audience';
     const resolvedPreviewSize = liveViewportEnabled && previewSize === 'sm' ? 'md' : previewSize;
     const previewWidthClass = ({
         sm: 'w-[340px]',
@@ -3504,32 +3521,30 @@ const AudienceMiniPreview = ({
                 <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 border-b border-white/10 bg-black/45">
                     <div className="min-w-0 flex items-center gap-2">
                         <div className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100">
-                            TV
+                            Audience
                         </div>
                         <div className="min-w-0">
                             <div className="truncate text-[10px] uppercase tracking-[0.18em] text-zinc-500">Preview</div>
-                            <div className="truncate text-[11px] font-semibold text-cyan-200">{modeLabel}</div>
+                            <div className="truncate text-[11px] font-semibold text-cyan-200">{liveViewportEnabled ? 'Singer App' : modeLabel}</div>
                         </div>
-                        {allowLiveViewport ? (
-                            <div className="flex shrink-0 items-center rounded-full border border-white/10 bg-black/35 p-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => onSetPreviewMode?.('thumbnail')}
-                                    className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${previewMode !== 'live_tv' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
-                                    title="Use the light state-synced preview"
-                                >
-                                    Thumb
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onSetPreviewMode?.('live_tv')}
-                                    className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${previewMode === 'live_tv' ? 'bg-violet-500/18 text-violet-100' : 'text-zinc-400'}`}
-                                    title="Mount a live, muted Public TV viewport"
-                                >
-                                    Live TV
-                                </button>
-                            </div>
-                        ) : null}
+                        <div className="flex shrink-0 items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                            <button
+                                type="button"
+                                onClick={() => onSetPreviewMode?.('thumbnail')}
+                                className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${normalizedPreviewMode === 'thumbnail' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
+                                title="Use the lightweight summary preview"
+                            >
+                                Thumb
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onSetPreviewMode?.('live_audience')}
+                                className={`min-w-[72px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${liveViewportEnabled ? 'bg-violet-500/18 text-violet-100' : 'text-zinc-400'}`}
+                                title="Mount the live audience app preview"
+                            >
+                                Live App
+                            </button>
+                        </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                         <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
@@ -3544,7 +3559,7 @@ const AudienceMiniPreview = ({
                                     onClick={() => onSetPreviewSize?.(key)}
                                     disabled={liveViewportEnabled && key === 'sm'}
                                     className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'} ${(liveViewportEnabled && key === 'sm') ? 'cursor-not-allowed opacity-35' : ''}`}
-                                    title={liveViewportEnabled && key === 'sm' ? 'Small is disabled in live TV mode' : `Set preview size ${label}`}
+                                    title={liveViewportEnabled && key === 'sm' ? 'Small is disabled in live app mode' : `Set preview size ${label}`}
                                 >
                                     {label}
                                 </button>
@@ -3562,7 +3577,7 @@ const AudienceMiniPreview = ({
                             target="_blank"
                             rel="noopener noreferrer"
                             className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 py-1 text-[10px]`}
-                            title="Open full TV output"
+                            title="Open full audience app"
                         >
                             <i className="fa-solid fa-up-right-from-square"></i>
                         </a>
@@ -3584,7 +3599,7 @@ const AudienceMiniPreview = ({
                             {liveViewportEnabled ? (
                                 <iframe
                                     src={liveViewportHref}
-                                    title="Public TV live preview"
+                                    title="Audience app live preview"
                                     className={`absolute bg-black pointer-events-none ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[0.9rem]' : 'inset-0 h-full w-full'}`}
                                     loading="lazy"
                                     referrerPolicy="strict-origin-when-cross-origin"
@@ -3592,20 +3607,20 @@ const AudienceMiniPreview = ({
                                 />
                             ) : room?.activeMode && room.activeMode !== 'karaoke' ? (
                                 <div className="absolute inset-0 p-3 flex flex-col justify-between">
-                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Live Experience</div>
+                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Audience Experience</div>
                                     <div className="text-lg font-bebas text-cyan-300 leading-none">{modeLabel}</div>
                                     <div className="text-[11px] text-zinc-200">
                                         {room?.activeMode === 'trivia_pop' && room?.triviaQuestion?.q ? room.triviaQuestion.q : null}
                                         {room?.activeMode === 'wyr' && room?.wyrData?.question ? room.wyrData.question : null}
                                         {room?.activeMode === 'bingo'
-                                            ? `Board: ${room?.bingoSize || 5}x${room?.bingoSize || 5} • TV ${room?.bingoShowTv === false ? 'off' : 'on'}`
+                                            ? `Board: ${room?.bingoSize || 5}x${room?.bingoSize || 5} | phones live`
                                             : null}
                                     </div>
                                     <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">Layout {layoutLabel}</div>
                                 </div>
                             ) : currentSong ? (
                                 <div data-feature-id="host-now-performing-card" className="absolute inset-0 p-3 flex flex-col justify-between">
-                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Now Performing</div>
+                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Audience Live View</div>
                                     <div className="flex items-center gap-2 min-w-0">
                                         {currentSong.albumArtUrl ? (
                                             <img src={currentSong.albumArtUrl} alt="Now playing art" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
@@ -3618,22 +3633,22 @@ const AudienceMiniPreview = ({
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
-                                        <span className={`px-2 py-1 rounded-full border ${room?.showLyricsTv ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-zinc-600 text-zinc-500'}`}>Lyrics</span>
-                                        <span className={`px-2 py-1 rounded-full border ${room?.showVisualizerTv ? 'border-cyan-400/40 text-cyan-200 bg-cyan-500/10' : 'border-zinc-600 text-zinc-500'}`}>Visualizer</span>
+                                        <span className="px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-200 bg-cyan-500/10">Request</span>
+                                        <span className="px-2 py-1 rounded-full border border-violet-400/40 text-violet-200 bg-violet-500/10">Vote</span>
                                         <span className="px-2 py-1 rounded-full border border-white/15 text-zinc-300">Queue {queueCount}</span>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="absolute inset-0 p-3 flex flex-col items-center justify-center text-center">
                                     <div className="text-2xl">{EMOJI.mic}</div>
-                                    <div className="text-sm text-zinc-200 mt-2 font-bold">Stage Open</div>
+                                    <div className="text-sm text-zinc-200 mt-2 font-bold">Audience App Ready</div>
                                     <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{roomCode}</div>
                                 </div>
                             )}
                         </div>
                         <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
-                            <span>{liveViewportEnabled ? 'Read-only preview' : 'Thumbnail preview'}</span>
-                            <span>{liveViewportEnabled ? `Muted • ${resolvedPreviewSize.toUpperCase()}` : `Queue ${queueCount}`}</span>
+                            <span>{liveViewportEnabled ? 'Read-only audience app' : 'Audience summary'}</span>
+                            <span>{liveViewportEnabled ? `${resolvedPreviewSize.toUpperCase()} viewport` : `Queue ${queueCount}`}</span>
                         </div>
                     </div>
                 )}
@@ -5439,6 +5454,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             autoCollapsedRunOfShowAddFormRef.current = false;
         }
     }, [hasRunOfShowQueueWork, runOfShowEnabled, setShowAddForm, showAddForm]);
+    const handleStopRunOfShowAndRestoreQueueTools = useCallback(async () => {
+        const result = await onStopRunOfShow?.();
+        autoCollapsedRunOfShowAddFormRef.current = false;
+        setShowAddForm(true);
+        setShowQueueList(true);
+        return result;
+    }, [onStopRunOfShow, setShowAddForm, setShowQueueList]);
 
     const addToQueueSection = (
         <div className="p-3 border-b border-white/10 bg-black/20 relative">
@@ -5502,7 +5524,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     onStartShow={onStartRunOfShow}
                     onAdvance={onAdvanceRunOfShow}
                     onRewind={onRewindRunOfShow}
-                    onStop={onStopRunOfShow}
+                    onStop={handleStopRunOfShowAndRestoreQueueTools}
                     onClear={onClearRunOfShow}
                     onToggleAutomationPause={onToggleRunOfShowPause}
                     styles={STYLES}
@@ -6948,11 +6970,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const [audiencePreviewMode, setAudiencePreviewMode] = useState(() => {
         try {
-            if (typeof window === 'undefined') return 'thumbnail';
+            if (typeof window === 'undefined') return 'live_audience';
             const saved = String(localStorage.getItem('bross_host_audience_preview_mode') || '').trim().toLowerCase();
-            return saved === 'live_tv' ? 'live_tv' : 'thumbnail';
+            return saved ? normalizeAudiencePreviewMode(saved) : 'live_audience';
         } catch {
-            return 'thumbnail';
+            return 'live_audience';
         }
     });
     const [audiencePreviewSize, setAudiencePreviewSize] = useState(() => {
@@ -7479,6 +7501,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const runOfShowAutoPrepareCooldownUntilRef = useRef(0);
     const runOfShowAutoStartCooldownUntilRef = useRef(0);
     const runOfShowAutoCompleteKeyRef = useRef('');
+    const runOfShowAutoPauseKeyRef = useRef('');
     const runOfShowPerformanceHandledRef = useRef('');
     const runOfShowPerformanceIntroTimerRef = useRef(null);
     const runOfShowPendingPerformanceIntroRef = useRef({ itemId: '', queueDocId: '' });
@@ -7489,6 +7512,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         [runOfShowDirectorState]
     );
     const isRunOfShowRoom = runOfShowEnabled && programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
+    const runOfShowAutomationEnabled = isRunOfShowRoom && (runOfShowPolicy?.defaultAutomationMode || 'auto') !== 'manual';
     const runOfShowLiveItem = useMemo(() => getRunOfShowLiveItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowStagedItem = useMemo(() => getRunOfShowStagedItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowNextItem = useMemo(() => getNextRunOfShowItem(runOfShowDirector), [runOfShowDirector]);
@@ -7755,10 +7779,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             mediaUrl,
             appleMusicId,
             youtubeId: youtubeId || parseYouTubeVideoId(mediaUrl),
-            approvedSubmissionId: String(item?.approvedSubmissionId || '').trim(),
-            duration: fallbackDurationSec,
-            performanceStartedDurationSec: fallbackDurationSec
+            approvedSubmissionId: String(item?.approvedSubmissionId || '').trim()
         };
+        const queuePlayback = resolveQueuePlayback(queueSong, roomRef.current?.autoPlayMedia !== false);
+        const nextMediaUrl = String(queuePlayback?.mediaUrl || queueSong.mediaUrl || '').trim();
+        const useAppleBacking = queuePlayback?.usesAppleBacking === true;
+        const autoStartMedia = queuePlayback?.autoStartMedia !== false;
+        const measuredDuration = useAppleBacking
+            ? Math.max(0, Number(fallbackDurationSec || roomRef.current?.appleMusicPlayback?.durationSec || 0))
+            : await resolveHostDurationForUrl(nextMediaUrl, isAudioUrl(nextMediaUrl)).catch(() => null);
+        const performanceDurationSec = Math.max(
+            30,
+            Math.round(Number(measuredDuration || fallbackDurationSec || 180) || 180)
+        );
+        queueSong.duration = performanceDurationSec;
+        queueSong.performanceStartedDurationSec = performanceDurationSec;
         await setDoc(queueDocRef, {
             roomCode,
             songId: queueSong.songId,
@@ -7779,17 +7814,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             queuedFromRunOfShow: true,
             runOfShowItemId: String(item?.id || '').trim()
         }, { merge: true });
-        const queuePlayback = resolveQueuePlayback(queueSong, roomRef.current?.autoPlayMedia !== false);
-        const nextMediaUrl = String(queuePlayback?.mediaUrl || queueSong.mediaUrl || '').trim();
-        const useAppleBacking = queuePlayback?.usesAppleBacking === true;
-        const autoStartMedia = queuePlayback?.autoStartMedia !== false;
-        const measuredDuration = useAppleBacking
-            ? Math.max(0, Number(queueSong.duration || roomRef.current?.appleMusicPlayback?.durationSec || 0))
-            : Math.max(0, Number(queueSong.duration || fallbackDurationSec || 0));
-        const performanceDurationSec = Math.max(
-            30,
-            Math.round(Number(measuredDuration || queueSong.duration || fallbackDurationSec || 180) || 180)
-        );
         const roomSnapshot = roomRef.current || {};
         const stageDisplayFlags = {
             showLyricsTv: !!roomSnapshot?.showLyricsTv,
@@ -7921,7 +7945,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             durationSec: performanceDurationSec,
             introDurationSec: RUN_OF_SHOW_PERFORMANCE_INTRO_SEC
         };
-    }, [clearRunOfShowPerformanceIntroTimer, playAppleMusicTrack, roomCode, stopAppleMusic, updateRoom]);
+    }, [clearRunOfShowPerformanceIntroTimer, isAudioUrl, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
     const buildRunOfShowCompletionRoomUpdates = useCallback((item = {}, completedAtMs = nowMs()) => {
         if (item?.type === 'performance') return null;
         return {
@@ -8364,7 +8388,93 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         toast(`Assigned ${queueSong.songTitle || 'queue song'} to slot ${targetItem.sequence || '?'}.`);
     }, [patchRunOfShowItem, runOfShowDirector?.items, songs, toast]);
+    const maybePauseRunOfShowAutomationForMissingSinger = useCallback(async () => {
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused || runOfShowLiveItem) {
+            if (!runOfShowLiveItem) {
+                runOfShowAutoPauseKeyRef.current = '';
+            }
+            return false;
+        }
+        const candidateItem = runOfShowStagedItem || runOfShowNextItem;
+        if (!candidateItem?.id) {
+            runOfShowAutoPauseKeyRef.current = '';
+            return false;
+        }
+        const pendingSubmissionCount = Number(runOfShowPendingCountsById?.[candidateItem.id] || 0);
+        const pauseState = getRunOfShowAutomationPauseState({
+            item: candidateItem,
+            policy: runOfShowPolicy,
+            pendingSubmissionCount
+        });
+        if (!pauseState) {
+            runOfShowAutoPauseKeyRef.current = '';
+            return false;
+        }
+        const pauseKey = `${candidateItem.id}:${pauseState.status}:${pendingSubmissionCount}`;
+        if (runOfShowAutoPauseKeyRef.current === pauseKey) return true;
+        runOfShowAutoPauseKeyRef.current = pauseKey;
+        await persistRunOfShowDirector({
+            ...getCurrentRunOfShowDirector(),
+            automationPaused: true,
+            automationStatus: pauseState.status,
+            lastAutomationAtMs: nowMs()
+        });
+        toast(pauseState.detail || 'Automation paused while the next performance waits on a singer.');
+        return true;
+    }, [
+        getCurrentRunOfShowDirector,
+        persistRunOfShowDirector,
+        roomCode,
+        runOfShowAutomationEnabled,
+        runOfShowDirector?.automationPaused,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowPendingCountsById,
+        runOfShowPolicy,
+        runOfShowStagedItem,
+        toast
+    ]);
+    const maybeResumeRunOfShowAutomationAfterSingerReady = useCallback(async () => {
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused !== true) return false;
+        if (String(runOfShowDirector?.automationStatus || '').trim().toLowerCase() !== 'waiting_for_performer') return false;
+        if (runOfShowLiveItem) return false;
+
+        const candidateItem = runOfShowStagedItem || runOfShowNextItem;
+        if (candidateItem?.id) {
+            const pendingSubmissionCount = Number(runOfShowPendingCountsById?.[candidateItem.id] || 0);
+            const pauseState = getRunOfShowAutomationPauseState({
+                item: candidateItem,
+                policy: runOfShowPolicy,
+                pendingSubmissionCount
+            });
+            if (pauseState) return false;
+        }
+
+        runOfShowAutoPauseKeyRef.current = '';
+        await persistRunOfShowDirector({
+            ...getCurrentRunOfShowDirector(),
+            automationPaused: false,
+            automationStatus: candidateItem?.status === 'staged' ? 'staged' : 'idle',
+            lastAutomationAtMs: nowMs()
+        });
+        toast('Singer ready. Automation resumed.');
+        return true;
+    }, [
+        getCurrentRunOfShowDirector,
+        persistRunOfShowDirector,
+        roomCode,
+        runOfShowAutomationEnabled,
+        runOfShowDirector?.automationPaused,
+        runOfShowDirector?.automationStatus,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowPendingCountsById,
+        runOfShowPolicy,
+        runOfShowStagedItem,
+        toast
+    ]);
     const toggleRunOfShowAutomationPause = useCallback(async (paused) => {
+        runOfShowAutoPauseKeyRef.current = '';
         if (!isMarketingDemoFixture) {
             const result = await executeRunOfShowAction({ roomCode, action: paused === true ? 'pause_automation' : 'resume_automation' });
             if (result?.runOfShowDirector) {
@@ -8415,6 +8525,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return startRunOfShowItem(preparedItem.id, { manualLaunch: true });
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, prepareRunOfShowItem, programMode, roomCode, runOfShowEnabled, runOfShowPreflightReport.criticalCount, runOfShowPreflightReport.summary, startRunOfShowItem, toast]);
     const stopRunOfShowNow = useCallback(async () => {
+        runOfShowAutoPauseKeyRef.current = '';
         const result = await persistRunOfShowDirector(getCurrentRunOfShowDirector(), {
             programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
             runOfShowEnabled: false,
@@ -8444,6 +8555,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowAutoPrepareCooldownUntilRef.current = 0;
         runOfShowAutoStartCooldownUntilRef.current = 0;
         runOfShowAutoCompleteKeyRef.current = '';
+        runOfShowAutoPauseKeyRef.current = '';
         runOfShowPerformanceHandledRef.current = '';
         setProgramMode(RUN_OF_SHOW_PROGRAM_MODES.standard);
         setRunOfShowEnabled(false);
@@ -8714,6 +8826,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 };
             }),
         });
+        runOfShowAutoPauseKeyRef.current = '';
         return persistRunOfShowDirector(nextDirector, {
             programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
             runOfShowEnabled: true,
@@ -9491,17 +9604,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const nextPolicyKey = JSON.stringify(normalizedPolicy);
         const nextRolesKey = JSON.stringify(normalizedRoles);
         const nextTemplateKey = JSON.stringify(normalizedTemplateMeta);
-        if (runOfShowRemoteSyncRef.current.programMode !== normalizedProgramMode) {
+        const shouldApplyRunOfShowRemoteSync = Date.now() - runOfShowLocalEditAtRef.current > 1500;
+        if (runOfShowRemoteSyncRef.current.programMode !== normalizedProgramMode && shouldApplyRunOfShowRemoteSync) {
             runOfShowRemoteSyncRef.current.programMode = normalizedProgramMode;
             setProgramMode(normalizedProgramMode);
         }
-        if (runOfShowRemoteSyncRef.current.enabled !== normalizedRunOfShowEnabled) {
+        if (runOfShowRemoteSyncRef.current.enabled !== normalizedRunOfShowEnabled && shouldApplyRunOfShowRemoteSync) {
             runOfShowRemoteSyncRef.current.enabled = normalizedRunOfShowEnabled;
             setRunOfShowEnabled(normalizedRunOfShowEnabled);
         }
         if (
             runOfShowRemoteSyncRef.current.director !== nextDirectorKey
-            && Date.now() - runOfShowLocalEditAtRef.current > 1500
+            && shouldApplyRunOfShowRemoteSync
         ) {
             runOfShowRemoteSyncRef.current.director = nextDirectorKey;
             setRunOfShowDirectorState(normalizedDirector);
@@ -9575,7 +9689,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
     }, [isMarketingDemoFixture, isRunOfShowRoom, roomCode]);
     useEffect(() => {
-        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || runOfShowStagedItem || !runOfShowNextItem) return;
         const prepareDecision = getRunOfShowProgressionDecision({
@@ -9619,7 +9733,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         };
     }, [
-        isRunOfShowRoom,
+        runOfShowAutomationEnabled,
         prepareRunOfShowItem,
         roomCode,
         runOfShowAutomationRetryTick,
@@ -9629,7 +9743,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowStagedItem
     ]);
     useEffect(() => {
-        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
         if (runOfShowAutomationBusyRef.current) return;
         if (runOfShowLiveItem || !runOfShowStagedItem) return;
         const startDecision = getRunOfShowProgressionDecision({
@@ -9671,7 +9785,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         };
     }, [
-        isRunOfShowRoom,
+        runOfShowAutomationEnabled,
         roomCode,
         runOfShowAutomationRetryTick,
         runOfShowDirector?.automationPaused,
@@ -9680,7 +9794,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         startRunOfShowItem
     ]);
     useEffect(() => {
-        if (!roomCode || !isRunOfShowRoom || runOfShowDirector?.automationPaused) return;
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
         if (!runOfShowLiveItem || runOfShowLiveItem.type === 'performance') return;
         const completionDecision = getRunOfShowProgressionDecision({
             director: runOfShowDirector,
@@ -9709,10 +9823,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearTimeout(timer);
     }, [
         completeRunOfShowItem,
-        isRunOfShowRoom,
+        runOfShowAutomationEnabled,
         roomCode,
         runOfShowDirector?.automationPaused,
         runOfShowLiveItem
+    ]);
+    useEffect(() => {
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused) return;
+        maybePauseRunOfShowAutomationForMissingSinger().catch((error) => {
+            hostLogger.warn('Run-of-show missing-singer auto-pause failed', error);
+            runOfShowAutoPauseKeyRef.current = '';
+        });
+    }, [
+        maybePauseRunOfShowAutomationForMissingSinger,
+        roomCode,
+        runOfShowAutomationEnabled,
+        runOfShowDirector?.automationPaused
+    ]);
+    useEffect(() => {
+        if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused !== true) return;
+        if (String(runOfShowDirector?.automationStatus || '').trim().toLowerCase() !== 'waiting_for_performer') return;
+        maybeResumeRunOfShowAutomationAfterSingerReady().catch((error) => {
+            hostLogger.warn('Run-of-show singer-ready auto-resume failed', error);
+        });
+    }, [
+        maybeResumeRunOfShowAutomationAfterSingerReady,
+        roomCode,
+        runOfShowAutomationEnabled,
+        runOfShowDirector?.automationPaused,
+        runOfShowDirector?.automationStatus
     ]);
     useEffect(() => {
         if (!roomCode || !isRunOfShowRoom || !runOfShowLiveItem || runOfShowLiveItem.type !== 'performance') return;
@@ -9782,7 +9921,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
             localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
-            localStorage.setItem('bross_host_audience_preview_mode', audiencePreviewMode === 'live_tv' ? 'live_tv' : 'thumbnail');
+            localStorage.setItem(
+                'bross_host_audience_preview_mode',
+                normalizeAudiencePreviewMode(audiencePreviewMode) === 'live_audience' ? 'live_audience' : 'thumbnail'
+            );
             localStorage.setItem(
                 'bross_host_audience_preview_size',
                 audiencePreviewSize === 'sm' || audiencePreviewSize === 'lg' ? audiencePreviewSize : 'md'
@@ -11897,6 +12039,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 eventCredits: nextEventCredits,
                 appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
                 appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
+                autoDj: !!autoDj,
+                autoBgMusic: !!autoBgMusic,
+                autoPlayMedia: !!autoPlayMedia,
                 autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
                 autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
                 autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
@@ -11920,8 +12065,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     requestMode,
                     allowSingerTrackSelect,
                 }),
+                hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
                 audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
                 audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
+                chatShowOnTv: !!chatShowOnTv,
+                chatTvMode: chatTvMode || 'auto',
+                marqueeEnabled: !!marqueeEnabled,
+                marqueeShowMode: marqueeShowMode || 'idle',
+                marqueeDurationMs: marqueeDurationMsDraft,
+                marqueeIntervalMs: marqueeIntervalMsDraft,
+                marqueeItems: cleanedMarqueeItems,
                 programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
                 runOfShowEnabled: !!runOfShowEnabled,
                 runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
@@ -13195,7 +13348,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         },
         {
             id: 'setup',
-            label: activeQuickStartProgress.roomSetupOpened ? 'Reopen Room Setup' : 'Open Room Setup',
+            label: activeQuickStartProgress.roomSetupOpened ? 'Reopen Night Setup' : 'Open Night Setup',
             completed: !!activeQuickStartProgress.roomSetupOpened,
             ready: stageQuickStartSetupReady,
             disabled: false,
@@ -14967,6 +15120,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 { label: 'Scoring', value: missionPayloadPreview?.showScoring ? 'On' : 'Off' },
                 { label: 'TV Chat', value: missionPayloadPreview?.chatShowOnTv ? 'On' : 'Off' },
                 { label: 'Marquee', value: missionPayloadPreview?.marqueeEnabled ? 'On' : 'Off' },
+                { label: 'Pop Trivia', value: missionPayloadPreview?.popTriviaEnabled ? 'On' : 'Off' },
                 { label: 'Karaoke-First', value: missionPartyPreview?.karaokeFirst ? 'On' : 'Off' },
                 { label: 'Singing Floor', value: `${missionPartyPreview?.minSingingSharePct || 70}%` },
                 { label: 'Max Break', value: `${missionPartyPreview?.maxBreakDurationSec || 20}s` },
@@ -14989,6 +15143,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <>
                             <MissionSetupPrimaryPicks
                                 missionPickCount={missionPickCount}
+                                eventProfiles={ROOM_EVENT_PROFILE_OPTIONS}
+                                activeEventProfileId={room?.eventProfileId || ''}
+                                onApplyEventProfile={(profileId) => {
+                                    void applyCurrentRoomEventProfile(profileId);
+                                }}
                                 presets={Object.values(HOST_NIGHT_PRESETS)}
                                 presetMeta={NIGHT_SETUP_PRESET_META}
                                 selectedArchetype={missionDraft?.archetype}
@@ -15115,6 +15274,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             const nextValue = !nightSetupMarqueeEnabled;
                                             setNightSetupMarqueeEnabled(nextValue);
                                             setMissionOverrideValue('marqueeEnabled', nextValue);
+                                        }
+                                    },
+                                    {
+                                        key: 'popTriviaEnabled',
+                                        label: 'Pop-Up Trivia',
+                                        value: missionPayloadPreview?.popTriviaEnabled === true,
+                                        onToggle: () => {
+                                            const nextValue = missionPayloadPreview?.popTriviaEnabled !== true;
+                                            setMissionOverrideValue('popTriviaEnabled', nextValue);
                                         }
                                     }
                                 ]}
@@ -15904,6 +16072,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .map((section) => ({
                 ...section,
                 items: section.items.filter((item) => {
+                    if (!isSettingsNavVisible(item)) return false;
                     if (!q) return true;
                     const haystack = `${item.label} ${item.description || ''} ${item.keywords || ''}`.toLowerCase();
                     return haystack.includes(q);
@@ -15929,17 +16098,25 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const recentSettingsNavItems = settingsRecentTabs
         .filter((tab) => tab !== settingsTab)
         .map((tab) => ({ key: tab, ...(HOST_SETTINGS_META[tab] || { label: tab, icon: 'fa-gear' }) }))
+        .filter((item) => isSettingsNavVisible(item))
         .slice(0, 4);
-    const canSaveRoomSettings = !['billing', 'qa', 'live_effects'].includes(settingsTab);
+    const canSaveRoomSettings = !['billing', 'qa', 'live_effects', 'gamepad'].includes(settingsTab);
+    const cleanedMarqueeItems = marqueeDraftItems.map((item) => String(item || '').trim()).filter(Boolean);
+    const marqueeDurationMsDraft = Math.max(4000, Math.floor(Number(marqueeDurationSec || 0) * 1000));
+    const marqueeIntervalMsDraft = Math.max(4000, Math.floor(Number(marqueeIntervalSec || 0) * 1000));
     const draftRoomSettingsPayload = {
         tipUrl: (tipSettings.link || '').trim() || null,
         tipQrUrl: (tipSettings.qr || '').trim() || null,
         hostName: hostName || 'Host',
         logoUrl: (logoUrl || '').trim() || null,
+        lobbyOrbSkinUrl: normalizeOrbSkinUrl(orbSkinUrl) || null,
         tipCrates: normalizeTipCratesForSave(tipCrates),
         eventCredits: buildProvisionEventCreditsPayload(eventCreditsConfig),
         appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
         appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
+        autoDj: !!autoDj,
+        autoBgMusic: !!autoBgMusic,
+        autoPlayMedia: !!autoPlayMedia,
         autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
         autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
         autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
@@ -15966,6 +16143,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
         audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
+        chatShowOnTv: !!chatShowOnTv,
+        chatTvMode: chatTvMode || 'auto',
+        marqueeEnabled: !!marqueeEnabled,
+        marqueeShowMode: marqueeShowMode || 'idle',
+        marqueeDurationMs: marqueeDurationMsDraft,
+        marqueeIntervalMs: marqueeIntervalMsDraft,
+        marqueeItems: cleanedMarqueeItems,
         programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
         runOfShowEnabled: !!runOfShowEnabled,
         runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
@@ -15988,10 +16172,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             tipQrUrl: (room.tipQrUrl || '').trim() || null,
             hostName: room.hostName || 'Host',
             logoUrl: (room.logoUrl || '').trim() || null,
+            lobbyOrbSkinUrl: normalizeOrbSkinUrl(room.lobbyOrbSkinUrl || '') || null,
             tipCrates: normalizeTipCratesForSave(persistedTipCrates),
             eventCredits: buildProvisionEventCreditsPayload(room.eventCredits || {}),
             appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(room.appleMusicAutoPlaylistId || ''),
             appleMusicAutoPlaylistTitle: (room.appleMusicAutoPlaylistTitle || '').trim(),
+            autoDj: !!room.autoDj,
+            autoBgMusic: !!room.autoBgMusic,
+            autoPlayMedia: !!room.autoPlayMedia,
             autoBgFadeOutMs: Math.max(200, Number(room.autoBgFadeOutMs || 900)),
             autoBgFadeInMs: Math.max(200, Number(room.autoBgFadeInMs || 900)),
             autoBgMixDuringSong: Math.max(0, Math.min(100, Number(room.autoBgMixDuringSong ?? 0))),
@@ -16018,6 +16206,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hideNonEmbeddableYouTube: room.hideNonEmbeddableYouTube === true,
             audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
             audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
+            chatShowOnTv: !!room.chatShowOnTv,
+            chatTvMode: room.chatTvMode || 'auto',
+            marqueeEnabled: !!room.marqueeEnabled,
+            marqueeShowMode: room.marqueeShowMode || 'idle',
+            marqueeDurationMs: Math.max(4000, Number(room.marqueeDurationMs || 12000)),
+            marqueeIntervalMs: Math.max(4000, Number(room.marqueeIntervalMs || 20000)),
+            marqueeItems: Array.isArray(room.marqueeItems) ? room.marqueeItems.map((item) => String(item || '').trim()).filter(Boolean) : [],
             programMode: normalizeRunOfShowProgramMode(room.programMode),
             runOfShowEnabled: room.runOfShowEnabled === true || normalizeRunOfShowProgramMode(room.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
             runOfShowDirector: normalizeRunOfShowDirector(room.runOfShowDirector || {}),
@@ -16041,7 +16236,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         .map((section) => {
             const tabKey = SECTION_TO_SETTINGS_TAB[section.id];
             const meta = HOST_SETTINGS_META[tabKey];
-            if (!tabKey || !meta) return null;
+            if (!tabKey || !meta || !isSettingsNavVisible(meta)) return null;
             return {
                 key: tabKey,
                 label: meta.label,
@@ -16059,9 +16254,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             icon: item.icon || 'fa-gear',
             description: item.description || '',
             sectionLabel: section.label,
-            ownership: item.ownership || 'config'
+            ownership: item.ownership || 'config',
+            hiddenInAdminNav: item.hiddenInAdminNav === true
         }))
-    );
+    ).filter((item) => isSettingsNavVisible(item));
     const navigationItemsForRail = settingsNavQuery.trim()
         ? flatSettingsItems.filter((item) => {
             const haystack = `${item.label} ${item.description} ${item.sectionLabel}`.toLowerCase();
@@ -16075,7 +16271,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-400">You Are Here</div>
                     <div className="mt-2 flex items-center gap-2 text-sm text-zinc-100">
                         <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[12px] text-cyan-300`}></i>
-                        <span className="font-semibold">{activeWorkspaceMeta?.label || 'Operations'}</span>
+                        <span className="font-semibold">{activeWorkspaceMeta?.label || 'Night Setup'}</span>
                     </div>
                     <div className="mt-1 text-sm text-cyan-100">{activeSettingsMeta.label || 'Host Settings'}</div>
                     {!!activeSectionMeta?.label && (
@@ -16190,7 +16386,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-sliders text-zinc-500"></i>
-                            Queue Settings (Admin)
+                            Night Setup
                         </span>
                     </button>
                     <button
@@ -16659,7 +16855,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                     <div className="mt-4 flex flex-wrap gap-2">
                                         <button type="button" onClick={() => openAdminWorkspace('ops.room_setup')} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
-                                            Open Room Setup
+                                            Open Night Setup
                                         </button>
                                         <button type="button" onClick={() => setTab('stage')} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>
                                             Back To Queue
@@ -17136,8 +17332,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <AudienceMiniPreview
                         room={room}
                         roomCode={roomCode}
-                        tvBase={tvBase}
-                        tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
+                        audienceBase={audienceBase}
+                        audienceLaunchUrl={activeRoomLaunchUrls.audienceUrl}
                         currentSong={currentSong}
                         queueCount={queuedSongs.length}
                         collapsed={audiencePreviewCollapsed}
@@ -17145,7 +17341,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         previewSize={audiencePreviewSize}
                         onSetPreviewMode={setAudiencePreviewMode}
                         onSetPreviewSize={setAudiencePreviewSize}
-                        allowLiveViewport={isRunOfShowRoom || tab === 'run_of_show' || tab === 'show'}
                         onToggleCollapsed={() => setAudiencePreviewCollapsed(prev => !prev)}
                         onHide={() => setAudiencePreviewVisible(false)}
                     />
@@ -17310,7 +17505,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-zinc-400">
                                             <span className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5">
                                                 <i className={`fa-solid ${activeWorkspaceMeta?.icon || 'fa-sliders'} text-[10px] text-cyan-300`}></i>
-                                                {activeWorkspaceMeta?.label || 'Operations'}
+                                                {activeWorkspaceMeta?.label || 'Night Setup'}
                                             </span>
                                             <span className="text-zinc-600">/</span>
                                             <span>{activeSettingsMeta.sectionLabel || 'Host Settings'}</span>
@@ -17395,7 +17590,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onClick={() => openAdminWorkspace('ops.room_setup')}
                                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
                                 >
-                                    1. Queue + Room Setup
+                                    1. Night Setup
                                 </button>
                                 <button
                                     onClick={openActiveRoomTv}
@@ -18077,6 +18272,279 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             </div>
                         </details>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4" open>
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Screens + Overlays</div>
+                                        <div className="mt-1 text-xs text-zinc-400">TV chat, marquee, scoring, and audience-facing screen behavior now live directly inside Night Setup.</div>
+                                    </div>
+                                    <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                        Now In Night Setup
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 space-y-5">
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowScoring((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${showScoring ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-star-half-stroke"></i>
+                                        {showScoring ? 'Scoring On' : 'Scoring Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowFameLevel((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${showFameLevel ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-medal"></i>
+                                        {showFameLevel ? 'Fame Levels On' : 'Fame Levels Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChatShowOnTv((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-comments"></i>
+                                        {chatShowOnTv ? 'TV Chat On' : 'TV Chat Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMarqueeEnabled((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${marqueeEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-panorama"></i>
+                                        {marqueeEnabled ? 'Marquee On' : 'Marquee Off'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                                        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">TV chat</div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setChatShowOnTv((prev) => !prev)}
+                                                className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral}`}
+                                            >
+                                                {chatShowOnTv ? 'Enabled' : 'Disabled'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setChatTvMode((prev) => prev === 'fullscreen' ? 'auto' : 'fullscreen')}
+                                                className={`${STYLES.btnStd} ${chatTvMode === 'fullscreen' ? STYLES.btnInfo : STYLES.btnNeutral}`}
+                                            >
+                                                {chatTvMode === 'fullscreen' ? 'Fullscreen' : 'Sidebar / Auto'}
+                                            </button>
+                                        </div>
+                                        <div className="host-form-helper">Keep chat on the TV for room energy, or flip it to fullscreen for a dedicated crowd beat.</div>
+                                    </div>
+                                    <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                                        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Marquee rotation</div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            <select value={marqueeShowMode} onChange={e => setMarqueeShowMode(e.target.value)} className={STYLES.input}>
+                                                <option value="always">Always</option>
+                                                <option value="karaoke">During karaoke only</option>
+                                                <option value="idle">Idle only</option>
+                                            </select>
+                                            <input type="number" min="4" max="60" value={marqueeDurationSec} onChange={e => setMarqueeDurationSec(e.target.value)} className={STYLES.input} placeholder="Duration (sec)" />
+                                            <input type="number" min="4" max="120" value={marqueeIntervalSec} onChange={e => setMarqueeIntervalSec(e.target.value)} className={STYLES.input} placeholder="Interval (sec)" />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                value={marqueeDraft}
+                                                onChange={e => setMarqueeDraft(e.target.value)}
+                                                className={`${STYLES.input} flex-1`}
+                                                placeholder="Add a marquee message..."
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!marqueeDraft.trim()) return;
+                                                    setMarqueeDraftItems((prev) => [...prev, marqueeDraft.trim()]);
+                                                    setMarqueeDraft('');
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
+                                            {marqueeDraftItems.length === 0 ? (
+                                                <div className="host-form-helper host-form-helper-status">No marquee messages yet.</div>
+                                            ) : marqueeDraftItems.map((item, idx) => (
+                                                <div key={`${item}-${idx}`} className="flex items-center gap-2">
+                                                    <input
+                                                        value={item}
+                                                        onChange={e => {
+                                                            const next = [...marqueeDraftItems];
+                                                            next[idx] = e.target.value;
+                                                            setMarqueeDraftItems(next);
+                                                        }}
+                                                        className={`${STYLES.input} flex-1`}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setMarqueeDraftItems((prev) => prev.filter((_, i) => i !== idx))}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnDanger}`}
+                                                    >
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="host-form-helper">These now save with Night Setup instead of requiring a separate overlays pass.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4" open>
+                            <summary className="cursor-pointer list-none">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-white">Between-Song Breaks + Automation</div>
+                                        <div className="mt-1 text-xs text-zinc-400">Auto-DJ, stage playback, ready checks, and full-screen in-between moments now sit next to the rest of Night Setup.</div>
+                                    </div>
+                                    <span className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                        Now In Night Setup
+                                    </span>
+                                </div>
+                            </summary>
+                            <div className="mt-4 space-y-5">
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setAutoDj((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${autoDj ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-robot"></i>
+                                        {autoDj ? 'Auto-DJ On' : 'Auto-DJ Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAutoBgMusic((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-wave-square"></i>
+                                        {autoBgMusic ? 'Background Music On' : 'Background Music Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAutoPlayMedia((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${autoPlayMedia ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-forward-step"></i>
+                                        {autoPlayMedia ? 'Auto Playback On' : 'Auto Playback Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAutoEndOnTrackFinish((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${autoEndOnTrackFinish ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-stopwatch"></i>
+                                        {autoEndOnTrackFinish ? 'Auto End On Finish On' : 'Auto End On Finish Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAutoBonusEnabled((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${autoBonusEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-gift"></i>
+                                        {autoBonusEnabled ? 'Auto Bonus On' : 'Auto Bonus Off'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPopTriviaEnabled((prev) => !prev)}
+                                        className={`${STYLES.btnStd} ${popTriviaEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
+                                    >
+                                        <i className="fa-solid fa-lightbulb"></i>
+                                        {popTriviaEnabled ? 'Pop Trivia On' : 'Pop Trivia Off'}
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                                    <label className="text-sm text-zinc-300">
+                                        Auto-DJ delay (sec)
+                                        <input value={autoDjDelaySec} onChange={e => setAutoDjDelaySec(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                    </label>
+                                    <label className="text-sm text-zinc-300">
+                                        Auto bonus points
+                                        <input value={autoBonusPoints} onChange={e => setAutoBonusPoints(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                    </label>
+                                    <label className="text-sm text-zinc-300">
+                                        Ready check duration (sec)
+                                        <input value={readyCheckDurationSec} onChange={e => setReadyCheckDurationSec(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                    </label>
+                                    <label className="text-sm text-zinc-300">
+                                        Ready check reward
+                                        <input value={readyCheckRewardPoints} onChange={e => setReadyCheckRewardPoints(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                    </label>
+                                </div>
+                                <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Full-screen between-song breaks</div>
+                                            <div className="mt-1 text-sm text-zinc-300">Use Auto Party when you want ready checks and full-screen crowd moments to fill singer gaps without relying on pop-up trivia.</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => { void toggleAutoPartyEnabled(); }}
+                                            className={`${STYLES.btnStd} ${autoCrowdMomentsEnabled ? STYLES.btnHighlight : STYLES.btnNeutral} whitespace-nowrap`}
+                                        >
+                                            <i className="fa-solid fa-users-rays"></i>
+                                            {autoCrowdMomentsEnabled ? 'Auto Party On' : 'Auto Party Off'}
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        <label className="text-sm text-zinc-300">
+                                            Moment order
+                                            <select
+                                                value={autoCrowdMomentOrderPreset}
+                                                onChange={async (e) => {
+                                                    const nextPreset = e.target.value;
+                                                    setAutoCrowdMomentOrderPreset(nextPreset);
+                                                    await updateAutoPartyConfig({
+                                                        autoCrowdMomentPreferredTypes: AUTO_CROWD_ORDER_PRESETS[nextPreset] || AUTO_CROWD_ORDER_PRESETS.volley_first
+                                                    });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            >
+                                                <option value="volley_first">Volley first</option>
+                                                <option value="ready_first">Ready check first</option>
+                                                <option value="ready_only">Ready check only</option>
+                                                <option value="volley_only">Volley only</option>
+                                            </select>
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto ready check (sec)
+                                            <input
+                                                value={autoCrowdMomentReadyCheckSec}
+                                                onChange={e => setAutoCrowdMomentReadyCheckSec(e.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(3, Math.min(20, Number(autoCrowdMomentReadyCheckSec || 6) || 6));
+                                                    setAutoCrowdMomentReadyCheckSec(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentReadyCheckSec: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
+                                        </label>
+                                        <label className="text-sm text-zinc-300">
+                                            Auto volley window (sec)
+                                            <input
+                                                value={autoCrowdMomentVolleySec}
+                                                onChange={e => setAutoCrowdMomentVolleySec(e.target.value)}
+                                                onBlur={async () => {
+                                                    const next = Math.max(4, Math.min(30, Number(autoCrowdMomentVolleySec || 12) || 12));
+                                                    setAutoCrowdMomentVolleySec(next);
+                                                    await updateAutoPartyConfig({ autoCrowdMomentVolleySec: next });
+                                                }}
+                                                className={`${STYLES.input} mt-1`}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                         <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
                             <summary className="cursor-pointer list-none">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -18440,11 +18908,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {chatAudienceMode === 'vip' ? 'VIP-only audience chat' : 'All audience chat enabled'}
                                         </button>
                                         <button
-                                            onClick={() => leaveAdminWithTarget('stage')}
-                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                            onClick={async () => {
+                                                const next = !chatShowOnTv;
+                                                setChatShowOnTv(next);
+                                                const nextMode = next ? (chatTvMode || 'auto') : 'auto';
+                                                if (!next) setChatTvMode('auto');
+                                                await updateRoom({ chatShowOnTv: next, chatTvMode: nextMode });
+                                            }}
+                                            className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                         >
                                             <i className="fa-solid fa-tv"></i>
-                                            Configure Chat TV (Exit Admin)
+                                            {chatShowOnTv ? 'TV chat enabled' : 'TV chat disabled'}
+                                        </button>
+                                        <button
+                                            onClick={async () => {
+                                                const nextMode = chatTvMode === 'fullscreen' ? 'auto' : 'fullscreen';
+                                                setChatShowOnTv(true);
+                                                setChatTvMode(nextMode);
+                                                await updateRoom({ chatShowOnTv: true, chatTvMode: nextMode });
+                                            }}
+                                            className={`${STYLES.btnStd} ${chatTvMode === 'fullscreen' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
+                                        >
+                                            <i className="fa-solid fa-expand"></i>
+                                            {chatTvMode === 'fullscreen' ? 'TV chat fullscreen' : 'TV chat sidebar / auto'}
                                         </button>
                                         <button
                                             onClick={() => selectSettingsTab('chat')}
@@ -19363,7 +19849,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 chatEnabled={chatEnabled}
                                 setChatEnabled={setChatEnabled}
                                 chatShowOnTv={chatShowOnTv}
+                                setChatShowOnTv={setChatShowOnTv}
                                 chatTvMode={chatTvMode}
+                                setChatTvMode={setChatTvMode}
                                 chatSlowModeSec={chatSlowModeSec}
                                 setChatSlowModeSec={setChatSlowModeSec}
                                 handleChatViewMode={handleChatViewMode}
@@ -19373,13 +19861,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 chatDraft={chatDraft}
                                 setChatDraft={setChatDraft}
                                 sendHostChat={sendHostChat}
-                                onOpenLiveDeck={() => leaveAdminWithTarget('stage')}
                             />
                         )}
                         {settingsTab === 'live_effects' && (
                             <div className="space-y-4">
                                 <div className="rounded-xl border border-fuchsia-300/30 bg-gradient-to-br from-[#171129]/90 via-[#111a2c]/90 to-[#0f1c28]/88 p-4 shadow-[0_0_28px_rgba(236,72,153,0.16)]">
-                                    <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-100/70">Advanced Tools</div>
+                                    <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-100/70">Live Deck Handoff</div>
                                     <div className="text-xl font-bold text-white mt-1">Live Effects</div>
                                     <div className="text-base text-cyan-100/85 mt-2">
                                         Live effect controls now run from the top Live Deck for faster, safer show operation.
@@ -19847,7 +20334,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 onClick={() => leaveAdminWithTarget('stage')}
                                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
                                             >
-                                                Open Stage Surface
+                                                Open Live Deck
                                             </button>
                                             <button onClick={closeSettingsSurface} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>{inAdminWorkspace ? 'Exit Admin' : 'Close'}</button>
                                             {showSaveAction && (

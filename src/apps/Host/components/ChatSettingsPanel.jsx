@@ -9,7 +9,9 @@ const ChatSettingsPanel = ({
     chatEnabled,
     setChatEnabled,
     chatShowOnTv,
+    setChatShowOnTv,
     chatTvMode,
+    setChatTvMode,
     chatSlowModeSec,
     setChatSlowModeSec,
     handleChatViewMode,
@@ -18,8 +20,7 @@ const ChatSettingsPanel = ({
     emoji,
     chatDraft,
     setChatDraft,
-    sendHostChat,
-    onOpenLiveDeck
+    sendHostChat
 }) => {
     const isDirectChatMessage = (message = {}) => (
         !!message?.toHost
@@ -87,7 +88,7 @@ const ChatSettingsPanel = ({
                 </div>
             </div>
             <div className="space-y-2">
-                <div className="text-xs uppercase tracking-widest text-zinc-400">TV feed routing (live)</div>
+                <div className="text-xs uppercase tracking-widest text-zinc-400">TV feed routing</div>
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3 space-y-2">
                     <div className="text-sm text-zinc-200">
                         Current TV Chat: <span className="font-semibold text-white">{chatShowOnTv ? 'On' : 'Off'}</span>
@@ -95,15 +96,35 @@ const ChatSettingsPanel = ({
                     <div className="text-sm text-zinc-200">
                         Current TV Mode: <span className="font-semibold text-white uppercase">{chatTvMode || 'auto'}</span>
                     </div>
-                    <button
-                        onClick={() => onOpenLiveDeck?.()}
-                        className={`${styles.btnStd} ${styles.btnSecondary}`}
-                    >
-                        <i className="fa-solid fa-sliders mr-2"></i>
-                        Open Live Deck (Exit Admin)
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={async () => {
+                                const next = !chatShowOnTv;
+                                setChatShowOnTv(next);
+                                const nextMode = next ? (chatTvMode || 'auto') : 'auto';
+                                if (!next) setChatTvMode('auto');
+                                await updateRoom({ chatShowOnTv: next, chatTvMode: nextMode });
+                            }}
+                            className={`${styles.btnStd} ${chatShowOnTv ? styles.btnHighlight : styles.btnNeutral}`}
+                        >
+                            <i className="fa-solid fa-tv mr-2"></i>
+                            {chatShowOnTv ? 'TV Chat On' : 'TV Chat Off'}
+                        </button>
+                        <button
+                            onClick={async () => {
+                                const nextMode = chatTvMode === 'fullscreen' ? 'auto' : 'fullscreen';
+                                setChatShowOnTv(true);
+                                setChatTvMode(nextMode);
+                                await updateRoom({ chatShowOnTv: true, chatTvMode: nextMode });
+                            }}
+                            className={`${styles.btnStd} ${chatTvMode === 'fullscreen' ? styles.btnHighlight : styles.btnNeutral}`}
+                        >
+                            <i className="fa-solid fa-expand mr-2"></i>
+                            {chatTvMode === 'fullscreen' ? 'Fullscreen' : 'Sidebar / Auto'}
+                        </button>
+                    </div>
                 </div>
-                <div className="host-form-helper">Use Live Deck Overlays for Chat TV on/off and fullscreen takeover during the show.</div>
+                <div className="host-form-helper">Handle TV chat routing here. The live deck still mirrors these controls for quick during-show access.</div>
             </div>
             <div className="space-y-2">
                 <div className="text-xs uppercase tracking-widest text-zinc-400">Slow mode (seconds)</div>
