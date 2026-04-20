@@ -65,3 +65,12 @@ test("Run-of-show automation respects room auto mode and pauses for missing sing
   assert.match(source, /automationPaused:\s*false,/);
   assert.match(source, /toast\('Singer ready\. Automation resumed\.'\);/);
 });
+
+test("HostApp auto-dismisses the post-performance backing prompt if the host ignores it", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;/);
+  assert.match(source, /if \(!postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
+  assert.match(source, /setTimeout\(\(\) => \{\s*setPostPerformanceBackingPrompt\(\(currentPrompt\) => \(/);
+  assert.match(source, /Closes automatically after a few seconds\./);
+});

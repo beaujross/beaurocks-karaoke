@@ -627,6 +627,34 @@ const detectTabletTouchViewport = () => {
     return coarsePointer && width >= 768 && width <= 1180;
 };
 
+const ROUND_WINNER_SLOTS = [
+    { key: 'gold', label: 'Gold', icon: '🥇' },
+    { key: 'silver', label: 'Silver', icon: '🥈' },
+    { key: 'bronze', label: 'Bronze', icon: '🥉' },
+];
+
+const resolveHostRoomUserUid = (roomUser = {}) => {
+    const directUid = String(roomUser?.uid || '').trim();
+    if (directUid) return directUid;
+    const safeId = String(roomUser?.id || '').trim();
+    const underscoreIndex = safeId.indexOf('_');
+    if (underscoreIndex === -1) return safeId;
+    return safeId.slice(underscoreIndex + 1).trim();
+};
+
+const resolveWinnerMomentImageUrl = (roomUser = {}, selfieEntry = null) => {
+    const candidates = [
+        selfieEntry?.url,
+        selfieEntry?.photoUrl,
+        selfieEntry?.imageUrl,
+        roomUser?.selfieUrl,
+        roomUser?.photoUrl,
+        roomUser?.photoURL,
+        roomUser?.avatarUrl,
+    ];
+    return candidates.find((entry) => typeof entry === 'string' && entry.trim()) || '';
+};
+
 const createStageStartError = (code = 'stage_start_failed', message = 'Could not start this performance.') => {
     const error = new Error(message);
     error.code = code;
@@ -1803,6 +1831,7 @@ const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 const BILLING_WARMUP_MESSAGE = 'Billing tools are warming up. You can keep hosting and retry in a moment.';
 
 const sleep = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
+const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const RUN_OF_SHOW_PERFORMANCE_INTRO_SEC = 15;
 const isRunOfShowModeActivationError = (error) => {
     const code = String(error?.code || '').toLowerCase();
@@ -3764,6 +3793,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const [backingDecisionBusyKey, setBackingDecisionBusyKey] = useState('');
     const [postPerformanceBackingPrompt, setPostPerformanceBackingPrompt] = useState(null);
     const [postPerformanceBackingPromptBusy, setPostPerformanceBackingPromptBusy] = useState(false);
+    const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
@@ -3775,7 +3805,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         assigned,
         pending,
         lobbyCount,
-        queueCount,
         waitTimeSec,
         formatWaitTime,
         currentMediaUrl,
@@ -4468,6 +4497,19 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.lastPerformance?.songTitle,
         room?.lastPerformance?.timestamp
     ]);
+    useEffect(() => {
+        if (!postPerformanceBackingPrompt || postPerformanceBackingPromptBusy) return () => {};
+        const activePerformanceKey = String(postPerformanceBackingPrompt?.performanceKey || '').trim();
+        if (!activePerformanceKey) return () => {};
+        const timer = setTimeout(() => {
+            setPostPerformanceBackingPrompt((currentPrompt) => (
+                String(currentPrompt?.performanceKey || '').trim() === activePerformanceKey
+                    ? null
+                    : currentPrompt
+            ));
+        }, POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS);
+        return () => clearTimeout(timer);
+    }, [postPerformanceBackingPrompt, postPerformanceBackingPromptBusy]);
 
     useEffect(() => {
         if (!roomCode || typeof onUpsertYtIndexEntries !== 'function') return;
@@ -5457,9 +5499,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const isTightLayout = layoutMode === 'laptop-tight';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
     const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
+    const hasRunOfShowQueueHud = runOfShowEnabled || hasRunOfShowPlan;
     const hasRunOfShowQueueWork = runOfShowEnabled && (reviewQueueItems.length > 0 || pending.length > 0 || queue.length > 0 || assigned.length > 0);
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
 
+    useEffect(() => {
+        if (!hasRunOfShowQueueHud && desktopQueueSurfaceTab !== 'queue') {
+            setDesktopQueueSurfaceTab('queue');
+        }
+    }, [desktopQueueSurfaceTab, hasRunOfShowQueueHud]);
     useEffect(() => {
         if (queueSurface.isCompactQueueSurface) {
             autoCollapsedRunOfShowAddFormRef.current = false;
@@ -5529,27 +5577,30 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         </div>
     );
 
+    const runOfShowQueueHudSection = hasRunOfShowQueueHud ? (
+        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5' : 'p-3'} custom-scrollbar`}>
+            <RunOfShowQueueHud
+                enabled={runOfShowEnabled}
+                director={runOfShowDirector}
+                liveItem={runOfShowLiveItem}
+                stagedItem={runOfShowStagedItem}
+                nextItem={runOfShowNextItem}
+                preflightReport={runOfShowPreflightReport}
+                onOpenShowWorkspace={onOpenRunOfShow}
+                onOpenIssue={onOpenRunOfShowIssue}
+                onStartShow={onStartRunOfShow}
+                onAdvance={onAdvanceRunOfShow}
+                onRewind={onRewindRunOfShow}
+                onStop={handleStopRunOfShowAndRestoreQueueTools}
+                onClear={onClearRunOfShow}
+                onToggleAutomationPause={onToggleRunOfShowPause}
+                styles={STYLES}
+            />
+        </div>
+    ) : null;
     const queueListSection = (
         <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
-            {(runOfShowEnabled || hasRunOfShowPlan) ? (
-                <RunOfShowQueueHud
-                    enabled={runOfShowEnabled}
-                    director={runOfShowDirector}
-                    liveItem={runOfShowLiveItem}
-                    stagedItem={runOfShowStagedItem}
-                    nextItem={runOfShowNextItem}
-                    preflightReport={runOfShowPreflightReport}
-                    onOpenShowWorkspace={onOpenRunOfShow}
-                    onOpenIssue={onOpenRunOfShowIssue}
-                    onStartShow={onStartRunOfShow}
-                    onAdvance={onAdvanceRunOfShow}
-                    onRewind={onRewindRunOfShow}
-                    onStop={handleStopRunOfShowAndRestoreQueueTools}
-                    onClear={onClearRunOfShow}
-                    onToggleAutomationPause={onToggleRunOfShowPause}
-                    styles={STYLES}
-                />
-            ) : null}
+            {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
@@ -5732,7 +5783,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             )}
             <QueueListPanel
                 showQueueList={showQueueList}
-                showQueueSummaryBar={!(runOfShowEnabled || hasRunOfShowPlan) && showQueueSummaryBar}
+                showQueueSummaryBar={showQueueSummaryBar}
                 onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
                 pending={pending}
                 pendingQueueOpen={pendingQueueOpen}
@@ -5773,6 +5824,41 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             />
         </div>
     );
+    const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
+        <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
+            {hasRunOfShowQueueHud ? (
+                <div className="border-b border-white/10 bg-black/20 px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
+                        <button
+                            type="button"
+                            onClick={() => setDesktopQueueSurfaceTab('queue')}
+                            data-feature-id="queue-surface-tab-queue-desktop"
+                            className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                                desktopQueueSurfaceTab === 'queue'
+                                    ? 'bg-cyan-500/15 text-cyan-100'
+                                    : 'text-zinc-300 hover:text-white'
+                            }`}
+                        >
+                            Queue
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setDesktopQueueSurfaceTab('show')}
+                            data-feature-id="queue-surface-tab-show-desktop"
+                            className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                                desktopQueueSurfaceTab === 'show'
+                                    ? 'bg-cyan-500/15 text-cyan-100'
+                                    : 'text-zinc-300 hover:text-white'
+                            }`}
+                        >
+                            Run Of Show
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+            {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud ? runOfShowQueueHudSection : queueListSection}
+        </div>
+    ) : null;
     const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
         <div className="border-b border-white/10 bg-black/20 px-3 py-3">
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
@@ -5925,33 +6011,34 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 </div>
             )}
             {postPerformanceBackingPrompt && (
-                <div className="fixed right-4 top-24 z-[190] w-[min(92vw,26rem)]">
-                    <div className="rounded-3xl border border-cyan-300/30 bg-gradient-to-br from-[#12182a]/95 via-[#111827]/95 to-[#1a1025]/95 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur-sm">
-                        <div className="flex items-start gap-3">
+                <div className="fixed right-3 top-24 z-[190] w-[min(88vw,22rem)]">
+                    <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#12182a]/95 via-[#111827]/95 to-[#1a1025]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
+                        <div className="flex items-start gap-2.5">
                             {postPerformanceBackingPrompt.albumArtUrl ? (
                                 <img
                                     src={postPerformanceBackingPrompt.albumArtUrl}
                                     alt="Backing art"
-                                    className="h-14 w-14 rounded-2xl border border-white/10 object-cover"
+                                    className="h-11 w-11 rounded-xl border border-white/10 object-cover"
                                 />
                             ) : (
-                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/30 text-2xl text-cyan-200">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-lg text-cyan-200">
                                     <i className="fa-brands fa-youtube"></i>
                                 </div>
                             )}
                             <div className="min-w-0 flex-1">
                                 <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Track check</div>
-                                <div className="mt-1 text-lg font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
-                                <div className="text-sm text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
-                                <div className="mt-2 text-sm text-zinc-400">Would you use this track again?</div>
+                                <div className="mt-0.5 text-base font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
+                                <div className="text-[13px] text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
+                                <div className="mt-1.5 text-[13px] text-zinc-400">Would you use this track again?</div>
+                                <div className="mt-0.5 text-[10px] text-zinc-500">Closes automatically after a few seconds.</div>
                             </div>
                         </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <div className="mt-3 flex flex-wrap gap-1.5">
                             <button
                                 type="button"
                                 onClick={() => void handlePostPerformanceBackingPromptAction('prefer')}
                                 disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <i className="fa-solid fa-thumbs-up"></i>
                                 Use Again
@@ -5960,7 +6047,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 type="button"
                                 onClick={() => void handlePostPerformanceBackingPromptAction('avoid')}
                                 disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <i className="fa-solid fa-thumbs-down"></i>
                                 Bad Track
@@ -5969,7 +6056,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 type="button"
                                 onClick={() => void handlePostPerformanceBackingPromptAction('skip')}
                                 disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 Skip
                             </button>
@@ -6130,9 +6217,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     <div className={`${STYLES.panel} min-h-0 overflow-y-auto custom-scrollbar`}>
                         {addToQueueSection}
                     </div>
-                    <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
-                        {queueListSection}
-                    </div>
+                    {desktopQueueSurfacePanel}
                 </>
             )}
             </div>
@@ -6535,6 +6620,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
     const [showModerationInbox, setShowModerationInbox] = useState(false);
+    const [roundWinnersEditorOpen, setRoundWinnersEditorOpen] = useState(false);
+    const [roundWinnersDraft, setRoundWinnersDraft] = useState({ gold: '', silver: '', bronze: '' });
+    const [roundWinnersEditorContext, setRoundWinnersEditorContext] = useState(null);
+    const [roundWinnersSubmitting, setRoundWinnersSubmitting] = useState(false);
+    const openRoundWinnersEditorRef = useRef(() => {});
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
@@ -7752,7 +7842,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, []);
     const buildRunOfShowStartRoomUpdates = useCallback((item = {}, startedAtMs = nowMs()) => {
         const roomUpdates = { tvPreviewOverlay: null };
-        if (item?.presentationPlan?.publicTvTakeoverEnabled) {
+        const interactiveRunOfShowType = ['trivia_break', 'would_you_rather_break', 'game_break'].includes(item?.type);
+        if (item?.presentationPlan?.publicTvTakeoverEnabled && !interactiveRunOfShowType) {
             const durationSec = Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10));
             roomUpdates.announcement = {
                 active: true,
@@ -8178,6 +8269,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 await updateRoom(buildRunOfShowStartRoomUpdates(startedItem, startedAtMs));
                 await syncRunOfShowTakeoverSoundtrack(startedItem, 'start');
             }
+            if (startedItem?.type === 'winner_declaration') {
+                openRoundWinnersEditorRef.current?.({ sourceItem: startedItem });
+            }
             if (startedItem) {
                 await fireRunOfShowItemCueIfNeeded(startedItem, 'start');
             }
@@ -8220,6 +8314,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         const persistedDirector = await persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowStartRoomUpdates(targetItem, startedAtMs) });
         await syncRunOfShowTakeoverSoundtrack(targetItem, 'start');
+        if (targetItem?.type === 'winner_declaration') {
+            openRoundWinnersEditorRef.current?.({ sourceItem: targetItem });
+        }
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
@@ -8282,7 +8379,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -9177,6 +9274,51 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         selfiePending: 0,
         bingoPending: 0
     };
+    const roundWinnerSelfieMap = useMemo(() => {
+        const approvedEntries = [
+            ...(Array.isArray(moderationInbox.submissions?.selfies) ? moderationInbox.submissions.selfies : []),
+            ...(Array.isArray(moderationInbox.submissions?.crowdSelfies) ? moderationInbox.submissions.crowdSelfies : [])
+        ]
+            .filter((entry) => {
+                const status = String(entry?.status || '').trim().toLowerCase();
+                return !!String(entry?.url || entry?.photoUrl || entry?.imageUrl || '').trim()
+                    && (entry?.approved || status === 'approved');
+            })
+            .sort((a, b) => (
+                getTimestampMs(b?.moderatedAt || b?.timestamp || b?.createdAt)
+                - getTimestampMs(a?.moderatedAt || a?.timestamp || a?.createdAt)
+            ));
+        return approvedEntries.reduce((acc, entry) => {
+            const winnerUid = String(entry?.uid || entry?.userUid || '').trim();
+            if (winnerUid && !acc[winnerUid]) {
+                acc[winnerUid] = entry;
+            }
+            return acc;
+        }, {});
+    }, [moderationInbox.submissions?.crowdSelfies, moderationInbox.submissions?.selfies]);
+    const roundWinnerCandidates = useMemo(() => (
+        users
+            .map((roomUser) => {
+                const winnerUid = resolveHostRoomUserUid(roomUser);
+                if (!winnerUid) return null;
+                const selfieEntry = roundWinnerSelfieMap[winnerUid] || null;
+                return {
+                    uid: winnerUid,
+                    name: String(roomUser?.name || roomUser?.displayName || 'Guest').trim() || 'Guest',
+                    avatar: roomUser?.avatar || roomUser?.emoji || EMOJI.sparkle,
+                    imageUrl: resolveWinnerMomentImageUrl(roomUser, selfieEntry),
+                };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.name.localeCompare(b.name))
+    ), [roundWinnerSelfieMap, users]);
+    const activeRoundWinnersMoment = useMemo(() => {
+        const moment = room?.roundWinnersMoment;
+        if (!moment?.active) return null;
+        const expiresAtMs = Number(moment?.expiresAtMs || 0);
+        if (expiresAtMs && expiresAtMs <= nowMs()) return null;
+        return moment;
+    }, [room?.roundWinnersMoment]);
     useEffect(() => {
         if (!hostUpdateDeploymentWarning || !toast || hostUpdateWarningToastedRef.current) return;
         toast(hostUpdateDeploymentWarning);
@@ -9829,6 +9971,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         prepareRunOfShowItem,
         roomCode,
         runOfShowAutomationRetryTick,
+        runOfShowDirector,
         runOfShowDirector?.automationPaused,
         runOfShowLiveItem,
         runOfShowNextItem,
@@ -9880,6 +10023,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowAutomationEnabled,
         roomCode,
         runOfShowAutomationRetryTick,
+        runOfShowDirector,
         runOfShowDirector?.automationPaused,
         runOfShowLiveItem,
         runOfShowStagedItem,
@@ -9917,6 +10061,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         completeRunOfShowItem,
         runOfShowAutomationEnabled,
         roomCode,
+        runOfShowDirector,
         runOfShowDirector?.automationPaused,
         runOfShowLiveItem
     ]);
@@ -13265,6 +13410,100 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ recapPreview });
         toast('Recap preview sent to TV');
     };
+    const closeRoundWinnersEditor = useCallback(() => {
+        setRoundWinnersEditorOpen(false);
+        setRoundWinnersEditorContext(null);
+    }, []);
+    const openRoundWinnersEditor = useCallback((options = {}) => {
+        const sourceItem = options?.sourceItem && typeof options.sourceItem === 'object'
+            ? options.sourceItem
+            : (runOfShowLiveItem?.type === 'winner_declaration' ? runOfShowLiveItem : null);
+        const nextDraft = { gold: '', silver: '', bronze: '' };
+        const existingWinners = Array.isArray(room?.roundWinnersMoment?.winners) ? room.roundWinnersMoment.winners : [];
+        existingWinners.forEach((winner, idx) => {
+            const placeKey = String(winner?.place || ROUND_WINNER_SLOTS[idx]?.key || '').trim().toLowerCase();
+            if (placeKey && Object.prototype.hasOwnProperty.call(nextDraft, placeKey)) {
+                nextDraft[placeKey] = String(winner?.uid || '').trim();
+            }
+        });
+        setRoundWinnersDraft(nextDraft);
+        setRoundWinnersEditorContext(sourceItem ? {
+            runOfShowItemId: String(sourceItem?.id || '').trim(),
+            title: String(sourceItem?.title || getRunOfShowItemLabel(sourceItem?.type || 'winner_declaration')).trim() || 'Round Results',
+            subtitle: String(sourceItem?.presentationPlan?.subhead || sourceItem?.notes || '').trim(),
+            durationSec: Math.max(15, Math.min(120, Number(sourceItem?.plannedDurationSec || 25) || 25)),
+        } : null);
+        setRoundWinnersEditorOpen(true);
+    }, [room?.roundWinnersMoment?.winners, runOfShowLiveItem]);
+    useEffect(() => {
+        openRoundWinnersEditorRef.current = openRoundWinnersEditor;
+    }, [openRoundWinnersEditor]);
+    const clearRoundWinnersMoment = useCallback(async () => {
+        try {
+            await updateRoom({ roundWinnersMoment: null });
+            toast('Round winners cleared.');
+        } catch (error) {
+            hostLogger.error('Could not clear round winners moment', error);
+            toast('Could not clear round winners.');
+        }
+    }, [toast, updateRoom]);
+    const launchRoundWinnersMoment = useCallback(async () => {
+        const winners = ROUND_WINNER_SLOTS.map((slot, idx) => {
+            const winnerUid = String(roundWinnersDraft?.[slot.key] || '').trim();
+            if (!winnerUid) return null;
+            const winner = roundWinnerCandidates.find((entry) => entry.uid === winnerUid);
+            if (!winner) return null;
+            return {
+                place: slot.key,
+                rank: idx + 1,
+                uid: winner.uid,
+                name: winner.name,
+                avatar: winner.avatar,
+                imageUrl: winner.imageUrl || '',
+            };
+        }).filter(Boolean);
+        if (!winners.length) {
+            toast('Pick at least one winner.');
+            return;
+        }
+        const momentDurationSec = Math.max(15, Math.min(120, Number(roundWinnersEditorContext?.durationSec || 25) || 25));
+        const momentTitle = String(roundWinnersEditorContext?.title || 'Round Results').trim() || 'Round Results';
+        const configuredSubtitle = String(roundWinnersEditorContext?.subtitle || '').trim();
+        setRoundWinnersSubmitting(true);
+        try {
+            const createdAtMs = nowMs();
+            await updateRoom({
+                roundWinnersMoment: {
+                    active: true,
+                    id: `round_winners_${createdAtMs}`,
+                    runOfShowItemId: String(roundWinnersEditorContext?.runOfShowItemId || '').trim(),
+                    title: momentTitle,
+                    subtitle: configuredSubtitle || (hostName ? `Declared by ${hostName}` : 'Declared by host'),
+                    createdAtMs,
+                    durationSec: momentDurationSec,
+                    expiresAtMs: createdAtMs + (momentDurationSec * 1000),
+                    winners,
+                }
+            });
+            closeRoundWinnersEditor();
+            toast('Round winners sent to Public TV.');
+            try {
+                await logActivity(
+                    roomCode,
+                    hostName || 'Host',
+                    `${winners[0]?.name || 'A singer'} hit the podium.`,
+                    EMOJI.trophy || '🏆'
+                );
+            } catch (activityError) {
+                hostLogger.debug('Round winners activity log skipped', activityError);
+            }
+        } catch (error) {
+            hostLogger.error('Could not launch round winners moment', error);
+            toast('Could not send round winners to Public TV.');
+        } finally {
+            setRoundWinnersSubmitting(false);
+        }
+    }, [closeRoundWinnersEditor, hostName, logActivity, roomCode, roundWinnerCandidates, roundWinnersDraft, roundWinnersEditorContext, toast, updateRoom]);
     // Fix: Simple reload for silence
     const silenceAll = () => stopAllSfx();
     
@@ -18128,6 +18367,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   Preview Recap on TV
                               </button>
                               <div className="host-form-helper">Shows a 10-second recap preview without closing the room.</div>
+                              <button
+                                  onClick={openRoundWinnersEditor}
+                                  className={`${STYLES.btnStd} ${STYLES.btnSecondary} w-full`}
+                              >
+                                  {activeRoundWinnersMoment ? 'Edit Round Winners Podium' : 'Declare Round Winners'}
+                              </button>
+                              <div className="host-form-helper">Launches a gold / silver / bronze podium moment on Public TV with names, emojis, and the latest approved selfie when available.</div>
+                              {activeRoundWinnersMoment && (
+                                  <>
+                                      <button
+                                          onClick={clearRoundWinnersMoment}
+                                          className={`${STYLES.btnStd} ${STYLES.btnNeutral} w-full`}
+                                      >
+                                          Clear Round Winners Podium
+                                      </button>
+                                      <div className="host-form-helper">
+                                          Public TV is currently showing: {(activeRoundWinnersMoment.winners || []).map((winner) => winner?.name).filter(Boolean).join(' • ') || 'Round winners'}
+                                      </div>
+                                  </>
+                              )}
                                 <button
                                     data-host-close-room-recap
                                     onClick={closeRoomWithRecap}
@@ -20554,6 +20813,118 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <i className="fa-solid fa-wallet"></i>
                                 Open Billing
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {roundWinnersEditorOpen && (
+                <div className="fixed inset-0 z-[94] bg-black/80 flex items-center justify-center p-4">
+                    <div className="w-full max-w-3xl rounded-3xl border border-amber-300/30 bg-gradient-to-br from-[#171129]/95 via-[#111a2c]/95 to-[#0d1220]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(251,191,36,0.16)]">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-xs uppercase tracking-[0.35em] text-amber-100/70">Public TV Moment</div>
+                                <div className="mt-1 text-2xl font-bebas text-amber-200">{roundWinnersEditorContext?.title || 'Round Winners Podium'}</div>
+                                {roundWinnersEditorContext?.subtitle ? (
+                                    <div className="mt-1 text-xs uppercase tracking-[0.24em] text-amber-100/60">{roundWinnersEditorContext.subtitle}</div>
+                                ) : null}
+                                <div className="mt-1 text-sm text-cyan-100/75">
+                                    Pick up to three singers. Public TV will show gold, silver, and bronze with their names, emojis, and latest approved selfie.
+                                </div>
+                            </div>
+                            <button
+                                onClick={closeRoundWinnersEditor}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                            {ROUND_WINNER_SLOTS.map((slot) => {
+                                const selectedUid = String(roundWinnersDraft?.[slot.key] || '').trim();
+                                const selectedWinner = roundWinnerCandidates.find((entry) => entry.uid === selectedUid) || null;
+                                const takenWinnerUids = new Set(
+                                    ROUND_WINNER_SLOTS
+                                        .filter((entry) => entry.key !== slot.key)
+                                        .map((entry) => String(roundWinnersDraft?.[entry.key] || '').trim())
+                                        .filter(Boolean)
+                                );
+                                return (
+                                    <div key={slot.key} className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                                        <div className="flex items-center gap-2 text-sm font-black uppercase tracking-[0.18em] text-amber-100">
+                                            <span className="text-xl">{slot.icon}</span>
+                                            <span>{slot.label}</span>
+                                        </div>
+                                        <select
+                                            value={selectedUid}
+                                            onChange={(event) => {
+                                                const nextUid = String(event.target.value || '').trim();
+                                                setRoundWinnersDraft((prev) => ({ ...prev, [slot.key]: nextUid }));
+                                            }}
+                                            className={`${STYLES.input} mt-3`}
+                                        >
+                                            <option value="">No selection</option>
+                                            {roundWinnerCandidates.map((candidate) => (
+                                                <option
+                                                    key={`${slot.key}_${candidate.uid}`}
+                                                    value={candidate.uid}
+                                                    disabled={takenWinnerUids.has(candidate.uid)}
+                                                >
+                                                    {candidate.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {selectedWinner ? (
+                                            <div className="mt-3 rounded-2xl border border-white/10 bg-black/30 p-3">
+                                                <div className="flex items-center gap-3">
+                                                    {selectedWinner.imageUrl ? (
+                                                        <img
+                                                            src={selectedWinner.imageUrl}
+                                                            alt={selectedWinner.name}
+                                                            className="h-14 w-14 rounded-2xl object-cover border border-white/10"
+                                                        />
+                                                    ) : (
+                                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-black/40 text-2xl">
+                                                            {selectedWinner.avatar || EMOJI.sparkle}
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className="truncate text-base font-black text-white">{selectedWinner.name}</div>
+                                                        <div className="truncate text-xs uppercase tracking-[0.2em] text-zinc-400">
+                                                            {selectedWinner.imageUrl ? 'Selfie ready' : 'Emoji fallback'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="mt-3 rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-zinc-400">
+                                                Leave empty to skip this podium slot.
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                            <div className="text-sm text-zinc-400">
+                                {roundWinnerCandidates.length} audience member{roundWinnerCandidates.length === 1 ? '' : 's'} available
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {activeRoundWinnersMoment && (
+                                    <button
+                                        onClick={clearRoundWinnersMoment}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                    >
+                                        Clear Current
+                                    </button>
+                                )}
+                                <button
+                                    onClick={launchRoundWinnersMoment}
+                                    disabled={roundWinnersSubmitting}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${roundWinnersSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {roundWinnersSubmitting ? 'Sending Podium...' : 'Send Podium To TV'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

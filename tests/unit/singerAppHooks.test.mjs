@@ -61,6 +61,16 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
+    /const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;/,
+    "SingerApp should hide the omnipresent stage chrome in streamlined mode while the stage is empty",
+  );
+  assert.match(
+    source,
+    /const streamlinedSongsNavItems = \[\s*\{ key: 'requests', label: 'Add Song', icon: 'fa-plus' \},/,
+    "SingerApp should label the streamlined request tab as Add Song so the primary action is obvious",
+  );
+  assert.match(
+    source,
     /if \(!isStreamlinedAudienceShell \|\| tab !== 'social'\) return;\s*setTab\('home'\);/,
     "SingerApp should bounce streamlined audiences back to party if stale state lands on social",
   );
@@ -71,8 +81,18 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /isStreamlinedAudienceShell \? 'View Queue' : 'Open Lobby'/,
-    "SingerApp should swap the empty-stage secondary action to queue in streamlined mode",
+    /Search \+ Add Song/,
+    "SingerApp should use Search + Add Song copy in streamlined mode",
+  );
+  assert.match(
+    source,
+    /Open search, pick a song, and it goes straight to the queue\./,
+    "SingerApp should explain the streamlined search flow directly under the primary action",
+  );
+  assert.match(
+    source,
+    /\(!isStreamlinedAudienceShell \|\| latestMyRequest \|\| activeRequestCount > 0\)/,
+    "SingerApp should hide the streamlined My Requests panel until there is request state to show",
   );
   assert.match(
     source,
@@ -143,7 +163,7 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
-    /const handleAudienceCatalogPrimaryAction = useCallback\(/,
+    /const handleAudienceCatalogPrimaryAction = \(result\) => \{\s*if \(!result\) return;\s*if \(catalogSearchMode === 'youtube' && audienceManualBackingAllowed\)/,
     "SingerApp should route catalog result presses through a YouTube-first audience action",
   );
 });

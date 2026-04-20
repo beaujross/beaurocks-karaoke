@@ -764,6 +764,7 @@ const RUN_OF_SHOW_ALLOWED_TYPES = new Set([
   "game_break",
   "would_you_rather_break",
   "announcement",
+  "winner_declaration",
   "intermission",
   "buffer",
   "closing",
@@ -1030,6 +1031,16 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
 const getNormalizedRoomRunOfShowPolicy = (roomData = {}) => normalizeRunOfShowPolicy(roomData?.runOfShowPolicy || {});
 const _getNormalizedRoomRunOfShowRoles = (roomData = {}) => normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
 const _getNormalizedRoomRunOfShowTemplateMeta = (roomData = {}) => normalizeRunOfShowTemplateMeta(roomData?.runOfShowTemplateMeta || {});
+const parseRunOfShowLaunchConfigOptions = (launchConfig = {}, maxItems = 4) => {
+  const source = Array.isArray(launchConfig?.options)
+    ? launchConfig.options
+    : String(launchConfig?.optionsCsv || "")
+      .split(",");
+  return source
+    .map((entry) => normalizeRunOfShowText(entry || "", 180))
+    .filter(Boolean)
+    .slice(0, Math.max(0, Number(maxItems || 0) || 0));
+};
 const ROOM_EVENT_CREDIT_CONFIGS_COLLECTION = "room_event_credit_configs";
 const ROOM_EVENT_CREDIT_GRANTS_COLLECTION = "room_event_credit_grants";
 const ROOM_PROMO_REDEMPTIONS_COLLECTION = "room_promo_redemptions";
@@ -1851,6 +1862,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "runOfShowPolicy",
   "runOfShowRoles",
   "runOfShowTemplateMeta",
+  "roundWinnersMoment",
   "programMode",
   "tvPreviewOverlay",
   "selfieChallenge",
@@ -2062,6 +2074,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "runOfShowPolicy",
   "runOfShowRoles",
   "runOfShowTemplateMeta",
+  "roundWinnersMoment",
   "tvPreviewOverlay",
   "selfieChallenge",
   "selfieMoment",
@@ -15628,7 +15641,10 @@ exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
             ? { ...entry, status: "ready" }
             : entry),
     };
-    if (targetItem?.presentationPlan?.publicTvTakeoverEnabled) {
+    const interactiveRunOfShowType = targetItem?.type === "trivia_break"
+      || targetItem?.type === "would_you_rather_break"
+      || targetItem?.type === "game_break";
+    if (targetItem?.presentationPlan?.publicTvTakeoverEnabled && !interactiveRunOfShowType) {
       roomPatch.announcement = {
         active: true,
         runOfShowItemId: itemId,
@@ -15640,15 +15656,66 @@ exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
         backgroundMedia: normalizeRunOfShowText(targetItem?.presentationPlan?.backgroundMedia || "", 2048),
         startedAtMs: nowMsValue,
       };
+    } else {
+      roomPatch.announcement = null;
     }
+    const launchConfig = targetItem?.modeLaunchPlan && typeof targetItem.modeLaunchPlan === "object" && targetItem.modeLaunchPlan.launchConfig && typeof targetItem.modeLaunchPlan.launchConfig === "object"
+      ? targetItem.modeLaunchPlan.launchConfig
+      : {};
     if (targetItem?.type === "trivia_break") {
+      const options = parseRunOfShowLaunchConfigOptions(launchConfig, 4);
+      const durationSec = clampNumber(launchConfig?.durationSec ?? targetItem?.plannedDurationSec ?? 20, 5, 3600, 20);
+      const autoReveal = launchConfig?.autoReveal !== false;
       roomPatch.activeMode = "trivia_pop";
+      roomPatch.triviaQuestion = {
+        id: `${itemId}_${nowMsValue}`,
+        q: normalizeRunOfShowText(launchConfig?.question || targetItem?.title || "Trivia Time", 240) || "Trivia Time",
+        options,
+        correct: clampNumber(launchConfig?.correctIndex ?? 0, 0, Math.max(options.length - 1, 0), 0),
+        status: "asking",
+        rewarded: false,
+        points: clampNumber(launchConfig?.points ?? 100, 0, 100000, 100),
+        startedAt: nowMsValue,
+        durationSec,
+        autoReveal,
+        revealAt: autoReveal ? nowMsValue + (durationSec * 1000) : null,
+      };
+      roomPatch.wyrData = null;
+      roomPatch.gameData = null;
     } else if (targetItem?.type === "would_you_rather_break") {
+      const options = parseRunOfShowLaunchConfigOptions(launchConfig, 2);
+      const durationSec = clampNumber(launchConfig?.durationSec ?? targetItem?.plannedDurationSec ?? 20, 5, 3600, 20);
+      const autoReveal = launchConfig?.autoReveal !== false;
       roomPatch.activeMode = "wyr";
+      roomPatch.wyrData = {
+        id: `${itemId}_${nowMsValue}`,
+        question: normalizeRunOfShowText(launchConfig?.question || targetItem?.title || "Would You Rather", 240) || "Would You Rather",
+        optionA: options[0] || "Option A",
+        optionB: options[1] || "Option B",
+        status: "live",
+        rewarded: false,
+        points: clampNumber(launchConfig?.points ?? 50, 0, 100000, 50),
+        startedAt: nowMsValue,
+        durationSec,
+        autoReveal,
+        revealAt: autoReveal ? nowMsValue + (durationSec * 1000) : null,
+      };
+      roomPatch.triviaQuestion = null;
+      roomPatch.gameData = null;
     } else if (targetItem?.type === "game_break") {
       roomPatch.activeMode = normalizeRunOfShowText(targetItem?.modeLaunchPlan?.modeKey || "karaoke", 80) || "karaoke";
+      roomPatch.gameData = {
+        ...launchConfig,
+        id: `${itemId}_${nowMsValue}`,
+        runOfShowItemId: itemId,
+      };
+      roomPatch.triviaQuestion = null;
+      roomPatch.wyrData = null;
     } else {
       roomPatch.activeMode = "karaoke";
+      roomPatch.triviaQuestion = null;
+      roomPatch.wyrData = null;
+      roomPatch.gameData = null;
     }
   } else if (action === "complete" || action === "skip") {
     if (action === "complete") {
@@ -16952,11 +17019,36 @@ exports.stripeWebhook = onRequest(
 
 const readGivebutterSignature = (req) =>
   String(
-    req.get("x-givebutter-signature")
+    req.get("signature")
+    || req.get("Signature")
+    || req.get("x-givebutter-signature")
     || req.get("givebutter-signature")
     || req.get("x-webhook-signature")
     || ""
   ).trim();
+
+const normalizeWebhookSignatureToken = (value = "") => {
+  const safeValue = String(value || "").trim();
+  const delimiterIndex = safeValue.indexOf("=");
+  if (delimiterIndex <= 0) return safeValue;
+  const prefix = safeValue.slice(0, delimiterIndex).trim();
+  if (!/^[a-z0-9_-]+$/i.test(prefix)) return safeValue;
+  return safeValue.slice(delimiterIndex + 1).trim();
+};
+
+const timingSafeEqualString = (left = "", right = "") => {
+  const safeLeft = String(left || "");
+  const safeRight = String(right || "");
+  if (!safeLeft || !safeRight) return false;
+  const leftBuffer = Buffer.from(safeLeft, "utf8");
+  const rightBuffer = Buffer.from(safeRight, "utf8");
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  try {
+    return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+  } catch {
+    return false;
+  }
+};
 
 const verifyGivebutterWebhookSignature = ({
   rawBody,
@@ -16964,23 +17056,21 @@ const verifyGivebutterWebhookSignature = ({
   secret = "",
 } = {}) => {
   const safeSecret = String(secret || "").trim();
-  const safeSignature = String(signature || "").trim();
-  if (!safeSecret || !safeSignature || !rawBody) return false;
-  const expected = crypto
+  const normalizedSignature = normalizeWebhookSignatureToken(signature);
+  if (!safeSecret || !normalizedSignature) return false;
+  if (timingSafeEqualString(safeSecret, normalizedSignature)) return true;
+  if (!rawBody) return false;
+  const safeBody = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ""));
+  const expectedHex = crypto
     .createHmac("sha256", safeSecret)
-    .update(Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || "")))
+    .update(safeBody)
     .digest("hex");
-  const normalizedSignature = safeSignature.includes("=")
-    ? safeSignature.split("=").pop().trim()
-    : safeSignature;
-  try {
-    return crypto.timingSafeEqual(
-      Buffer.from(expected, "utf8"),
-      Buffer.from(normalizedSignature, "utf8"),
-    );
-  } catch {
-    return false;
-  }
+  if (timingSafeEqualString(expectedHex, normalizedSignature)) return true;
+  const expectedBase64 = crypto
+    .createHmac("sha256", safeSecret)
+    .update(safeBody)
+    .digest("base64");
+  return timingSafeEqualString(expectedBase64, normalizedSignature);
 };
 
 const normalizeGivebutterWebhookPayload = (payload = {}) => {
@@ -17232,14 +17322,17 @@ exports.givebutterWebhook = onRequest(
               });
             }
             if (isBuyer) {
-              batch.set(docSnap.ref, {
-                roomBoostBadge: supportReward.awardBadge ? true : undefined,
+              const buyerRoomUserPatch = {
                 roomBoosted: true,
-                ...(supportReward.awardBadge ? { roomBoosts: admin.firestore.FieldValue.increment(1) } : {}),
                 lastSupportPurchaseAmountCents: amountCents,
                 lastSupportPurchaseProvider: "givebutter",
                 lastSupportPurchaseAt: admin.firestore.FieldValue.serverTimestamp(),
-              }, { merge: true });
+              };
+              if (supportReward.awardBadge) {
+                buyerRoomUserPatch.roomBoostBadge = true;
+                buyerRoomUserPatch.roomBoosts = admin.firestore.FieldValue.increment(1);
+              }
+              batch.set(docSnap.ref, buyerRoomUserPatch, { merge: true });
             }
           });
           await batch.commit();

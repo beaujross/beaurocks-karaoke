@@ -6190,7 +6190,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setCatalogSearchOpen(true);
     }, [preferredCatalogSearchMode]);
 
-    const handleAudienceCatalogResultSelect = useCallback((result, requestOptions = null) => {
+    const handleAudienceCatalogResultSelect = (result, requestOptions = null) => {
         if (!result) return;
         submitSong(
             result.trackName,
@@ -6201,7 +6201,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         setResults([]);
         setSearchQ('');
         setCatalogSearchOpen(false);
-    }, [getAudienceCatalogArtwork, submitSong]);
+    };
 
     const buildAudienceBackingRequestOptions = useCallback((option = null) => {
         if (!option || typeof option !== 'object') return null;
@@ -6228,7 +6228,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         };
     }, [getAudienceBackingBadgeMeta, isAudienceTrustedBackingCandidate, unknownBackingPolicy]);
 
-    const handleAudienceCatalogPrimaryAction = useCallback((result) => {
+    const handleAudienceCatalogPrimaryAction = (result) => {
         if (!result) return;
         if (catalogSearchMode === 'youtube' && audienceManualBackingAllowed) {
             if (Number(result.knownBackingCount || 0) > 1) {
@@ -6245,7 +6245,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
         handleAudienceCatalogResultSelect(result);
-    }, [audienceManualBackingAllowed, buildAudienceBackingRequestOptions, catalogSearchMode, handleAudienceCatalogResultSelect, openAudienceBackingPicker, toast]);
+    };
 
     const handleAudienceYouTubeResultSelect = (result) => {
         if (!result?.mediaUrl) return;
@@ -7174,6 +7174,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         });
     }, [roomCode, shellVariant, songsTab, socialTab, tab]);
+    useEffect(() => {
+        if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;
+        setSongsTab('requests');
+    }, [bracketSignupActive, isStreamlinedAudienceShell, songsTab]);
 
     useEffect(() => {
         if (!isStreamlinedAudienceShell || tab !== 'social') return;
@@ -10019,7 +10023,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = activeChatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
-    const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive;
+    const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
+    const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -10062,9 +10067,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         { key: 'request', label: 'Songs', icon: 'fa-music' }
     ];
     const streamlinedSongsNavItems = [
-        { key: 'requests', label: 'Request', icon: 'fa-plus' },
+        { key: 'requests', label: 'Add Song', icon: 'fa-plus' },
         { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
-        { key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }
+        ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
@@ -10175,6 +10180,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const compactEmptyStageMetaHint = 'Tap to expand';
     const canCollapseStagePanel = primaryStageTabs.includes(tab) && !forceExpandedHomeStageCard;
     const showStreamlinedStageNav = isStreamlinedAudienceShell && ['home', 'request', 'social'].includes(tab);
+    const showOmnipresentStageArea = (tab === 'home' || tab === 'request' || tab === 'social')
+        && (!showHomeIdlePartyCard || bracketSignupActive)
+        && !(hideOmnipresentStageAreaForStreamlinedIdle && !bracketSignupActive);
     const streamlinedStageNav = showStreamlinedStageNav ? (
         <div
             className="relative z-10 border-b border-white/10 bg-black/35 px-4 py-3"
@@ -10552,7 +10560,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             {streamlinedStageNav}
 
             {/* Omnipresent Stage Area */}
-            {((tab === 'home' || tab === 'request' || tab === 'social') && (!showHomeIdlePartyCard || bracketSignupActive)) && (
+            {showOmnipresentStageArea && (
                 <div
                     className={`bg-black/40 border-b-4 z-10 relative ${isNativeMobileLayout ? 'mobile-native-stage-shell' : ''}`}
                     style={{
@@ -11252,42 +11260,33 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                              </div>
                          ) : noSingerOnStage ? (
                              <>
-                                 <div className="rounded-3xl border border-cyan-300/28 bg-gradient-to-br from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_24px_rgba(34,211,238,0.14)]">
-                                     <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Party</div>
-                                     <div className="mt-1 text-xl font-black text-white">No one&apos;s on stage</div>
-                                     <div className="mt-1 text-sm text-zinc-300">
-                                         {isStreamlinedAudienceShell
-                                             ? 'Next singer is coming up. Jump in or keep an eye on the queue.'
-                                             : 'Next singer is coming up. Jump in or hang in the lobby.'}
+                                 <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
+                                     <div className="flex items-center justify-between gap-3">
+                                         <div className="min-w-0">
+                                             <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Stage Open</div>
+                                             <div className="mt-1 text-lg font-black text-white">Search and add the next song</div>
+                                             <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue • {allUsers.length || 0} here</div>
+                                         </div>
                                      </div>
                                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                          <button
                                              type="button"
-                                             onClick={() => setTab('request')}
-                                             className="rounded-2xl border border-pink-400/35 bg-pink-500/18 px-4 py-4 text-left text-pink-100 hover:bg-pink-500/28"
+                                             onClick={openAudienceCatalogSearch}
+                                             className="rounded-2xl border border-cyan-300/35 bg-cyan-500/18 px-4 py-4 text-left text-cyan-50 hover:bg-cyan-500/28"
                                          >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-pink-200">Next Move</div>
-                                             <div className="mt-1 text-base font-black">Request A Song</div>
+                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Quick Start</div>
+                                             <div className="mt-1 text-base font-black">Search + Add Song</div>
                                          </button>
                                          <button
                                              type="button"
                                              onClick={() => {
-                                                 if (isStreamlinedAudienceShell) {
-                                                     setTab('request');
-                                                     setSongsTab('queue');
-                                                     return;
-                                                 }
-                                                 setTab('social');
-                                                 setSocialTab('lobby');
+                                                 setTab('request');
+                                                 setSongsTab('queue');
                                              }}
                                              className="rounded-2xl border border-white/12 bg-black/30 px-4 py-4 text-left text-zinc-100 hover:bg-white/8"
                                          >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                                                 {isStreamlinedAudienceShell ? 'Queue' : 'Crowd'}
-                                             </div>
-                                             <div className="mt-1 text-base font-black">
-                                                 {isStreamlinedAudienceShell ? 'View Queue' : 'Open Lobby'}
-                                             </div>
+                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Queue</div>
+                                             <div className="mt-1 text-base font-black">View Queue</div>
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">
@@ -12357,46 +12356,56 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             className={`flex w-full items-center gap-3 border px-3 py-3 text-left text-base text-white ${isStreamlinedAudienceShell ? 'rounded-2xl border-cyan-300/20 bg-black/25 shadow-[0_10px_24px_rgba(0,0,0,0.2)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
                                         >
                                             <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
-                                            <span className={searchQ ? 'text-white' : 'text-zinc-400'}>
-                                                {searchQ || 'Search songs...'}
-                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                {isStreamlinedAudienceShell && (
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/80">Fastest way in</div>
+                                                )}
+                                                <span className={searchQ ? 'text-white' : 'text-zinc-400'}>
+                                                    {searchQ || (isStreamlinedAudienceShell ? 'Search + Add Song' : 'Search songs...')}
+                                                </span>
+                                            </div>
                                             {isStreamlinedAudienceShell && (
                                                 <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                    Open
+                                                    Search
                                                     <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                                                 </span>
                                             )}
                                         </button>
+                                        {isStreamlinedAudienceShell && (
+                                            <div className="text-sm text-zinc-400">
+                                                Open search, pick a song, and it goes straight to the queue.
+                                            </div>
+                                        )}
                                         {!isStreamlinedAudienceShell && (
                                             <div className="text-sm text-zinc-500">
                                                 Search opens a full-screen song picker so results stay visible above the keyboard.
                                             </div>
                                         )}
                                     </div>
-                                    <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
-                                        <input
-                                            type="checkbox"
-                                            checked={requestCollabOpen}
-                                            onChange={(event) => setRequestCollabOpen(event.target.checked)}
-                                            className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
-                                        />
-                                        <div>
-                                            <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
-                                            {!isStreamlinedAudienceShell && (
+                                    {!isStreamlinedAudienceShell && (
+                                        <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
+                                            <input
+                                                type="checkbox"
+                                                checked={requestCollabOpen}
+                                                onChange={(event) => setRequestCollabOpen(event.target.checked)}
+                                                className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
+                                            />
+                                            <div>
+                                                <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
                                                 <div className="text-sm text-zinc-300">Applies to your next request from search, manual entry, or browse.</div>
-                                            )}
-                                        </div>
-                                    </label>
+                                            </div>
+                                        </label>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() => setManualRequestComposerOpen(true)}
-                                        className={`w-full rounded-2xl border border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 px-4 text-left ${isStreamlinedAudienceShell ? 'py-3' : 'py-4'}`}
+                                        className={`w-full rounded-2xl border px-4 text-left ${isStreamlinedAudienceShell ? 'border-white/12 bg-black/20 py-3' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
                                     >
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
-                                                <div className="text-sm uppercase tracking-[0.35em] text-pink-100/75">Manual Entry</div>
+                                                <div className={`text-sm uppercase tracking-[0.35em] ${isStreamlinedAudienceShell ? 'text-zinc-400' : 'text-pink-100/75'}`}>Manual Entry</div>
                                                 <div className="text-lg font-black text-white">
-                                                    {isStreamlinedAudienceShell ? 'Type song + artist yourself' : 'Type it yourself in a full-screen form'}
+                                                    {isStreamlinedAudienceShell ? 'Can’t find it? Type it manually' : 'Type it yourself in a full-screen form'}
                                                 </div>
                                                 {!isStreamlinedAudienceShell && (
                                                     <div className="text-sm text-zinc-300">Better when you already know the exact song and artist.</div>
@@ -12421,6 +12430,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     )}
                                 </div>
+                                {(!isStreamlinedAudienceShell || latestMyRequest || activeRequestCount > 0) && (
                                 <div data-feature-id="singer-my-requests-panel" className="mt-6 border-t border-zinc-800 pt-4 flex-1">
                                     <div className={`rounded-2xl border border-white/10 text-left ${isStreamlinedAudienceShell ? 'bg-black/25 p-3.5' : 'bg-zinc-900/40 p-4'}`}>
                                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -12473,6 +12483,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         )}
                                     </div>
                                 </div>
+                                )}
                             </div>
                         )}
                         {songsTab === 'browse' && (
@@ -12501,20 +12512,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </div>
                                     )}
                                 </div>
-                                <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
-                                    <input
-                                        type="checkbox"
-                                        checked={requestCollabOpen}
-                                        onChange={(event) => setRequestCollabOpen(event.target.checked)}
-                                        className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
-                                        />
-                                        <div>
-                                            <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
-                                            {!isStreamlinedAudienceShell && (
+                                {!isStreamlinedAudienceShell && (
+                                    <label className="flex items-center gap-3 rounded-2xl border border-pink-300/18 bg-pink-500/8 px-4 py-3 text-left">
+                                        <input
+                                            type="checkbox"
+                                            checked={requestCollabOpen}
+                                            onChange={(event) => setRequestCollabOpen(event.target.checked)}
+                                            className="h-5 w-5 rounded border-white/20 bg-black/30 accent-pink-400"
+                                            />
+                                            <div>
+                                                <div className="text-sm font-black uppercase tracking-[0.18em] text-pink-100">Open to duet or group</div>
                                                 <div className="text-sm text-zinc-300">If someone else wants the same song, the host can pair you up.</div>
-                                            )}
-                                        </div>
-                                    </label>
+                                            </div>
+                                        </label>
+                                )}
                                 {audienceManualBackingAllowed && (
                                     <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-500/5 px-4 py-4">
                                         <div className="flex items-start justify-between gap-3">

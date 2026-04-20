@@ -95,6 +95,78 @@ const formatWaitTime = (seconds) => {
     return `${mins}m`;
 };
 
+const ROUND_WINNER_PRESENTATION = {
+    gold: { label: 'Gold', medal: emoji(0x1F947), pedestalHeight: '15rem', accent: 'from-amber-300 via-yellow-200 to-amber-100' },
+    silver: { label: 'Silver', medal: emoji(0x1F948), pedestalHeight: '11.5rem', accent: 'from-slate-200 via-zinc-100 to-slate-50' },
+    bronze: { label: 'Bronze', medal: emoji(0x1F949), pedestalHeight: '8.5rem', accent: 'from-orange-300 via-amber-200 to-orange-100' },
+};
+
+const RoundWinnersPodiumOverlay = ({ moment = null }) => {
+    const winners = Array.isArray(moment?.winners) ? moment.winners : [];
+    if (!winners.length) return null;
+    const winnersByPlace = winners.reduce((acc, entry) => {
+        const place = String(entry?.place || '').trim().toLowerCase();
+        if (place) acc[place] = entry;
+        return acc;
+    }, {});
+    const displayOrder = ['silver', 'gold', 'bronze'];
+    return (
+        <div className="public-tv fixed inset-0 z-[204] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.24),rgba(0,0,0,0)_34%),radial-gradient(circle_at_20%_0%,rgba(34,211,238,0.2),rgba(0,0,0,0)_24%),linear-gradient(180deg,rgba(2,6,23,0.96),rgba(9,9,11,0.98))] px-4 py-8 md:px-10 md:py-12 text-white">
+            <div className="mx-auto flex h-full w-full max-w-[1400px] flex-col justify-between">
+                <div className="text-center">
+                    <div className="text-sm font-black uppercase tracking-[0.36em] text-amber-100/80">Round Winners</div>
+                    <div className="mt-3 text-5xl font-bebas tracking-[0.08em] text-white md:text-7xl">{moment?.title || 'Podium Time'}</div>
+                    {moment?.subtitle ? (
+                        <div className="mt-2 text-base text-cyan-100/80 md:text-xl">{moment.subtitle}</div>
+                    ) : null}
+                </div>
+                <div className="grid flex-1 items-end gap-4 md:grid-cols-3 md:gap-6">
+                    {displayOrder.map((place) => {
+                        const winner = winnersByPlace[place] || null;
+                        const presentation = ROUND_WINNER_PRESENTATION[place];
+                        const imageUrl = String(winner?.imageUrl || winner?.selfieUrl || winner?.photoUrl || '').trim();
+                        return (
+                            <div key={place} className={`flex flex-col items-center ${place === 'gold' ? 'md:-translate-y-8' : ''}`}>
+                                <div className="relative mb-4 flex min-h-[11rem] w-full max-w-[22rem] flex-col items-center justify-end">
+                                    <div className="absolute inset-x-6 bottom-8 h-16 rounded-full bg-white/10 blur-2xl" />
+                                    {winner ? (
+                                        <div className="relative flex flex-col items-center text-center">
+                                            {imageUrl ? (
+                                                <img
+                                                    src={imageUrl}
+                                                    alt={winner?.name || presentation.label}
+                                                    className="h-32 w-32 rounded-[1.75rem] border-4 border-white/12 object-cover shadow-[0_20px_45px_rgba(0,0,0,0.42)] md:h-40 md:w-40"
+                                                />
+                                            ) : (
+                                                <div className="flex h-32 w-32 items-center justify-center rounded-[1.75rem] border-4 border-white/12 bg-black/35 text-6xl shadow-[0_20px_45px_rgba(0,0,0,0.42)] md:h-40 md:w-40 md:text-7xl">
+                                                    {winner?.avatar || presentation.medal}
+                                                </div>
+                                            )}
+                                            <div className="mt-4 text-xl font-black uppercase tracking-[0.08em] text-white md:text-3xl">{winner?.name || presentation.label}</div>
+                                            <div className="mt-1 text-2xl">{winner?.avatar || presentation.medal}</div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative flex h-32 w-32 items-center justify-center rounded-[1.75rem] border border-dashed border-white/12 bg-black/20 text-5xl text-white/35 md:h-40 md:w-40 md:text-6xl">
+                                            {presentation.medal}
+                                        </div>
+                                    )}
+                                </div>
+                                <div
+                                    className={`flex w-full max-w-[22rem] flex-col items-center justify-center rounded-t-[2rem] border border-white/12 bg-gradient-to-b ${presentation.accent} px-5 pb-6 pt-5 text-center text-slate-950 shadow-[0_24px_50px_rgba(0,0,0,0.34)]`}
+                                    style={{ minHeight: presentation.pedestalHeight }}
+                                >
+                                    <div className="text-sm font-black uppercase tracking-[0.34em]">{presentation.label}</div>
+                                    <div className="mt-2 text-5xl">{presentation.medal}</div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const LOBBY_REACTION_LABELS = {
     fire: 'Hype',
     heart: 'Love',
@@ -5355,8 +5427,15 @@ const PublicTV = ({ roomCode }) => {
     const tvPreviewExpired = tvPreviewOverlay
         ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
         : true;
+    const roundWinnersMoment = room?.roundWinnersMoment?.active ? room.roundWinnersMoment : null;
+    const roundWinnersMomentExpired = roundWinnersMoment
+        ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
+        : true;
     if (tvPreviewOverlay && !tvPreviewExpired) {
         return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
+    }
+    if (roundWinnersMoment && !roundWinnersMomentExpired) {
+        return <RoundWinnersPodiumOverlay moment={roundWinnersMoment} />;
     }
     if (room?.activeScreen === 'leaderboard') {
         return (
@@ -5402,7 +5481,8 @@ const PublicTV = ({ roomCode }) => {
             </div>
         );
     }
-    if (room?.announcement?.active) {
+    const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
+    if (room?.announcement?.active && !activeGameCartridgeMode) {
         const announcement = room.announcement || {};
         return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
     }
@@ -5573,7 +5653,7 @@ const PublicTV = ({ roomCode }) => {
     const pickerUser = roomUsers.find(u => u.uid === room?.bingoPickerUid) || null;
 
     // 2. Game Cartridges
-    if (room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode)) {
+    if (activeGameCartridgeMode) {
         // Map correct payload based on mode
         const isTrivia = room.activeMode.includes('trivia');
         const isWyr = room.activeMode.includes('wyr');

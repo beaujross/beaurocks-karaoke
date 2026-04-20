@@ -25,6 +25,7 @@ export const RUN_OF_SHOW_ITEM_TYPES = Object.freeze([
     'game_break',
     'would_you_rather_break',
     'announcement',
+    'winner_declaration',
     'intermission',
     'buffer',
     'closing'
@@ -341,10 +342,33 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
                 ? 'backing'
                 : '')
         : '';
-    const plannedDurationSec = clampInt(overrides.plannedDurationSec, 0, 3600, safeType === 'performance' ? 180 : 45);
-    const advanceMode = getRunOfShowAdvanceMode(overrides);
+    const plannedDurationSec = clampInt(
+        overrides.plannedDurationSec,
+        0,
+        3600,
+        safeType === 'performance'
+            ? 180
+            : safeType === 'winner_declaration'
+                ? 75
+                : 45
+    );
+    const inferredAdvanceOverrides = (
+        safeType === 'winner_declaration'
+        && !cleanText(overrides.advanceMode)
+        && overrides.requireHostAdvance !== false
+    )
+        ? { ...overrides, advanceMode: RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin }
+        : overrides;
+    const advanceMode = getRunOfShowAdvanceMode(inferredAdvanceOverrides);
     const hostAdvanceMinSec = advanceMode === RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin
-        ? clampInt(overrides.hostAdvanceMinSec, 0, 3600, plannedDurationSec)
+        ? clampInt(
+            inferredAdvanceOverrides.hostAdvanceMinSec,
+            0,
+            3600,
+            safeType === 'winner_declaration'
+                ? Math.min(plannedDurationSec, 20)
+                : plannedDurationSec
+        )
         : 0;
     return {
         id: cleanText(overrides.id) || createId(safeType, now),
@@ -588,7 +612,7 @@ export const isRunOfShowItemReady = (item = {}) => {
     if (safeType === 'trivia_break' || safeType === 'would_you_rather_break' || safeType === 'game_break') {
         return !!cleanText(item?.modeLaunchPlan?.modeKey);
     }
-    if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing') {
+    if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing' || safeType === 'winner_declaration') {
         return !!cleanText(item?.title) || !!cleanText(item?.presentationPlan?.headline);
     }
     if (safeType === 'intermission' || safeType === 'buffer') {
@@ -686,7 +710,7 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
         if ((safeType === 'trivia_break' || safeType === 'would_you_rather_break') && options.length < 2) {
             pushAdvisory('options_missing', 'Add at least two answer options so the TV and audience takeover feel complete.');
         }
-    } else if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing') {
+    } else if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing' || safeType === 'winner_declaration') {
         if (!cleanText(item?.title) && !cleanText(item?.presentationPlan?.headline)) {
             pushBlocker('headline_missing', 'Add a title or headline so this presentation block has a clear message.');
         } else if (item?.presentationPlan?.publicTvTakeoverEnabled === true && !cleanText(item?.presentationPlan?.headline)) {
@@ -915,5 +939,6 @@ export const buildRunOfShowQueueDocId = (roomCode = '', itemId = '') => {
 export const getRunOfShowItemLabel = (type = '') => {
     const safeType = cleanText(type).toLowerCase();
     if (!safeType) return 'Run Of Show';
+    if (safeType === 'winner_declaration') return 'Declare Winner';
     return safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 };

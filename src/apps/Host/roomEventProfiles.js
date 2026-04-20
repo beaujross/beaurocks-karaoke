@@ -155,6 +155,26 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 momentCueAutoFire: true,
             }
         }, now + 10),
+        createRunOfShowItem('winner_declaration', {
+            title: 'Hourly Door Prize Winners',
+            plannedDurationSec: 75,
+            status: 'ready',
+            advanceMode: 'host_after_min',
+            hostAdvanceMinSec: 20,
+            notes: 'Pick the podium and hand out the hourly door prize before the room resets.',
+            presentationPlan: {
+                publicTvTakeoverEnabled: false,
+                takeoverScene: 'winner_reveal',
+                headline: 'Hourly winners',
+                subhead: 'Pick gold, silver, and bronze before the next block starts.',
+                accentTheme: 'amber'
+            },
+            audioPlan: {
+                momentCueId: 'reveal',
+                momentCueTiming: 'start',
+                momentCueAutoFire: true,
+            }
+        }, now + 10.5),
         createRunOfShowItem('announcement', {
             title: 'Selfie Cam Moment',
             plannedDurationSec: 45,

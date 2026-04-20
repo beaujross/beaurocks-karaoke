@@ -19,6 +19,7 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
     assert.equal(patch.hostNightPreset, 'competition');
     assert.equal(patch.marqueeEnabled, false);
     assert.equal(patch.popTriviaEnabled, false);
+    assert.equal(patch.audienceShellVariant, 'streamlined');
     assert.equal(patch.programMode, 'run_of_show');
     assert.equal(patch.runOfShowEnabled, true);
     assert.match(patch.logoUrl, /aahf/i);
@@ -28,6 +29,7 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
     const items = Array.isArray(patch.runOfShowDirector?.items) ? patch.runOfShowDirector.items : [];
     assert.ok(items.some((item) => item.type === 'trivia_break'));
     assert.ok(items.some((item) => item.type === 'would_you_rather_break'));
+    assert.ok(items.some((item) => item.type === 'winner_declaration'));
 
     const triviaBreak = items.find((item) => item.type === 'trivia_break');
     assert.equal(triviaBreak?.modeLaunchPlan?.modeKey, 'trivia_pop');
@@ -36,6 +38,9 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
     const wyrBreaks = items.filter((item) => item.type === 'would_you_rather_break');
     assert.ok(wyrBreaks.length >= 2);
     assert.deepEqual(wyrBreaks[0]?.modeLaunchPlan?.launchConfig?.options, ['Power ballad', 'Singalong anthem']);
+    const winnerDeclaration = items.find((item) => item.type === 'winner_declaration');
+    assert.equal(winnerDeclaration?.advanceMode, 'host_after_min');
+    assert.equal(winnerDeclaration?.hostAdvanceMinSec, 20);
 });
 
 test('roomEventProfiles exposes AAHF setup highlights and seeded break scenes', () => {
@@ -50,4 +55,5 @@ test('roomEventProfiles exposes AAHF setup highlights and seeded break scenes', 
     assert.equal(items[0]?.type, 'intro');
     assert.ok(items.some((item) => item.type === 'trivia_break' && /Keep the room engaged/i.test(item?.presentationPlan?.subhead || '')));
     assert.ok(items.some((item) => item.type === 'would_you_rather_break' && /Crowd vote break/i.test(item?.presentationPlan?.headline || '')));
+    assert.ok(items.some((item) => item.type === 'winner_declaration' && /door prize/i.test(item?.notes || '')));
 });

@@ -345,6 +345,18 @@ test("runOfShowDirector progression decisions block timed completion when host a
   );
 });
 
+test("runOfShowDirector gives winner declaration blocks host-controlled defaults", () => {
+  const item = createRunOfShowItem("winner_declaration", {
+    title: "Hourly Door Prize Winners",
+  });
+
+  assert.equal(item.plannedDurationSec, 75);
+  assert.equal(item.advanceMode, "host_after_min");
+  assert.equal(item.hostAdvanceMinSec, 20);
+  assert.equal(item.requireHostAdvance, true);
+  assert.equal(isRunOfShowItemReady(item), true);
+});
+
 test("runOfShowDirector progression decisions respect host minimum live windows", () => {
   const now = Date.now();
   const liveAnnouncement = createRunOfShowItem("announcement", {

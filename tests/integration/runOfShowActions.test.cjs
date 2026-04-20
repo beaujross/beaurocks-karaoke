@@ -260,6 +260,206 @@ async function run() {
       assert.equal(roomSnap.get("runOfShowTemplateMeta.currentTemplateId"), "kickoff_v1");
       assert.equal(roomSnap.get("runOfShowTemplateMeta.currentTemplateName"), "Kick-Off v1");
     }],
+
+    ["starting a WYR run-of-show break writes the live prompt payload", async () => {
+      await roomRef.set({
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          currentItemId: "",
+          items: [
+            {
+              id: "wyr_break",
+              type: "would_you_rather_break",
+              title: "Audience Vote",
+              sequence: 1,
+              status: "staged",
+              visibility: "public",
+              automationMode: "auto",
+              plannedDurationSec: 18,
+              modeLaunchPlan: {
+                modeKey: "wyr",
+                launchConfig: {
+                  question: "Would you rather sing only power ballads or only disco anthems tonight?",
+                  options: ["Power ballads", "Disco anthems"],
+                  points: 75,
+                  durationSec: 21,
+                  autoReveal: true,
+                },
+              },
+            },
+          ],
+        },
+      }, { merge: true });
+
+      const result = await executeRunOfShowAction.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "start",
+        itemId: "wyr_break",
+      }));
+
+      assert.equal(result.ok, true);
+      const roomSnap = await roomRef.get();
+      assert.equal(roomSnap.get("activeMode"), "wyr");
+      assert.equal(roomSnap.get("wyrData.question"), "Would you rather sing only power ballads or only disco anthems tonight?");
+      assert.equal(roomSnap.get("wyrData.optionA"), "Power ballads");
+      assert.equal(roomSnap.get("wyrData.optionB"), "Disco anthems");
+      assert.equal(roomSnap.get("wyrData.points"), 75);
+      assert.equal(roomSnap.get("wyrData.durationSec"), 21);
+      assert.equal(roomSnap.get("announcement"), null);
+    }],
+
+    ["starting a trivia run-of-show break writes the live trivia payload", async () => {
+      await roomRef.set({
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          currentItemId: "",
+          items: [
+            {
+              id: "trivia_break",
+              type: "trivia_break",
+              title: "Trivia Break",
+              sequence: 1,
+              status: "staged",
+              visibility: "public",
+              automationMode: "auto",
+              plannedDurationSec: 18,
+              modeLaunchPlan: {
+                modeKey: "trivia_pop",
+                launchConfig: {
+                  question: "Which diva opened the fundraiser in 1989?",
+                  options: ["Cher", "Madonna", "Whitney Houston", "Celine Dion"],
+                  correctIndex: 2,
+                  points: 120,
+                  durationSec: 19,
+                  autoReveal: true,
+                },
+              },
+              presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: "trivia_break",
+              },
+            },
+          ],
+        },
+      }, { merge: true });
+
+      const result = await executeRunOfShowAction.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "start",
+        itemId: "trivia_break",
+      }));
+
+      assert.equal(result.ok, true);
+      const roomSnap = await roomRef.get();
+      assert.equal(roomSnap.get("activeMode"), "trivia_pop");
+      assert.equal(roomSnap.get("triviaQuestion.q"), "Which diva opened the fundraiser in 1989?");
+      assert.deepEqual(roomSnap.get("triviaQuestion.options"), ["Cher", "Madonna", "Whitney Houston", "Celine Dion"]);
+      assert.equal(roomSnap.get("triviaQuestion.correct"), 2);
+      assert.equal(roomSnap.get("triviaQuestion.points"), 120);
+      assert.equal(roomSnap.get("announcement"), null);
+    }],
+
+    ["starting a winner declaration block keeps the podium manual until the host declares winners", async () => {
+      await roomRef.set({
+        activeMode: "karaoke",
+        activeScreen: "stage",
+        roundWinnersMoment: null,
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          currentItemId: "",
+          items: [
+            {
+              id: "winner_block",
+              type: "winner_declaration",
+              title: "Hourly Door Prize Winners",
+              sequence: 1,
+              status: "staged",
+              visibility: "public",
+              automationMode: "auto",
+              advanceMode: "host_after_min",
+              hostAdvanceMinSec: 20,
+              requireHostAdvance: true,
+              plannedDurationSec: 75,
+              notes: "Pick the podium before the next singer starts.",
+              presentationPlan: {
+                publicTvTakeoverEnabled: false,
+                headline: "Hourly winners",
+                subhead: "Pick gold, silver, and bronze before the next block starts.",
+                takeoverScene: "winner_reveal",
+                accentTheme: "amber",
+              },
+            },
+          ],
+        },
+      }, { merge: true });
+
+      const result = await executeRunOfShowAction.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "start",
+        itemId: "winner_block",
+      }));
+
+      assert.equal(result.ok, true);
+      const roomSnap = await roomRef.get();
+      const liveItem = (roomSnap.get("runOfShowDirector.items") || []).find((entry) => entry.id === "winner_block");
+      assert.equal(roomSnap.get("runOfShowDirector.currentItemId"), "winner_block");
+      assert.equal(liveItem?.status, "live");
+      assert.equal(roomSnap.get("announcement"), null);
+      assert.equal(roomSnap.get("roundWinnersMoment"), null);
+      assert.equal(roomSnap.get("activeMode"), "karaoke");
+      assert.equal(roomSnap.get("activeScreen"), "stage");
+    }],
+
+    ["starting a generic game break writes launch payload without a takeover overlay", async () => {
+      await roomRef.set({
+        runOfShowDirector: {
+          enabled: true,
+          automationPaused: false,
+          currentItemId: "",
+          items: [
+            {
+              id: "team_pong_break",
+              type: "game_break",
+              title: "Team Pong Rally",
+              sequence: 1,
+              status: "staged",
+              visibility: "public",
+              automationMode: "auto",
+              plannedDurationSec: 25,
+              modeLaunchPlan: {
+                modeKey: "team_pong",
+                launchConfig: {
+                  question: "Left side or right side?",
+                  options: ["Left", "Right"],
+                  durationSec: 25,
+                },
+              },
+              presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: "game_break",
+              },
+            },
+          ],
+        },
+      }, { merge: true });
+
+      const result = await executeRunOfShowAction.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        action: "start",
+        itemId: "team_pong_break",
+      }));
+
+      assert.equal(result.ok, true);
+      const roomSnap = await roomRef.get();
+      assert.equal(roomSnap.get("activeMode"), "team_pong");
+      assert.equal(roomSnap.get("gameData.question"), "Left side or right side?");
+      assert.deepEqual(roomSnap.get("gameData.options"), ["Left", "Right"]);
+      assert.equal(roomSnap.get("gameData.runOfShowItemId"), "team_pong_break");
+      assert.equal(roomSnap.get("announcement"), null);
+    }],
   ];
 
   const results = [];

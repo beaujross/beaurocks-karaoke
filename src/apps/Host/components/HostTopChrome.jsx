@@ -319,8 +319,8 @@ const HostTopChrome = ({
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} normal-case tracking-[0.04em]`;
-    const quickAudioControlClass = 'flex min-w-[170px] items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-2';
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} shrink-0 whitespace-nowrap normal-case tracking-[0.04em]`;
+    const quickAudioControlClass = 'flex min-w-[170px] shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-2';
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
         || audioPanelOpen
@@ -1298,8 +1298,8 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`w-full rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-            <div className="host-top-quick-strip flex flex-wrap items-center gap-2">
+        <div data-host-quick-strip-wrap="true" className={`w-full overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
+            <div className="host-top-quick-strip flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-1 pr-0.5 custom-scrollbar">
                 {shouldShowQuickStartButton && (
                     <div className="relative" ref={quickStartMenuRef}>
                         <button
@@ -1516,7 +1516,7 @@ const HostTopChrome = ({
                 </div>
                 {!runOfShowFocusMode ? (
                     <div className="relative" ref={audioMenuRef}>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-nowrap items-center gap-2">
                             <button
                                 type="button"
                                 data-feature-id="deck-audio-menu-toggle"
@@ -2348,7 +2348,7 @@ const HostTopChrome = ({
                 </div>
             ) : null}
         </div>
-        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && !queueWorkspaceMode && (
+        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
             <div className="w-full">
                 <div className={`rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] ${compactRunOfShowDense ? 'px-3 py-2' : 'px-3 py-3'}`}>
                     <div className={`flex flex-wrap justify-between gap-2.5 ${compactRunOfShowDense ? 'items-center' : 'items-start'}`}>

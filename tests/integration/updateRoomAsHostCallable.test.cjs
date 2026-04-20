@@ -105,6 +105,13 @@ async function run() {
           currentTemplateId: "template_1",
           currentTemplateName: "AAHF Kick-Off",
         },
+        roundWinnersMoment: {
+          active: true,
+          title: "Round Results",
+          winners: [
+            { place: "gold", uid: "guest-1", name: "Alex", avatar: "🎤" },
+          ],
+        },
         tvPreviewOverlay: {
           active: true,
           itemId: "intro_1",
@@ -140,6 +147,7 @@ async function run() {
           "runOfShowPolicy",
           "runOfShowRoles",
           "runOfShowTemplateMeta",
+          "roundWinnersMoment",
           "tvPreviewOverlay",
           "runOfShowDirector",
         ])
@@ -159,6 +167,7 @@ async function run() {
       assert.equal(snap.get("runOfShowPolicy.defaultAutomationMode"), "manual");
       assert.deepEqual(snap.get("runOfShowRoles.coHosts"), ["cohost_1"]);
       assert.equal(snap.get("runOfShowTemplateMeta.currentTemplateName"), "AAHF Kick-Off");
+      assert.equal((snap.get("roundWinnersMoment")?.winners || [])[0]?.name, "Alex");
       assert.equal(snap.get("tvPreviewOverlay.headline"), "Preview Intro");
       assert.equal((snap.get("runOfShowDirector")?.items || [])[0]?.title, "Introductions");
     }],

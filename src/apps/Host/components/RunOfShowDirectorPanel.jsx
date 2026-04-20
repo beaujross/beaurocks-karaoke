@@ -167,6 +167,7 @@ const ITEM_VISUALS = Object.freeze({
     intro: { icon: 'fa-door-open', tone: 'from-cyan-500/25 to-sky-500/15', chip: 'border-cyan-300/25 bg-cyan-500/12 text-cyan-100' },
     performance: { icon: 'fa-microphone-lines', tone: 'from-fuchsia-500/25 to-rose-500/15', chip: 'border-fuchsia-300/25 bg-fuchsia-500/12 text-fuchsia-100' },
     announcement: { icon: 'fa-bullhorn', tone: 'from-amber-500/25 to-orange-500/15', chip: 'border-amber-300/25 bg-amber-500/12 text-amber-100' },
+    winner_declaration: { icon: 'fa-trophy', tone: 'from-amber-500/25 to-yellow-500/15', chip: 'border-amber-300/25 bg-amber-500/12 text-amber-100' },
     trivia_break: { icon: 'fa-lightbulb', tone: 'from-violet-500/25 to-indigo-500/15', chip: 'border-violet-300/25 bg-violet-500/12 text-violet-100' },
     game_break: { icon: 'fa-dice', tone: 'from-emerald-500/25 to-teal-500/15', chip: 'border-emerald-300/25 bg-emerald-500/12 text-emerald-100' },
     would_you_rather_break: { icon: 'fa-shuffle', tone: 'from-emerald-500/25 to-cyan-500/15', chip: 'border-emerald-300/25 bg-emerald-500/12 text-emerald-100' },
@@ -177,6 +178,7 @@ const ITEM_VISUALS = Object.freeze({
 const QUICK_ADD_SCENE_OPTIONS = Object.freeze([
     { value: 'performance', label: 'Performance Slot', icon: 'fa-microphone-lines', detail: 'Add a singer clip' },
     { value: 'announcement', label: 'Announcement', icon: 'fa-bullhorn', detail: 'Host beat or sponsor hit' },
+    { value: 'winner_declaration', label: 'Declare Winner', icon: 'fa-trophy', detail: 'Podium + door prize reveal' },
     { value: 'would_you_rather_break', label: 'Audience Vote', icon: 'fa-shuffle', detail: 'Quick between-song room vote' },
     { value: 'intermission', label: 'Intermission', icon: 'fa-martini-glass-citrus', detail: 'Reset the room' },
     { value: 'closing', label: 'Closing', icon: 'fa-flag-checkered', detail: 'End the night cleanly' },
@@ -245,6 +247,29 @@ const MOMENT_PACKS = Object.freeze([
                 headline: 'Quick split-decision moment',
                 subhead: 'Phones vote once and the room sees the split immediately.',
                 accentTheme: 'emerald'
+            }
+        }
+    },
+    {
+        id: 'winner_podium',
+        label: 'Door Prize Winners',
+        subtitle: 'Live podium reveal for the next hourly winners',
+        icon: 'fa-trophy',
+        tone: 'amber',
+        type: 'winner_declaration',
+        chips: ['Podium', 'Door prize'],
+        overrides: {
+            title: 'Hourly Door Prize Winners',
+            plannedDurationSec: 75,
+            notes: 'Use this beat when the host is ready to name the hourly winners.',
+            advanceMode: 'host_after_min',
+            hostAdvanceMinSec: 20,
+            presentationPlan: {
+                headline: 'Hourly winners',
+                subhead: 'Pick the podium and send the reveal to Public TV.',
+                publicTvTakeoverEnabled: false,
+                takeoverScene: 'winner_reveal',
+                accentTheme: 'amber'
             }
         }
     },
@@ -794,7 +819,7 @@ const buildTakeoverPresetUpdate = (item = {}, presetId = '') => {
         }
     };
 };
-const TAKEOVER_ITEM_TYPES = new Set(['announcement', 'intro', 'closing', 'intermission', 'buffer']);
+const TAKEOVER_ITEM_TYPES = new Set(['announcement', 'intro', 'closing', 'intermission', 'buffer', 'winner_declaration']);
 const distributeInsertions = (count = 0, total = 0) => {
     if (!count || !total) return [];
     return Array.from({ length: count }, (_, index) => Math.max(1, Math.min(total, Math.round(((index + 1) * total) / (count + 1)))));
@@ -808,7 +833,7 @@ const buildInteractiveType = (format = '', index = 0, interactionLevel = 'modera
 const getTimelineLaneKey = (type = '') => {
     const safeType = String(type || '').trim().toLowerCase();
     if (safeType === 'performance') return 'performance';
-    if (['intro', 'announcement', 'closing'].includes(safeType)) return 'host';
+    if (['intro', 'announcement', 'closing', 'winner_declaration'].includes(safeType)) return 'host';
     return 'audience';
 };
 const buildTimelineSegments = (items = []) => {
@@ -1572,10 +1597,10 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
     const autoFire = audioPlan?.momentCueAutoFire === true;
     const activeCue = getHostMomentCueMeta(cueId);
     const hasCustomCueOptions = Boolean(cueId) && (cueTiming !== 'start' || autoFire === false);
-    const [customizeOpen, setCustomizeOpen] = useState(hasCustomCueOptions);
-    useEffect(() => {
-        if (hasCustomCueOptions) setCustomizeOpen(true);
-    }, [hasCustomCueOptions, item?.id]);
+    const currentItemId = String(item?.id || '').trim();
+    const [customizeState, setCustomizeState] = useState({ itemId: '', explicitOpen: null });
+    const explicitCustomizeOpen = customizeState.itemId === currentItemId ? customizeState.explicitOpen : null;
+    const customizeOpen = Boolean(cueId) && (explicitCustomizeOpen === null ? hasCustomCueOptions : explicitCustomizeOpen);
     const setCueId = (nextCueId = '') => {
         onUpdateItem?.(item.id, {
             audioPlan: {
@@ -1584,6 +1609,10 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                 momentCueTiming: nextCueId ? (audioPlan?.momentCueTiming || 'start') : 'start',
                 momentCueAutoFire: nextCueId ? (audioPlan?.momentCueAutoFire ?? true) : false
             }
+        });
+        setCustomizeState({
+            itemId: currentItemId,
+            explicitOpen: nextCueId ? null : false
         });
     };
     return (
@@ -1599,7 +1628,10 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                     </span>
                     <button
                         type="button"
-                        onClick={() => setCustomizeOpen((current) => !current)}
+                        onClick={() => setCustomizeState({
+                            itemId: currentItemId,
+                            explicitOpen: !customizeOpen
+                        })}
                         disabled={disabled || !cueId}
                         className={`inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${customizeOpen && cueId ? 'border-fuchsia-300/28 bg-fuchsia-500/10 text-fuchsia-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
                     >
@@ -3481,19 +3513,21 @@ export default function RunOfShowDirectorPanel({
         error: ''
     });
     const isRunOfShowActive = enabled && programMode === 'run_of_show';
-    const safePreflightReport = preflightReport && typeof preflightReport === 'object'
-        ? preflightReport
-        : {
-            itemCount: items.length,
-            readyCount: 0,
-            criticalCount: 0,
-            riskyCount: 0,
-            pendingApprovalCount: 0,
-            readyToStart: items.length > 0,
-            criticalItems: [],
-            riskyItems: [],
-            summary: items.length ? 'Review the plan before launch.' : 'Add at least one run-of-show block before launch.'
-        };
+    const safePreflightReport = useMemo(() => (
+        preflightReport && typeof preflightReport === 'object'
+            ? preflightReport
+            : {
+                itemCount: items.length,
+                readyCount: 0,
+                criticalCount: 0,
+                riskyCount: 0,
+                pendingApprovalCount: 0,
+                readyToStart: items.length > 0,
+                criticalItems: [],
+                riskyItems: [],
+                summary: items.length ? 'Review the plan before launch.' : 'Add at least one run-of-show block before launch.'
+            }
+    ), [items.length, preflightReport]);
     const isHostOperator = operatorRole === RUN_OF_SHOW_OPERATOR_ROLES.host;
     const roomUserCandidates = useMemo(
         () => normalizeRoomUserCandidates([

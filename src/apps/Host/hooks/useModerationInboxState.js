@@ -289,6 +289,11 @@ const useModerationInboxState = ({
     return {
         queueItems: snapshot.queueItems,
         counts: snapshot.counts,
+        submissions: {
+            doodles: doodleSubmissions,
+            selfies: selfieSubmissions,
+            crowdSelfies: crowdSelfieSubmissions,
+        },
         actions: {
             approveDoodleUid,
             approveSelfieSubmission,

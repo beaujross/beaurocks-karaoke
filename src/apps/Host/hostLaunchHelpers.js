@@ -71,10 +71,13 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     },
 });
 
+const AAHF_GIVEBUTTER_URL = 'https://givebutter.com/aahf-kickoff';
+const AAHF_GIVEBUTTER_CAMPAIGN_CODE = 'aahf_kickoff';
+
 const DEFAULT_AAHF_SUPPORT_OFFERS = Object.freeze([
-    { id: 'solo_boost', label: 'Solo Boost', amount: 5, points: 1200, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
-    { id: 'stage_starter', label: 'Stage Starter', amount: 10, points: 3000, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
-    { id: 'headliner', label: 'Headliner', amount: 20, points: 7500, rewardScope: 'buyer', awardBadge: false, supportUrl: '', supportEmbedUrl: '', supportCampaignCode: '', supportFundCode: '' },
+    { id: 'solo_boost', label: 'Solo Boost', amount: 5, points: 1200, rewardScope: 'buyer', awardBadge: false, supportUrl: AAHF_GIVEBUTTER_URL, supportEmbedUrl: '', supportCampaignCode: AAHF_GIVEBUTTER_CAMPAIGN_CODE, supportFundCode: '' },
+    { id: 'stage_starter', label: 'Stage Starter', amount: 10, points: 3000, rewardScope: 'buyer', awardBadge: false, supportUrl: AAHF_GIVEBUTTER_URL, supportEmbedUrl: '', supportCampaignCode: AAHF_GIVEBUTTER_CAMPAIGN_CODE, supportFundCode: '' },
+    { id: 'headliner', label: 'Headliner', amount: 20, points: 7500, rewardScope: 'buyer', awardBadge: false, supportUrl: AAHF_GIVEBUTTER_URL, supportEmbedUrl: '', supportCampaignCode: AAHF_GIVEBUTTER_CAMPAIGN_CODE, supportFundCode: '' },
 ]);
 
 export const EVENT_CREDITS_PRESETS = Object.freeze({
@@ -220,7 +223,7 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             eventId: 'aahf_kickoff',
             eventLabel: 'AAHF Karaoke Kick-Off',
             sourceProvider: 'givebutter',
-            sourceCampaignCode: '',
+            sourceCampaignCode: AAHF_GIVEBUTTER_CAMPAIGN_CODE,
             generalAdmissionPoints: 200,
             vipBonusPoints: 0,
             skipLineBonusPoints: 0,
@@ -228,9 +231,9 @@ export const EVENT_CREDITS_PRESETS = Object.freeze({
             socialPromoPoints: 0,
             supportProvider: 'givebutter',
             supportLabel: 'Support AAHF Festival',
-            supportUrl: '',
+            supportUrl: AAHF_GIVEBUTTER_URL,
             supportEmbedUrl: '',
-            supportCampaignCode: '',
+            supportCampaignCode: AAHF_GIVEBUTTER_CAMPAIGN_CODE,
             supportPoints: 0,
             supportBadge: true,
             supportOffers: DEFAULT_AAHF_SUPPORT_OFFERS,

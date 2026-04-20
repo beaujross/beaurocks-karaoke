@@ -157,12 +157,12 @@ const StageNowPlayingPanel = ({
                 </div>
             </div>
             <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+                    <div className="min-w-0">
                         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Show Pace</div>
-                        <div className="mt-1 text-xs text-zinc-300">{postPerformancePaceLabel} automation timing for applause, recap, and leaderboard beats.</div>
+                        <div className="mt-1 text-xs text-zinc-300">Automation timing for applause, recap, and leaderboard beats.</div>
                     </div>
-                    <span className="rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                    <span className="inline-flex min-w-[96px] items-center justify-center rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         {postPerformancePaceLabel}
                     </span>
                 </div>
@@ -192,12 +192,12 @@ const StageNowPlayingPanel = ({
                         <span>Fast</span>
                     </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Warm-up {effectiveApplauseWarmupSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Countdown {effectiveApplauseCountdownSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Meter {effectiveApplauseMeasureSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Recap {Math.round(effectiveRecapBreakdownMs / 1000)}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-zinc-300">Leaderboard {Math.round(effectiveRecapLeaderboardMs / 1000)}s</span>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.16em] lg:grid-cols-5">
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Warm-up {effectiveApplauseWarmupSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Countdown {effectiveApplauseCountdownSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Meter {effectiveApplauseMeasureSec}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Recap {Math.round(effectiveRecapBreakdownMs / 1000)}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Leaderboard {Math.round(effectiveRecapLeaderboardMs / 1000)}s</span>
                 </div>
             </div>
             {showTimingAdvanced ? (
