@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 
-const useQueueReorder = ({ queue, onPersist, toast }) => {
+const useQueueReorder = ({ queue, onPersist, toast, touchReorderActive = true }) => {
     const [dragQueueId, setDragQueueId] = useState(null);
     const [dragOverId, setDragOverId] = useState(null);
     const touchDragStateRef = useRef(null);
-    const [touchReorderEnabled] = useState(() => {
+    const [touchReorderAvailable] = useState(() => {
         if (typeof window === 'undefined') return false;
         try {
             const coarsePointer = typeof window.matchMedia === 'function'
@@ -15,6 +15,7 @@ const useQueueReorder = ({ queue, onPersist, toast }) => {
             return false;
         }
     });
+    const touchReorderEnabled = touchReorderAvailable && touchReorderActive;
 
     const reorderQueue = useCallback(async (fromId, toId) => {
         if (!fromId || !toId || fromId === toId) return;
@@ -82,6 +83,7 @@ const useQueueReorder = ({ queue, onPersist, toast }) => {
         dragOverId,
         setDragOverId,
         reorderQueue,
+        touchReorderAvailable,
         touchReorderEnabled,
         handleTouchStart,
         handleTouchMove,

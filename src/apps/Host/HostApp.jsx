@@ -31,6 +31,7 @@ import useQueueDerivedState from './hooks/useQueueDerivedState';
 import useQueueMediaTools from './hooks/useQueueMediaTools';
 import useQueueReorder from './hooks/useQueueReorder';
 import useQueueSongActions from './hooks/useQueueSongActions';
+import useQueueSurfaceController from './hooks/useQueueSurfaceController';
 import useQueueTabState from './hooks/useQueueTabState';
 import useModerationInboxState from './hooks/useModerationInboxState';
 import useHostSmokeTest from './hooks/useHostSmokeTest';
@@ -3783,6 +3784,25 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         currentSourceLabel,
         currentSourceToneClass
     } = useQueueDerivedState({ songs, room, users, appleMusicPlaying });
+    const queueSurface = useQueueSurfaceController({
+        layoutMode,
+        reviewRequired,
+        pending,
+        queue,
+        assigned,
+        showAddForm,
+        setShowAddForm,
+        showQueueList,
+        setShowQueueList,
+        reviewQueueOpen,
+        setReviewQueueOpen,
+        pendingQueueOpen,
+        setPendingQueueOpen,
+        readyQueueOpen,
+        setReadyQueueOpen,
+        assignedQueueOpen,
+        setAssignedQueueOpen
+    });
     useEffect(() => {
         if (!roomCode) {
             setTrustedCatalog({});
@@ -4026,6 +4046,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         dragOverId,
         setDragOverId,
         reorderQueue,
+        touchReorderAvailable,
         touchReorderEnabled,
         handleTouchStart,
         handleTouchMove,
@@ -4033,6 +4054,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     } = useQueueReorder({
         queue,
         toast,
+        touchReorderActive: queueSurface.touchReorderActive,
         onPersist: async (list) => {
             const base = nowMs();
             await Promise.all(list.map((item, idx) =>
@@ -5439,12 +5461,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
 
     useEffect(() => {
-        if (!isMobileLayout && !isTightLayout) return;
-        if (showAddForm || showQueueList) return;
-        setShowQueueList(true);
-    }, [isMobileLayout, isTightLayout, showAddForm, showQueueList, setShowQueueList]);
-
-    useEffect(() => {
+        if (queueSurface.isCompactQueueSurface) {
+            autoCollapsedRunOfShowAddFormRef.current = false;
+            return;
+        }
         if (runOfShowEnabled && hasRunOfShowQueueWork && showAddForm && !autoCollapsedRunOfShowAddFormRef.current) {
             setShowAddForm(false);
             autoCollapsedRunOfShowAddFormRef.current = true;
@@ -5453,7 +5473,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         if (!runOfShowEnabled || !hasRunOfShowQueueWork) {
             autoCollapsedRunOfShowAddFormRef.current = false;
         }
-    }, [hasRunOfShowQueueWork, runOfShowEnabled, setShowAddForm, showAddForm]);
+    }, [hasRunOfShowQueueWork, queueSurface.isCompactQueueSurface, runOfShowEnabled, setShowAddForm, showAddForm]);
     const handleStopRunOfShowAndRestoreQueueTools = useCallback(async () => {
         const result = await onStopRunOfShow?.();
         autoCollapsedRunOfShowAddFormRef.current = false;
@@ -5730,7 +5750,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 setDragQueueId={setDragQueueId}
                 setDragOverId={setDragOverId}
                 reorderQueue={reorderQueue}
+                touchReorderAvailable={touchReorderAvailable}
                 touchReorderEnabled={touchReorderEnabled}
+                touchReorderMode={queueSurface.touchReorderMode}
                 handleTouchStart={handleTouchStart}
                 handleTouchMove={handleTouchMove}
                 handleTouchEnd={handleTouchEnd}
@@ -5743,12 +5765,85 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 backingDecisionBusyKey={backingDecisionBusyKey}
                 statusPill={statusPill}
                 styles={STYLES}
-                compactViewport={compactViewport}
+                compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
+                reviewRequiredCount={reviewQueueItems.length}
                 runOfShowAssignableSlots={runOfShowAssignableSlots}
+                queueSurfaceCounts={queueSurface.counts}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
             />
         </div>
     );
+    const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
+        <div className="border-b border-white/10 bg-black/20 px-3 py-3">
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
+                {queueSurface.counts.needsAttention > 0 ? (
+                    <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-amber-100">
+                        Needs Attention {queueSurface.counts.needsAttention}
+                    </span>
+                ) : null}
+                <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
+                    Ready {queueSurface.counts.ready}
+                </span>
+                {queueSurface.counts.assigned > 0 ? (
+                    <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2.5 py-1 text-violet-100">
+                        Assigned {queueSurface.counts.assigned}
+                    </span>
+                ) : null}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
+                    <button
+                        type="button"
+                        onClick={() => queueSurface.activateCompactTab('queue')}
+                        data-feature-id="queue-surface-tab-queue"
+                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                            queueSurface.activeCompactTab === 'queue'
+                                ? 'bg-cyan-500/15 text-cyan-100'
+                                : 'text-zinc-300 hover:text-white'
+                        }`}
+                    >
+                        Queue
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => queueSurface.activateCompactTab('add')}
+                        data-feature-id="queue-surface-tab-add"
+                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                            queueSurface.activeCompactTab === 'add'
+                                ? 'bg-cyan-500/15 text-cyan-100'
+                                : 'text-zinc-300 hover:text-white'
+                        }`}
+                    >
+                        Add
+                    </button>
+                </div>
+                {touchReorderAvailable && queueSurface.activeCompactTab === 'queue' ? (
+                    <button
+                        type="button"
+                        onClick={queueSurface.toggleTouchReorderMode}
+                        data-feature-id="queue-surface-reorder-toggle"
+                        className={`inline-flex min-h-[36px] items-center justify-center rounded-lg border px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                            queueSurface.touchReorderMode
+                                ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'
+                                : 'border-white/10 bg-black/25 text-zinc-200 hover:border-cyan-300/30 hover:text-white'
+                        }`}
+                    >
+                        {queueSurface.touchReorderMode ? 'Done Reordering' : 'Reorder Queue'}
+                    </button>
+                ) : null}
+            </div>
+        </div>
+    ) : null;
+    const compactQueueSurfacePanel = queueSurface.isCompactQueueSurface ? (
+        <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
+            {compactQueueSurfaceControls}
+            {queueSurface.activeCompactTab === 'add' ? (
+                <div className="min-h-0 overflow-y-auto custom-scrollbar">
+                    {addToQueueSection}
+                </div>
+            ) : queueListSection}
+        </div>
+    ) : null;
 
     return (
         <div className={`h-full flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} overflow-hidden relative`}>
@@ -5912,10 +6007,14 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 lastPerformance={room?.lastPerformance || null}
                                 hasLyrics={hasLyrics}
                                 lobbyCount={lobbyCount}
-                                queueCount={queueCount}
+                                queueCount={queueSurface.stageSummary.queueCount}
+                                needsAttentionCount={queueSurface.counts.needsAttention}
+                                readyQueueCount={queueSurface.counts.ready}
+                                assignedQueueCount={queueSurface.counts.assigned}
                                 waitTimeSec={waitTimeSec}
                                 formatWaitTime={formatWaitTime}
                                 nextQueueSong={nextQueueSong}
+                                nextQueueText={queueSurface.stageSummary.nextQueueText}
                                 roomCode={roomCode}
                                 currentSourcePlaying={currentSourcePlaying}
                                 currentUsesAppleBacking={currentUsesAppleBacking}
@@ -6024,16 +6123,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 </div>
             </div>
 
-            {isMobileLayout ? (
-                <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
-                    {queueListSection}
-                    {addToQueueSection}
-                </div>
-            ) : isTightLayout ? (
-                <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0 order-1`}>
-                    {addToQueueSection}
-                    {queueListSection}
-                </div>
+            {queueSurface.isCompactQueueSurface ? (
+                compactQueueSurfacePanel
             ) : (
                 <>
                     <div className={`${STYLES.panel} min-h-0 overflow-y-auto custom-scrollbar`}>
@@ -6469,6 +6560,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const lobbyTotalEmojis = users.reduce((sum, u) => sum + (u.totalEmojis || 0), 0);
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
+    const autoDjEnabled = !!(room?.autoDj || autoDj);
     const autoDjPlayableQueue = useMemo(
         () => songs
             .filter((song) => (
@@ -10001,7 +10093,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [room?.lightMode, room?.strobeEndsAt, updateRoom]);
     const startNextFromQueue = useCallback(async () => {
         const activeRoom = roomRef.current;
-        if (!activeRoom?.autoDj) return;
+        if (!(activeRoom?.autoDj || autoDj)) return;
         if (
             activeRoom?.runOfShowEnabled === true
             && normalizeRunOfShowProgramMode(activeRoom?.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
@@ -10035,13 +10127,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
             autoDjTimerRef.current = null;
         }
-        if (!room?.autoDj || !room?.lastPerformance?.timestamp) return;
+        if (!autoDjEnabled || !room?.lastPerformance?.timestamp) return;
         const lastTs = getTimestampMs(room.lastPerformance.timestamp);
         if (lastAutoDjTsRef.current === lastTs) return;
         lastAutoDjTsRef.current = lastTs;
@@ -10067,7 +10159,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
             clearInterval(tick);
         };
-    }, [room?.autoDj, room?.autoDjDelaySec, room?.lastPerformance?.timestamp, startNextFromQueue]);
+    }, [autoDjEnabled, room?.autoDjDelaySec, room?.lastPerformance?.timestamp, startNextFromQueue]);
     useEffect(() => {
         if (!roomCode) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
@@ -10132,7 +10224,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
     }, [room?.bingoMode, room?.lastPerformance?.timestamp, room?.lastPerformance?.singerUid, room?.lastPerformance?.singerName, room?.bingoTurnOrder, room?.bingoTurnIndex, room?.bingoPickerUid, room?.bingoPickerName, room?.bingoTurnPick, updateRoom]);
     useEffect(() => {
-        if (!room?.autoDj) {
+        if (!autoDjEnabled) {
             autoDjKickoffRef.current = '';
             return;
         }
@@ -10154,9 +10246,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
         }, 450);
         return () => clearTimeout(timer);
-    }, [room?.autoDj, room?.activeMode, room?.lastPerformance?.timestamp, room?.autoDjDelaySec, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
+    }, [autoDjEnabled, room?.activeMode, room?.lastPerformance?.timestamp, room?.autoDjDelaySec, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
     useEffect(() => {
-        if (!room?.autoDj) return;
+        if (!autoDjEnabled) return;
         if (queuedCount > 0 || performingCount > 0) return;
         const playlistId = room?.appleMusicAutoPlaylistId || '';
         if (!playlistId) return;
@@ -10166,7 +10258,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .catch((error) => {
                 hostLogger.warn('Auto DJ failed to start Apple Music playlist', error);
             });
-    }, [room?.autoDj, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status, room?.appleMusicPlayback, playAppleMusicPlaylist]);
+    }, [autoDjEnabled, queuedCount, performingCount, room?.appleMusicAutoPlaylistId, room?.appleMusicAutoPlaylistTitle, room?.appleMusicPlayback?.status, room?.appleMusicPlayback, playAppleMusicPlaylist]);
     useEffect(() => {
         return () => {
             if (readyCheckTimerRef.current) clearTimeout(readyCheckTimerRef.current);
@@ -18415,7 +18507,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => setAutoDj((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !autoDj;
+                                            setAutoDj(next);
+                                            await updateRoom({ autoDj: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${autoDj ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-robot"></i>
@@ -18423,7 +18519,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setAutoBgMusic((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !autoBgMusic;
+                                            setAutoBgMusic(next);
+                                            await updateRoom({ autoBgMusic: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${autoBgMusic ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-wave-square"></i>
@@ -18431,7 +18531,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setAutoPlayMedia((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !autoPlayMedia;
+                                            setAutoPlayMedia(next);
+                                            await updateRoom({ autoPlayMedia: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${autoPlayMedia ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-forward-step"></i>
@@ -18439,7 +18543,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setAutoEndOnTrackFinish((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !autoEndOnTrackFinish;
+                                            setAutoEndOnTrackFinish(next);
+                                            await updateRoom({ autoEndOnTrackFinish: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${autoEndOnTrackFinish ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-stopwatch"></i>
@@ -18447,7 +18555,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setAutoBonusEnabled((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !autoBonusEnabled;
+                                            setAutoBonusEnabled(next);
+                                            await updateRoom({ autoBonusEnabled: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${autoBonusEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-gift"></i>
@@ -18455,7 +18567,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setPopTriviaEnabled((prev) => !prev)}
+                                        onClick={async () => {
+                                            const next = !popTriviaEnabled;
+                                            setPopTriviaEnabled(next);
+                                            await updateRoom({ popTriviaEnabled: next });
+                                        }}
                                         className={`${STYLES.btnStd} ${popTriviaEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
                                     >
                                         <i className="fa-solid fa-lightbulb"></i>
@@ -18465,19 +18581,55 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                                     <label className="text-sm text-zinc-300">
                                         Auto-DJ delay (sec)
-                                        <input value={autoDjDelaySec} onChange={e => setAutoDjDelaySec(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        <input
+                                            value={autoDjDelaySec}
+                                            onChange={e => setAutoDjDelaySec(e.target.value)}
+                                            onBlur={async () => {
+                                                const next = Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10));
+                                                setAutoDjDelaySec(next);
+                                                await updateRoom({ autoDjDelaySec: next });
+                                            }}
+                                            className={`${STYLES.input} mt-1`}
+                                        />
                                     </label>
                                     <label className="text-sm text-zinc-300">
                                         Auto bonus points
-                                        <input value={autoBonusPoints} onChange={e => setAutoBonusPoints(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        <input
+                                            value={autoBonusPoints}
+                                            onChange={e => setAutoBonusPoints(e.target.value)}
+                                            onBlur={async () => {
+                                                const next = Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0));
+                                                setAutoBonusPoints(next);
+                                                await updateRoom({ autoBonusPoints: next });
+                                            }}
+                                            className={`${STYLES.input} mt-1`}
+                                        />
                                     </label>
                                     <label className="text-sm text-zinc-300">
                                         Ready check duration (sec)
-                                        <input value={readyCheckDurationSec} onChange={e => setReadyCheckDurationSec(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        <input
+                                            value={readyCheckDurationSec}
+                                            onChange={e => setReadyCheckDurationSec(e.target.value)}
+                                            onBlur={async () => {
+                                                const next = Math.max(5, Math.min(30, Number(readyCheckDurationSec || 8) || 8));
+                                                setReadyCheckDurationSec(next);
+                                                await updateRoom({ readyCheckDurationSec: next });
+                                            }}
+                                            className={`${STYLES.input} mt-1`}
+                                        />
                                     </label>
                                     <label className="text-sm text-zinc-300">
                                         Ready check reward
-                                        <input value={readyCheckRewardPoints} onChange={e => setReadyCheckRewardPoints(e.target.value)} className={`${STYLES.input} mt-1`} />
+                                        <input
+                                            value={readyCheckRewardPoints}
+                                            onChange={e => setReadyCheckRewardPoints(e.target.value)}
+                                            onBlur={async () => {
+                                                const next = Math.max(0, Math.min(500, Number(readyCheckRewardPoints || 0) || 0));
+                                                setReadyCheckRewardPoints(next);
+                                                await updateRoom({ readyCheckRewardPoints: next });
+                                            }}
+                                            className={`${STYLES.input} mt-1`}
+                                        />
                                     </label>
                                 </div>
                                 <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">

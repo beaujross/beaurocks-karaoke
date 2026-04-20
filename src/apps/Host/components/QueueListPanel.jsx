@@ -24,6 +24,7 @@ const QueueListPanel = ({
     showQueueList,
     showQueueSummaryBar = true,
     onToggleQueueSummaryBar,
+    reviewRequiredCount = 0,
     pending,
     pendingQueueOpen = true,
     onTogglePendingQueue,
@@ -40,7 +41,9 @@ const QueueListPanel = ({
     setDragQueueId,
     setDragOverId,
     reorderQueue,
+    touchReorderAvailable = false,
     touchReorderEnabled,
+    touchReorderMode = false,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
@@ -55,19 +58,30 @@ const QueueListPanel = ({
     styles,
     compactViewport = false,
     runOfShowAssignableSlots = [],
+    queueSurfaceCounts = null,
     onAssignQueueSongToRunOfShowItem
 }) => {
     if (!showQueueList) return null;
+    const counts = queueSurfaceCounts || {};
+    const needsAttentionCount = Number.isFinite(Number(counts.needsAttention))
+        ? Number(counts.needsAttention)
+        : (Number(reviewRequiredCount || 0) + Number(pending.length || 0));
+    const readyCount = Number.isFinite(Number(counts.ready)) ? Number(counts.ready) : queue.length;
+    const assignedCount = Number.isFinite(Number(counts.assigned)) ? Number(counts.assigned) : assigned.length;
 
-    const queueSummary = pending.length > 0
+    const queueSummary = needsAttentionCount > 0
         ? {
-            eyebrow: 'Queue needs review',
-            title: `${pending.length} request${pending.length === 1 ? '' : 's'} waiting on host approval`,
-            detail: 'Clear the review stack first so the live queue reflects what can actually go on stage.',
+            eyebrow: 'Queue needs attention',
+            title: `${needsAttentionCount} request${needsAttentionCount === 1 ? '' : 's'} waiting on host action`,
+            detail: reviewRequiredCount > 0 && pending.length > 0
+                ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the queue.`
+                : reviewRequiredCount > 0
+                    ? `${reviewRequiredCount} request${reviewRequiredCount === 1 ? '' : 's'} still need a host track pick.`
+                    : 'Clear the approval stack so the live queue reflects what can actually go on stage.',
             toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
             accentClass: 'text-amber-100'
         }
-        : queue.length === 0 && assigned.length === 0
+        : readyCount === 0 && assignedCount === 0
             ? {
                 eyebrow: 'Queue status',
                 title: 'Queue is empty',
@@ -75,7 +89,7 @@ const QueueListPanel = ({
                 toneClass: 'border-white/10 bg-black/25 text-zinc-300',
                 accentClass: 'text-zinc-100'
             }
-            : runOfShowAssignableSlots.length > 0 && queue.length > 0
+            : runOfShowAssignableSlots.length > 0 && readyCount > 0
                 ? {
                     eyebrow: 'Run of show ready',
                     title: `${runOfShowAssignableSlots.length} slot${runOfShowAssignableSlots.length === 1 ? '' : 's'} can pull from queue`,
@@ -83,17 +97,17 @@ const QueueListPanel = ({
                     toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
                     accentClass: 'text-cyan-100'
                 }
-                : queue.length > 0
+                : readyCount > 0
                     ? {
                         eyebrow: 'Queue ready',
-                        title: `${queue.length} song${queue.length === 1 ? '' : 's'} ready to run`,
+                        title: `${readyCount} song${readyCount === 1 ? '' : 's'} ready to run`,
                         detail: 'Stage can advance without touching review or slot assignment.',
                         toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
                         accentClass: 'text-emerald-100'
                     }
                     : {
                         eyebrow: 'Run of show linked',
-                        title: `${assigned.length} song${assigned.length === 1 ? '' : 's'} already assigned`,
+                        title: `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
                         detail: 'These songs are tied to show slots and will move through the run-of-show lane.',
                         toneClass: 'border-violet-300/25 bg-violet-500/10 text-violet-100',
                         accentClass: 'text-violet-100'
@@ -120,10 +134,18 @@ const QueueListPanel = ({
                         ) : null}
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
-                        <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
-                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {queue.length}</span>
-                        {assigned.length ? (
-                            <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Assigned {assigned.length}</span>
+                        {needsAttentionCount ? (
+                            <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Needs Attention {needsAttentionCount}</span>
+                        ) : null}
+                        {reviewRequiredCount ? (
+                            <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-amber-100">Track Check {reviewRequiredCount}</span>
+                        ) : null}
+                        {pending.length ? (
+                            <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
+                        ) : null}
+                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {readyCount}</span>
+                        {assignedCount ? (
+                            <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Assigned {assignedCount}</span>
                         ) : null}
                         {runOfShowAssignableSlots.length ? (
                             <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-emerald-100">
@@ -173,6 +195,11 @@ const QueueListPanel = ({
                 </div>
             ) : null}
             <div className="mb-3">
+                {touchReorderAvailable && touchReorderMode ? (
+                    <div className="mb-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                        Reorder mode is live. Drag a song by its handle, then tap Done Reordering.
+                    </div>
+                ) : null}
                 <QueueSectionToggle
                     label="Ready To Run"
                     count={queue.length}
@@ -191,6 +218,7 @@ const QueueListPanel = ({
                         setDragOverId={setDragOverId}
                         reorderQueue={reorderQueue}
                         touchReorderEnabled={touchReorderEnabled}
+                        touchReorderMode={touchReorderMode}
                         handleTouchStart={handleTouchStart}
                         handleTouchMove={handleTouchMove}
                         handleTouchEnd={handleTouchEnd}
@@ -231,6 +259,7 @@ const QueueListPanel = ({
                                 setDragOverId={setDragOverId}
                                 reorderQueue={reorderQueue}
                                 touchReorderEnabled={touchReorderEnabled}
+                                touchReorderMode={touchReorderMode}
                                 handleTouchStart={handleTouchStart}
                                 handleTouchMove={handleTouchMove}
                                 handleTouchEnd={handleTouchEnd}

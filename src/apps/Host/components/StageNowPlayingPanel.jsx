@@ -8,9 +8,13 @@ const StageNowPlayingPanel = ({
     hasLyrics,
     lobbyCount,
     queueCount,
+    needsAttentionCount = 0,
+    readyQueueCount = 0,
+    assignedQueueCount = 0,
     waitTimeSec,
     formatWaitTime,
     nextQueueSong,
+    nextQueueText = '',
     roomCode,
     currentSourcePlaying,
     currentUsesAppleBacking,
@@ -288,6 +292,24 @@ const StageNowPlayingPanel = ({
                         <i className="fa-solid fa-list text-white/70"></i>
                         {queueCount}
                     </div>
+                    {needsAttentionCount > 0 ? (
+                        <div className="flex items-center gap-1 text-xs font-bold text-amber-100 bg-amber-500/10 border border-amber-300/25 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-triangle-exclamation text-amber-200"></i>
+                            {needsAttentionCount}
+                        </div>
+                    ) : null}
+                    {readyQueueCount > 0 ? (
+                        <div className="flex items-center gap-1 text-xs font-bold text-cyan-100 bg-cyan-500/10 border border-cyan-300/25 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-wave-square text-cyan-200"></i>
+                            {readyQueueCount}
+                        </div>
+                    ) : null}
+                    {assignedQueueCount > 0 ? (
+                        <div className="flex items-center gap-1 text-xs font-bold text-violet-100 bg-violet-500/10 border border-violet-300/25 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-link text-violet-200"></i>
+                            {assignedQueueCount}
+                        </div>
+                    ) : null}
                     <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
                         <i className="fa-solid fa-clock text-white/70"></i>
                         {formatWaitTime(waitTimeSec)}
@@ -360,7 +382,7 @@ const StageNowPlayingPanel = ({
                     )}
                 </div>
                 <div className="text-[11px] text-zinc-300 mb-3 truncate">
-                    Up Next: <span className="text-white font-semibold">{nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued'}</span>
+                    Up Next: <span className="text-white font-semibold">{nextQueueText || (nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued')}</span>
                 </div>
                 <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-3">
                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Transport</div>

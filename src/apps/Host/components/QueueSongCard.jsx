@@ -13,6 +13,7 @@ const QueueSongCard = ({
     setDragOverId,
     reorderQueue,
     touchReorderEnabled = false,
+    touchReorderMode = false,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,
@@ -89,6 +90,7 @@ const QueueSongCard = ({
         || queueUsesExternalWindow
         || isAudienceSelectedUnverified
         || ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus);
+    const showCompactActionRail = !compactViewport || !touchReorderMode;
 
     return (
         <div
@@ -104,13 +106,17 @@ const QueueSongCard = ({
             onTouchCancel={handleTouchEnd}
             className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
         >
-            <div className={`flex items-start justify-between ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
+            <div className={`flex ${compactViewport ? 'flex-col gap-2' : 'items-start justify-between gap-2'}`}>
                 <div className={`min-w-0 flex items-start ${compactViewport ? 'gap-1.5' : 'gap-2'}`}>
                     <span className={`font-mono text-zinc-500 text-center text-[11px] ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-0.5'}`}>{index + 1}</span>
                     <button
                         type="button"
                         data-queue-drag-handle="true"
-                        className={`inline-flex items-center justify-center rounded-md border border-white/10 bg-black/20 text-zinc-500 transition hover:text-zinc-300 ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[26px] min-w-[26px]'}`}
+                        className={`inline-flex items-center justify-center rounded-md border transition hover:text-zinc-300 ${
+                            touchReorderMode
+                                ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.18)]'
+                                : 'border-white/10 bg-black/20 text-zinc-500'
+                        } ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[26px] min-w-[26px]'}`}
                         title={touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue'}
                         aria-label="Reorder queue item"
                         style={touchReorderEnabled ? { touchAction: 'none' } : undefined}
@@ -202,7 +208,7 @@ const QueueSongCard = ({
                                 <select
                                     value={nextRunOfShowSlotId}
                                     onChange={(event) => setSelectedRunOfShowSlotId(event.target.value)}
-                                    className={`min-w-[150px] rounded-lg border border-white/10 bg-black/35 text-white outline-none ${compactViewport ? 'px-2 py-1 text-[10px]' : 'px-2 py-1 text-[10px]'}`}
+                                    className={`rounded-lg border border-white/10 bg-black/35 text-white outline-none ${compactViewport ? 'min-w-0 flex-1 px-2 py-1 text-[10px]' : 'min-w-[150px] px-2 py-1 text-[10px]'}`}
                                 >
                                     {runOfShowAssignableSlots.map((slot) => (
                                         <option key={slot.id} value={slot.id}>
@@ -222,31 +228,37 @@ const QueueSongCard = ({
                         ) : null}
                     </div>
                 </div>
-                <div className="shrink-0 min-w-[88px]">
-                    <div className="flex flex-col gap-1">
-                        <button
-                            title="Start performance"
-                            onClick={() => updateStatus(song.id, 'performing')}
-                            className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
-                        >
-                            <i className="fa-solid fa-play mr-1.5"></i>Start
-                        </button>
-                        <button
-                            title="Edit queue item"
-                            onClick={() => startEdit(song)}
-                            className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
-                        >
-                            <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
-                        </button>
-                        <button
-                            title="Delete queue item"
-                            onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))}
-                            className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2 py-1 text-[10px] min-h-[24px]'} justify-start`}
-                        >
-                            <i className="fa-solid fa-trash mr-1.5"></i>Remove
-                        </button>
+                {showCompactActionRail ? (
+                    <div className={`${compactViewport ? 'w-full' : 'shrink-0 min-w-[88px]'}`}>
+                        <div className={`${compactViewport ? 'grid grid-cols-3 gap-1' : 'flex flex-col gap-1'}`}>
+                            <button
+                                title="Start performance"
+                                onClick={() => updateStatus(song.id, 'performing')}
+                                className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                            >
+                                <i className="fa-solid fa-play mr-1.5"></i>Start
+                            </button>
+                            <button
+                                title="Edit queue item"
+                                onClick={() => startEdit(song)}
+                                className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                            >
+                                <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
+                            </button>
+                            <button
+                                title="Delete queue item"
+                                onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))}
+                                className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                            >
+                                <i className="fa-solid fa-trash mr-1.5"></i>Remove
+                            </button>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="w-full rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                        Drag this card with the handle to reorder the live queue.
+                    </div>
+                )}
             </div>
         </div>
     );
