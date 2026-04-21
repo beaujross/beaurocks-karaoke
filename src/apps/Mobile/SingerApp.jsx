@@ -1203,6 +1203,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [catalogResolutionMap, setCatalogResolutionMap] = useState({});
     const [catalogResolutionLoadingMap, setCatalogResolutionLoadingMap] = useState({});
     const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
+    const [showYoutubeFallbackMatches, setShowYoutubeFallbackMatches] = useState(false);
     const [manualRequestComposerOpen, setManualRequestComposerOpen] = useState(false);
     const [audienceBackingLinkOpen, setAudienceBackingLinkOpen] = useState(false);
     const [backingChoiceState, setBackingChoiceState] = useState({
@@ -4689,6 +4690,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (catalogSearchMode === 'catalog') return;
         setBackingChoiceState((current) => (current.open ? { open: false, resultKey: '', title: '', artist: '', artworkUrl: '', options: [] } : current));
     }, [catalogSearchMode]);
+
+    useEffect(() => {
+        setShowYoutubeFallbackMatches(false);
+    }, [catalogSearchMode, searchQ]);
 
     useEffect(() => {
         if (tab !== 'request' || songsTab !== 'requests') {
@@ -12067,7 +12072,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                             <div className="text-lg font-black text-white">
                                                 {searchQ.trim().length >= 3
-                                                    ? `${catalogSearchMode === 'youtube' ? (enrichedCatalogResults.length + youtubeResults.length) : results.length} match${(catalogSearchMode === 'youtube' ? (enrichedCatalogResults.length + youtubeResults.length) : results.length) === 1 ? '' : 'es'}`
+                                                    ? (catalogSearchMode === 'youtube'
+                                                        ? `${youtubeResults.length} YouTube result${youtubeResults.length === 1 ? '' : 's'}${enrichedCatalogResults.length ? ` | ${enrichedCatalogResults.length} song match${enrichedCatalogResults.length === 1 ? '' : 'es'}` : ''}`
+                                                        : `${results.length} match${results.length === 1 ? '' : 'es'}`)
                                                     : (catalogSearchMode === 'youtube' ? 'Search YouTube karaoke' : 'Search song + artist')}
                                             </div>
                                         </div>
@@ -12114,7 +12121,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                             <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
                                                 {catalogSearchMode === 'youtube'
-                                                    ? 'We show song matches first, then direct YouTube karaoke results. Results say whether they embed on Public TV or need an external host window.'
+                                                    ? 'Search direct YouTube karaoke backings first. Song matches stay below as a fallback if you need them.'
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                         </div>
@@ -12129,70 +12136,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         ) : catalogSearchMode === 'youtube' ? (
                                             <div className="space-y-4">
                                                 <div className="space-y-3">
-                                                    <div className="px-1 text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
-                                                        Song matches
-                                                    </div>
-                                                    {catalogResultsLoading && !enrichedCatalogResults.length ? (
-                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                            Searching song matches...
+                                                    <div className="flex items-center justify-between gap-3 px-1">
+                                                        <div className="text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
+                                                            Direct YouTube Results
                                                         </div>
-                                                    ) : enrichedCatalogResults.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            {enrichedCatalogResults.slice(0, 4).map((result, index) => {
-                                                                const actionLabel = result.knownBackingCount > 1
-                                                                    ? 'Choose version'
-                                                                    : result.knownBackingCount === 1
-                                                                        ? (result.primaryBadge?.label || 'Use ready version')
-                                                                        : 'Use YouTube results below';
-                                                                const summary = result.knownBackingCount > 0
-                                                                    ? `${result.knownBackingCount} ready karaoke version${result.knownBackingCount === 1 ? '' : 's'} found`
-                                                                    : result.isResolutionLoading
-                                                                        ? 'Checking known karaoke versions'
-                                                                        : 'No saved backing yet. Pick a direct YouTube result below.';
-                                                                return (
-                                                                    <button
-                                                                        key={`audience-song-match:${result.resultKey || index}`}
-                                                                        type="button"
-                                                                        onClick={() => handleAudienceCatalogPrimaryAction(result)}
-                                                                        className="flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-left transition hover:border-cyan-300/30"
-                                                                    >
-                                                                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-black/35">
-                                                                            {result.artworkUrl100 ? (
-                                                                                <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
-                                                                            ) : null}
-                                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent"></div>
-                                                                            <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-100">
-                                                                                #{index + 1}
-                                                                            </div>
-                                                                        </div>
-                                                                        <div className="min-w-0 flex-1">
-                                                                            <div className="truncate text-sm font-black text-white">{result.trackName}</div>
-                                                                            <div className="mt-1 truncate text-xs text-zinc-300">{result.artistName}</div>
-                                                                            <div className="mt-2 line-clamp-2 text-xs text-zinc-400">{summary}</div>
-                                                                        </div>
-                                                                        <div className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                                            {actionLabel}
-                                                                        </div>
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                            No song matches yet. Try a clearer song + artist search.
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="space-y-3">
-                                                    <div className="px-1 text-xs font-black uppercase tracking-[0.24em] text-cyan-200/80">
-                                                        Direct YouTube Results
+                                                        {enrichedCatalogResults.length > 0 ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowYoutubeFallbackMatches((current) => !current)}
+                                                                className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200"
+                                                            >
+                                                                <span>{showYoutubeFallbackMatches || (youtubeResults.length === 0 && !youtubeResultsLoading) ? 'Hide song matches' : 'Show song matches instead'}</span>
+                                                                <i className={`fa-solid ${showYoutubeFallbackMatches || (youtubeResults.length === 0 && !youtubeResultsLoading) ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                                                            </button>
+                                                        ) : null}
                                                     </div>
                                                     {youtubeResultsLoading ? (
                                                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
                                                             Searching YouTube karaoke results...
                                                         </div>
                                                     ) : youtubeResults.length > 0 ? (
-                                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                                        <div className="space-y-2">
                                                             {youtubeResults.map((result, index) => {
                                                                 const statusMeta = getAudienceYouTubeResultMeta(result);
                                                                 return (
@@ -12200,45 +12164,39 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                         key={`audience-youtube:${result.videoId || index}`}
                                                                         type="button"
                                                                         onClick={() => handleAudienceYouTubeResultSelect(result)}
-                                                                        className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-[linear-gradient(180deg,rgba(34,18,59,0.96),rgba(20,11,42,0.98))] text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)] transition hover:border-cyan-300/35"
+                                                                        className="flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(34,18,59,0.96),rgba(20,11,42,0.98))] px-3 py-2.5 text-left shadow-[0_12px_28px_rgba(0,0,0,0.24)] transition hover:border-cyan-300/35"
                                                                     >
-                                                                        <div className="flex gap-3 p-3">
-                                                                            <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-black/35">
-                                                                                {result.artworkUrl100 ? (
-                                                                                    <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
+                                                                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-black/35">
+                                                                            {result.artworkUrl100 ? (
+                                                                                <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
+                                                                            ) : null}
+                                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
+                                                                            <div className="absolute left-1.5 top-1.5 rounded-full border border-white/15 bg-black/45 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-100">
+                                                                                #{index + 1}
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="line-clamp-2 text-sm font-black leading-tight text-white">{result.trackName}</div>
+                                                                            <div className="mt-0.5 truncate text-xs text-zinc-300">{result.artistName}</div>
+                                                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                                <span className="rounded-full border border-red-300/35 bg-red-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-red-100">
+                                                                                    YouTube
+                                                                                </span>
+                                                                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${statusMeta.className}`}>
+                                                                                    {statusMeta.label}
+                                                                                </span>
+                                                                                {result.durationSec > 0 ? (
+                                                                                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                                                        {Math.max(1, Math.round(result.durationSec / 60))} min
+                                                                                    </span>
                                                                                 ) : null}
-                                                                                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent"></div>
-                                                                                <div className="absolute left-2 top-2 rounded-full border border-white/15 bg-black/45 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-100">
-                                                                                    #{index + 1}
-                                                                                </div>
                                                                             </div>
-                                                                            <div className="min-w-0 flex-1">
-                                                                                <div className="flex items-start justify-between gap-3">
-                                                                                    <div className="min-w-0">
-                                                                                        <div className="line-clamp-2 text-base font-black leading-tight text-white">{result.trackName}</div>
-                                                                                        <div className="mt-1 truncate text-sm text-zinc-300">{result.artistName}</div>
-                                                                                    </div>
-                                                                                    <div className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/45 text-white">
-                                                                                        <i className="fa-solid fa-plus"></i>
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                                                    <span className="rounded-full border border-red-300/35 bg-red-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-red-100">
-                                                                                        YouTube
-                                                                                    </span>
-                                                                                    <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusMeta.className}`}>
-                                                                                        {statusMeta.label}
-                                                                                    </span>
-                                                                                    {result.durationSec > 0 ? (
-                                                                                        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
-                                                                                            {Math.max(1, Math.round(result.durationSec / 60))} min
-                                                                                        </span>
-                                                                                    ) : null}
-                                                                                </div>
-                                                                                <div className="mt-3 text-xs text-zinc-400">
-                                                                                    {statusMeta.detail}
-                                                                                </div>
+                                                                            <div className="mt-1.5 line-clamp-2 text-[11px] text-zinc-400">
+                                                                                {statusMeta.detail}
                                                                             </div>
+                                                                        </div>
+                                                                        <div className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/45 text-sm text-white">
+                                                                            <i className="fa-solid fa-plus"></i>
                                                                         </div>
                                                                     </button>
                                                                 );
@@ -12246,12 +12204,72 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         </div>
                                                     ) : (
                                                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
-                                                            {room?.hideNonEmbeddableYouTube === true
-                                                                ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
-                                                                : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
+                                                            <div>
+                                                                {room?.hideNonEmbeddableYouTube === true
+                                                                    ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
+                                                                    : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
+                                                            </div>
+                                                            {enrichedCatalogResults.length > 0 && !(showYoutubeFallbackMatches || (youtubeResults.length === 0 && !youtubeResultsLoading)) ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setShowYoutubeFallbackMatches(true)}
+                                                                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100"
+                                                                >
+                                                                    <span>Show song matches instead</span>
+                                                                    <i className="fa-solid fa-arrow-down"></i>
+                                                                </button>
+                                                            ) : null}
                                                         </div>
                                                     )}
                                                 </div>
+                                                {enrichedCatalogResults.length > 0 && (showYoutubeFallbackMatches || (youtubeResults.length === 0 && !youtubeResultsLoading)) ? (
+                                                    <div className="space-y-3">
+                                                        <div className="px-1 text-xs font-black uppercase tracking-[0.24em] text-zinc-400">
+                                                            Song matches instead
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            {enrichedCatalogResults.slice(0, 4).map((result, index) => {
+                                                                const actionLabel = result.knownBackingCount > 1
+                                                                    ? 'Choose version'
+                                                                    : result.knownBackingCount === 1
+                                                                        ? (result.primaryBadge?.label || 'Use ready version')
+                                                                        : 'Use YouTube results';
+                                                                const summary = result.knownBackingCount > 0
+                                                                    ? `${result.knownBackingCount} ready karaoke version${result.knownBackingCount === 1 ? '' : 's'} found`
+                                                                    : result.isResolutionLoading
+                                                                        ? 'Checking known karaoke versions'
+                                                                        : 'Request the song if the direct backing is missing.';
+                                                                return (
+                                                                    <button
+                                                                        key={`audience-song-match:${result.resultKey || index}`}
+                                                                        type="button"
+                                                                        onClick={() => handleAudienceCatalogPrimaryAction(result)}
+                                                                        className="flex w-full items-center gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left transition hover:border-cyan-300/30"
+                                                                    >
+                                                                        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-black/35">
+                                                                            {result.artworkUrl100 ? (
+                                                                                <img src={result.artworkUrl100} className="h-full w-full object-cover" alt="" />
+                                                                            ) : null}
+                                                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent"></div>
+                                                                        </div>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="truncate text-sm font-black text-white">{result.trackName}</div>
+                                                                            <div className="mt-0.5 truncate text-xs text-zinc-300">{result.artistName}</div>
+                                                                            <div className="mt-1 line-clamp-2 text-[11px] text-zinc-400">{summary}</div>
+                                                                        </div>
+                                                                        <div className="shrink-0 rounded-full border border-white/10 bg-black/25 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                                                            {actionLabel}
+                                                                        </div>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : catalogResultsLoading ? (
+                                                    <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
+                                                        Searching song matches...
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         ) : enrichedCatalogResults.length > 0 ? (
                                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

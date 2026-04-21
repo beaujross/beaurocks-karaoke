@@ -65,6 +65,9 @@ const useHostLaunchFlow = ({
         const orgNameOverride = typeof options?.orgName === 'string' ? options.orgName.trim() : '';
         const logoUrlOverride = typeof options?.logoUrl === 'string' ? options.logoUrl.trim() : '';
         const initialNightPresetId = typeof options?.nightPresetId === 'string' ? options.nightPresetId.trim() : '';
+        const initialNightPresetPayload = options?.nightPresetPayload && typeof options.nightPresetPayload === 'object'
+            ? options.nightPresetPayload
+            : null;
         const requestIdOverride = typeof options?.requestId === 'string' ? options.requestId.trim() : '';
         const roomNameOverride = typeof options?.roomName === 'string' ? options.roomName.trim() : '';
         const preferredRoomCode = typeof options?.preferredRoomCode === 'string' ? options.preferredRoomCode.trim().toUpperCase() : '';
@@ -104,6 +107,7 @@ const useHostLaunchFlow = ({
                 roomName: nextRoomName,
                 coHostUids,
                 nightPresetId: initialNightPresetId || (hostNightPreset && hostNightPreset !== 'custom' ? hostNightPreset : 'casual'),
+                nightPresetPayload: initialNightPresetPayload,
                 discoveryListing: buildProvisionDiscoveryPayload(discoveryDraft, {
                     roomName: discoveryDraft.publicRoom ? nextRoomName : '',
                 }),

@@ -244,6 +244,16 @@ import {
     buildRoomEventProfilePatch,
     getRoomEventProfileMeta,
 } from './roomEventProfiles';
+import {
+    BUILTIN_HOST_NIGHT_PRESETS,
+    buildAudienceThemeFromPreset,
+    buildHostNightPresetConfig,
+    listHostNightPresets,
+    loadCustomHostNightPresets,
+    mergeHostNightPresets,
+    normalizeHostNightPresetRecord,
+    persistCustomHostNightPresets,
+} from './hostNightPresets';
 import { MONEYBAGS_BADGE_LABEL } from '../../lib/roomMonetization';
 
 // --- CONSTANTS & CONFIG ---
@@ -1049,191 +1059,6 @@ const STYLES = {
     panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
     input: "bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-sm text-white focus:border-[#00C4D9] outline-none transition-colors w-full placeholder-zinc-500",
     header: "text-xs font-bold text-[#00C4D9] mb-2 tracking-widest uppercase border-b border-white/5 pb-1 flex justify-between items-center"
-};
-
-const HOST_NIGHT_PRESETS = {
-    casual: {
-        id: 'casual',
-        label: 'Casual Night',
-        description: 'Apple playlist vibe with visualizer-forward TV.',
-        searchSources: { local: true, youtube: true, itunes: true },
-        settings: {
-            autoDj: true,
-            autoBgMusic: true,
-            autoPlayMedia: true,
-            autoEndOnTrackFinish: true,
-            autoBonusEnabled: true,
-            autoBonusPoints: 25,
-            autoDjDelaySec: 10,
-            showVisualizerTv: true,
-            showLyricsTv: false,
-            showScoring: false,
-            showFameLevel: false,
-            requestMode: REQUEST_MODES.guestBackingOptional,
-            allowSingerTrackSelect: true,
-            marqueeEnabled: false,
-            marqueeShowMode: 'idle',
-            chatShowOnTv: false,
-            chatTvMode: 'auto',
-            bouncerMode: false,
-            bingoShowTv: true,
-            bingoVotingMode: 'host+votes',
-            bingoAutoApprovePct: 45,
-            bingoAudienceReopenEnabled: true,
-            autoLyricsOnQueue: false,
-            popTriviaEnabled: false,
-            queueSettings: {
-                limitMode: 'none',
-                limitCount: 0,
-                rotation: 'round_robin',
-                firstTimeBoost: true
-            },
-            gameDefaults: {
-                triviaRoundSec: 20,
-                triviaAutoReveal: true,
-                bingoVotingMode: 'host+votes',
-                bingoAutoApprovePct: 45
-            }
-        },
-        autoStartApplePlaylist: true
-    },
-    competition: {
-        id: 'competition',
-        label: 'Competition Night',
-        description: 'Structured scoring, tighter queue, and AI lyric assist.',
-        searchSources: { local: false, youtube: false, itunes: true },
-        settings: {
-            autoDj: false,
-            autoBgMusic: false,
-            autoPlayMedia: true,
-            autoEndOnTrackFinish: true,
-            autoBonusEnabled: true,
-            autoBonusPoints: 25,
-            autoDjDelaySec: 8,
-            showVisualizerTv: false,
-            showLyricsTv: true,
-            showScoring: true,
-            showFameLevel: true,
-            requestMode: REQUEST_MODES.canonicalOpen,
-            allowSingerTrackSelect: false,
-            marqueeEnabled: false,
-            marqueeShowMode: 'idle',
-            chatShowOnTv: false,
-            chatTvMode: 'auto',
-            bouncerMode: true,
-            bingoShowTv: true,
-            bingoVotingMode: 'host',
-            bingoAutoApprovePct: 60,
-            bingoAudienceReopenEnabled: true,
-            autoLyricsOnQueue: true,
-            popTriviaEnabled: false,
-            queueSettings: {
-                limitMode: 'per_night',
-                limitCount: 2,
-                rotation: 'round_robin',
-                firstTimeBoost: false
-            },
-            gameDefaults: {
-                triviaRoundSec: 15,
-                triviaAutoReveal: true,
-                bingoVotingMode: 'host',
-                bingoAutoApprovePct: 60
-            }
-        },
-        autoStartApplePlaylist: false
-    },
-    bingo: {
-        id: 'bingo',
-        label: 'Bingo Night',
-        description: 'Crowd-observation flow with board-first interactions.',
-        searchSources: { local: true, youtube: true, itunes: false },
-        settings: {
-            autoDj: false,
-            autoBgMusic: true,
-            autoPlayMedia: true,
-            autoEndOnTrackFinish: true,
-            autoBonusEnabled: true,
-            autoBonusPoints: 25,
-            autoDjDelaySec: 10,
-            showVisualizerTv: false,
-            showLyricsTv: false,
-            showScoring: false,
-            showFameLevel: false,
-            requestMode: REQUEST_MODES.guestBackingOptional,
-            allowSingerTrackSelect: true,
-            marqueeEnabled: false,
-            marqueeShowMode: 'always',
-            chatShowOnTv: true,
-            chatTvMode: 'activity',
-            bouncerMode: false,
-            bingoShowTv: true,
-            bingoVotingMode: 'host+votes',
-            bingoAutoApprovePct: 35,
-            bingoAudienceReopenEnabled: true,
-            autoLyricsOnQueue: false,
-            popTriviaEnabled: false,
-            gamePreviewId: 'bingo',
-            queueSettings: {
-                limitMode: 'none',
-                limitCount: 0,
-                rotation: 'round_robin',
-                firstTimeBoost: true
-            },
-            gameDefaults: {
-                triviaRoundSec: 20,
-                triviaAutoReveal: true,
-                bingoVotingMode: 'host+votes',
-                bingoAutoApprovePct: 35
-            }
-        },
-        autoStartApplePlaylist: false
-    },
-    trivia: {
-        id: 'trivia',
-        label: 'Trivia Night',
-        description: 'Question-first pacing with timed reveal defaults.',
-        searchSources: { local: false, youtube: false, itunes: false },
-        settings: {
-            autoDj: false,
-            autoBgMusic: true,
-            autoPlayMedia: false,
-            autoEndOnTrackFinish: true,
-            autoBonusEnabled: true,
-            autoBonusPoints: 25,
-            autoDjDelaySec: 10,
-            showVisualizerTv: false,
-            showLyricsTv: false,
-            showScoring: true,
-            showFameLevel: false,
-            requestMode: REQUEST_MODES.playableOnly,
-            allowSingerTrackSelect: false,
-            marqueeEnabled: false,
-            marqueeShowMode: 'idle',
-            chatShowOnTv: false,
-            chatTvMode: 'auto',
-            bouncerMode: false,
-            bingoShowTv: true,
-            bingoVotingMode: 'host+votes',
-            bingoAutoApprovePct: 50,
-            bingoAudienceReopenEnabled: true,
-            autoLyricsOnQueue: false,
-            popTriviaEnabled: false,
-            gamePreviewId: 'trivia_pop',
-            queueSettings: {
-                limitMode: 'per_night',
-                limitCount: 1,
-                rotation: 'round_robin',
-                firstTimeBoost: true
-            },
-            gameDefaults: {
-                triviaRoundSec: 18,
-                triviaAutoReveal: true,
-                bingoVotingMode: 'host+votes',
-                bingoAutoApprovePct: 50
-            }
-        },
-        autoStartApplePlaylist: false
-    }
 };
 
 const NIGHT_SETUP_PRIMARY_MODES = [
@@ -7144,9 +6969,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
     const [runOfShowTemplates, setRunOfShowTemplates] = useState([]);
     const [hostNightPreset, setHostNightPreset] = useState('custom');
+    const [customHostPresets, setCustomHostPresets] = useState(() => loadCustomHostNightPresets());
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
     const [popTriviaEnabled, setPopTriviaEnabled] = useState(false);
+    const roomPresetConfig = useMemo(() => {
+        const activePresetId = String(room?.hostNightPreset || '').trim();
+        const fallbackPreset = BUILTIN_HOST_NIGHT_PRESETS[activePresetId] || BUILTIN_HOST_NIGHT_PRESETS.casual;
+        return normalizeHostNightPresetRecord(room?.hostNightPresetConfig || {}, fallbackPreset);
+    }, [room?.hostNightPreset, room?.hostNightPresetConfig]);
+    const hostNightPresets = useMemo(
+        () => mergeHostNightPresets(customHostPresets, roomPresetConfig),
+        [customHostPresets, roomPresetConfig]
+    );
+    const hostNightPresetList = useMemo(
+        () => listHostNightPresets(hostNightPresets),
+        [hostNightPresets]
+    );
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
             if (typeof window === 'undefined') return true;
@@ -7156,6 +6995,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return true;
         }
     });
+    useEffect(() => {
+        persistCustomHostNightPresets(customHostPresets);
+    }, [customHostPresets]);
     useEffect(() => {
         setAllowSingerTrackSelect(requestMode === REQUEST_MODES.guestBackingOptional);
         setAudienceBackingMode(deriveAudienceBackingMode({
@@ -9898,13 +9740,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setRunOfShowTemplateMeta(normalizedTemplateMeta);
         }
         setHostNightPreset(room?.hostNightPreset || 'custom');
+        const activePreset = roomPresetConfig
+            || hostNightPresets[room?.hostNightPreset]
+            || null;
+        if (activePreset?.searchSources) {
+            setSearchSources(activePreset.searchSources);
+        }
         if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
         }
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled === true);
         }
-    }, [room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.hideNonEmbeddableYouTube, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, room]);
+    }, [room, room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.hideNonEmbeddableYouTube, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.hostNightPresetConfig, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, roomPresetConfig, hostNightPresets]);
     useEffect(() => {
         if (isMarketingDemoFixture) return () => {};
         if (!roomCode || !isRunOfShowRoom) {
@@ -10817,12 +10665,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const compileMissionPayloadWithAssist = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
         const compiled = compileMissionDraftToRoomPayload(draftInput, capabilities, {
-            presets: HOST_NIGHT_PRESETS,
+            presets: hostNightPresets,
             flowRules: MISSION_FLOW_RULES
         });
         const withAssist = applyAssistLevelToPayload(compiled, draftInput?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL);
         return mergePayloadWithOverrides(withAssist, overridesInput);
-    }, [applyAssistLevelToPayload, capabilities, missionAdvancedOverrides, missionDraft]);
+    }, [applyAssistLevelToPayload, capabilities, hostNightPresets, missionAdvancedOverrides, missionDraft]);
 
     const applyMissionDraftToNightSetupState = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
         const merged = compileMissionPayloadWithAssist(draftInput, overridesInput);
@@ -10910,7 +10758,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         deriveUnknownBackingPolicy,
         hostLogger,
         hostName,
-        hostNightPresets: HOST_NIGHT_PRESETS,
+        hostNightPresets,
         legacyGuestBackingOptionalRequestMode: REQUEST_MODES.guestBackingOptional,
         logoUrl,
         missionAssistDefaultLevel: MISSION_DEFAULT_ASSIST_LEVEL,
@@ -12142,62 +11990,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
     const applyHostPreset = async (presetId) => {
-        const preset = HOST_NIGHT_PRESETS[presetId];
-        if (!preset || !roomCode) return;
-        const presetSettings = preset.settings || {};
-        const queueSettings = presetSettings.queueSettings || {};
-        const gameDefaults = presetSettings.gameDefaults || {};
-        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue;
-        const payload = {
-            hostNightPreset: preset.id,
-            autoDj: !!presetSettings.autoDj,
-            autoBgMusic: !!presetSettings.autoBgMusic,
-            autoPlayMedia: !!presetSettings.autoPlayMedia,
-            autoEndOnTrackFinish: presetSettings.autoEndOnTrackFinish !== false,
-            autoBonusEnabled: presetSettings.autoBonusEnabled !== false,
-            autoBonusPoints: Math.max(0, Math.min(1000, Number(presetSettings.autoBonusPoints ?? 25) || 25)),
-            autoDjDelaySec: Math.max(2, Math.min(45, Number(presetSettings.autoDjDelaySec ?? 10) || 10)),
-            showVisualizerTv: !!presetSettings.showVisualizerTv,
-            showLyricsTv: !!presetSettings.showLyricsTv,
-            showScoring: !!presetSettings.showScoring,
-            showFameLevel: !!presetSettings.showFameLevel,
-            requestMode: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
-            allowSingerTrackSelect: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
-            audienceBackingMode: deriveAudienceBackingMode({
-                audienceBackingMode: presetSettings.audienceBackingMode,
-                requestMode: presetSettings.requestMode,
-                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
-            }),
-            unknownBackingPolicy: deriveUnknownBackingPolicy({
-                unknownBackingPolicy: presetSettings.unknownBackingPolicy,
-                requestMode: presetSettings.requestMode,
-                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
-            }),
-            marqueeEnabled: !!presetSettings.marqueeEnabled,
-            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
-            chatShowOnTv: !!presetSettings.chatShowOnTv,
-            chatTvMode: presetSettings.chatTvMode || 'auto',
-            bouncerMode: !!presetSettings.bouncerMode,
-            bingoShowTv: presetSettings.bingoShowTv !== false,
-            bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
-            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
-            bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
-            autoLyricsOnQueue: autoLyricsEnabled,
-            popTriviaEnabled: presetSettings.popTriviaEnabled === true,
-            gamePreviewId: presetSettings.gamePreviewId || null,
-            gameDefaults: {
-                triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
-                triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
-                bingoVotingMode: gameDefaults.bingoVotingMode || 'host+votes',
-                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(gameDefaults.bingoAutoApprovePct ?? 50)))
-            },
-            queueSettings: {
-                limitMode: queueSettings.limitMode || 'none',
-                limitCount: Math.max(0, Number(queueSettings.limitCount || 0)),
-                rotation: queueSettings.rotation || 'round_robin',
-                firstTimeBoost: queueSettings.firstTimeBoost !== false
-            }
-        };
+        const built = buildHostPresetUpdatePayload(hostNightPresets[presetId]);
+        if (!built || !roomCode) return;
+        const { preset, payload } = built;
         try {
             await updateRoom(payload);
             setHostNightPreset(preset.id);
@@ -12231,6 +12026,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
             setPopTriviaEnabled(payload.popTriviaEnabled === true);
+            if (payload.audienceShellVariant) {
+                setAudienceShellVariant(payload.audienceShellVariant);
+            }
+            if (payload.audienceBrandTheme) {
+                setAudienceBrandTheme(normalizeAudienceBrandTheme(payload.audienceBrandTheme));
+            }
+            if (payload.audienceFeatureAccess) {
+                setAudienceFeatureAccess(normalizeAudienceFeatureAccess(payload.audienceFeatureAccess));
+            }
             setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
 
             if (payload.autoBgMusic && !playingBg) {
@@ -13584,6 +13388,104 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     // Score modification
     const openModifyScore = (s) => { setModifyingScoreId(s.id); setScoreForm({ hype: s.hypeScore||0, applause: s.applauseScore||0, bonus: s.hostBonus||0 }); }; 
     const saveModifiedScore = async () => { await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', modifyingScoreId), { hypeScore: parseInt(scoreForm.hype), applauseScore: parseInt(scoreForm.applause), hostBonus: parseInt(scoreForm.bonus) }); setModifyingScoreId(null); toast("Score Updated"); };
+    const saveCustomHostPreset = useCallback((presetInput) => {
+        const fallbackPreset = hostNightPresets[hostNightPreset] || BUILTIN_HOST_NIGHT_PRESETS.casual;
+        const normalized = normalizeHostNightPresetRecord(presetInput, fallbackPreset);
+        if (!normalized || normalized.isBuiltIn) return null;
+        setCustomHostPresets((prev) => ({
+            ...prev,
+            [normalized.id]: normalized,
+        }));
+        setHostNightPreset(normalized.id);
+        return normalized;
+    }, [hostNightPreset, hostNightPresets]);
+    const deleteCustomHostPreset = useCallback((presetId, fallbackPresetId = 'casual') => {
+        const safePresetId = String(presetId || '').trim();
+        if (!safePresetId || BUILTIN_HOST_NIGHT_PRESETS[safePresetId]) return;
+        setCustomHostPresets((prev) => {
+            if (!prev?.[safePresetId]) return prev;
+            const next = { ...prev };
+            delete next[safePresetId];
+            return next;
+        });
+        if (hostNightPreset === safePresetId) {
+            setHostNightPreset(hostNightPresets[fallbackPresetId] ? fallbackPresetId : 'casual');
+        }
+    }, [hostNightPreset, hostNightPresets]);
+    const buildHostPresetUpdatePayload = useCallback((presetInput) => {
+        const preset = normalizeHostNightPresetRecord(
+            presetInput,
+            hostNightPresets[presetInput?.basePresetId] || hostNightPresets[presetInput?.id] || BUILTIN_HOST_NIGHT_PRESETS.casual
+        );
+        if (!preset) return null;
+        const presetSettings = preset.settings || {};
+        const queueSettings = presetSettings.queueSettings || {};
+        const gameDefaults = presetSettings.gameDefaults || {};
+        const autoLyricsEnabled = !!presetSettings.autoLyricsOnQueue;
+        const payload = {
+            hostNightPreset: preset.id,
+            hostNightPresetConfig: buildHostNightPresetConfig(preset),
+            autoDj: !!presetSettings.autoDj,
+            autoBgMusic: !!presetSettings.autoBgMusic,
+            autoPlayMedia: !!presetSettings.autoPlayMedia,
+            autoEndOnTrackFinish: presetSettings.autoEndOnTrackFinish !== false,
+            autoBonusEnabled: presetSettings.autoBonusEnabled !== false,
+            autoBonusPoints: Math.max(0, Math.min(1000, Number(presetSettings.autoBonusPoints ?? 25) || 25)),
+            autoDjDelaySec: Math.max(2, Math.min(45, Number(presetSettings.autoDjDelaySec ?? 10) || 10)),
+            showVisualizerTv: !!presetSettings.showVisualizerTv,
+            showLyricsTv: !!presetSettings.showLyricsTv,
+            showScoring: !!presetSettings.showScoring,
+            showFameLevel: !!presetSettings.showFameLevel,
+            requestMode: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
+            allowSingerTrackSelect: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+            audienceBackingMode: deriveAudienceBackingMode({
+                audienceBackingMode: presetSettings.audienceBackingMode,
+                requestMode: presetSettings.requestMode,
+                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
+            }),
+            unknownBackingPolicy: deriveUnknownBackingPolicy({
+                unknownBackingPolicy: presetSettings.unknownBackingPolicy,
+                requestMode: presetSettings.requestMode,
+                allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
+            }),
+            marqueeEnabled: !!presetSettings.marqueeEnabled,
+            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
+            chatShowOnTv: !!presetSettings.chatShowOnTv,
+            chatTvMode: presetSettings.chatTvMode || 'auto',
+            bouncerMode: !!presetSettings.bouncerMode,
+            bingoShowTv: presetSettings.bingoShowTv !== false,
+            bingoVotingMode: presetSettings.bingoVotingMode || 'host+votes',
+            bingoAutoApprovePct: Math.max(10, Math.min(100, Number(presetSettings.bingoAutoApprovePct ?? 50))),
+            bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
+            autoLyricsOnQueue: autoLyricsEnabled,
+            popTriviaEnabled: presetSettings.popTriviaEnabled === true,
+            gamePreviewId: presetSettings.gamePreviewId || null,
+            gameDefaults: {
+                triviaRoundSec: Math.max(5, Number(gameDefaults.triviaRoundSec || 20)),
+                triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
+                bingoVotingMode: gameDefaults.bingoVotingMode || 'host+votes',
+                bingoAutoApprovePct: Math.max(10, Math.min(100, Number(gameDefaults.bingoAutoApprovePct ?? 50))),
+            },
+            queueSettings: {
+                limitMode: queueSettings.limitMode || 'none',
+                limitCount: Math.max(0, Number(queueSettings.limitCount || 0)),
+                rotation: queueSettings.rotation || 'round_robin',
+                firstTimeBoost: queueSettings.firstTimeBoost !== false,
+            },
+        };
+        const nextAudienceShellVariant = String(presetSettings.audienceShellVariant || '').trim();
+        if (nextAudienceShellVariant) {
+            payload.audienceShellVariant = nextAudienceShellVariant;
+        }
+        const presetTheme = buildAudienceThemeFromPreset(preset);
+        if (presetTheme) {
+            payload.audienceBrandTheme = presetTheme;
+        }
+        if (presetSettings.audienceFeatureAccess) {
+            payload.audienceFeatureAccess = normalizeAudienceFeatureAccess(presetSettings.audienceFeatureAccess);
+        }
+        return { preset, payload };
+    }, [hostNightPresets]);
     
     const selectSettingsTab = useCallback((nextTab) => {
         setSettingsTab(nextTab);
@@ -13671,7 +13573,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         launchRoomName,
         openOnboardingWizard,
         orgContext,
-        presetsById: HOST_NIGHT_PRESETS,
+        presetsById: hostNightPresets,
         quickLaunchDiscovery,
         recentHostRooms,
         room,
@@ -15310,7 +15212,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
 
     const renderNightSetupWizard = () => {
-        const selectedPreset = HOST_NIGHT_PRESETS[nightSetupPresetId] || HOST_NIGHT_PRESETS.casual;
+        const selectedPreset = hostNightPresets[nightSetupPresetId] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
         const selectedMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === nightSetupPrimaryMode) || NIGHT_SETUP_PRIMARY_MODES[0];
         const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
         const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
@@ -15326,7 +15228,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const enabledPresetFeatureCount = presetFeaturePills.filter((item) => item.enabled).length;
         const recommendation = (() => {
             const recommendedId = nightSetupRecommendation?.presetId;
-            if (recommendedId && HOST_NIGHT_PRESETS[recommendedId]) return nightSetupRecommendation;
+            if (recommendedId && hostNightPresets[recommendedId]) return nightSetupRecommendation;
             return resolveNightSetupRecommendation();
         })();
         const readinessChecks = [
@@ -15446,7 +15348,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         ];
 
         if (missionControlEnabled) {
-            const missionPreset = HOST_NIGHT_PRESETS[missionDraft?.archetype] || HOST_NIGHT_PRESETS.casual;
+            const missionPreset = hostNightPresets[missionDraft?.archetype] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
             const missionMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === missionDraft?.spotlightMode) || NIGHT_SETUP_PRIMARY_MODES[0];
             const flowRule = MISSION_FLOW_RULE_OPTIONS.find((rule) => rule.id === missionDraft?.flowRule) || MISSION_FLOW_RULE_OPTIONS[0];
             const assistLevel = MISSION_ASSIST_LEVELS.find((assist) => assist.id === missionDraft?.assistLevel) || MISSION_ASSIST_LEVELS[1];
@@ -15513,7 +15415,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onApplyEventProfile={(profileId) => {
                                     void applyCurrentRoomEventProfile(profileId);
                                 }}
-                                presets={Object.values(HOST_NIGHT_PRESETS)}
+                                presets={hostNightPresetList}
                                 presetMeta={NIGHT_SETUP_PRESET_META}
                                 selectedArchetype={missionDraft?.archetype}
                                 onSelectArchetype={(archetypeId) => updateMissionDraftPick({ archetype: archetypeId }, 'archetype')}
@@ -15756,7 +15658,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
                                             className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
                                         >
-                                            Apply {HOST_NIGHT_PRESETS[recommendation.presetId]?.label || 'Recommended'} Preset
+                                            Apply {hostNightPresets[recommendation.presetId]?.label || 'Recommended'} Preset
                                         </button>
                                     )}
                                 </div>
@@ -15766,7 +15668,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Choose Night</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                            {hostNightPresetList.map((preset) => {
                                                 const active = nightSetupPresetId === preset.id;
                                                 const meta = NIGHT_SETUP_PRESET_META[preset.id] || NIGHT_SETUP_PRESET_META.casual;
                                                 const changeSummary = getPresetChangeSummary(preset);
@@ -16099,9 +16001,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setLaunchRoomName={setLaunchRoomName}
                 launchRequestedRoomCode={launchRequestedRoomCode}
                 setLaunchRequestedRoomCode={setLaunchRequestedRoomCode}
-                presets={Object.values(HOST_NIGHT_PRESETS)}
+                presets={hostNightPresetList}
                 resolvedLaunchPresetId={resolvedLaunchPresetId}
                 setHostNightPreset={setHostNightPreset}
+                saveCustomHostPreset={saveCustomHostPreset}
+                deleteCustomHostPreset={deleteCustomHostPreset}
                 discoveryListingEnabled={discoveryListingEnabled}
                 setDiscoveryListingMode={setDiscoveryListingMode}
                 quickLaunchDiscovery={quickLaunchDiscovery}
@@ -18233,7 +18137,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Host presets</div>
                             <div className="host-form-helper">One-click tone control for how the night runs. Applies queue rules, overlays, and game defaults.</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                {hostNightPresetList.map((preset) => {
                                     const active = hostNightPreset === preset.id;
                                     return (
                                         <button
@@ -19155,7 +19059,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Use one-click host presets, then fine tune live automation behavior below.
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
-                                        {Object.values(HOST_NIGHT_PRESETS).map((preset) => {
+                                        {hostNightPresetList.map((preset) => {
                                             const active = hostNightPreset === preset.id;
                                             return (
                                                 <button

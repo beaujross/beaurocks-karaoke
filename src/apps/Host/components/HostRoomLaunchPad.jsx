@@ -25,6 +25,12 @@ const PRESET_UI_META = {
         summary: 'Question-driven pacing with more host-led reveal and tighter turns.',
         chips: ['Trivia rounds', 'Short turns', 'Structured pacing'],
         accentClass: 'border-fuchsia-300/22 bg-fuchsia-500/8'
+    },
+    aahf: {
+        eyebrow: 'Festival preset',
+        summary: 'Streamlined audience flow, tighter approvals, and AAHF-ready defaults before doors open.',
+        chips: ['Streamlined audience', 'Marquee off', 'Host-led flow'],
+        accentClass: 'border-amber-300/22 bg-amber-500/8'
     }
 };
 
@@ -495,6 +501,8 @@ const HostRoomLaunchPad = ({
     presets,
     resolvedLaunchPresetId,
     setHostNightPreset,
+    saveCustomHostPreset,
+    deleteCustomHostPreset,
     discoveryListingEnabled,
     setDiscoveryListingMode,
     quickLaunchDiscovery,
@@ -546,7 +554,9 @@ const HostRoomLaunchPad = ({
         || archivedRooms[0]
         || null;
     const launchDisabled = creatingRoom || !canStartLauncherRoom;
-    const selectedPresetMeta = PRESET_UI_META[resolvedLaunchPresetId] || PRESET_UI_META.casual;
+    const selectedPresetMeta = PRESET_UI_META[resolvedLaunchPresetId]
+        || PRESET_UI_META[selectedLaunchPreset?.basePresetId]
+        || PRESET_UI_META.casual;
     const launchStartSummary = formatLaunchStartDraft(String(quickLaunchDiscovery?.roomStartsAtLocal || ''));
     const launchOverviewStats = [
         { label: 'Tonight', value: tonightRooms.length },
@@ -687,6 +697,8 @@ const HostRoomLaunchPad = ({
             presets={presets}
             resolvedLaunchPresetId={resolvedLaunchPresetId}
             setHostNightPreset={setHostNightPreset}
+            saveCustomHostPreset={saveCustomHostPreset}
+            deleteCustomHostPreset={deleteCustomHostPreset}
             selectedLaunchPreset={selectedLaunchPreset}
             selectedPresetMeta={selectedPresetMeta}
             launchStartSummary={launchStartSummary}

@@ -3,6 +3,7 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../../billing/cap
 import { searchHostVenueAutocomplete } from '../../../lib/firebase';
 import { createQuickLaunchDiscoveryDraft } from '../hostLaunchHelpers';
 import { canQuickStartForRole } from '../launchAccess';
+import { buildHostNightPresetConfig } from '../hostNightPresets';
 
 const useHostLandingLaunchpad = ({
     entryError = '',
@@ -173,7 +174,7 @@ const useHostLandingLaunchpad = ({
     const recentRoomSnapshot = useMemo(() => recentHostRooms.slice(0, 3), [recentHostRooms]);
     const launchRoomNameValue = String(launchRoomName || '').trim();
     const resolvedLaunchPresetId = presetsById[hostNightPreset] ? hostNightPreset : 'casual';
-    const selectedLaunchPreset = presetsById[resolvedLaunchPresetId] || presetsById.casual || null;
+        const selectedLaunchPreset = presetsById[resolvedLaunchPresetId] || presetsById.casual || null;
     const canStartLauncherRoom = !!launchRoomNameValue && canQuickStartRoom && !primaryLaunchDisabled;
     const discoverVenueSummary = [
         String(quickLaunchDiscovery.city || '').trim(),
@@ -252,6 +253,7 @@ const useHostLandingLaunchpad = ({
             roomName: launchRoomNameValue,
             coHostUids: launchCoHostUids,
             nightPresetId: resolvedLaunchPresetId,
+            nightPresetPayload: buildHostNightPresetConfig(selectedLaunchPreset),
             preferredRoomCode: hasRequestedLaunchRoomCode ? requestedLaunchRoomCodeCandidate : '',
             openNightSetup,
         });
@@ -276,6 +278,7 @@ const useHostLandingLaunchpad = ({
         launchRoomNameValue,
         openOnboardingWizard,
         primaryLaunchDisabled,
+        selectedLaunchPreset,
         resolvedLaunchPresetId,
         routeToWorkspaceSection,
         setEntryError,

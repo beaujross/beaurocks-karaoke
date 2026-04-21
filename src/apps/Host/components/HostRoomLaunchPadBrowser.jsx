@@ -1,8 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ASSETS } from '../../../lib/assets';
+import { REQUEST_MODES } from '../../../lib/requestModes';
+import { AUDIENCE_FEATURE_ACCESS_LEVELS } from '../../../lib/audienceFeatureAccess.js';
+import {
+    createHostNightPresetDraft,
+    normalizeHostNightPresetRecord,
+} from '../hostNightPresets';
 import EventCreditsConfigPanel from './EventCreditsConfigPanel';
 
 const inputClass = 'mt-2 w-full rounded-xl border border-cyan-400/20 bg-black/25 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45';
+const REQUEST_POLICY_OPTIONS = [
+    { id: REQUEST_MODES.canonicalOpen, label: 'Host Review First' },
+    { id: REQUEST_MODES.guestBackingOptional, label: 'Guest Picks Backing' },
+    { id: REQUEST_MODES.playableOnly, label: 'Playable Library Only' },
+];
+const QUEUE_LIMIT_OPTIONS = [
+    { id: 'none', label: 'Open Queue' },
+    { id: 'per_night', label: 'Per Night Cap' },
+    { id: 'per_rotation', label: 'Per Rotation Cap' },
+];
+const QUEUE_ROTATION_OPTIONS = [
+    { id: 'round_robin', label: 'Round Robin' },
+    { id: 'fifo', label: 'First In / First Out' },
+    { id: 'weighted_first_time', label: 'Weighted First-Time' },
+];
+const AUDIENCE_SHELL_OPTIONS = [
+    { id: 'classic', label: 'Standard Audience App' },
+    { id: 'streamlined', label: 'Streamlined Audience App' },
+];
 
 const HostRoomLaunchPadBrowser = ({
     STYLES,
@@ -62,6 +87,8 @@ const HostRoomLaunchPadBrowser = ({
     presets,
     resolvedLaunchPresetId,
     setHostNightPreset,
+    saveCustomHostPreset,
+    deleteCustomHostPreset,
     selectedLaunchPreset,
     selectedPresetMeta,
     launchStartSummary,
@@ -73,7 +100,78 @@ const HostRoomLaunchPadBrowser = ({
     entryError,
     retryLastHostAction,
     hostUpdateDeploymentBanner,
-}) => (
+}) => {
+    const [presetEditorOpen, setPresetEditorOpen] = useState(false);
+    const [presetEditorMode, setPresetEditorMode] = useState('copy');
+    const [presetDraft, setPresetDraft] = useState(() => createHostNightPresetDraft(selectedLaunchPreset));
+    const selectedPresetIsCustom = !!selectedLaunchPreset && !selectedLaunchPreset.isBuiltIn;
+    const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
+    const selectedPresetRequestMode = String(presetDraft?.settings?.requestMode || REQUEST_MODES.canonicalOpen);
+    const selectedPresetShellVariant = String(presetDraft?.settings?.audienceShellVariant || '').trim() || 'classic';
+    const selectedPresetCustomEmojiAccess = presetDraft?.settings?.audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired
+        ? AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired
+        : AUDIENCE_FEATURE_ACCESS_LEVELS.open;
+    const editorTitle = presetEditorMode === 'edit'
+        ? 'Edit Preset'
+        : selectedPresetIsCustom
+            ? 'Duplicate Preset'
+            : 'Customize Preset';
+    const openPresetEditor = (mode = 'copy') => {
+        setPresetEditorMode(mode);
+        setPresetDraft(createHostNightPresetDraft(selectedLaunchPreset));
+        setPresetEditorOpen(true);
+    };
+    const handlePresetDraftChange = (field, value) => {
+        setPresetDraft((prev) => ({
+            ...prev,
+            [field]: value,
+        }));
+    };
+    const handlePresetDraftSettingChange = (field, value) => {
+        setPresetDraft((prev) => ({
+            ...prev,
+            settings: {
+                ...(prev?.settings || {}),
+                [field]: value,
+            },
+        }));
+    };
+    const handlePresetDraftQueueChange = (field, value) => {
+        setPresetDraft((prev) => ({
+            ...prev,
+            settings: {
+                ...(prev?.settings || {}),
+                queueSettings: {
+                    ...(prev?.settings?.queueSettings || {}),
+                    [field]: value,
+                },
+            },
+        }));
+    };
+    const handleSavePreset = () => {
+        const nextId = presetEditorMode === 'edit' && selectedPresetIsCustom
+            ? selectedLaunchPreset?.id
+            : `preset_${Date.now().toString(36)}`;
+        const normalized = normalizeHostNightPresetRecord({
+            ...presetDraft,
+            id: nextId,
+            isBuiltIn: false,
+            basePresetId: selectedPresetBaseId,
+            updatedAtMs: Date.now(),
+        }, selectedLaunchPreset);
+        const saved = saveCustomHostPreset?.(normalized);
+        if (saved?.id) {
+            setHostNightPreset(saved.id);
+            setPresetEditorOpen(false);
+        }
+    };
+    const handleDeletePreset = () => {
+        if (!selectedPresetIsCustom) return;
+        deleteCustomHostPreset?.(selectedLaunchPreset?.id, selectedPresetBaseId);
+        setPresetEditorOpen(false);
+    };
+
+    return (
     <div className="relative z-10 w-full max-w-[1600px]">
         <div className="rounded-[2rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.12),transparent_22%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.12),transparent_28%),linear-gradient(145deg,rgba(13,18,34,0.94),rgba(8,14,24,0.98))] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.48)] backdrop-blur-xl md:p-5">
             <div className="rounded-[1.3rem] border border-white/10 bg-black/20 px-4 py-4">
@@ -91,6 +189,12 @@ const HostRoomLaunchPadBrowser = ({
                         </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                        <a
+                            href="#launchpad-create-room"
+                            className="inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/14 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100"
+                        >
+                            Create New Room
+                        </a>
                         <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em] ${launchStateTone}`}>
                             {launchState}
                         </span>
@@ -432,17 +536,17 @@ const HostRoomLaunchPadBrowser = ({
                         )}
                     </div>
 
-                    <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-4">
+                    <div id="launchpad-create-room" className="rounded-[1.4rem] border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(24,11,31,0.9))] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.24)]">
                         <div className="flex items-center justify-between gap-3">
                             <div>
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">New room</div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Primary action</div>
                                 <div className="mt-1 text-xl font-black text-white">Create New Room</div>
                             </div>
                             <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
                                 {launchDisabled ? 'Needs input' : 'Ready'}
                             </span>
                         </div>
-                        <div className="mt-2 text-sm text-cyan-100/68">Step 1: name the room and optional code. Step 2: click <span className="font-semibold text-white">Create + Open Host Panel</span>.</div>
+                        <div className="mt-2 text-sm text-cyan-100/68">Pick the night preset here, then open the host panel with the room already preconfigured.</div>
 
                         {shouldShowSetupCard ? (
                             <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-500/10 px-3 py-3">
@@ -524,7 +628,7 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
 
                             <div>
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room style</div>
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Night preset</div>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {presets.map((preset) => {
                                         const selected = resolvedLaunchPresetId === preset.id;
@@ -539,9 +643,32 @@ const HostRoomLaunchPadBrowser = ({
                                             >
                                                 <div className="text-xs font-semibold">{preset.label}</div>
                                                 <div className="mt-0.5 text-[11px] text-cyan-100/56">{(PRESET_UI_META[preset.id] || PRESET_UI_META.casual).eyebrow}</div>
+                                                {!preset.isBuiltIn ? (
+                                                    <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/72">Custom</div>
+                                                ) : null}
                                             </button>
                                         );
                                     })}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => openPresetEditor(selectedPresetIsCustom ? 'edit' : 'copy')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                    >
+                                        {selectedPresetIsCustom ? 'Edit Selected Preset' : 'Customize Selected Preset'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setPresetDraft(createHostNightPresetDraft(selectedLaunchPreset));
+                                            setPresetEditorMode('copy');
+                                            setPresetEditorOpen(true);
+                                        }}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                    >
+                                        New From This Preset
+                                    </button>
                                 </div>
                             </div>
 
@@ -552,6 +679,198 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="mt-1">{discoveryListingEnabled ? 'Listed in Discover' : 'Private join only'}</div>
                                 <div className="mt-1">{selectedLaunchPreset?.label || 'No preset selected'}: {selectedPresetMeta.summary}</div>
                             </div>
+
+                            {presetEditorOpen ? (
+                                <div className="rounded-xl border border-fuchsia-300/22 bg-fuchsia-500/8 px-3 py-3 space-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/64">Preset editor</div>
+                                            <div className="mt-1 text-base font-semibold text-white">{editorTitle}</div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPresetEditorOpen(false)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em]`}
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Preset name</div>
+                                            <input
+                                                value={presetDraft.label || ''}
+                                                onChange={(e) => handlePresetDraftChange('label', e.target.value)}
+                                                className={inputClass}
+                                                placeholder="My festival preset"
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Description</div>
+                                            <input
+                                                value={presetDraft.description || ''}
+                                                onChange={(e) => handlePresetDraftChange('description', e.target.value)}
+                                                className={inputClass}
+                                                placeholder="What this preset is for"
+                                            />
+                                        </label>
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-3">
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Request policy</div>
+                                            <select
+                                                value={selectedPresetRequestMode}
+                                                onChange={(e) => {
+                                                    handlePresetDraftSettingChange('requestMode', e.target.value);
+                                                    handlePresetDraftSettingChange('allowSingerTrackSelect', e.target.value === REQUEST_MODES.guestBackingOptional);
+                                                }}
+                                                className={inputClass}
+                                            >
+                                                {REQUEST_POLICY_OPTIONS.map((option) => (
+                                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Audience shell</div>
+                                            <select
+                                                value={selectedPresetShellVariant}
+                                                onChange={(e) => handlePresetDraftSettingChange('audienceShellVariant', e.target.value)}
+                                                className={inputClass}
+                                            >
+                                                {AUDIENCE_SHELL_OPTIONS.map((option) => (
+                                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Primary mode</div>
+                                            <select
+                                                value={String(presetDraft?.settings?.gamePreviewId || 'karaoke')}
+                                                onChange={(e) => handlePresetDraftSettingChange('gamePreviewId', e.target.value === 'karaoke' ? '' : e.target.value)}
+                                                className={inputClass}
+                                            >
+                                                <option value="karaoke">Karaoke</option>
+                                                <option value="bingo">Bingo</option>
+                                                <option value="trivia_pop">Trivia</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-4">
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Queue cap</div>
+                                            <select
+                                                value={String(presetDraft?.settings?.queueSettings?.limitMode || 'none')}
+                                                onChange={(e) => handlePresetDraftQueueChange('limitMode', e.target.value)}
+                                                className={inputClass}
+                                            >
+                                                {QUEUE_LIMIT_OPTIONS.map((option) => (
+                                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Queue count</div>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="10"
+                                                value={String(presetDraft?.settings?.queueSettings?.limitCount ?? 0)}
+                                                onChange={(e) => handlePresetDraftQueueChange('limitCount', e.target.value)}
+                                                className={inputClass}
+                                            />
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Queue rotation</div>
+                                            <select
+                                                value={String(presetDraft?.settings?.queueSettings?.rotation || 'round_robin')}
+                                                onChange={(e) => handlePresetDraftQueueChange('rotation', e.target.value)}
+                                                className={inputClass}
+                                            >
+                                                {QUEUE_ROTATION_OPTIONS.map((option) => (
+                                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Custom emoji</div>
+                                            <select
+                                                value={selectedPresetCustomEmojiAccess}
+                                                onChange={(e) => handlePresetDraftSettingChange('audienceFeatureAccess', {
+                                                    features: {
+                                                        customEmoji: e.target.value,
+                                                    },
+                                                })}
+                                                className={inputClass}
+                                            >
+                                                <option value={AUDIENCE_FEATURE_ACCESS_LEVELS.open}>Guest Open</option>
+                                                <option value={AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired}>BeauRocks Account Required</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        {[
+                                            ['autoDj', 'Auto DJ'],
+                                            ['autoPlayMedia', 'Auto playback'],
+                                            ['showScoring', 'Scoring'],
+                                            ['marqueeEnabled', 'Marquee'],
+                                            ['chatShowOnTv', 'TV chat'],
+                                            ['popTriviaEnabled', 'Pop trivia'],
+                                            ['autoLyricsOnQueue', 'Auto lyrics'],
+                                            ['bouncerMode', 'Host approval'],
+                                        ].map(([field, label]) => {
+                                            const enabled = !!presetDraft?.settings?.[field];
+                                            return (
+                                                <button
+                                                    key={field}
+                                                    type="button"
+                                                    onClick={() => handlePresetDraftSettingChange(field, !enabled)}
+                                                    className={`rounded-xl border px-3 py-2 text-left text-sm transition ${
+                                                        enabled
+                                                            ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
+                                                            : 'border-white/10 bg-black/20 text-cyan-100/72'
+                                                    }`}
+                                                >
+                                                    <div className="font-semibold">{label}</div>
+                                                    <div className="mt-1 text-[11px] uppercase tracking-[0.16em]">{enabled ? 'On' : 'Off'}</div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePresetDraftQueueChange('firstTimeBoost', !(presetDraft?.settings?.queueSettings?.firstTimeBoost !== false))}
+                                        className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                                            presetDraft?.settings?.queueSettings?.firstTimeBoost !== false
+                                                ? 'border-amber-300/35 bg-amber-500/12 text-amber-50'
+                                                : 'border-white/10 bg-black/20 text-cyan-100/72'
+                                        }`}
+                                    >
+                                        <div className="font-semibold">First-time singer boost</div>
+                                        <div className="mt-1 text-[11px] uppercase tracking-[0.16em]">
+                                            {presetDraft?.settings?.queueSettings?.firstTimeBoost !== false ? 'On' : 'Off'}
+                                        </div>
+                                    </button>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={handleSavePreset}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                        >
+                                            {presetEditorMode === 'edit' && selectedPresetIsCustom ? 'Save Preset' : 'Save as My Preset'}
+                                        </button>
+                                        {selectedPresetIsCustom ? (
+                                            <button
+                                                type="button"
+                                                onClick={handleDeletePreset}
+                                                className={`${STYLES.btnStd} ${STYLES.btnDanger} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                            >
+                                                Delete Preset
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             <details className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
                                 <summary className="cursor-pointer list-none text-sm font-semibold text-white">Credits and promos</summary>
@@ -614,6 +933,7 @@ const HostRoomLaunchPadBrowser = ({
             </div>
         </div>
     </div>
-);
+    );
+};
 
 export default HostRoomLaunchPadBrowser;

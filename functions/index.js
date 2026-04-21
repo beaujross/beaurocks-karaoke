@@ -699,6 +699,28 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoLyricsOnQueue: false,
     gamePreviewId: "trivia_pop",
   }),
+  aahf: Object.freeze({
+    hostNightPreset: "aahf",
+    autoDj: false,
+    autoBgMusic: false,
+    autoPlayMedia: true,
+    autoEndOnTrackFinish: true,
+    showScoring: true,
+    showFameLevel: true,
+    requestMode: "canonical_open",
+    allowSingerTrackSelect: false,
+    marqueeEnabled: false,
+    marqueeShowMode: "idle",
+    chatShowOnTv: false,
+    autoLyricsOnQueue: true,
+    audienceShellVariant: "streamlined",
+    queueSettings: {
+      limitMode: "per_night",
+      limitCount: 2,
+      rotation: "round_robin",
+      firstTimeBoost: false,
+    },
+  }),
 });
 const normalizeProvisionRoomCode = (value = "") =>
   normalizeRoomCode(value)
@@ -1517,10 +1539,12 @@ const buildProvisionedRoomData = ({
   roomName = "",
   coHostUids = [],
   presetId = "custom",
+  presetConfig = null,
   eventCredits = {},
   roomPlan = {},
 } = {}) => {
   const presetOverrides = resolveProvisionPresetOverrides(presetId);
+  const presetConfigOverrides = buildProvisionPresetOverridesFromConfig(presetConfig);
   const resolvedHostName = normalizeOptionalName(hostName, "Host");
   const resolvedOrgName = String(orgName || "").trim().slice(0, 120) || `${resolvedHostName} Workspace`;
   const resolvedLogoUrl = typeof logoUrl === "string"
@@ -1597,6 +1621,7 @@ const buildProvisionedRoomData = ({
     requestMode: "canonical_open",
     allowSingerTrackSelect: false,
     hostNightPreset: "custom",
+    hostNightPresetConfig: null,
     bingoAudienceReopenEnabled: true,
     autoLyricsOnQueue: false,
     showPerformanceRecap: true,
@@ -1635,13 +1660,16 @@ const buildProvisionedRoomData = ({
   return {
     ...baseData,
     ...presetOverrides,
+    ...presetConfigOverrides,
     queueSettings: {
       ...(baseData.queueSettings || {}),
       ...(presetOverrides.queueSettings || {}),
+      ...(presetConfigOverrides.queueSettings || {}),
     },
     gameDefaults: {
       ...(baseData.gameDefaults || {}),
       ...(presetOverrides.gameDefaults || {}),
+      ...(presetConfigOverrides.gameDefaults || {}),
     },
     hostUids: resolvedHostUids,
     coHostUids: resolvedCoHostUids,
@@ -1822,6 +1850,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "highlightedTile",
   "hostName",
   "hostNightPreset",
+  "hostNightPresetConfig",
   "howToPlay",
   "karaokeBracket",
   "lastPerformance",
@@ -2065,6 +2094,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "guitarVictory",
   "guitarWinner",
   "howToPlay",
+  "hostNightPresetConfig",
   "karaokeBracket",
   "lastPerformance",
   "photoOverlay",
@@ -2329,6 +2359,168 @@ const deriveLegacyRequestModeFromAudienceBackingMode = (audienceBackingMode = ""
 const deriveLegacyAllowSingerTrackSelect = (audienceBackingMode = "") => (
   deriveHostAudienceBackingMode({ audienceBackingMode }) === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube
 );
+
+const VALID_PROVISION_AUDIENCE_ACCESS_LEVELS = new Set([
+  "open",
+  "account_required",
+  "support_or_account",
+  "disabled",
+]);
+
+const normalizeProvisionAudienceFeatureAccess = (input = {}) => {
+  const features = isPlainObject(input?.features) ? input.features : {};
+  const customEmoji = String(features.customEmoji || "open").trim().toLowerCase();
+  return {
+    features: {
+      customEmoji: VALID_PROVISION_AUDIENCE_ACCESS_LEVELS.has(customEmoji) ? customEmoji : "open",
+    },
+  };
+};
+
+const normalizeProvisionAudienceBrandTheme = (input = {}) => {
+  if (!isPlainObject(input)) return null;
+  const appTitle = typeof input.appTitle === "string" ? input.appTitle.trim().slice(0, 64) : "";
+  const primaryColor = typeof input.primaryColor === "string" ? input.primaryColor.trim().slice(0, 24) : "";
+  const secondaryColor = typeof input.secondaryColor === "string" ? input.secondaryColor.trim().slice(0, 24) : "";
+  const accentColor = typeof input.accentColor === "string" ? input.accentColor.trim().slice(0, 24) : "";
+  if (!appTitle && !primaryColor && !secondaryColor && !accentColor) return null;
+  return {
+    appTitle: appTitle || "Audience app",
+    primaryColor: primaryColor || "#00C4D9",
+    secondaryColor: secondaryColor || "#EC4899",
+    accentColor: accentColor || "#FACC15",
+  };
+};
+
+const normalizeProvisionNightPresetPayload = (input = {}) => {
+  if (!isPlainObject(input)) return null;
+  const settings = isPlainObject(input.settings) ? input.settings : {};
+  const queueSettings = isPlainObject(settings.queueSettings) ? settings.queueSettings : {};
+  const gameDefaults = isPlainObject(settings.gameDefaults) ? settings.gameDefaults : {};
+  const theme = normalizeProvisionAudienceBrandTheme(input.audienceBrandTheme || settings.audienceBrandTheme || {});
+  return {
+    id: normalizeProvisionPresetId(input.id || input.presetId || "custom") || "custom",
+    label: typeof input.label === "string" ? input.label.trim().slice(0, 64) : "",
+    description: typeof input.description === "string" ? input.description.trim().slice(0, 240) : "",
+    basePresetId: normalizeProvisionPresetId(input.basePresetId || input.id || "casual") || "casual",
+    isBuiltIn: input.isBuiltIn === true,
+    searchSources: {
+      local: input?.searchSources?.local !== false,
+      youtube: input?.searchSources?.youtube !== false,
+      itunes: input?.searchSources?.itunes !== false,
+    },
+    audienceBrandTheme: theme,
+    settings: {
+      autoDj: settings.autoDj === true,
+      autoBgMusic: settings.autoBgMusic === true,
+      autoPlayMedia: settings.autoPlayMedia !== false,
+      autoEndOnTrackFinish: settings.autoEndOnTrackFinish !== false,
+      autoBonusEnabled: settings.autoBonusEnabled !== false,
+      autoBonusPoints: clampNumber(settings.autoBonusPoints, 0, 1000, 25),
+      autoDjDelaySec: clampNumber(settings.autoDjDelaySec, 2, 45, 10),
+      showVisualizerTv: settings.showVisualizerTv === true,
+      showLyricsTv: settings.showLyricsTv === true,
+      showScoring: settings.showScoring === true,
+      showFameLevel: settings.showFameLevel === true,
+      requestMode: normalizeHostRoomRequestMode(settings.requestMode, settings.allowSingerTrackSelect === true),
+      allowSingerTrackSelect: settings.allowSingerTrackSelect === true,
+      audienceBackingMode: typeof settings.audienceBackingMode === "string" ? settings.audienceBackingMode.trim().toLowerCase() : "",
+      unknownBackingPolicy: typeof settings.unknownBackingPolicy === "string" ? settings.unknownBackingPolicy.trim().toLowerCase() : "",
+      marqueeEnabled: settings.marqueeEnabled === true,
+      marqueeShowMode: typeof settings.marqueeShowMode === "string" ? settings.marqueeShowMode.trim().toLowerCase() : "idle",
+      chatShowOnTv: settings.chatShowOnTv === true,
+      chatTvMode: typeof settings.chatTvMode === "string" ? settings.chatTvMode.trim().toLowerCase() : "auto",
+      bouncerMode: settings.bouncerMode === true,
+      bingoShowTv: settings.bingoShowTv !== false,
+      bingoVotingMode: typeof settings.bingoVotingMode === "string" ? settings.bingoVotingMode.trim().toLowerCase() : "host+votes",
+      bingoAutoApprovePct: clampNumber(settings.bingoAutoApprovePct, 10, 100, 50),
+      bingoAudienceReopenEnabled: settings.bingoAudienceReopenEnabled !== false,
+      autoLyricsOnQueue: settings.autoLyricsOnQueue === true,
+      popTriviaEnabled: settings.popTriviaEnabled === true,
+      gamePreviewId: typeof settings.gamePreviewId === "string" ? settings.gamePreviewId.trim().toLowerCase() : "",
+      audienceShellVariant: String(settings.audienceShellVariant || "").trim().toLowerCase() === "streamlined" ? "streamlined" : "classic",
+      audienceFeatureAccess: normalizeProvisionAudienceFeatureAccess(settings.audienceFeatureAccess || {}),
+      queueSettings: {
+        limitMode: typeof queueSettings.limitMode === "string" ? queueSettings.limitMode.trim().toLowerCase() : "none",
+        limitCount: Math.max(0, Math.floor(Number(queueSettings.limitCount || 0) || 0)),
+        rotation: typeof queueSettings.rotation === "string" ? queueSettings.rotation.trim().toLowerCase() : "round_robin",
+        firstTimeBoost: queueSettings.firstTimeBoost !== false,
+      },
+      gameDefaults: {
+        triviaRoundSec: clampNumber(gameDefaults.triviaRoundSec, 5, 90, 20),
+        triviaAutoReveal: gameDefaults.triviaAutoReveal !== false,
+        bingoVotingMode: typeof gameDefaults.bingoVotingMode === "string" ? gameDefaults.bingoVotingMode.trim().toLowerCase() : "host+votes",
+        bingoAutoApprovePct: clampNumber(gameDefaults.bingoAutoApprovePct, 10, 100, 50),
+      },
+    },
+  };
+};
+
+const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
+  if (!presetConfig) return {};
+  const settings = presetConfig.settings || {};
+  const requestMode = normalizeHostRoomRequestMode(settings.requestMode, settings.allowSingerTrackSelect === true);
+  const audienceBackingMode = deriveHostAudienceBackingMode({
+    audienceBackingMode: settings.audienceBackingMode,
+    requestMode,
+    allowSingerTrackSelect: settings.allowSingerTrackSelect === true,
+  });
+  const unknownBackingPolicy = deriveHostUnknownBackingPolicy({
+    unknownBackingPolicy: settings.unknownBackingPolicy,
+    audienceBackingMode,
+    requestMode,
+    allowSingerTrackSelect: settings.allowSingerTrackSelect === true,
+  });
+  const overrides = {
+    hostNightPreset: presetConfig.id || "custom",
+    hostNightPresetConfig: presetConfig,
+    autoDj: settings.autoDj === true,
+    autoBgMusic: settings.autoBgMusic === true,
+    autoPlayMedia: settings.autoPlayMedia !== false,
+    autoEndOnTrackFinish: settings.autoEndOnTrackFinish !== false,
+    autoBonusEnabled: settings.autoBonusEnabled !== false,
+    autoBonusPoints: clampNumber(settings.autoBonusPoints, 0, 1000, 25),
+    autoDjDelaySec: clampNumber(settings.autoDjDelaySec, 2, 45, 10),
+    showVisualizerTv: settings.showVisualizerTv === true,
+    showLyricsTv: settings.showLyricsTv === true,
+    showScoring: settings.showScoring === true,
+    showFameLevel: settings.showFameLevel === true,
+    requestMode,
+    allowSingerTrackSelect: requestMode === ROOM_REQUEST_MODES.guestBackingOptional,
+    audienceBackingMode,
+    unknownBackingPolicy,
+    marqueeEnabled: settings.marqueeEnabled === true,
+    marqueeShowMode: settings.marqueeShowMode || "idle",
+    chatShowOnTv: settings.chatShowOnTv === true,
+    chatTvMode: settings.chatTvMode || "auto",
+    bouncerMode: settings.bouncerMode === true,
+    bingoShowTv: settings.bingoShowTv !== false,
+    bingoVotingMode: settings.bingoVotingMode || "host+votes",
+    bingoAutoApprovePct: clampNumber(settings.bingoAutoApprovePct, 10, 100, 50),
+    bingoAudienceReopenEnabled: settings.bingoAudienceReopenEnabled !== false,
+    autoLyricsOnQueue: settings.autoLyricsOnQueue === true,
+    popTriviaEnabled: settings.popTriviaEnabled === true,
+    gamePreviewId: settings.gamePreviewId || null,
+    audienceShellVariant: settings.audienceShellVariant === "streamlined" ? "streamlined" : "classic",
+    audienceFeatureAccess: normalizeProvisionAudienceFeatureAccess(settings.audienceFeatureAccess || {}),
+    queueSettings: {
+      limitMode: settings?.queueSettings?.limitMode || "none",
+      limitCount: Math.max(0, Number(settings?.queueSettings?.limitCount || 0)),
+      rotation: settings?.queueSettings?.rotation || "round_robin",
+      firstTimeBoost: settings?.queueSettings?.firstTimeBoost !== false,
+    },
+    gameDefaults: {
+      triviaRoundSec: clampNumber(settings?.gameDefaults?.triviaRoundSec, 5, 90, 20),
+      triviaAutoReveal: settings?.gameDefaults?.triviaAutoReveal !== false,
+      bingoVotingMode: settings?.gameDefaults?.bingoVotingMode || "host+votes",
+      bingoAutoApprovePct: clampNumber(settings?.gameDefaults?.bingoAutoApprovePct, 10, 100, 50),
+    },
+  };
+  if (presetConfig.audienceBrandTheme) {
+    overrides.audienceBrandTheme = presetConfig.audienceBrandTheme;
+  }
+  return overrides;
+};
 
 const syncHostRoomRequestPolicyUpdates = ({ roomData = {}, updates = {} } = {}) => {
   const touchedPolicyKey = Object.keys(updates).some((key) => ROOM_REQUEST_POLICY_KEYS.has(key));
@@ -15096,6 +15288,9 @@ exports.provisionHostRoom = onCall(
     const presetId = normalizeProvisionPresetId(
       payload.nightPresetId || payload.hostNightPreset || "custom"
     ) || "custom";
+    const presetConfig = normalizeProvisionNightPresetPayload(
+      payload.nightPresetPayload || payload.hostNightPresetConfig || {}
+    );
     const coHostUids = normalizeProvisionCoHostUids(callerUid, payload.coHostUids || payload.coHosts || []);
     const eventCreditsConfig = normalizeRoomEventCreditConfigRecord(payload.eventCredits || {});
     const roomPlanInput = payload.roomPlan && typeof payload.roomPlan === "object"
@@ -15143,6 +15338,7 @@ exports.provisionHostRoom = onCall(
       roomName,
       coHostUids,
       presetId,
+      presetConfig,
       eventCredits: eventCreditsConfig,
       roomPlan: roomPlanInput,
     });
