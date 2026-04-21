@@ -83,3 +83,37 @@ test('getAutoEndSchedule prefers longer resolved media duration for video playba
         delayMs: 226000
     });
 });
+
+test('getAutoEndSchedule uses persisted media clock when YouTube playing flag is stale', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'rollout_ludacris',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: false,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 240,
+        now: 1000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'rollout_ludacris:1000:240',
+        delayMs: 246000
+    });
+});
+
+test('getAutoEndSchedule does not auto-end paused media from the persisted clock', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'paused_song',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: false,
+        videoStartTimestamp: 1000,
+        pausedAt: 5000,
+        currentDurationSec: 240,
+        now: 250000
+    });
+
+    expect(schedule).toBeNull();
+});

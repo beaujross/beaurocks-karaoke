@@ -6,8 +6,13 @@ const extractYouTubeId = (input = '') => {
 
 const normalizeMediaUrl = (value = '') => (value || '').trim();
 
-export const normalizeBackingChoice = ({ mediaUrl = '', appleMusicId = '' } = {}) => {
-    const normalizedMediaUrl = normalizeMediaUrl(mediaUrl);
+const buildYouTubeWatchUrl = (youtubeId = '') => {
+    const safeId = String(youtubeId || '').trim();
+    return safeId ? `https://www.youtube.com/watch?v=${safeId}` : '';
+};
+
+export const normalizeBackingChoice = ({ mediaUrl = '', appleMusicId = '', youtubeId: explicitYouTubeId = '' } = {}) => {
+    const normalizedMediaUrl = normalizeMediaUrl(mediaUrl) || buildYouTubeWatchUrl(explicitYouTubeId);
     const normalizedAppleMusicId = normalizedMediaUrl ? '' : String(appleMusicId || '');
     const youtubeId = extractYouTubeId(normalizedMediaUrl);
     return {
@@ -20,7 +25,7 @@ export const normalizeBackingChoice = ({ mediaUrl = '', appleMusicId = '' } = {}
 };
 
 export const resolveStageMediaUrl = (currentSong, room) => {
-    if (currentSong) return normalizeMediaUrl(currentSong.mediaUrl);
+    if (currentSong) return normalizeBackingChoice(currentSong).mediaUrl;
     return normalizeMediaUrl(room?.mediaUrl);
 };
 

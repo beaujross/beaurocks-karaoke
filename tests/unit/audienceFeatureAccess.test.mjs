@@ -19,6 +19,10 @@ test('normalizeAudienceFeatureAccess keeps safe defaults and accepts feature ove
         normalized.features.customEmoji,
         AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired,
     );
+    assert.equal(
+        normalized.features.premiumReactions,
+        AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired,
+    );
 });
 
 test('resolveAudienceFeatureAccess blocks account-gated features for signed-out guests', () => {
@@ -35,6 +39,23 @@ test('resolveAudienceFeatureAccess blocks account-gated features for signed-out 
     assert.equal(access.allowed, false);
     assert.equal(access.unlockPath, 'account');
     assert.match(access.reasonLabel, /account required/i);
+});
+
+test('normalizeAudienceFeatureAccess allows reaction emoji policy to follow custom emoji policy', () => {
+    const openPolicy = normalizeAudienceFeatureAccess({
+        features: {
+            customEmoji: AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+        },
+    });
+    assert.equal(openPolicy.features.premiumReactions, AUDIENCE_FEATURE_ACCESS_LEVELS.open);
+
+    const explicitPolicy = normalizeAudienceFeatureAccess({
+        features: {
+            customEmoji: AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+            premiumReactions: AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired,
+        },
+    });
+    assert.equal(explicitPolicy.features.premiumReactions, AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired);
 });
 
 test('resolveAudienceFeatureAccess allows support-or-account features with supporter access', () => {

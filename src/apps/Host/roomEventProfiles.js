@@ -11,6 +11,7 @@ import { REQUEST_MODES } from '../../lib/requestModes';
 import { getAudienceBrandThemePreset } from '../../lib/audienceBrandTheme';
 import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.js';
 import { applyEventCreditsPreset } from './hostLaunchHelpers';
+import { BUILTIN_HOST_NIGHT_PRESETS, buildHostNightPresetConfig } from './hostNightPresets';
 
 export const AAHF_KICKOFF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 export const AAHF_KICKOFF_STARTS_AT_LOCAL = '2026-05-01T19:00';
@@ -23,6 +24,8 @@ export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
         id: AAHF_KICKOFF_EVENT_PROFILE_ID,
         label: 'AAHF Kick-Off',
         version: 1,
+        basePresetId: 'aahf',
+        basePresetLabel: 'AAHF',
         startsAtLocal: AAHF_KICKOFF_STARTS_AT_LOCAL,
         startsAtMs: AAHF_KICKOFF_STARTS_AT_MS,
         description: 'AAHF kickoff defaults for Friday, May 1, 2026 from 7 PM to midnight, with explicit lyrics opening after 9 PM.',
@@ -293,7 +296,8 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             eventProfileId: meta.id,
             eventProfileLabel: meta.label,
             eventProfileVersion: meta.version,
-            hostNightPreset: 'competition',
+            hostNightPreset: 'aahf',
+            hostNightPresetConfig: buildHostNightPresetConfig(BUILTIN_HOST_NIGHT_PRESETS.aahf),
             logoUrl: AAHF_KICKOFF_LOGO_URL,
             lobbyOrbSkinUrl: AAHF_KICKOFF_LOGO_URL,
             audienceShellVariant: 'streamlined',
@@ -303,6 +307,7 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             audienceFeatureAccess: normalizeAudienceFeatureAccess({
                 features: {
                     customEmoji: 'open',
+                    premiumReactions: 'open',
                 },
             }),
             autoDj: false,

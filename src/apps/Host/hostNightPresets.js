@@ -322,6 +322,7 @@ export const BUILTIN_HOST_NIGHT_PRESETS = Object.freeze({
             audienceFeatureAccess: normalizeAudienceFeatureAccess({
                 features: {
                     customEmoji: AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+                    premiumReactions: AUDIENCE_FEATURE_ACCESS_LEVELS.open,
                 },
             }),
             queueSettings: {

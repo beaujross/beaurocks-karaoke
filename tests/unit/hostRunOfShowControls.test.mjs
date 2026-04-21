@@ -44,6 +44,26 @@ test("HostApp restores queue tools after stop and previews the audience app", ()
   assert.match(source, /const shouldApplyRunOfShowRemoteSync = Date\.now\(\) - runOfShowLocalEditAtRef\.current > 1500;/);
 });
 
+test("HostApp keeps the queue runtime mounted when the host leaves the queue view", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(
+    source,
+    /data-host-queue-runtime="mounted"[\s\S]*<QueueTab \{\.\.\.queueTabProps\} runtimeVisible=\{tab === 'stage'\} \/>/,
+    "QueueTab owns host-side automation timers and should stay mounted while its UI is hidden",
+  );
+  assert.match(
+    source,
+    /className=\{tab === 'stage' \? '' : 'hidden'\}/,
+    "Queue UI should be hidden, not unmounted, outside the stage tab",
+  );
+  assert.match(
+    source,
+    /if \(!runtimeVisible\) return \(\) => \{\};/,
+    "Hidden queue runtime should not keep the command palette keyboard shortcut active",
+  );
+});
+
 test("Run-of-show performance launch resolves real media duration before seeding auto-end timing", () => {
   const source = readFileSync(hostAppPath, "utf8");
 

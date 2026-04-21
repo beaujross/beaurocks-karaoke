@@ -104,6 +104,10 @@ const ROUND_WINNER_PRESENTATION = {
 const RoundWinnersPodiumOverlay = ({ moment = null }) => {
     const winners = Array.isArray(moment?.winners) ? moment.winners : [];
     if (!winners.length) return null;
+    const prize = moment?.prize && typeof moment.prize === 'object' ? moment.prize : {};
+    const prizeTitle = String(prize?.title || '').trim();
+    const prizeImageUrl = String(prize?.imageUrl || '').trim();
+    const metricLabel = String(moment?.leaderboardMetricLabel || '').trim();
     const winnersByPlace = winners.reduce((acc, entry) => {
         const place = String(entry?.place || '').trim().toLowerCase();
         if (place) acc[place] = entry;
@@ -118,6 +122,22 @@ const RoundWinnersPodiumOverlay = ({ moment = null }) => {
                     <div className="mt-3 text-5xl font-bebas tracking-[0.08em] text-white md:text-7xl">{moment?.title || 'Podium Time'}</div>
                     {moment?.subtitle ? (
                         <div className="mt-2 text-base text-cyan-100/80 md:text-xl">{moment.subtitle}</div>
+                    ) : null}
+                    {(prizeTitle || prizeImageUrl || metricLabel) ? (
+                        <div className="mx-auto mt-5 flex w-fit max-w-full items-center gap-4 rounded-[1.5rem] border border-amber-200/25 bg-black/35 px-4 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.24)]">
+                            {prizeImageUrl ? (
+                                <img src={prizeImageUrl} alt={prizeTitle || 'Prize'} className="h-16 w-16 rounded-2xl border border-white/15 object-cover md:h-20 md:w-20" />
+                            ) : (
+                                <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/8 text-3xl md:h-20 md:w-20">
+                                    {EMOJI.gift}
+                                </div>
+                            )}
+                            <div className="min-w-0 text-left">
+                                <div className="text-xs font-black uppercase tracking-[0.28em] text-amber-100/70">Prize</div>
+                                <div className="mt-1 max-w-[70vw] truncate text-2xl font-black text-white md:text-4xl">{prizeTitle || 'Door Prize'}</div>
+                                {metricLabel ? <div className="mt-1 text-sm uppercase tracking-[0.22em] text-cyan-100/75">{metricLabel}</div> : null}
+                            </div>
+                        </div>
                     ) : null}
                 </div>
                 <div className="grid flex-1 items-end gap-4 md:grid-cols-3 md:gap-6">
@@ -144,6 +164,11 @@ const RoundWinnersPodiumOverlay = ({ moment = null }) => {
                                             )}
                                             <div className="mt-4 text-xl font-black uppercase tracking-[0.08em] text-white md:text-3xl">{winner?.name || presentation.label}</div>
                                             <div className="mt-1 text-2xl">{winner?.avatar || presentation.medal}</div>
+                                            {winner?.statValue !== undefined && winner?.statValue !== null ? (
+                                                <div className="mt-3 rounded-full border border-white/15 bg-black/35 px-4 py-1 text-sm font-black uppercase tracking-[0.2em] text-cyan-100">
+                                                    {winner.statValue} {winner.statUnit || ''}
+                                                </div>
+                                            ) : null}
                                         </div>
                                     ) : (
                                         <div className="relative flex h-32 w-32 items-center justify-center rounded-[1.75rem] border border-dashed border-white/12 bg-black/20 text-5xl text-white/35 md:h-40 md:w-40 md:text-6xl">

@@ -175,20 +175,23 @@ const QueueSongCard = ({
                                     : queueUsesExternalWindow
                                         ? 'YouTube does not allow this backing to run inside the TV embed, so it opens in a separate host window.'
                                         : isAudienceSelectedUnverified
-                                            ? 'Guest-picked backing. Keep it or send it back to review.'
+                                            ? 'Guest-picked backing is ready, with optional host review.'
                                             : lyricsSupportText}
                             </div>
                         ) : null}
                         {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
-                            <div className={`mt-1.5 flex flex-wrap items-center gap-1.5 ${compactViewport ? 'text-[10px]' : 'text-[11px]'}`}>
+                            <div className="mt-1.5 inline-flex max-w-full flex-wrap items-center gap-1 rounded-xl border border-cyan-300/20 bg-black/25 px-1.5 py-1">
+                                <span className="px-1.5 text-[9px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                    Track check
+                                </span>
                                 {typeof onApproveAudienceBacking === 'function' ? (
                                     <button
                                         type="button"
                                         disabled={backingDecisionBusy}
                                         onClick={() => onApproveAudienceBacking(song)}
-                                        className={`${styles.btnStd} ${styles.btnHighlight} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'} ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`inline-flex min-h-[24px] items-center gap-1 rounded-lg border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-emerald-100 transition hover:border-emerald-200/60 ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
-                                        <i className="fa-solid fa-thumbs-up mr-1"></i>Use This
+                                        <i className="fa-solid fa-check"></i>Keep
                                     </button>
                                 ) : null}
                                 {typeof onAvoidAudienceBacking === 'function' ? (
@@ -196,9 +199,9 @@ const QueueSongCard = ({
                                         type="button"
                                         disabled={backingDecisionBusy}
                                         onClick={() => onAvoidAudienceBacking(song)}
-                                        className={`${styles.btnStd} ${styles.btnSecondary} border-rose-300/40 bg-rose-500/10 text-rose-100 hover:border-rose-200/60 ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2.5 py-1 text-[10px] min-h-[28px]'} ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                        className={`inline-flex min-h-[24px] items-center gap-1 rounded-lg border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-amber-100 transition hover:border-amber-200/60 ${backingDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
-                                        <i className="fa-solid fa-thumbs-down mr-1"></i>Avoid This
+                                        <i className="fa-solid fa-rotate-left"></i>Review
                                     </button>
                                 ) : null}
                             </div>

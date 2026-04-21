@@ -10,12 +10,8 @@ const HostChatPanel = ({
     hostBase,
     roomCode,
     chatEnabled,
-    setChatEnabled,
-    updateRoom,
     chatShowOnTv,
-    setChatShowOnTv,
     chatAudienceMode,
-    setChatAudienceMode,
     handleChatViewMode,
     chatViewMode,
     dmUnread,
@@ -51,6 +47,8 @@ const HostChatPanel = ({
         return next;
     }, [users]);
     const dmSendDisabled = !dmTargetUid || !dmDraft.trim();
+    const roomMessageCount = roomChatMessages.length;
+    const hostDmCount = hostDmMessages.length;
     useEffect(() => {
         const node = messagesScrollRef.current;
         if (!node) return;
@@ -59,9 +57,23 @@ const HostChatPanel = ({
 
     return (
     <div className={chatOpen ? 'block' : 'hidden'}>
-        <div className="flex items-center justify-between mb-2">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Host chat</div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em]">
+                    <span className={`rounded-full border px-2 py-1 ${chatEnabled ? 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100' : 'border-zinc-700 bg-zinc-900/60 text-zinc-400'}`}>
+                        {chatEnabled ? 'Open' : 'Off'}
+                    </span>
+                    <span className={`rounded-full border px-2 py-1 ${chatShowOnTv ? 'border-cyan-300/35 bg-cyan-500/10 text-cyan-100' : 'border-zinc-700 bg-zinc-900/60 text-zinc-400'}`}>
+                        {chatShowOnTv ? 'TV On' : 'TV Off'}
+                    </span>
+                    <span className="rounded-full border border-zinc-700 bg-zinc-900/60 px-2 py-1 text-zinc-300">
+                        {chatAudienceMode === 'vip' ? 'VIP only' : 'All guests'}
+                    </span>
+                    {(chatUnread || dmUnread) ? <span className="rounded-full border border-pink-300/40 bg-pink-500/10 px-2 py-1 text-pink-100">New</span> : null}
+                </div>
+            </div>
             <div className="flex items-center gap-2">
-                {chatUnread && <span className="text-sm uppercase tracking-widest text-pink-300">New</span>}
                 {showSettingsButton && (
                     <button
                         onClick={() => openChatSettings?.()}
@@ -85,41 +97,6 @@ const HostChatPanel = ({
                 )}
             </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-            <button
-                onClick={async () => {
-                    const next = !chatEnabled;
-                    setChatEnabled(next);
-                    await updateRoom({ chatEnabled: next });
-                }}
-                className={`${styles.btnStd} ${chatEnabled ? styles.btnHighlight : styles.btnNeutral}`}
-                title="Enable or disable chat for the room"
-            >
-                <i className="fa-solid fa-comment mr-2"></i>{chatEnabled ? 'On' : 'Off'}
-            </button>
-            <button
-                onClick={async () => {
-                    const next = !chatShowOnTv;
-                    setChatShowOnTv(next);
-                    await updateRoom({ chatShowOnTv: next });
-                }}
-                className={`${styles.btnStd} ${chatShowOnTv ? styles.btnHighlight : styles.btnNeutral}`}
-                title="Show chat in the TV rotation"
-            >
-                <i className="fa-solid fa-tv mr-2"></i>{chatShowOnTv ? 'TV' : 'TV Off'}
-            </button>
-            <button
-                onClick={async () => {
-                    const next = chatAudienceMode === 'vip' ? 'all' : 'vip';
-                    setChatAudienceMode(next);
-                    await updateRoom({ chatAudienceMode: next });
-                }}
-                className={`${styles.btnStd} ${chatAudienceMode === 'vip' ? styles.btnHighlight : styles.btnNeutral}`}
-                title="Toggle VIP-only chat"
-            >
-                <i className="fa-solid fa-crown mr-2"></i>{chatAudienceMode === 'vip' ? 'VIP' : 'All'}
-            </button>
-        </div>
         <div className="mb-3">
             <div className="flex w-full bg-zinc-950/60 border border-white/10 rounded-t-xl overflow-hidden border-b-0">
                 <button
@@ -127,7 +104,8 @@ const HostChatPanel = ({
                     className={`flex-1 px-4 py-2 text-sm font-bold uppercase tracking-widest transition-all ${chatViewMode === 'room' ? 'bg-[#00C4D9] text-black shadow-inner' : 'text-zinc-300 hover:text-white'}`}
                     title="VIP lounge messages"
                 >
-                    <i className="fa-solid fa-comments mr-2"></i>VIP Lounge
+                    <i className="fa-solid fa-comments mr-2"></i>Lounge
+                    <span className="ml-2 text-[10px] opacity-70">{roomMessageCount}</span>
                     {chatUnread && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
                 </button>
                 <button
@@ -136,6 +114,7 @@ const HostChatPanel = ({
                     title="Direct messages to the host"
                 >
                     <i className="fa-solid fa-inbox mr-2"></i>DMs
+                    <span className="ml-2 text-[10px] opacity-70">{hostDmCount}</span>
                     {dmUnread && <span className="ml-2 inline-flex w-2 h-2 rounded-full bg-pink-400"></span>}
                 </button>
             </div>

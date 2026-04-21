@@ -7,10 +7,12 @@ export const AUDIENCE_FEATURE_ACCESS_LEVELS = Object.freeze({
 
 export const AUDIENCE_FEATURE_KEYS = Object.freeze({
     customEmoji: 'customEmoji',
+    premiumReactions: 'premiumReactions',
 });
 
 const DEFAULT_AUDIENCE_FEATURE_ACCESS = Object.freeze({
     [AUDIENCE_FEATURE_KEYS.customEmoji]: AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+    [AUDIENCE_FEATURE_KEYS.premiumReactions]: AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired,
 });
 
 const VALID_ACCESS_LEVELS = new Set(Object.values(AUDIENCE_FEATURE_ACCESS_LEVELS));
@@ -32,7 +34,10 @@ export const normalizeAudienceFeatureAccess = (input = {}) => {
     const features = { ...DEFAULT_AUDIENCE_FEATURE_ACCESS };
 
     Object.keys(features).forEach((key) => {
-        features[key] = normalizeAccessLevel(rawFeatures[key], DEFAULT_AUDIENCE_FEATURE_ACCESS[key]);
+        const fallbackValue = key === AUDIENCE_FEATURE_KEYS.premiumReactions
+            ? normalizeAccessLevel(rawFeatures[AUDIENCE_FEATURE_KEYS.customEmoji], DEFAULT_AUDIENCE_FEATURE_ACCESS[key])
+            : DEFAULT_AUDIENCE_FEATURE_ACCESS[key];
+        features[key] = normalizeAccessLevel(rawFeatures[key], fallbackValue);
     });
 
     return {

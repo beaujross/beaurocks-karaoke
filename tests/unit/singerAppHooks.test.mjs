@@ -149,6 +149,21 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     /Continue with a BeauRocks account to unlock custom emoji in this room\./,
     "SingerApp should explain room-level custom emoji account gating directly in the unlock path",
   );
+  assert.match(
+    source,
+    /featureKey: AUDIENCE_FEATURE_KEYS\.premiumReactions,/,
+    "SingerApp should evaluate room-level access for featured voting reaction emojis",
+  );
+  assert.match(
+    source,
+    /const premiumReactionsUnlocked = hasPremiumRoomAccess \|\| premiumReactionAccess\.allowed;/,
+    "SingerApp should unlock featured voting reactions from either premium access or room audience access policy",
+  );
+  assert.match(
+    source,
+    /premiumReactionsUnlocked \? react\(t, cost\) : openVipUpgrade\(\)/,
+    "SingerApp featured reaction buttons should use the room access policy instead of only VIP/support state",
+  );
 });
 
 test("SingerApp defaults guest backing rooms to YouTube search", () => {
@@ -208,5 +223,110 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
     source,
     /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600/,
     "SingerApp streamlined request fields should use dark input text and visible placeholder text",
+  );
+});
+
+test("SingerApp keeps pop-up trivia voting prominent in audience shells", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const showPopTriviaStandaloneSheet = !!popTriviaCardKey && showPopTriviaCard;/,
+    "SingerApp should lift active pop-up trivia into a standalone sheet instead of leaving it inside the stage card",
+  );
+  assert.match(
+    source,
+    /const showPopTriviaPromptCta = !!popTriviaQuestion && popTriviaMyVote === null && showPopTriviaCard && !showPopTriviaStandaloneSheet;/,
+    "SingerApp should only use the floating pop-up trivia CTA when the standalone sheet is not already open",
+  );
+  assert.match(
+    source,
+    /Answer pop-up trivia now/,
+    "SingerApp should use urgent copy on the live trivia card",
+  );
+  assert.match(
+    source,
+    /data-feature-id="pop-trivia-standalone-sheet"/,
+    "SingerApp should render pop-up trivia outside the clipped stage area",
+  );
+  assert.match(
+    source,
+    /showPopTriviaCard && !showPopTriviaStandaloneSheet/,
+    "SingerApp should suppress the embedded stage trivia card while the standalone sheet is open",
+  );
+  assert.match(
+    source,
+    /max-h-\[calc\(100dvh-5\.5rem\)\] overflow-y-auto overscroll-contain touch-scroll-y/,
+    "SingerApp standalone trivia sheet should be scrollable on small mobile screens",
+  );
+  assert.match(
+    source,
+    /Trivia Live: Tap An Answer/,
+    "SingerApp floating engagement prompt should directly tell guests to answer",
+  );
+  assert.match(
+    source,
+    /border-yellow-200\/80 bg-yellow-300 text-black/,
+    "SingerApp floating trivia CTA should use a high-contrast treatment",
+  );
+});
+
+test("SingerApp gives audience members local applause tap feedback", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const \[applauseTapCount, setApplauseTapCount\] = useState\(0\);/,
+    "SingerApp should track the user's local applause tap count",
+  );
+  assert.match(
+    source,
+    /applauseSessionKeyRef\.current = sessionKey;\s*setApplauseTapCount\(0\);/,
+    "SingerApp should reset local applause taps for each applause session",
+  );
+  assert.match(
+    source,
+    /setApplauseTapCount\(prev => prev \+ 1\);/,
+    "SingerApp should increment local applause feedback when a clap tap is accepted",
+  );
+  assert.match(
+    source,
+    /Your Applause/,
+    "SingerApp should label the local applause feedback block",
+  );
+  assert.match(
+    source,
+    /\{applauseTapCount\}/,
+    "SingerApp should render the local applause tap count",
+  );
+});
+
+test("SingerApp keeps audience stage collapse controls inside mobile viewport", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /className="flex flex-wrap items-center justify-between gap-2"/,
+    "SingerApp stage headers should wrap instead of pushing controls off the right edge",
+  );
+  assert.match(
+    source,
+    /className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2"/,
+    "SingerApp stage action clusters should shrink and wrap inside the card",
+  );
+  assert.match(
+    source,
+    /aria-label="Collapse stage panel"/,
+    "SingerApp icon-only mobile collapse buttons should keep an accessible label",
+  );
+  assert.match(
+    source,
+    /inline-flex h-9 w-9 shrink-0 items-center justify-center[\s\S]*sm:h-auto sm:w-auto sm:px-3 sm:py-1\.5 sm:text-base/,
+    "SingerApp collapse buttons should be compact on mobile and expand on wider screens",
+  );
+  assert.match(
+    source,
+    /<span className="hidden sm:inline">Collapse<\/span>/,
+    "SingerApp should hide collapse text on narrow screens to prevent clipping",
   );
 });

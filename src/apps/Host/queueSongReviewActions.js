@@ -394,7 +394,7 @@ export const saveHostBackingPreferenceForRoom = async ({
         artistName: artist || existingEntry?.artistName || 'YouTube',
         artworkUrl100: songLike?.albumArtUrl || existingEntry?.artworkUrl100 || '',
         url: mediaUrl,
-        playable: candidate?.playable === true || existingEntry?.playable === true,
+        playable: true,
         embeddable: candidate?.embeddable === true || existingEntry?.embeddable === true,
         uploadStatus: candidate?.uploadStatus || existingEntry?.uploadStatus || '',
         privacyStatus: candidate?.privacyStatus || existingEntry?.privacyStatus || '',

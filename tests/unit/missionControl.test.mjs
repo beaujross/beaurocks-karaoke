@@ -72,7 +72,8 @@ const PRESETS = {
             audienceBrandTitle: 'Competition Stage',
             audienceFeatureAccess: {
                 features: {
-                    customEmoji: 'open'
+                    customEmoji: 'open',
+                    premiumReactions: 'open'
                 }
             },
             queueSettings: {
@@ -121,6 +122,7 @@ test("missionControl.test", () => {
     assert.equal(compiledNoAi.audienceShellVariant, 'streamlined');
     assert.equal(compiledNoAi.audienceBrandTheme.appTitle, 'Competition Stage');
     assert.equal(compiledNoAi.audienceFeatureAccess.features.customEmoji, 'open');
+    assert.equal(compiledNoAi.audienceFeatureAccess.features.premiumReactions, 'open');
 
     const compiledWithAi = compileMissionDraftToRoomPayload(
         {

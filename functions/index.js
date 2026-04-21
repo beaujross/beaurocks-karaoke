@@ -7861,7 +7861,7 @@ const buildGeminiPrompt = (type, context) => {
         .filter((entry) => !entry.endsWith(": "))
       : [];
     const metadataLine = metadata.length ? metadata.join(", ") : "none";
-    return `Create 4 multiple-choice karaoke pop-up trivia questions for "${songTitle}" by "${artist}".
+    return `Create 4 high-quality multiple-choice karaoke pop-up trivia questions for "${songTitle}" by "${artist}".
 Tone: funny, clever, and insightful (VH1 Pop-Up Video vibe), never mean.
 Audience: live karaoke crowd answering quickly on phones while the song plays.
 Known metadata: ${metadataLine}.
@@ -7870,13 +7870,17 @@ Source mode: ${sourceMode}.
 Current singer: ${singerName || "N/A"}.
 Rules:
 - Each question must be answerable in under 10 seconds.
-- Mix playful culture facts and music-insight facts.
+- Prefer questions that feel tied to this song or this live karaoke performance, not generic music theory.
+- Use one of these categories per question: hook_recognition, performance, arrangement, crowd_moment, singalong, safe_fact.
+- Mix playful song facts, hook recognition, performance strategy, arrangement cues, and crowd moments.
+- Do not ask generic filler such as "which song section sets up the story", "what usually helps most in karaoke", or "which production trick is common".
 - Keep each answer option concise (under 45 characters).
+- Wrong answers should be plausible and funny, not random nonsense.
 - Avoid obscure deep-cut facts and avoid speculation.
 - If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
-- In sparse mode, prefer song structure, karaoke performance, hook recognition, instrumentation, and crowd-energy questions that are answerable without deep catalog facts.
+- In sparse mode, use karaoke-IQ questions anchored to the title/performance, hook recognition, arrangement cues, and crowd-energy questions that are answerable without catalog facts.
 Format strictly as JSON array of objects:
-[{"q":"...","correct":"...","w1":"...","w2":"...","w3":"..."}]
+[{"q":"...","correct":"...","w1":"...","w2":"...","w3":"...","category":"hook_recognition"}]
 Do not include markdown.`;
   }
   if (type === "trivia") {

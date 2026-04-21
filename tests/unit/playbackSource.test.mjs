@@ -55,6 +55,17 @@ test("playbackSource.test", () => {
     assert.equal(queueYoutubeWins.isYouTube, true);
     assert.equal(queueYoutubeWins.hasMedia, true);
     assert.equal(queueYoutubeWins.autoStartMedia, true);
+    const queueYoutubeIdOnly = resolveQueuePlayback({
+        youtubeId: 'abc12345',
+        playbackReady: true
+    }, true);
+    assert.equal(queueYoutubeIdOnly.mediaUrl, 'https://www.youtube.com/watch?v=abc12345');
+    assert.equal(queueYoutubeIdOnly.isYouTube, true);
+    assert.equal(isQueueEntryPlayable({ youtubeId: 'abc12345', playbackReady: true }), true);
+    assert.equal(
+        resolveStageMediaUrl({ youtubeId: 'abc12345' }, { mediaUrl: 'https://fallback.example.com/b.mp4' }),
+        'https://www.youtube.com/watch?v=abc12345'
+    );
     assert.equal(isQueueEntryPlayable({ mediaUrl: 'https://youtu.be/abc12345', playbackReady: true }), true);
     assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: true }), true);
     assert.equal(isQueueEntryPlayable({ appleMusicId: '777', playbackReady: true }, { appleMusicEnabled: false }), false);

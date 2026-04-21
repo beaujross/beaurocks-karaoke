@@ -16,11 +16,13 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
 
     assert.ok(patch);
     assert.equal(patch.eventProfileId, AAHF_KICKOFF_EVENT_PROFILE_ID);
-    assert.equal(patch.hostNightPreset, 'competition');
+    assert.equal(patch.hostNightPreset, 'aahf');
+    assert.equal(patch.hostNightPresetConfig?.id, 'aahf');
     assert.equal(patch.marqueeEnabled, false);
     assert.equal(patch.popTriviaEnabled, false);
     assert.equal(patch.audienceShellVariant, 'streamlined');
     assert.equal(patch.audienceFeatureAccess?.features?.customEmoji, 'open');
+    assert.equal(patch.audienceFeatureAccess?.features?.premiumReactions, 'open');
     assert.equal(patch.programMode, 'run_of_show');
     assert.equal(patch.runOfShowEnabled, true);
     assert.match(patch.logoUrl, /aahf/i);
@@ -47,6 +49,8 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
 test('roomEventProfiles exposes AAHF setup highlights and seeded break scenes', () => {
     const profile = getRoomEventProfileMeta(AAHF_KICKOFF_EVENT_PROFILE_ID);
     assert.ok(profile);
+    assert.equal(profile?.basePresetId, 'aahf');
+    assert.equal(profile?.basePresetLabel, 'AAHF');
     assert.equal(profile?.setupHighlights?.length, 3);
 
     const template = buildAahfKickoffStarterTemplate(Date.parse('2026-05-01T19:00:00-07:00'));

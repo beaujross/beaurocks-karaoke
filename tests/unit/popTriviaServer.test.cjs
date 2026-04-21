@@ -1,8 +1,10 @@
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
 const {
   buildPopTriviaCacheKey,
   buildFallbackPopTriviaSeedRows,
   buildPopTriviaSongContext,
+  getPopTriviaRowQualityScore,
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
@@ -62,12 +64,37 @@ test("popTriviaServer.test", async () => {
   });
   assert.equal(fallbackRows.length, 4);
   assert.equal(fallbackRows.every((row) => row.source === "fallback"), true);
+  assert.equal(fallbackRows.every((row) => row.category), true);
+  const fallbackText = fallbackRows.map((row) => `${row.q} ${row.correct} ${row.w1} ${row.w2} ${row.w3}`).join(" ");
+  assert.match(fallbackText, /Take On Me/);
+  assert.doesNotMatch(
+    fallbackText,
+    /production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story/i
+  );
   const fallbackQuestions = normalizePopTriviaQuestions(fallbackRows, {
     idPrefix: "ROOM_fallback",
     createdAtMs: 5678,
   });
   assert.equal(fallbackQuestions.length, 4);
   assert.equal(fallbackQuestions.every((row) => row.source === "fallback"), true);
+  assert.equal(fallbackQuestions.every((row) => row.category), true);
+
+  const weakScore = getPopTriviaRowQualityScore({
+    q: "Which production trick is common in polished pop vocals like the kind this artist might use?",
+    correct: "Layered harmonies",
+    w1: "Muted melody",
+    w2: "No chorus",
+    w3: "Random tempo changes",
+  }, context);
+  const strongScore = getPopTriviaRowQualityScore({
+    q: 'In "Take On Me", which cue tells the room the chorus hook is landing?',
+    correct: "The melody jumps up",
+    w1: "The intro gets quieter",
+    w2: "The outro starts",
+    w3: "The tempo vanishes",
+    category: "hook_recognition",
+  }, context);
+  assert.equal(strongScore > weakScore, true);
 
   const sparseSelectedRows = selectPopTriviaSeedRows({
     song: {
@@ -85,11 +112,19 @@ test("popTriviaServer.test", async () => {
         w3: "2020",
       },
       {
-        q: "Which song section usually sells the hook fastest in karaoke?",
-        correct: "The chorus",
-        w1: "The stage reset",
-        w2: "The outro silence",
-        w3: "The cable check",
+        q: "Which production trick is common in polished pop vocals like this artist might use?",
+        correct: "Layered harmonies",
+        w1: "Muted melody",
+        w2: "No chorus",
+        w3: "Random tempo changes",
+      },
+      {
+        q: 'In "Mystery YouTube Cut", what cue tells the room the chorus hook is landing?',
+        correct: "The repeatable line arrives",
+        w1: "The stage lights turn off",
+        w2: "The verse gets quieter",
+        w3: "The outro starts early",
+        category: "hook_recognition",
       },
     ],
     fallbackRows,
@@ -99,6 +134,11 @@ test("popTriviaServer.test", async () => {
     sparseSelectedRows.some((row) => /billboard/i.test(row.q)),
     false
   );
+  assert.equal(
+    sparseSelectedRows.some((row) => /production trick|might use/i.test(row.q)),
+    false
+  );
+  assert.equal(sparseSelectedRows[0].q.includes("Mystery YouTube Cut"), true);
   assert.equal(sparseSelectedRows.length, 4);
 
   const cache = normalizePopTriviaSongCache({
@@ -150,4 +190,8 @@ test("popTriviaServer.test", async () => {
     }, { now }).reason,
     "song_status_ineligible"
   );
+
+  const functionsSource = readFileSync("functions/index.js", "utf8");
+  assert.match(functionsSource, /Do not ask generic filler/);
+  assert.match(functionsSource, /"category":"hook_recognition"/);
 });

@@ -26,8 +26,10 @@ export const getAutoEndSchedule = ({
     appleStatus = '',
     appleStartedAt = 0,
     appleDurationSec = 0,
+    mediaUrl = '',
     videoPlaying = false,
     videoStartTimestamp = 0,
+    pausedAt = 0,
     capturedDurationSec = 0,
     currentDurationSec = 0,
     now = Date.now()
@@ -41,7 +43,10 @@ export const getAutoEndSchedule = ({
 
     const normalizedAppleStatus = String(appleStatus || '').trim().toLowerCase();
     const applePlaying = !!String(appleMusicId || '').trim() && normalizedAppleStatus === 'playing';
-    const mediaRunning = applePlaying || !!videoPlaying;
+    const hasMediaUrl = !!String(mediaUrl || '').trim();
+    const mediaPaused = !applePlaying && Number(pausedAt || 0) > 0;
+    const mediaClockRunning = hasMediaUrl && Number(videoStartTimestamp || 0) > 0 && !mediaPaused;
+    const mediaRunning = applePlaying || !!videoPlaying || mediaClockRunning;
     if (!mediaRunning) return null;
 
     const startedAt = applePlaying

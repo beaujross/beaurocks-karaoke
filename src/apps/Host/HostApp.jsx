@@ -642,10 +642,45 @@ const detectTabletTouchViewport = () => {
 };
 
 const ROUND_WINNER_SLOTS = [
-    { key: 'gold', label: 'Gold', icon: '🥇' },
-    { key: 'silver', label: 'Silver', icon: '🥈' },
-    { key: 'bronze', label: 'Bronze', icon: '🥉' },
+    { key: 'gold', label: 'Gold', icon: String.fromCodePoint(0x1F947) },
+    { key: 'silver', label: 'Silver', icon: String.fromCodePoint(0x1F948) },
+    { key: 'bronze', label: 'Bronze', icon: String.fromCodePoint(0x1F949) },
 ];
+
+const ROUND_WINNER_LEADERBOARD_MODES = [
+    { key: 'totalPoints', label: 'Most Points', unit: 'PTS', getValue: (entry) => Number(entry?.totalPoints || 0) },
+    { key: 'performances', label: 'Most Performances', unit: 'PERF', getValue: (entry) => Number(entry?.performances || 0) },
+    { key: 'totalEmojis', label: 'Most Emojis Sent', unit: 'EMOJIS', getValue: (entry) => Number(entry?.totalEmojis || 0) },
+    { key: 'loudest', label: 'Loudest Performance', unit: 'dB', getValue: (entry) => Number(entry?.loudest || 0) },
+];
+
+const getRoundWinnerLeaderboardMode = (modeKey = '') => (
+    ROUND_WINNER_LEADERBOARD_MODES.find((mode) => mode.key === String(modeKey || '').trim())
+    || ROUND_WINNER_LEADERBOARD_MODES[0]
+);
+
+const sortRoundWinnerCandidatesForMode = (candidates = [], modeKey = '') => {
+    const mode = getRoundWinnerLeaderboardMode(modeKey);
+    return [...(Array.isArray(candidates) ? candidates : [])]
+        .map((entry) => ({ ...entry, statValue: Math.max(0, Number(mode.getValue(entry) || 0)) }))
+        .sort((a, b) => (
+            Number(b.statValue || 0) - Number(a.statValue || 0)
+            || Number(b.totalPoints || 0) - Number(a.totalPoints || 0)
+            || Number(b.performances || 0) - Number(a.performances || 0)
+            || Number(b.totalEmojis || 0) - Number(a.totalEmojis || 0)
+            || Number(b.loudest || 0) - Number(a.loudest || 0)
+            || String(a.name || '').localeCompare(String(b.name || ''))
+        ))
+        .map((entry, index) => ({ ...entry, leaderboardRank: index + 1, statUnit: mode.unit, statLabel: mode.label }));
+};
+
+const buildRoundWinnersDraftFromCandidates = (candidates = [], modeKey = '') => {
+    const ranked = sortRoundWinnerCandidatesForMode(candidates, modeKey).slice(0, ROUND_WINNER_SLOTS.length);
+    return ROUND_WINNER_SLOTS.reduce((acc, slot, index) => {
+        acc[slot.key] = ranked[index]?.uid || '';
+        return acc;
+    }, {});
+};
 
 const resolveHostRoomUserUid = (roomUser = {}) => {
     const directUid = String(roomUser?.uid || '').trim();
@@ -3528,7 +3563,7 @@ const AudienceMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '' }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3835,6 +3870,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         }
     }, []);
     useEffect(() => {
+        if (!runtimeVisible) return () => {};
         const onKeyDown = (event) => {
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
                 event.preventDefault();
@@ -3848,17 +3884,23 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [commandOpen]);
+    }, [commandOpen, runtimeVisible]);
+    useEffect(() => {
+        if (runtimeVisible) return;
+        setCommandOpen(false);
+        setCommandQuery('');
+    }, [runtimeVisible]);
     useEffect(() => {
         if (!commandOpen) return;
         const timer = setTimeout(() => commandInputRef.current?.focus(), 0);
         return () => clearTimeout(timer);
     }, [commandOpen]);
     useEffect(() => {
+        if (!runtimeVisible) return;
         if (!commandPaletteRequestToken) return;
         setCommandOpen(true);
         setCommandQuery('');
-    }, [commandPaletteRequestToken]);
+    }, [commandPaletteRequestToken, runtimeVisible]);
 
     const runPaletteCommand = async (command) => {
         if (!command?.enabled || typeof command?.run !== 'function') return;
@@ -5125,6 +5167,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     ]);
 
     useEffect(() => {
+        const stageMediaUrl = resolveStageMediaUrl({
+            mediaUrl: current?.mediaUrl || room?.currentPerformanceMeta?.mediaUrl || room?.mediaUrl || '',
+            appleMusicId: current?.appleMusicId,
+            youtubeId: current?.youtubeId
+        }, null);
         const schedule = getAutoEndSchedule({
             autoEndEnabled: room?.autoEndOnTrackFinish !== false,
             currentId: current?.id,
@@ -5134,8 +5181,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             appleStatus: room?.appleMusicPlayback?.status,
             appleStartedAt: room?.appleMusicPlayback?.startedAt,
             appleDurationSec: room?.currentPerformanceMeta?.durationSec || room?.appleMusicPlayback?.durationSec,
+            mediaUrl: stageMediaUrl,
             videoPlaying: room?.videoPlaying,
             videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
+            pausedAt: room?.pausedAt,
             capturedDurationSec: Math.max(
                 0,
                 Number(room?.currentPerformanceMeta?.durationSec || 0),
@@ -5169,17 +5218,22 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     }, [
         current?.id,
         current?.appleMusicId,
+        current?.mediaUrl,
+        current?.youtubeId,
         current?.duration,
         current?.performanceStartedDurationSec,
         room?.activeMode,
         room?.autoEndOnTrackFinish,
         room?.currentPerformanceMeta?.durationSec,
         room?.currentPerformanceMeta?.startedAtMs,
+        room?.currentPerformanceMeta?.mediaUrl,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,
         room?.appleMusicPlayback?.durationSec,
+        room?.mediaUrl,
         room?.videoPlaying,
         room?.videoStartTimestamp,
+        room?.pausedAt,
         handleEndPerformance
     ]);
 
@@ -6479,8 +6533,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showModerationInbox, setShowModerationInbox] = useState(false);
     const [roundWinnersEditorOpen, setRoundWinnersEditorOpen] = useState(false);
     const [roundWinnersDraft, setRoundWinnersDraft] = useState({ gold: '', silver: '', bronze: '' });
+    const [roundWinnersMetricKey, setRoundWinnersMetricKey] = useState('totalPoints');
+    const [roundWinnersPrizeDraft, setRoundWinnersPrizeDraft] = useState({ title: '', imageUrl: '', imagePath: '' });
     const [roundWinnersEditorContext, setRoundWinnersEditorContext] = useState(null);
     const [roundWinnersSubmitting, setRoundWinnersSubmitting] = useState(false);
+    const [roundWinnersPrizeUploading, setRoundWinnersPrizeUploading] = useState(false);
     const openRoundWinnersEditorRef = useRef(() => {});
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
@@ -6990,6 +7047,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         () => listHostNightPresets(hostNightPresets),
         [hostNightPresets]
     );
+    const activeRoomEventProfile = useMemo(
+        () => ROOM_EVENT_PROFILE_OPTIONS.find((profile) => profile.id === String(room?.eventProfileId || '').trim().toLowerCase()) || null,
+        [room?.eventProfileId]
+    );
+    const roomSettingsHostPresetList = useMemo(() => {
+        const activeEventBasePresetId = String(activeRoomEventProfile?.basePresetId || '').trim().toLowerCase();
+        if (!activeEventBasePresetId) return hostNightPresetList;
+        return hostNightPresetList.filter((preset) => preset.id !== activeEventBasePresetId);
+    }, [activeRoomEventProfile?.basePresetId, hostNightPresetList]);
     const [audiencePreviewVisible, setAudiencePreviewVisible] = useState(() => {
         try {
             if (typeof window === 'undefined') return true;
@@ -9172,22 +9238,89 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return acc;
         }, {});
     }, [moderationInbox.submissions?.crowdSelfies, moderationInbox.submissions?.selfies]);
-    const roundWinnerCandidates = useMemo(() => (
-        users
+    const roundWinnerStatsByUid = useMemo(() => {
+        const stats = new Map();
+        users.forEach((roomUser) => {
+            const winnerUid = resolveHostRoomUserUid(roomUser);
+            if (!winnerUid) return;
+            stats.set(winnerUid, {
+                uid: winnerUid,
+                name: String(roomUser?.name || roomUser?.displayName || 'Guest').trim() || 'Guest',
+                avatar: roomUser?.avatar || roomUser?.emoji || EMOJI.sparkle,
+                totalEmojis: Math.max(0, Number(roomUser?.totalEmojis || 0)),
+                performances: 0,
+                loudest: 0,
+                totalPoints: 0,
+            });
+        });
+        songs
+            .filter((song) => song?.status === 'performed')
+            .forEach((song) => {
+                const matchedUser = users.find((roomUser) => {
+                    const winnerUid = resolveHostRoomUserUid(roomUser);
+                    return winnerUid && (winnerUid === String(song?.singerUid || '').trim() || roomUser?.name === song?.singerName);
+                });
+                const winnerUid = matchedUser ? resolveHostRoomUserUid(matchedUser) : String(song?.singerUid || song?.singerName || '').trim();
+                if (!winnerUid) return;
+                if (!stats.has(winnerUid)) {
+                    stats.set(winnerUid, {
+                        uid: winnerUid,
+                        name: String(song?.singerName || 'Guest').trim() || 'Guest',
+                        avatar: song?.emoji || song?.avatar || EMOJI.sparkle,
+                        totalEmojis: 0,
+                        performances: 0,
+                        loudest: 0,
+                        totalPoints: 0,
+                    });
+                }
+                const entry = stats.get(winnerUid);
+                if (!entry.name && song?.singerName) entry.name = song.singerName;
+                if (!entry.avatar && (song?.emoji || song?.avatar)) entry.avatar = song.emoji || song.avatar;
+                entry.performances += 1;
+                entry.loudest = Math.max(entry.loudest, Number(song?.applauseScore || 0));
+                entry.totalPoints += Math.max(0, Number(song?.hypeScore || 0) + Number(song?.applauseScore || 0) + Number(song?.hostBonus || 0));
+            });
+        return stats;
+    }, [songs, users]);
+    const roundWinnerCandidates = useMemo(() => {
+        const candidates = users
             .map((roomUser) => {
                 const winnerUid = resolveHostRoomUserUid(roomUser);
                 if (!winnerUid) return null;
                 const selfieEntry = roundWinnerSelfieMap[winnerUid] || null;
+                const stats = roundWinnerStatsByUid.get(winnerUid) || {};
                 return {
                     uid: winnerUid,
                     name: String(roomUser?.name || roomUser?.displayName || 'Guest').trim() || 'Guest',
                     avatar: roomUser?.avatar || roomUser?.emoji || EMOJI.sparkle,
                     imageUrl: resolveWinnerMomentImageUrl(roomUser, selfieEntry),
+                    totalEmojis: Math.max(0, Number(stats.totalEmojis || roomUser?.totalEmojis || 0)),
+                    performances: Math.max(0, Number(stats.performances || 0)),
+                    loudest: Math.max(0, Number(stats.loudest || 0)),
+                    totalPoints: Math.max(0, Number(stats.totalPoints || 0)),
                 };
             })
-            .filter(Boolean)
-            .sort((a, b) => a.name.localeCompare(b.name))
-    ), [roundWinnerSelfieMap, users]);
+            .filter(Boolean);
+        const existingUids = new Set(candidates.map((entry) => entry.uid));
+        roundWinnerStatsByUid.forEach((stats, winnerUid) => {
+            if (!winnerUid || existingUids.has(winnerUid)) return;
+            candidates.push({
+                uid: winnerUid,
+                name: String(stats?.name || 'Guest').trim() || 'Guest',
+                avatar: stats?.avatar || EMOJI.sparkle,
+                imageUrl: '',
+                totalEmojis: Math.max(0, Number(stats.totalEmojis || 0)),
+                performances: Math.max(0, Number(stats.performances || 0)),
+                loudest: Math.max(0, Number(stats.loudest || 0)),
+                totalPoints: Math.max(0, Number(stats.totalPoints || 0)),
+            });
+        });
+        return candidates.sort((a, b) => a.name.localeCompare(b.name));
+    }, [roundWinnerSelfieMap, roundWinnerStatsByUid, users]);
+    const rankedRoundWinnerCandidates = useMemo(
+        () => sortRoundWinnerCandidatesForMode(roundWinnerCandidates, roundWinnersMetricKey),
+        [roundWinnerCandidates, roundWinnersMetricKey]
+    );
     const activeRoundWinnersMoment = useMemo(() => {
         const moment = room?.roundWinnersMoment;
         if (!moment?.active) return null;
@@ -10265,7 +10398,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (performingCount > 0 || autoDjPlayableQueueCount <= 0) return;
         const next = autoDjNextPlayableQueueSong;
         if (!next?.id) return;
-        const kickoffKey = `${next.id}:${autoDjPlayableQueueCount}:${lastPerfTs}:${configuredDelayMs}`;
+        const kickoffKey = [
+            next.id,
+            autoDjPlayableQueueCount,
+            lastPerfTs,
+            configuredDelayMs,
+            next.mediaUrl || '',
+            next.youtubeId || '',
+            next.appleMusicId || '',
+            next.playbackReady === false ? 'blocked' : 'ready',
+            next.resolutionStatus || '',
+            next.mediaResolutionStatus || ''
+        ].join(':');
         if (autoDjKickoffRef.current === kickoffKey) return;
         autoDjKickoffRef.current = kickoffKey;
         const timer = setTimeout(() => {
@@ -13261,7 +13405,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const sourceItem = options?.sourceItem && typeof options.sourceItem === 'object'
             ? options.sourceItem
             : (runOfShowLiveItem?.type === 'winner_declaration' ? runOfShowLiveItem : null);
-        const nextDraft = { gold: '', silver: '', bronze: '' };
+        const existingMetricKey = String(room?.roundWinnersMoment?.leaderboardMetricKey || sourceItem?.presentationPlan?.leaderboardMetricKey || 'totalPoints').trim() || 'totalPoints';
+        const nextDraft = buildRoundWinnersDraftFromCandidates(roundWinnerCandidates, existingMetricKey);
         const existingWinners = Array.isArray(room?.roundWinnersMoment?.winners) ? room.roundWinnersMoment.winners : [];
         existingWinners.forEach((winner, idx) => {
             const placeKey = String(winner?.place || ROUND_WINNER_SLOTS[idx]?.key || '').trim().toLowerCase();
@@ -13269,7 +13414,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 nextDraft[placeKey] = String(winner?.uid || '').trim();
             }
         });
+        setRoundWinnersMetricKey(existingMetricKey);
         setRoundWinnersDraft(nextDraft);
+        setRoundWinnersPrizeDraft({
+            title: String(room?.roundWinnersMoment?.prize?.title || sourceItem?.presentationPlan?.prizeTitle || '').trim(),
+            imageUrl: String(room?.roundWinnersMoment?.prize?.imageUrl || sourceItem?.presentationPlan?.prizeImageUrl || '').trim(),
+            imagePath: String(room?.roundWinnersMoment?.prize?.imagePath || '').trim(),
+        });
         setRoundWinnersEditorContext(sourceItem ? {
             runOfShowItemId: String(sourceItem?.id || '').trim(),
             title: String(sourceItem?.title || getRunOfShowItemLabel(sourceItem?.type || 'winner_declaration')).trim() || 'Round Results',
@@ -13277,7 +13428,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             durationSec: Math.max(15, Math.min(120, Number(sourceItem?.plannedDurationSec || 25) || 25)),
         } : null);
         setRoundWinnersEditorOpen(true);
-    }, [room?.roundWinnersMoment?.winners, runOfShowLiveItem]);
+    }, [room?.roundWinnersMoment?.leaderboardMetricKey, room?.roundWinnersMoment?.prize?.imagePath, room?.roundWinnersMoment?.prize?.imageUrl, room?.roundWinnersMoment?.prize?.title, room?.roundWinnersMoment?.winners, roundWinnerCandidates, runOfShowLiveItem]);
     useEffect(() => {
         openRoundWinnersEditorRef.current = openRoundWinnersEditor;
     }, [openRoundWinnersEditor]);
@@ -13290,11 +13441,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not clear round winners.');
         }
     }, [toast, updateRoom]);
+    const uploadRoundWinnersPrizeImage = useCallback(async (file) => {
+        if (!file || !roomCode) return;
+        setRoundWinnersPrizeUploading(true);
+        try {
+            const safeName = String(file.name || 'prize-image')
+                .replace(/[^a-z0-9._-]+/gi, '_')
+                .slice(-80);
+            const storagePath = `round_winner_prizes/${roomCode}/${nowMs()}_${safeName}`;
+            const fileRef = storageRef(storage, storagePath);
+            await uploadBytes(fileRef, file, file.type ? { contentType: file.type } : undefined);
+            const imageUrl = await getDownloadURL(fileRef);
+            setRoundWinnersPrizeDraft((prev) => ({
+                ...prev,
+                imageUrl,
+                imagePath: storagePath,
+            }));
+            toast('Prize image uploaded.');
+        } catch (error) {
+            hostLogger.error('Could not upload round winners prize image', error);
+            toast('Could not upload prize image.');
+        } finally {
+            setRoundWinnersPrizeUploading(false);
+        }
+    }, [roomCode, toast]);
     const launchRoundWinnersMoment = useCallback(async () => {
+        const leaderboardMode = getRoundWinnerLeaderboardMode(roundWinnersMetricKey);
         const winners = ROUND_WINNER_SLOTS.map((slot, idx) => {
             const winnerUid = String(roundWinnersDraft?.[slot.key] || '').trim();
             if (!winnerUid) return null;
-            const winner = roundWinnerCandidates.find((entry) => entry.uid === winnerUid);
+            const winner = rankedRoundWinnerCandidates.find((entry) => entry.uid === winnerUid)
+                || roundWinnerCandidates.find((entry) => entry.uid === winnerUid);
             if (!winner) return null;
             return {
                 place: slot.key,
@@ -13303,6 +13480,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 name: winner.name,
                 avatar: winner.avatar,
                 imageUrl: winner.imageUrl || '',
+                statValue: Math.max(0, Number(leaderboardMode.getValue(winner) || winner.statValue || 0)),
+                statUnit: leaderboardMode.unit,
+                statLabel: leaderboardMode.label,
+                leaderboardRank: winner.leaderboardRank || 0,
             };
         }).filter(Boolean);
         if (!winners.length) {
@@ -13312,6 +13493,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const momentDurationSec = Math.max(15, Math.min(120, Number(roundWinnersEditorContext?.durationSec || 25) || 25));
         const momentTitle = String(roundWinnersEditorContext?.title || 'Round Results').trim() || 'Round Results';
         const configuredSubtitle = String(roundWinnersEditorContext?.subtitle || '').trim();
+        const prizeTitle = String(roundWinnersPrizeDraft?.title || '').trim();
+        const prizeImageUrl = String(roundWinnersPrizeDraft?.imageUrl || '').trim();
+        const prizeImagePath = String(roundWinnersPrizeDraft?.imagePath || '').trim();
         setRoundWinnersSubmitting(true);
         try {
             const createdAtMs = nowMs();
@@ -13321,7 +13505,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     id: `round_winners_${createdAtMs}`,
                     runOfShowItemId: String(roundWinnersEditorContext?.runOfShowItemId || '').trim(),
                     title: momentTitle,
-                    subtitle: configuredSubtitle || (hostName ? `Declared by ${hostName}` : 'Declared by host'),
+                    subtitle: configuredSubtitle || `${leaderboardMode.label}${hostName ? ` / Declared by ${hostName}` : ''}`,
+                    leaderboardMetricKey: leaderboardMode.key,
+                    leaderboardMetricLabel: leaderboardMode.label,
+                    leaderboardMetricUnit: leaderboardMode.unit,
+                    prize: {
+                        title: prizeTitle,
+                        imageUrl: prizeImageUrl,
+                        imagePath: prizeImagePath,
+                    },
                     createdAtMs,
                     durationSec: momentDurationSec,
                     expiresAtMs: createdAtMs + (momentDurationSec * 1000),
@@ -13335,7 +13527,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     roomCode,
                     hostName || 'Host',
                     `${winners[0]?.name || 'A singer'} hit the podium.`,
-                    EMOJI.trophy || '🏆'
+                    EMOJI.trophy || String.fromCodePoint(0x1F3C6)
                 );
             } catch (activityError) {
                 hostLogger.debug('Round winners activity log skipped', activityError);
@@ -13346,7 +13538,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } finally {
             setRoundWinnersSubmitting(false);
         }
-    }, [closeRoundWinnersEditor, hostName, logActivity, roomCode, roundWinnerCandidates, roundWinnersDraft, roundWinnersEditorContext, toast, updateRoom]);
+    }, [closeRoundWinnersEditor, hostName, logActivity, rankedRoundWinnerCandidates, roomCode, roundWinnerCandidates, roundWinnersDraft, roundWinnersEditorContext, roundWinnersMetricKey, roundWinnersPrizeDraft?.imagePath, roundWinnersPrizeDraft?.imageUrl, roundWinnersPrizeDraft?.title, toast, updateRoom]);
     // Fix: Simple reload for silence
     const silenceAll = () => stopAllSfx();
     
@@ -13967,6 +14159,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 totalEmojis: u.totalEmojis || 0,
                 performances: 0,
                 loudest: 0,
+                totalPoints: 0,
                 lastSeen: u.lastSeen
             });
         });
@@ -13982,12 +14175,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     totalEmojis: 0,
                     performances: 0,
                     loudest: 0,
+                    totalPoints: 0,
                     lastSeen: null
                 });
             }
             const entry = stats.get(key);
             entry.performances += 1;
             entry.loudest = Math.max(entry.loudest, s.applauseScore || 0);
+            entry.totalPoints += Math.max(0, Number(s.hypeScore || 0) + Number(s.applauseScore || 0) + Number(s.hostBonus || 0));
         });
         return stats;
     }, [users, songs]);
@@ -17040,11 +17235,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                     />
                 )}
-                {tab === 'stage' && (
-                    <>
-                        <QueueTab {...queueTabProps} />
-                    </>
-                )}
+                <div
+                    data-host-queue-runtime="mounted"
+                    aria-hidden={tab !== 'stage' ? 'true' : undefined}
+                    className={tab === 'stage' ? '' : 'hidden'}
+                >
+                    <QueueTab {...queueTabProps} runtimeVisible={tab === 'stage'} />
+                </div>
                 {tab === 'run_of_show' && (
                     <div className="flex min-h-0 flex-col gap-4">
                         <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/92 px-4 py-3 backdrop-blur">
@@ -18025,9 +18222,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="max-w-2xl">
                                         <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">Audience Access</div>
-                                        <div className="mt-1 text-base font-semibold text-white">Custom emoji can require a BeauRocks account.</div>
+                                        <div className="mt-1 text-base font-semibold text-white">Custom emoji and featured voting reactions can require a BeauRocks account.</div>
                                         <div className="mt-1 text-sm text-zinc-300">
-                                            Core requests stay open. This only gates the custom emoji picker for guests in this room.
+                                            Core requests stay open. This gates custom profile emojis and the featured reaction buttons guests use while voting/hyping.
                                         </div>
                                     </div>
                                     <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
@@ -18045,6 +18242,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         features: {
                                             ...(prev?.features || {}),
                                             customEmoji: customEmojiAccountRequired ? 'open' : 'account_required',
+                                            premiumReactions: customEmojiAccountRequired ? 'open' : 'account_required',
                                         },
                                     }))}
                                     className={`mt-4 w-full rounded-2xl border px-4 py-3 text-left transition-all ${
@@ -18055,11 +18253,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     <div className="flex items-center justify-between gap-3">
                                         <div>
-                                            <div className="text-sm font-semibold text-white">Custom Emoji Access</div>
+                                            <div className="text-sm font-semibold text-white">Audience Emoji Access</div>
                                             <div className="mt-1 text-sm text-zinc-300">
                                                 {customEmojiAccountRequired
-                                                    ? 'Guests see the picker, but selecting custom emoji sends them into BeauRocks account access.'
-                                                    : 'Guests can pick any room-available emoji without creating an account first.'}
+                                                    ? 'Guests see profile emojis and featured reactions, but locked picks send them into BeauRocks account access.'
+                                                    : 'Guests can use room-available profile emojis and featured reactions without creating an account first.'}
                                             </div>
                                         </div>
                                         <div className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
@@ -18139,9 +18337,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </summary>
                             <div className="mt-4 space-y-2">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Host presets</div>
-                            <div className="host-form-helper">One-click tone control for how the night runs. Applies queue rules, overlays, and game defaults.</div>
+                            <div className="host-form-helper">Reusable base room behavior. Event packages can apply one of these underneath, so that base is hidden here while the event is active.</div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {hostNightPresetList.map((preset) => {
+                                {roomSettingsHostPresetList.map((preset) => {
                                     const active = hostNightPreset === preset.id;
                                     return (
                                         <button
@@ -18181,6 +18379,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     </span>
                                                 </div>
                                                 <div className="mt-1 text-xs text-zinc-400">{profile.description}</div>
+                                                {profile.basePresetLabel && (
+                                                    <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-fuchsia-100/80">
+                                                        Base room: {profile.basePresetLabel}
+                                                    </div>
+                                                )}
                                                 <div className="mt-2 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                                                     Starts {profile.startsAtLocal}
                                                 </div>
@@ -18368,7 +18571,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                               >
                                   {activeRoundWinnersMoment ? 'Edit Round Winners Podium' : 'Declare Round Winners'}
                               </button>
-                              <div className="host-form-helper">Launches a gold / silver / bronze podium moment on Public TV with names, emojis, and the latest approved selfie when available.</div>
+                              <div className="host-form-helper">Pulls the top three from a leaderboard stat, lets the host adjust the podium, and sends prize details to Public TV.</div>
                               {activeRoundWinnersMoment && (
                                   <>
                                       <button
@@ -20814,7 +21017,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             )}
             {roundWinnersEditorOpen && (
                 <div className="fixed inset-0 z-[94] bg-black/80 flex items-center justify-center p-4">
-                    <div className="w-full max-w-3xl rounded-3xl border border-amber-300/30 bg-gradient-to-br from-[#171129]/95 via-[#111a2c]/95 to-[#0d1220]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(251,191,36,0.16)]">
+                    <div className="w-full max-w-5xl max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-3xl border border-amber-300/30 bg-gradient-to-br from-[#171129]/95 via-[#111a2c]/95 to-[#0d1220]/95 p-5 shadow-[0_30px_85px_rgba(0,0,0,0.6),0_0_48px_rgba(251,191,36,0.16)]">
                         <div className="flex items-start justify-between gap-3">
                             <div>
                                 <div className="text-xs uppercase tracking-[0.35em] text-amber-100/70">Public TV Moment</div>
@@ -20823,7 +21026,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="mt-1 text-xs uppercase tracking-[0.24em] text-amber-100/60">{roundWinnersEditorContext.subtitle}</div>
                                 ) : null}
                                 <div className="mt-1 text-sm text-cyan-100/75">
-                                    Pick up to three singers. Public TV will show gold, silver, and bronze with their names, emojis, and latest approved selfie.
+                                    Choose a leaderboard stat, review the top three, then add the prize details for the Public TV reveal.
                                 </div>
                             </div>
                             <button
@@ -20833,10 +21036,85 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 Close
                             </button>
                         </div>
+                        <div className="mt-4 grid gap-3 lg:grid-cols-[1.15fr_0.85fr]">
+                            <div className="rounded-2xl border border-amber-300/20 bg-black/25 p-4">
+                                <div className="text-xs uppercase tracking-[0.26em] text-amber-100/70">Reward Leaderboard</div>
+                                <select
+                                    value={roundWinnersMetricKey}
+                                    onChange={(event) => {
+                                        const nextMetricKey = String(event.target.value || 'totalPoints').trim() || 'totalPoints';
+                                        setRoundWinnersMetricKey(nextMetricKey);
+                                        setRoundWinnersDraft(buildRoundWinnersDraftFromCandidates(roundWinnerCandidates, nextMetricKey));
+                                    }}
+                                    className={`${STYLES.input} mt-3`}
+                                >
+                                    {ROUND_WINNER_LEADERBOARD_MODES.map((mode) => (
+                                        <option key={mode.key} value={mode.key}>{mode.label}</option>
+                                    ))}
+                                </select>
+                                <div className="mt-3 grid gap-2">
+                                    {rankedRoundWinnerCandidates.slice(0, 3).map((candidate) => (
+                                        <div key={`leaderboard-preview-${candidate.uid}`} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+                                            <div className="min-w-0">
+                                                <div className="truncate text-sm font-black text-white">#{candidate.leaderboardRank} {candidate.name}</div>
+                                                <div className="truncate text-[11px] uppercase tracking-[0.18em] text-zinc-400">{candidate.statLabel}</div>
+                                            </div>
+                                            <div className="shrink-0 rounded-full border border-cyan-300/25 bg-cyan-500/12 px-3 py-1 text-xs font-black text-cyan-100">
+                                                {candidate.statValue} {candidate.statUnit}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {!rankedRoundWinnerCandidates.length && (
+                                        <div className="rounded-xl border border-dashed border-white/10 bg-black/20 px-3 py-4 text-sm text-zinc-400">
+                                            No leaderboard data yet. Singers need room activity before the podium can auto-fill.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-cyan-300/20 bg-black/25 p-4">
+                                <div className="text-xs uppercase tracking-[0.26em] text-cyan-100/70">Prize</div>
+                                <input
+                                    value={roundWinnersPrizeDraft.title}
+                                    onChange={(event) => setRoundWinnersPrizeDraft((prev) => ({ ...prev, title: event.target.value }))}
+                                    className={`${STYLES.input} mt-3`}
+                                    placeholder="Door prize, gift card, sponsor item..."
+                                    title="Prize name"
+                                />
+                                <div className="mt-3 flex items-center gap-3">
+                                    {roundWinnersPrizeDraft.imageUrl ? (
+                                        <img
+                                            src={roundWinnersPrizeDraft.imageUrl}
+                                            alt={roundWinnersPrizeDraft.title || 'Prize'}
+                                            className="h-16 w-16 rounded-2xl border border-white/10 object-cover"
+                                        />
+                                    ) : (
+                                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-dashed border-white/15 bg-black/30 text-xl text-zinc-500">
+                                            <i className="fa-solid fa-gift"></i>
+                                        </div>
+                                    )}
+                                    <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer text-xs`}>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            disabled={roundWinnersPrizeUploading}
+                                            onChange={(event) => {
+                                                const file = event.target.files?.[0] || null;
+                                                if (file) uploadRoundWinnersPrizeImage(file);
+                                                event.target.value = '';
+                                            }}
+                                        />
+                                        {roundWinnersPrizeUploading ? 'Uploading...' : 'Upload Prize Image'}
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
                         <div className="mt-4 grid gap-3 md:grid-cols-3">
                             {ROUND_WINNER_SLOTS.map((slot) => {
                                 const selectedUid = String(roundWinnersDraft?.[slot.key] || '').trim();
-                                const selectedWinner = roundWinnerCandidates.find((entry) => entry.uid === selectedUid) || null;
+                                const selectedWinner = rankedRoundWinnerCandidates.find((entry) => entry.uid === selectedUid)
+                                    || roundWinnerCandidates.find((entry) => entry.uid === selectedUid)
+                                    || null;
                                 const takenWinnerUids = new Set(
                                     ROUND_WINNER_SLOTS
                                         .filter((entry) => entry.key !== slot.key)
@@ -20858,13 +21136,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             className={`${STYLES.input} mt-3`}
                                         >
                                             <option value="">No selection</option>
-                                            {roundWinnerCandidates.map((candidate) => (
+                                            {rankedRoundWinnerCandidates.map((candidate) => (
                                                 <option
                                                     key={`${slot.key}_${candidate.uid}`}
                                                     value={candidate.uid}
                                                     disabled={takenWinnerUids.has(candidate.uid)}
                                                 >
-                                                    {candidate.name}
+                                                    #{candidate.leaderboardRank} {candidate.name} / {candidate.statValue} {candidate.statUnit}
                                                 </option>
                                             ))}
                                         </select>
@@ -20885,7 +21163,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="min-w-0">
                                                         <div className="truncate text-base font-black text-white">{selectedWinner.name}</div>
                                                         <div className="truncate text-xs uppercase tracking-[0.2em] text-zinc-400">
-                                                            {selectedWinner.imageUrl ? 'Selfie ready' : 'Emoji fallback'}
+                                                            {selectedWinner.statValue} {selectedWinner.statUnit} / {selectedWinner.imageUrl ? 'Selfie ready' : 'Emoji fallback'}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -20914,10 +21192,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 )}
                                 <button
                                     onClick={launchRoundWinnersMoment}
-                                    disabled={roundWinnersSubmitting}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${roundWinnersSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    disabled={roundWinnersSubmitting || roundWinnersPrizeUploading}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} ${(roundWinnersSubmitting || roundWinnersPrizeUploading) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
-                                    {roundWinnersSubmitting ? 'Sending Podium...' : 'Send Podium To TV'}
+                                    {roundWinnersPrizeUploading ? 'Uploading Prize...' : roundWinnersSubmitting ? 'Sending Podium...' : 'Send Podium To TV'}
                                 </button>
                             </div>
                         </div>

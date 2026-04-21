@@ -40,11 +40,21 @@ export const SOUNDS = [
 
 // Trivia questions for trivia game
 export const TRIVIA_BANK = [
-    { q: "Who is the 'Queen of Pop'?", correct: "Madonna", w1: "Lady Gaga", w2: "Beyoncé", w3: "Britney Spears" },
+    { q: "Who is the 'Queen of Pop'?", correct: "Madonna", w1: "Lady Gaga", w2: "Beyonce", w3: "Britney Spears" },
     { q: "Which band wrote 'Bohemian Rhapsody'?", correct: "Queen", w1: "The Beatles", w2: "Led Zeppelin", w3: "Pink Floyd" },
     { q: "What is the best-selling album of all time?", correct: "Thriller", w1: "Back in Black", w2: "The Dark Side of the Moon", w3: "The Bodyguard" },
     { q: "Who sang 'I Will Always Love You' first?", correct: "Dolly Parton", w1: "Whitney Houston", w2: "Celine Dion", w3: "Mariah Carey" },
-    { q: "Finish the lyric: 'Just a small town girl...'", correct: "Livin' in a lonely world", w1: "Born and raised in South Detroit", w2: "Took the midnight train", w3: "She took the midnight train" }
+    { q: "Which artist released 'Purple Rain' as both an album and a movie?", correct: "Prince", w1: "David Bowie", w2: "George Michael", w3: "Lionel Richie" },
+    { q: "Which group made 'Dancing Queen' a karaoke dance-floor staple?", correct: "ABBA", w1: "Fleetwood Mac", w2: "Blondie", w3: "The Go-Go's" },
+    { q: "Which singer is widely nicknamed 'The Boss'?", correct: "Bruce Springsteen", w1: "Billy Joel", w2: "Bob Seger", w3: "John Mellencamp" },
+    { q: "Which band released the karaoke anthem 'Don't Stop Believin'?", correct: "Journey", w1: "Foreigner", w2: "Boston", w3: "REO Speedwagon" },
+    { q: "Which song is the classic internet 'Rickroll'?", correct: "Never Gonna Give You Up", w1: "Take On Me", w2: "Africa", w3: "Sweet Dreams" },
+    { q: "Which artist's fans are commonly called Swifties?", correct: "Taylor Swift", w1: "Ariana Grande", w2: "Sabrina Carpenter", w3: "Olivia Rodrigo" },
+    { q: "Which rapper starred in the movie '8 Mile'?", correct: "Eminem", w1: "Dr. Dre", w2: "Snoop Dogg", w3: "50 Cent" },
+    { q: "Which artist made 'Single Ladies' a hand-wave anthem?", correct: "Beyonce", w1: "Rihanna", w2: "Alicia Keys", w3: "Ciara" },
+    { q: "Which country icon is connected to Dollywood?", correct: "Dolly Parton", w1: "Reba McEntire", w2: "Shania Twain", w3: "Faith Hill" },
+    { q: "Which instrument has 88 keys?", correct: "Piano", w1: "Guitar", w2: "Saxophone", w3: "Violin" },
+    { q: "Which band made 'Mr. Brightside' a forever karaoke closer?", correct: "The Killers", w1: "The Strokes", w2: "Arctic Monkeys", w3: "Franz Ferdinand" }
 ];
 
 // "Would You Rather" questions

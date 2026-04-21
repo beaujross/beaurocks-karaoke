@@ -109,7 +109,9 @@ import {
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
+    AUDIENCE_FEATURE_KEYS,
     normalizeAudienceFeatureAccess,
+    resolveAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
 import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
@@ -1383,6 +1385,33 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [demoFixture, isMarketingDemoFixture]);
 
     const [localReactions, setLocalReactions] = useState([]);
+    const [applauseTapCount, setApplauseTapCount] = useState(0);
+    const [applauseTapPulseAt, setApplauseTapPulseAt] = useState(0);
+    const applauseSessionKeyRef = useRef('');
+    useEffect(() => {
+        const activeMode = String(room?.activeMode || '').trim();
+        const applauseActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
+        if (!applauseActive) {
+            applauseSessionKeyRef.current = '';
+            setApplauseTapCount(0);
+            setApplauseTapPulseAt(0);
+            return;
+        }
+        const sessionKey = [
+            currentSinger?.id || room?.lastPerformance?.id || 'no-performance',
+            timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0,
+        ].join(':');
+        if (applauseSessionKeyRef.current === sessionKey) return;
+        applauseSessionKeyRef.current = sessionKey;
+        setApplauseTapCount(0);
+        setApplauseTapPulseAt(0);
+    }, [
+        currentSinger?.id,
+        currentSinger?.performingStartedAt,
+        currentSinger?.timestamp,
+        room?.activeMode,
+        room?.lastPerformance?.id
+    ]);
     const [composedPhoto, setComposedPhoto] = useState(null);
     const [dismissedPhotoTs, setDismissedPhotoTs] = useState(0);
     const [isComposing, setIsComposing] = useState(false);
@@ -2597,6 +2626,14 @@ const SingerApp = ({ roomCode, uid }) => {
             || (Number(user?.roomBoosts || 0) > 0)
         );
     const hasPremiumRoomAccess = isVipAccount || hasSupporterAccess;
+    const premiumReactionAccess = useMemo(() => resolveAudienceFeatureAccess({
+        policy: audienceFeatureAccess,
+        featureKey: AUDIENCE_FEATURE_KEYS.premiumReactions,
+        isSignedIn: !!authUserUid && !isAnon,
+        hasSupporterAccess,
+        isVipAccount,
+    }), [audienceFeatureAccess, authUserUid, hasSupporterAccess, isAnon, isVipAccount]);
+    const premiumReactionsUnlocked = hasPremiumRoomAccess || premiumReactionAccess.allowed;
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
     const accessActionLabel = allowsDonationAccess
         ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
@@ -3690,7 +3727,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     );
     const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
-    const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
+    const showPopTriviaStandaloneSheet = !!popTriviaCardKey && showPopTriviaCard;
+    const showPopTriviaPromptCta = !!popTriviaQuestion && popTriviaMyVote === null && showPopTriviaCard && !showPopTriviaStandaloneSheet;
     const lobbyVolleySceneActive = isVolleyOrbSceneActive({
         hasCurrentSinger: !!currentSinger,
         activeMode: room?.activeMode,
@@ -3712,11 +3750,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (showPopTriviaPromptCta) {
             return {
                 icon: 'fa-brain',
-                label: `Trivia Live: ${popTriviaMyVote !== null ? 'Answer Locked' : 'Tap To Answer'}`
+                label: 'Trivia Live: Tap An Answer'
             };
         }
         return null;
-    }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta, popTriviaMyVote]);
+    }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta]);
     useEffect(() => {
         setStageHomePanelExpanded(false);
     }, [currentSinger?.id, popTriviaCardKey, lobbyVolleySceneActive, karaokePerformanceVotingOpen]);
@@ -5939,6 +5977,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         lastReactionAt.current = now;
         markActive();
+        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && type === 'clap') {
+            setApplauseTapCount(prev => prev + 1);
+            setApplauseTapPulseAt(now);
+        }
         
         const id = Date.now(); 
         setLocalReactions(prev => [...prev, { id, type, left: Math.random() * 80 + 10 }]); 
@@ -9837,6 +9879,27 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <div className="fixed inset-0 z-50 bg-[#00C4D9]/20 flex flex-col items-center justify-center p-6 text-white font-saira">
                 {renderStreamlinedTakeoverChrome('Applause Meter')}
                 <h1 className="text-5xl font-bebas mb-8 text-cyan-300 animate-bounce">APPLAUSE METER!</h1>
+                <div className="mb-5 w-full max-w-sm rounded-2xl border border-cyan-100/40 bg-black/50 px-4 py-3 text-center shadow-[0_0_28px_rgba(0,196,217,0.22)]">
+                    <div className="text-[10px] uppercase tracking-[0.3em] text-cyan-100/75">Your Applause</div>
+                    <div
+                        key={applauseTapPulseAt || 'applause-taps-idle'}
+                        className={`mt-1 text-5xl font-black text-white ${applauseTapPulseAt ? 'animate-bounce' : ''}`}
+                        aria-live="polite"
+                    >
+                        {applauseTapCount}
+                    </div>
+                    <div className="mt-1 text-sm font-bold text-cyan-50">
+                        {applauseTapCount === 0 ? 'Tap the big clap button to join in.' : `${applauseTapCount} tap${applauseTapCount === 1 ? '' : 's'} sent`}
+                    </div>
+                    <div className="mt-3 grid grid-cols-10 gap-1">
+                        {Array.from({ length: 10 }, (_, idx) => (
+                            <span
+                                key={`applause-tap-meter-${idx}`}
+                                className={`h-1.5 rounded-full ${idx < Math.min(10, applauseTapCount) ? 'bg-cyan-200' : 'bg-white/15'}`}
+                            />
+                        ))}
+                    </div>
+                </div>
                 <button onClick={()=>react('clap', 0)} className={`w-full h-64 bg-[#00C4D9] rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 shadow-2xl active:scale-95 transition-transform ${cooldownFlash ? 'ring-4 ring-red-300 animate-pulse' : ''}`}>
                     <span className="text-8xl">{String.fromCodePoint(0x1F44F)}</span>
                 </button>
@@ -10793,8 +10856,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </button>
                             )}
                             <div className={`${showCompactHomeStageCard ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70 ${isNativeMobileLayout ? 'mobile-native-stage-meta' : ''}`}>
-                                <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                                         <div className="flex items-center gap-2 bg-black/50 border border-cyan-400/40 px-3 py-1.5 rounded-full">
                                             <span className="text-[10px] uppercase tracking-[0.3em] text-cyan-200">ROOM</span>
                                             <span className="text-[1.2rem] font-bebas text-cyan-200 tracking-[0.25em]">{roomCode}</span>
@@ -10819,19 +10882,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             {formatWaitTime(queueWaitTimeSec)}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">
                                         {canCollapseStagePanel && (
                                             <button
                                                 type="button"
+                                                aria-label="Collapse stage panel"
+                                                title="Collapse stage panel"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     pulseNativeUiFeedback();
                                                     collapseActiveStagePanel();
                                                 }}
-                                                className="flex items-center gap-1 text-base font-bold text-cyan-100 bg-cyan-500/15 border border-cyan-300/35 px-3 py-1.5 rounded-full leading-none hover:bg-cyan-500/25"
+                                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-sm font-bold leading-none text-cyan-100 hover:bg-cyan-500/25 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5 sm:text-base"
                                             >
                                                 <i className="fa-solid fa-minimize stage-icon text-cyan-100"></i>
-                                                Collapse
+                                                <span className="hidden sm:inline">Collapse</span>
                                             </button>
                                         )}
                                         {room?.hostName && !isStreamlinedAudienceShell && (
@@ -11057,10 +11122,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         ) : null}
                                     </div>
                                 )}
-                                {showPopTriviaCard && (
-                                    <div data-feature-id="pop-trivia-card" className="mt-3 overflow-hidden rounded-3xl border-2 border-cyan-300/55 bg-gradient-to-br from-[#070b1a]/95 via-[#11162b]/95 to-[#180a1f]/95 shadow-[0_16px_44px_rgba(0,0,0,0.45)] backdrop-blur p-4">
+                                {showPopTriviaCard && !showPopTriviaStandaloneSheet && (
+                                    <div data-feature-id="pop-trivia-card" className="mt-3 overflow-hidden rounded-3xl border-2 border-yellow-300/70 bg-gradient-to-br from-[#070b1a]/98 via-[#11162b]/98 to-[#180a1f]/98 shadow-[0_18px_54px_rgba(250,204,21,0.28)] backdrop-blur p-4">
                                         <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.22em] text-cyan-100">
-                                            <span>{popTriviaQuestion ? 'Pop-up Trivia' : 'Pop-up Trivia Complete'}</span>
+                                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Pop-up Trivia Complete'}</span>
                                             <div className="flex items-center gap-2">
                                                 {popTriviaQuestion ? (
                                                     <span className={`rounded-full border px-3 py-1 font-black ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'border-yellow-300/60 bg-yellow-300/15 text-yellow-100' : 'border-cyan-300/45 bg-cyan-300/12 text-cyan-100'}`}>
@@ -11105,10 +11170,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                     data-feature-id={`pop-trivia-option-${idx}`}
                                                                     onClick={() => submitPopTriviaVote(idx)}
                                                                     disabled={popTriviaMyVote !== null || popTriviaSubmitting}
-                                                                    className={`rounded-2xl border-2 px-3 py-2.5 text-left transition-all min-h-[64px] ${
+                                                                    className={`rounded-2xl border-2 px-4 py-3.5 text-left transition-all min-h-[76px] ${
                                                                         isSelected
                                                                             ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
-                                                                            : 'border-white/20 bg-black/45 text-white hover:border-cyan-300/75 hover:bg-black/60'
+                                                                            : 'border-yellow-200/45 bg-white/[0.08] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-cyan-300/75 hover:bg-white/[0.12]'
                                                                     } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
                                                                 >
                                                                     <div className="flex items-center justify-between gap-2">
@@ -11222,24 +11287,26 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </button>
                             )}
                             <div className={`${showCompactEmptyStageCard ? 'hidden ' : ''}px-4 py-3 border-b border-white/10 bg-gradient-to-r from-black/70 via-black/30 to-black/70`}>
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                                         <div className="text-sm font-bebas text-[#00C4D9] tracking-[0.3em] leading-none">ROOM</div>
                                         <div className="text-[1.45rem] font-bebas text-[#00C4D9] tracking-[0.3em] font-bold leading-none">{roomCode}</div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex min-w-0 shrink-0 flex-wrap items-center justify-end gap-2">
                                         {canCollapseStagePanel && !lobbyVolleySceneActive && (
                                             <button
                                                 type="button"
+                                                aria-label="Collapse stage panel"
+                                                title="Collapse stage panel"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     pulseNativeUiFeedback();
                                                     collapseActiveStagePanel();
                                                 }}
-                                                className="flex items-center gap-1 text-base font-bold text-cyan-100 bg-cyan-500/15 border border-cyan-300/35 px-3 py-1.5 rounded-full leading-none hover:bg-cyan-500/25"
+                                                className="inline-flex h-9 w-9 shrink-0 items-center justify-center gap-1 rounded-full border border-cyan-300/35 bg-cyan-500/15 text-sm font-bold leading-none text-cyan-100 hover:bg-cyan-500/25 sm:h-auto sm:w-auto sm:px-3 sm:py-1.5 sm:text-base"
                                             >
                                                 <i className="fa-solid fa-minimize stage-icon text-cyan-100"></i>
-                                                Collapse
+                                                <span className="hidden sm:inline">Collapse</span>
                                             </button>
                                         )}
                                         {room?.hostName && !isStreamlinedAudienceShell && (
@@ -11513,13 +11580,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      }[t];
                                      const cost = REACTION_COSTS[t];
                                      return (
-                                     <button key={t} onClick={()=>hasPremiumRoomAccess ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${hasPremiumRoomAccess ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
+                                     <button key={t} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
                                              <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
                                              <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
                                              <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
                                                  {cost} PTS
                                              </div>
-                                             {!hasPremiumRoomAccess && (
+                                             {!premiumReactionsUnlocked && (
                                                  <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
                                                      <i className="fa-solid fa-lock text-[11px]"></i>
                                                     <span className="leading-none">{allowsDonationAccess ? supporterAccessLabel : premiumAccessLabel}</span>
@@ -11528,7 +11595,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          </button>
                                      );
                                  })}</div>
-                                 {!hasPremiumRoomAccess && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
+                                 {!premiumReactionsUnlocked && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
                                      {allowsDonationAccess ? `UNLOCK ${supporterAccessLabel.toUpperCase()} PERKS` : `UNLOCK ${premiumAccessLabel.toUpperCase()} WITH EMAIL +5000 PTS ${emoji(0x1F4E7)}`}
                                  </button>}
                              </>
@@ -13249,6 +13316,128 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     Bingo Live
                 </button>
             )}
+            {showPopTriviaStandaloneSheet && (
+                <div
+                    data-feature-id="pop-trivia-standalone-sheet"
+                    className="fixed inset-x-0 bottom-0 z-[120] px-3 pt-16 pointer-events-none"
+                    style={{ paddingBottom: `calc(${mobileFloatingBottomInset} + 0.75rem)` }}
+                >
+                    <div className="mx-auto max-w-xl pointer-events-auto max-h-[calc(100dvh-5.5rem)] overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar rounded-3xl border-2 border-yellow-300/80 bg-gradient-to-br from-[#070b1a]/98 via-[#11162b]/98 to-[#180a1f]/98 p-4 shadow-[0_18px_64px_rgba(0,0,0,0.72),0_0_42px_rgba(250,204,21,0.28)] backdrop-blur-xl">
+                        <div className="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.2em] text-yellow-100">
+                            <span>{popTriviaQuestion ? 'Answer pop-up trivia now' : 'Pop-up Trivia Complete'}</span>
+                            <div className="flex items-center gap-2">
+                                {popTriviaQuestion ? (
+                                    <span className={`rounded-full border px-3 py-1 font-black ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'border-yellow-300/70 bg-yellow-300/20 text-yellow-50' : 'border-cyan-300/45 bg-cyan-300/12 text-cyan-100'}`}>
+                                        {`${popTriviaState?.timeLeftSec}s`}
+                                    </span>
+                                ) : (
+                                    <span className="font-bold text-cyan-100">
+                                        {`${popTriviaState?.total || 0} questions`}
+                                    </span>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setDismissedPopTriviaCardKey(popTriviaCardKey)}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-zinc-100 transition-colors hover:border-white/35 hover:bg-black/65 hover:text-white"
+                                    title="Hide pop-up trivia"
+                                    aria-label="Hide pop-up trivia"
+                                >
+                                    <i className="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                        {popTriviaQuestion ? (
+                            <>
+                                <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full border border-white/10 bg-white/10">
+                                    <div
+                                        className={`h-full rounded-full transition-all duration-700 ${Number(popTriviaState?.timeLeftSec || 0) <= 5 ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-gradient-to-r from-cyan-300 via-sky-400 to-fuchsia-400'}`}
+                                        style={{ width: `${popTriviaProgressPct}%` }}
+                                    ></div>
+                                </div>
+                                <div className="mt-3 text-lg font-black text-white leading-snug">{popTriviaQuestion.q}</div>
+                                <div className="mt-2 text-[11px] uppercase tracking-[0.2em] text-cyan-100/85">
+                                    {popTriviaCorrectPoints > 0 ? `Correct answer earns +${popTriviaCorrectPoints} pts` : 'Answer before the timer runs out'}
+                                </div>
+                                <div className="mt-4 grid grid-cols-1 gap-2.5">
+                                    {popTriviaQuestion.options?.map((option, idx) => {
+                                        const isSelected = popTriviaMyVote === idx;
+                                        const optionVotes = popTriviaVoteCounts[idx] || 0;
+                                        return (
+                                            <button
+                                                key={`${popTriviaQuestion.id}_sheet_${idx}`}
+                                                data-feature-id={`pop-trivia-sheet-option-${idx}`}
+                                                onClick={() => submitPopTriviaVote(idx)}
+                                                disabled={popTriviaMyVote !== null || popTriviaSubmitting}
+                                                className={`rounded-2xl border-2 px-4 py-4 text-left transition-all min-h-[76px] ${
+                                                    isSelected
+                                                        ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100 shadow-[0_0_24px_rgba(34,211,238,0.25)]'
+                                                        : 'border-yellow-200/50 bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] hover:border-cyan-300/75 hover:bg-white/[0.13]'
+                                                } ${(popTriviaMyVote !== null || popTriviaSubmitting) ? 'opacity-90' : 'active:scale-[0.99]'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-xs font-black tracking-[0.24em] text-cyan-300">{String.fromCharCode(65 + idx)}</span>
+                                                    <span className="text-xs font-mono text-zinc-300">{optionVotes}</span>
+                                                </div>
+                                                <div className="mt-1.5 text-base font-bold leading-snug">{option}</div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-300">
+                                    {popTriviaMyVote !== null ? 'Answer locked' : 'Tap an answer to join the recap'}
+                                </div>
+                            </>
+                        ) : (
+                            <div className="mt-3">
+                                <div className="text-[11px] uppercase tracking-[0.2em] text-emerald-100/80">Correct answer</div>
+                                <div className="mt-2 text-lg font-black text-white leading-snug">
+                                    {popTriviaRevealCorrectOption || 'Answer reveal unavailable'}
+                                </div>
+                                <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
+                                    {popTriviaRevealWasCorrect
+                                        ? (
+                                            popTriviaCorrectPoints > 0
+                                                ? (popTriviaAwardSyncedDelta > 0
+                                                    ? `You got it right. +${popTriviaAwardSyncedDelta} pts landed in your room balance.`
+                                                    : 'You got it right. Reward is syncing into your room balance now.')
+                                                : 'You got it right.'
+                                        )
+                                        : popTriviaRevealMyVote !== null
+                                            ? 'Your answer locked in, but this was not the winning choice.'
+                                            : 'Trivia complete. Back to the song.'}
+                                </div>
+                                {popTriviaRevealWasCorrect && popTriviaCorrectPoints > 0 ? (
+                                    <div className={`mt-3 rounded-2xl border px-3 py-3 ${popTriviaAwardSyncedDelta > 0 ? 'border-emerald-300/45 bg-emerald-500/10' : 'border-cyan-300/30 bg-cyan-500/10'}`}>
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaAwardSyncedDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
+                                                    {popTriviaAwardSyncedDelta > 0 ? 'Points added' : 'Points incoming'}
+                                                </div>
+                                                <div className="mt-1 text-xs text-zinc-300">
+                                                    {popTriviaAwardSyncedDelta > 0
+                                                        ? 'Your room balance just updated from this trivia win.'
+                                                        : `Waiting for the room wallet sync to post +${popTriviaCorrectPoints} pts.`}
+                                                </div>
+                                            </div>
+                                            <AnimatedPoints
+                                                value={effectivePoints}
+                                                onClick={() => setShowPoints(true)}
+                                                rewardDelta={popTriviaAwardSyncedDelta}
+                                                rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
+                                                className="h-10 w-[132px] shrink-0"
+                                            />
+                                        </div>
+                                    </div>
+                                ) : null}
+                                <div className="mt-3 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                                    <span>{popTriviaRevealCorrectCount > 0 ? `${popTriviaRevealCorrectCount} correct` : 'No correct answers yet'}</span>
+                                    <span>{popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts` : 'Karaoke resumes'}</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
             {showPopTriviaReopenCta && (
                 <button
                     onClick={() => {
@@ -13266,7 +13455,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             {floatingEngagementPrompt && (
                 <button
                     onClick={() => { pulseNativeUiFeedback(); setTab('home'); }}
-                    className={`fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.22em] ${isNativeMobileLayout ? 'mobile-native-engagement-pill' : ''}`}
+                    className={`fixed left-1/2 -translate-x-1/2 z-[96] rounded-full border ${showPopTriviaPromptCta ? 'border-yellow-200/80 bg-yellow-300 text-black shadow-[0_14px_34px_rgba(250,204,21,0.45)] px-5 py-3 text-xs' : 'border-cyan-300/55 bg-cyan-500/22 text-cyan-100 shadow-[0_10px_28px_rgba(34,211,238,0.35)] px-4 py-2 text-[10px]'} font-black uppercase tracking-[0.22em] ${isNativeMobileLayout ? 'mobile-native-engagement-pill' : ''}`}
                     style={{ bottom: `calc(${mobileFloatingBottomInset} + 2.75rem)` }}
                 >
                     <i className={`fa-solid ${floatingEngagementPrompt.icon} mr-2`}></i>
