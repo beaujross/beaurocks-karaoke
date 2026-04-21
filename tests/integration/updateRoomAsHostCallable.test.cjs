@@ -238,6 +238,30 @@ async function run() {
       assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
     }],
 
+    ["request mode save overrides stale audience backing mode", async () => {
+      await roomRef.set({
+        requestMode: "playable_only",
+        allowSingerTrackSelect: false,
+        audienceBackingMode: "canonical_plus_approved_backings",
+        unknownBackingPolicy: "block_unknown",
+      }, { merge: true });
+
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        requestMode: "guest_backing_optional",
+        allowSingerTrackSelect: true,
+        audienceBackingMode: "canonical_plus_approved_backings",
+        unknownBackingPolicy: "auto_queue_unverified",
+      }));
+
+      assert.equal(result.ok, true);
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("requestMode"), "guest_backing_optional");
+      assert.equal(snap.get("allowSingerTrackSelect"), true);
+      assert.equal(snap.get("audienceBackingMode"), "canonical_plus_audience_youtube");
+      assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
+    }],
+
     ["host can toggle the room YouTube embeddable-only filter", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         hideNonEmbeddableYouTube: true,

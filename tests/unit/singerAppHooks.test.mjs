@@ -161,8 +161,8 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
-    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[preferredCatalogSearchMode\]\);/,
-    "SingerApp should open the audience search sheet in the preferred mode instead of always starting in catalog",
+    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setTab\('request'\);\s*setSongsTab\('requests'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[preferredCatalogSearchMode\]\);/,
+    "SingerApp should move broken empty-stage search entry points to the request tab and open in the preferred mode",
   );
   assert.match(
     source,
@@ -198,5 +198,15 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
     source,
     /const handleAudienceCatalogPrimaryAction = \(result\) => \{\s*if \(!result\) return;\s*if \(catalogSearchMode === 'youtube' && audienceManualBackingAllowed\)/,
     "SingerApp should route catalog result presses through a YouTube-first audience action",
+  );
+  assert.match(
+    source,
+    /const audienceInputShellClass = isStreamlinedAudienceShell\s*\?\s*'rounded-2xl border-2 border-cyan-200\/70 bg-white/,
+    "SingerApp streamlined request fields should use a visible light input surface instead of transparent black-on-black fields",
+  );
+  assert.match(
+    source,
+    /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600/,
+    "SingerApp streamlined request fields should use dark input text and visible placeholder text",
   );
 });

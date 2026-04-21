@@ -314,7 +314,7 @@ const HostTopChrome = ({
     const quickStartToneClass = quickStartPendingCount === 0 ? styles.btnSuccess : styles.btnInfo;
     const shouldShowQuickStartButton = (stageQuickStartItems?.length || 0) > 0 && (showStageQuickStart || quickStartPendingCount > 0);
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
-    const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[120]';
+    const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
@@ -1302,7 +1302,7 @@ const HostTopChrome = ({
             </div>
         </div>
         <div data-host-quick-strip-wrap="true" className={`w-full overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-            <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : 'flex-nowrap items-center overflow-x-auto overflow-y-visible pb-1 pr-0.5'}`}>
+            <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 {shouldShowQuickStartButton && (
                     <div className={quickStripItemClass} ref={quickStartMenuRef}>
                         <button

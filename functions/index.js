@@ -2525,6 +2525,9 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
 const syncHostRoomRequestPolicyUpdates = ({ roomData = {}, updates = {} } = {}) => {
   const touchedPolicyKey = Object.keys(updates).some((key) => ROOM_REQUEST_POLICY_KEYS.has(key));
   if (!touchedPolicyKey) return updates;
+  const touchedRequestModeKey = Object.prototype.hasOwnProperty.call(updates, "requestMode")
+    || Object.prototype.hasOwnProperty.call(updates, "allowSingerTrackSelect");
+  const touchedAudienceBackingModeKey = Object.prototype.hasOwnProperty.call(updates, "audienceBackingMode");
 
   const mergedPolicyState = {
     requestMode: Object.prototype.hasOwnProperty.call(updates, "requestMode")
@@ -2533,7 +2536,9 @@ const syncHostRoomRequestPolicyUpdates = ({ roomData = {}, updates = {} } = {}) 
     allowSingerTrackSelect: Object.prototype.hasOwnProperty.call(updates, "allowSingerTrackSelect")
       ? updates.allowSingerTrackSelect
       : roomData?.allowSingerTrackSelect,
-    audienceBackingMode: Object.prototype.hasOwnProperty.call(updates, "audienceBackingMode")
+    audienceBackingMode: touchedRequestModeKey
+      ? ""
+      : touchedAudienceBackingModeKey
       ? updates.audienceBackingMode
       : roomData?.audienceBackingMode,
     unknownBackingPolicy: Object.prototype.hasOwnProperty.call(updates, "unknownBackingPolicy")

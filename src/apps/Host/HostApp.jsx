@@ -6942,7 +6942,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [showFameLevel, setShowFameLevel] = useState(true);
     const [requestMode, setRequestMode] = useState(REQUEST_MODES.canonicalOpen);
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
-    const [audienceBackingMode, setAudienceBackingMode] = useState(AUDIENCE_BACKING_MODES.canonicalOnly);
+    const [_audienceBackingMode, setAudienceBackingMode] = useState(AUDIENCE_BACKING_MODES.canonicalOnly);
     const [unknownBackingPolicy, setUnknownBackingPolicy] = useState(UNKNOWN_BACKING_POLICIES.requireReview);
     const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
@@ -12130,14 +12130,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
                 allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
                 audienceBackingMode: deriveAudienceBackingMode({
-                    audienceBackingMode,
                     requestMode,
-                    allowSingerTrackSelect,
+                    allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
                 }),
                 unknownBackingPolicy: deriveUnknownBackingPolicy({
                     unknownBackingPolicy,
                     requestMode,
-                    allowSingerTrackSelect,
+                    allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
                 }),
                 hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
                 audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
@@ -16400,14 +16399,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
         allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
         audienceBackingMode: deriveAudienceBackingMode({
-            audienceBackingMode,
             requestMode,
-            allowSingerTrackSelect,
+            allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
         }),
         unknownBackingPolicy: deriveUnknownBackingPolicy({
             unknownBackingPolicy,
             requestMode,
-            allowSingerTrackSelect,
+            allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
         }),
         hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',

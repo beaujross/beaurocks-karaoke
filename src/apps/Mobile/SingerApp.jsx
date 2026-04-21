@@ -882,6 +882,18 @@ const SingerApp = ({ roomCode, uid }) => {
         borderColor: withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.24),
         background: `linear-gradient(145deg, rgba(8,10,18,0.96) 0%, ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.14)} 100%)`,
     }), [audienceBrandTheme]);
+    const audienceInputShellClass = isStreamlinedAudienceShell
+        ? 'rounded-2xl border-2 border-cyan-200/70 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus-within:border-pink-300 focus-within:ring-2 focus-within:ring-pink-300/35'
+        : 'rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3';
+    const audienceSearchInputClass = isStreamlinedAudienceShell
+        ? 'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600 outline-none'
+        : 'flex-1 min-w-0 bg-transparent text-base text-white placeholder:text-zinc-500 outline-none';
+    const audienceSearchIconClass = isStreamlinedAudienceShell
+        ? 'fa-solid fa-magnifying-glass text-cyan-700'
+        : 'fa-solid fa-magnifying-glass text-cyan-200/80';
+    const audienceFormInputClass = isStreamlinedAudienceShell
+        ? 'w-full rounded-2xl border-2 border-cyan-200/70 bg-white p-4 text-base font-semibold text-zinc-950 placeholder:text-zinc-600 outline-none shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus:border-pink-300 focus:ring-2 focus:ring-pink-300/35'
+        : 'w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white placeholder:text-zinc-500 outline-none';
     const audienceBrandTitle = audienceBrandTheme.appTitle || 'BeauRocks Karaoke';
     const isCustomAudienceBrand = String(audienceBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
     const poweredByBeauRocksLabel = isCustomAudienceBrand ? 'Powered by: BeauRocks Karaoke' : '';
@@ -6123,6 +6135,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 explicitResolutionStatus,
                 explicitResolutionLayer,
                 unknownBackingPolicy,
+                trustedCandidate: options.trustedCandidate === true,
                 requiresQueueApproval: room?.bouncerMode || enforcePending
             });
 
@@ -6280,6 +6293,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [catalogResolutionMap, getAudienceCatalogArtwork, getAudienceCatalogResultKey, isAudienceSelectableBackingCandidate, scoreAudienceBackingCandidate]);
 
     const openAudienceCatalogSearch = useCallback(() => {
+        setTab('request');
+        setSongsTab('requests');
         setCatalogSearchMode(preferredCatalogSearchMode);
         setCatalogSearchOpen(true);
     }, [preferredCatalogSearchMode]);
@@ -6343,6 +6358,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const handleAudienceYouTubeResultSelect = (result) => {
         if (!result?.mediaUrl) return;
+        const selectedBackingResolution = deriveAudienceBackingResolution({
+            hasBacking: true,
+            unknownBackingPolicy,
+            trustedCandidate: false
+        });
         submitSong(
             result.trackName,
             result.artistName,
@@ -6354,7 +6374,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 audioOnly: result.playable !== true,
                 allowTrack: true,
                 trackLabel: result.playable === true ? 'Audience YouTube pick' : 'Audience YouTube pick (external window)',
+                resolutionStatus: selectedBackingResolution.resolutionStatus,
                 resolutionLayer: 'audience_youtube_search',
+                trustedCandidate: false,
                 youtubeEmbeddable: result.embeddable === true,
                 youtubeUploadStatus: result.uploadStatus || '',
                 youtubePrivacyStatus: result.privacyStatus || '',
@@ -11440,29 +11462,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                              <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue • {allUsers.length || 0} here</div>
                                          </div>
                                      </div>
-                                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                     <div className="mt-4">
                                          <button
                                              type="button"
                                              onClick={openAudienceCatalogSearch}
                                              data-feature-id="singer-request-song-cta"
-                                             className="rounded-[24px] border px-4 py-4 text-left text-cyan-50"
+                                             className="w-full rounded-[24px] border px-4 py-4 text-left text-cyan-50"
                                              style={streamlinedPrimaryActionStyle}
                                          >
                                              <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/85">Quick Start</div>
-                                             <div className="mt-1 text-base font-black text-white">Request a Song</div>
-                                             <div className="mt-1 text-sm text-zinc-100/85">Search the catalog or jump into manual entry.</div>
-                                         </button>
-                                         <button
-                                             type="button"
-                                             onClick={() => {
-                                                 setTab('request');
-                                                 setSongsTab('queue');
-                                             }}
-                                             className="rounded-[24px] border px-4 py-4 text-left text-zinc-100"
-                                             style={streamlinedSecondaryActionStyle}
-                                         >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Queue</div>
-                                             <div className="mt-1 text-base font-black">View Queue</div>
+                                             <div className="mt-1 text-base font-black text-white">Search for a Song</div>
+                                             <div className="mt-1 text-sm text-zinc-100/85">Open song search and add the next performer.</div>
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">
@@ -12087,7 +12097,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </button>
                                     </div>
                                     <div className="px-4 py-3 border-b border-white/10">
-                                        <div className="rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3">
+                                        <div className={audienceInputShellClass}>
                                             {audienceManualBackingAllowed && (
                                                 <div className="mb-3 flex flex-wrap gap-2">
                                                     {[
@@ -12110,12 +12120,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </div>
                                             )}
                                             <div className="flex items-center gap-3">
-                                                <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                                <i className={audienceSearchIconClass}></i>
                                                 <input
                                                     ref={audienceCatalogSearchInputRef}
                                                     value={searchQ}
                                                     onChange={(e) => setSearchQ(e.target.value)}
-                                                    className="flex-1 bg-transparent text-base text-white outline-none"
+                                                    className={audienceSearchInputClass}
                                                     placeholder={catalogSearchMode === 'youtube' ? 'Search YouTube karaoke...' : 'Search songs...'}
                                                 />
                                             </div>
@@ -12459,7 +12469,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 data-feature-id="singer-request-song-title"
                                                 value={form.song}
                                                 onChange={e=>setForm({...form, song:e.target.value})}
-                                                className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                className={audienceFormInputClass}
                                                 placeholder="Song Title"
                                             />
                                         </div>
@@ -12469,7 +12479,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 data-feature-id="singer-request-artist"
                                                 value={form.artist}
                                                 onChange={e=>setForm({...form, artist:e.target.value})}
-                                                className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                className={audienceFormInputClass}
                                                 placeholder="Artist"
                                             />
                                         </div>
@@ -12493,7 +12503,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         <input
                                                             value={form.backingUrl}
                                                             onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
-                                                            className="w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white outline-none"
+                                                            className={audienceFormInputClass}
                                                             placeholder="YouTube URL for the backing track"
                                                         />
                                                         <div className="text-sm text-zinc-400">YouTube links only. Host still controls playback.</div>
@@ -12741,7 +12751,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 <input
                                                     value={form.backingUrl}
                                                     onChange={e => setForm(prev => ({ ...prev, backingUrl: e.target.value }))}
-                                                    className="w-full bg-zinc-900/60 border border-zinc-700 rounded-2xl p-3 text-base text-white outline-none"
+                                                    className={audienceFormInputClass}
                                                     placeholder="YouTube URL for the backing track"
                                                 />
                                                 <div className="text-sm text-zinc-500">Applies to the next request you send.</div>
@@ -12830,12 +12840,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="text-base text-zinc-500">{activeBrowseList.subtitle || 'Browse list'}</div>
                                         </div>
                                         <div className="px-5 py-4">
-                                            <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl p-3 flex items-center gap-3">
-                                                <i className="fa-solid fa-magnifying-glass text-zinc-500"></i>
+                                            <div className={`${audienceInputShellClass} flex items-center gap-3`}>
+                                                <i className={audienceSearchIconClass}></i>
                                                 <input
                                                     value={browseFilter}
                                                     onChange={e => setBrowseFilter(e.target.value)}
-                                                    className="flex-1 bg-transparent text-base text-white outline-none"
+                                                    className={audienceSearchInputClass}
                                                     placeholder="Filter by title or artist"
                                                 />
                                             </div>
@@ -12905,12 +12915,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="text-base text-zinc-500">Full list</div>
                                         </div>
                                         <div className="px-5 py-4">
-                                            <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl p-3 flex items-center gap-3">
-                                                <i className="fa-solid fa-magnifying-glass text-zinc-500"></i>
+                                            <div className={`${audienceInputShellClass} flex items-center gap-3`}>
+                                                <i className={audienceSearchIconClass}></i>
                                                 <input
                                                     value={browseFilter}
                                                     onChange={e => setBrowseFilter(e.target.value)}
-                                                    className="flex-1 bg-transparent text-base text-white outline-none"
+                                                    className={audienceSearchInputClass}
                                                     placeholder="Filter Top 100 by title or artist"
                                                 />
                                             </div>
@@ -12959,12 +12969,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="text-base text-zinc-500">{audienceRoomLibraryItems.length} ready</div>
                                         </div>
                                         <div className="px-5 py-4">
-                                            <div className="bg-zinc-900/60 border border-zinc-700 rounded-2xl p-3 flex items-center gap-3">
-                                                <i className="fa-solid fa-magnifying-glass text-zinc-500"></i>
+                                            <div className={`${audienceInputShellClass} flex items-center gap-3`}>
+                                                <i className={audienceSearchIconClass}></i>
                                                 <input
                                                     value={ytIndexFilter}
                                                     onChange={e => setYtIndexFilter(e.target.value)}
-                                                    className="flex-1 bg-transparent text-base text-white outline-none"
+                                                    className={audienceSearchInputClass}
                                                     placeholder="Filter room library"
                                                 />
                                             </div>
