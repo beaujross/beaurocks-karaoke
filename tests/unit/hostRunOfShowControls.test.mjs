@@ -7,6 +7,7 @@ import { test } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const hostAppPath = path.resolve(__dirname, "../../src/apps/Host/HostApp.jsx");
+const hostTopChromePath = path.resolve(__dirname, "../../src/apps/Host/components/HostTopChrome.jsx");
 const runOfShowDirectorPanelPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowDirectorPanel.jsx");
 const runOfShowQueueHudPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowQueueHud.jsx");
 
@@ -64,12 +65,123 @@ test("HostApp keeps the queue runtime mounted when the host leaves the queue vie
   );
 });
 
+test("HostApp keeps Auto DJ queue advance independent from TV display mode changes", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(
+    source,
+    /getAutoDjQueueAdvanceIntent\(\{/,
+    "Auto DJ should derive queue advance from one explicit intent helper",
+  );
+  assert.match(
+    source,
+    /activeMode: room\?\.activeMode,/,
+    "Auto DJ intent should consider the room mode before staging the next song",
+  );
+  assert.match(
+    source,
+    /runOfShowEnabled: room\?\.runOfShowEnabled,/,
+    "Auto DJ intent should not race the run of show executor",
+  );
+  assert.match(
+    source,
+    /programMode: room\?\.programMode,/,
+    "Auto DJ intent should use program mode instead of TV display state",
+  );
+  assert.match(
+    source,
+    /isQueueEntryPlayable/,
+    "Auto DJ should still use backing-track readiness when choosing the next queue item",
+  );
+  assert.doesNotMatch(
+    source,
+    /runAutoDjWatchdog|autoDjWatchdogBusyRef|setInterval\(runAutoDjWatchdog/,
+    "Auto DJ queue advance should not rely on a periodic watchdog",
+  );
+});
+
+test("Run-of-show quick draft controls avoid clipped dropdown layers", () => {
+  const source = readFileSync(runOfShowDirectorPanelPath, "utf8");
+
+  assert.match(
+    source,
+    /focus-within:z-\[90\]/,
+    "Run-of-show select controls should lift above neighboring quick draft content while focused",
+  );
+  assert.match(
+    source,
+    /fixed inset-0 z-\[260\][\s\S]*Quick Draft Builder/,
+    "Quick Draft modal should sit above host panel chrome and dropdown layers",
+  );
+  assert.match(
+    source,
+    /overflow-visible rounded-\[28px\]/,
+    "Quick Draft modal shell should not clip dropdown affordances",
+  );
+  assert.match(
+    source,
+    /grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-\[minmax\(0,1\.1fr\)_120px_120px_170px_minmax\(150px,auto\)\]/,
+    "Quick Draft form grid should keep controls from crowding or wrapping over each other",
+  );
+});
+
 test("Run-of-show performance launch resolves real media duration before seeding auto-end timing", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
+  assert.match(source, /const getAssociatedBackingDurationSec = \(song = \{\}\) => \{/);
+  assert.match(source, /const associatedBackingDurationSec = getAssociatedBackingDurationSec\(queueSong\);/);
   assert.match(source, /await resolveHostDurationForUrl\(nextMediaUrl, isAudioUrl\(nextMediaUrl\)\)\.catch\(\(\) => null\)/);
   assert.match(source, /queueSong\.performanceStartedDurationSec = performanceDurationSec;/);
   assert.match(source, /currentPerformanceMeta:\s*\{[\s\S]*durationSec:\s*performanceDurationSec,/);
+});
+
+test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const associatedBackingDurationSec = getAssociatedBackingDurationSec\(current\);/);
+  assert.match(source, /performanceStartedDurationSec:\s*nextDuration/);
+  assert.match(source, /currentPerformanceMeta:\s*\{\s*\.\.\.activeMeta,\s*durationSec:\s*nextDuration/s);
+});
+
+test("Host queue review presents Apple sing-along and YouTube backing as primary choices", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const resolveAppleSingAlongReviewRequest = useCallback/);
+  assert.match(source, /source:\s*'apple'/);
+  assert.match(source, /successMessage:\s*'Queued as Apple Music sing-along\.'/);
+  assert.match(source, /Apple Sing-Along/);
+  assert.match(source, /Find YouTube Backing/);
+  assert.match(source, /resolveAppleSingAlongReviewRequest\(song\)/);
+  assert.match(source, /canUseAppleSingAlong \|\| sourceLabel\.includes\('apple'\) \|\| sourceLabel\.includes\('itunes'\)/);
+});
+
+test("Host queue review candidate cards stay inside narrow panels", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /min-w-0 overflow-hidden rounded-2xl border border-white\/10 bg-black\/30 p-3/);
+  assert.match(source, /mt-3 grid min-w-0 gap-2 overflow-hidden/);
+  assert.match(source, /grid min-w-0 gap-3 xl:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(source, /break-words text-sm font-bold leading-snug text-white/);
+  assert.match(source, /grid min-w-\[150px\] gap-2 sm:grid-cols-3 xl:grid-cols-1/);
+});
+
+test("Host top chrome keeps the dropdown strip lean", () => {
+  const source = readFileSync(hostTopChromePath, "utf8");
+
+  assert.doesNotMatch(source, /Quick Start|deck-quick-start-menu-toggle|showQuickStartMenu/);
+  assert.doesNotMatch(source, /quickAudioControlClass|showInlineAudioQuickControls/);
+  assert.match(source, /data-feature-id="deck-audio-menu-toggle"/);
+  assert.match(source, /Audio \+ Mix/);
+});
+
+test("Run-of-show prep sections can collapse after opening", () => {
+  const source = readFileSync(runOfShowDirectorPanelPath, "utf8");
+
+  assert.match(source, /const toggleExclusivePrepStep = \(itemId = '', step = 'singer'\) => \{/);
+  assert.match(source, /\[sectionKey\(safeItemId, 'prep_step_singer'\)\]: false,/);
+  assert.match(source, /const hasExplicitPrepStepState = \['singer', 'song', 'track'\]\.some/);
+  assert.match(source, /onToggle=\{\(\) => toggleExclusivePrepStep\(item\.id, 'singer'\)\}/);
+  assert.match(source, /onToggle=\{\(\) => toggleExclusivePrepStep\(item\.id, 'song'\)\}/);
 });
 
 test("Run-of-show automation respects room auto mode and pauses for missing singers", () => {

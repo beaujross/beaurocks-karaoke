@@ -159,11 +159,6 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings,
     onOpenHostDashboard,
-    showStageQuickStart = false,
-    stageQuickStartCompletedCount = 0,
-    stageQuickStartSummary = '',
-    stageQuickStartItems = [],
-    onDismissStageQuickStart,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
     audiencePreviewMode = 'thumbnail',
@@ -200,7 +195,6 @@ const HostTopChrome = ({
     };
     const SmallWaveform = smallWaveform;
     const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
-    const [showQuickStartMenu, setShowQuickStartMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
@@ -216,7 +210,6 @@ const HostTopChrome = ({
     const [compactRunOfShowToolsOpen, setCompactRunOfShowToolsOpen] = React.useState(false);
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
-    const quickStartMenuRef = React.useRef(null);
     const automationMenuRef = React.useRef(null);
     const audioMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
@@ -309,10 +302,6 @@ const HostTopChrome = ({
         + Number(!!autoPartyEnabled)
         + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
-    const quickStartTotalCount = Math.max(stageQuickStartItems?.length || 0, stageQuickStartCompletedCount || 0, 4);
-    const quickStartPendingCount = Math.max(quickStartTotalCount - (stageQuickStartCompletedCount || 0), 0);
-    const quickStartToneClass = quickStartPendingCount === 0 ? styles.btnSuccess : styles.btnInfo;
-    const shouldShowQuickStartButton = (stageQuickStartItems?.length || 0) > 0 && (showStageQuickStart || quickStartPendingCount > 0);
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -321,11 +310,8 @@ const HostTopChrome = ({
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
-    const quickAudioControlClass = 'flex min-w-[170px] shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-2';
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
-    const showInlineAudioQuickControls = !compactTopQuickStrip;
-    const anyTopMenuOpen = showQuickStartMenu
-        || showAutomationMenu
+    const anyTopMenuOpen = showAutomationMenu
         || audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
@@ -644,7 +630,6 @@ const HostTopChrome = ({
             }
             : null;
     const closeAllDeckMenus = React.useCallback(() => {
-        setShowQuickStartMenu(false);
         setShowAutomationMenu(false);
         setAudioPanelOpen?.(false);
         setShowTvQuickMenu(false);
@@ -857,7 +842,6 @@ const HostTopChrome = ({
         const handlePointerDown = (event) => {
             const target = event.target;
             const menuRefs = [
-                quickStartMenuRef,
                 automationMenuRef,
                 audioMenuRef,
                 tvQuickMenuRef,
@@ -882,12 +866,6 @@ const HostTopChrome = ({
             window.removeEventListener('keydown', handleEscape);
         };
     }, [anyTopMenuOpen, closeAllTopMenus]);
-
-    React.useEffect(() => {
-        if (quickStartPendingCount === 0) {
-            setShowQuickStartMenu(false);
-        }
-    }, [quickStartPendingCount]);
 
     React.useEffect(() => {
         const handleVisibilityChange = () => {
@@ -1303,91 +1281,6 @@ const HostTopChrome = ({
         </div>
         <div data-host-quick-strip-wrap="true" className={`w-full overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
             <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
-                {shouldShowQuickStartButton && (
-                    <div className={quickStripItemClass} ref={quickStartMenuRef}>
-                        <button
-                            data-feature-id="deck-quick-start-menu-toggle"
-                            onClick={() => {
-                                const next = !showQuickStartMenu;
-                                closeAllTopMenus();
-                                setShowQuickStartMenu(next);
-                            }}
-                            className={`${quickMenuToggleClass} ${quickStartToneClass} ${compactTopQuickStrip ? '' : 'min-w-[168px] sm:min-w-[192px]'} justify-between`}
-                            title="Quick start checklist"
-                            style={{ touchAction: 'manipulation' }}
-                        >
-                            <span className="inline-flex items-center gap-2">
-                                <i className="fa-solid fa-list-check"></i>
-                                Quick Start
-                            </span>
-                            <span className="inline-flex items-center gap-1">
-                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em]">
-                                    {stageQuickStartCompletedCount}/{quickStartTotalCount}
-                                </span>
-                                <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showQuickStartMenu ? 'rotate-180' : ''}`}></i>
-                            </span>
-                        </button>
-                        {showQuickStartMenu && (
-                            <div className={`${quickMenuPanelClass} left-0 w-[min(430px,94vw)] p-3.5`}>
-                                <div className={`${quickMenuSectionTitleClass} flex items-center justify-between gap-3`}>
-                                    <span>Quick Start Checklist</span>
-                                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-zinc-200">
-                                        {quickStartPendingCount === 0 ? 'Ready' : `${quickStartPendingCount} left`}
-                                    </span>
-                                </div>
-                                <div className={quickMenuSectionHintClass}>
-                                    {stageQuickStartSummary || 'Complete the key room-launch steps from here.'}
-                                </div>
-                                <div className={`${quickMenuCardClass} mt-2 space-y-2`}>
-                                    {(stageQuickStartItems || []).length > 0 ? (
-                                        (stageQuickStartItems || []).map((item) => (
-                                            <button
-                                                key={item.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    closeAllTopMenus();
-                                                    item.onClick?.();
-                                                }}
-                                                disabled={!!item.disabled}
-                                                className={`${styles.btnStd} ${
-                                                    item.completed
-                                                        ? styles.btnSuccess
-                                                        : item.ready
-                                                            ? styles.btnInfo
-                                                            : styles.btnNeutral
-                                                } w-full justify-between px-3 py-2 text-sm normal-case tracking-[0.03em] ${item.disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                <span className="inline-flex items-center gap-2">
-                                                    <i className={`fa-solid ${item.completed ? 'fa-circle-check' : item.ready ? 'fa-arrow-right' : 'fa-clock'}`}></i>
-                                                    {item.label}
-                                                </span>
-                                                <span className="text-[10px] uppercase tracking-[0.16em] text-white/75">
-                                                    {item.completed ? 'Done' : item.ready ? 'Open' : 'Pending'}
-                                                </span>
-                                            </button>
-                                        ))
-                                    ) : (
-                                        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
-                                            Quick start steps will appear here when the room needs setup guidance.
-                                        </div>
-                                    )}
-                                </div>
-                                {showStageQuickStart && typeof onDismissStageQuickStart === 'function' && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            closeAllTopMenus();
-                                            onDismissStageQuickStart();
-                                        }}
-                                        className={`${styles.btnStd} ${styles.btnNeutral} mt-2 w-full px-3 py-2 text-sm normal-case tracking-[0.03em]`}
-                                    >
-                                        Hide Quick Start
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                )}
                 <div className={quickStripItemClass} ref={automationMenuRef}>
                     <button
                         data-feature-id="deck-automation-menu-toggle"
@@ -1538,71 +1431,6 @@ const HostTopChrome = ({
                                 </span>
                                 <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${audioPanelOpen ? 'rotate-180' : ''}`}></i>
                             </button>
-                            {showInlineAudioQuickControls ? (
-                            <div className={quickAudioControlClass}>
-                                <button
-                                    type="button"
-                                    onClick={toggleSongMute}
-                                    className={`${styles.btnStd} ${stageVolumeDraft === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
-                                    title="Mute stage audio"
-                                >
-                                    <i className={`fa-solid ${stageVolumeDraft === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                                </button>
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400">Stage</div>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        value={stageVolumeDraft}
-                                        onPointerDown={() => { sliderDraggingRef.current.stage = true; }}
-                                        onChange={(e) => handleStageVolumeDraftChange(e.target.value)}
-                                        onPointerUp={(e) => commitStageVolumeChange(e.target.value)}
-                                        onPointerCancel={(e) => commitStageVolumeChange(e.target.value)}
-                                        onBlur={(e) => commitStageVolumeChange(e.target.value)}
-                                        onWheelCapture={blockRangeWheelDefault}
-                                        className="mt-1 h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 stage-volume-slider"
-                                        style={{ background: `linear-gradient(90deg, #00C4D9 ${stageVolumeDraft}%, #27272a ${stageVolumeDraft}%)` }}
-                                    />
-                                </div>
-                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{stageVolumeDraft}%</span>
-                            </div>
-                            ) : null}
-                            {showInlineAudioQuickControls ? (
-                            <div className={quickAudioControlClass}>
-                                <button
-                                    type="button"
-                                    onClick={toggleBgMute}
-                                    className={`${styles.btnStd} ${bgVolume === 0 ? styles.btnHighlight : styles.btnNeutral} px-2 py-1 text-xs min-w-[30px] active:scale-100`}
-                                    title="Mute background music"
-                                >
-                                    <i className={`fa-solid ${bgVolume === 0 ? 'fa-volume-xmark' : 'fa-volume-high'} w-4 text-center`}></i>
-                                </button>
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[0.16em] text-zinc-400">
-                                        <span>BG</span>
-                                        <span className="truncate text-zinc-500">{currentTrackName || 'Track'}</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        min="0"
-                                        max="100"
-                                        step="1"
-                                        value={bgVolumeDraftPct}
-                                        onPointerDown={() => { sliderDraggingRef.current.bg = true; }}
-                                        onChange={(e) => handleBgVolumeDraftChange(e.target.value)}
-                                        onPointerUp={(e) => commitBgVolumeChange(e.target.value)}
-                                        onPointerCancel={(e) => commitBgVolumeChange(e.target.value)}
-                                        onBlur={(e) => commitBgVolumeChange(e.target.value)}
-                                        onWheelCapture={blockRangeWheelDefault}
-                                        className="mt-1 h-2.5 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800 bg-volume-slider"
-                                        style={{ background: `linear-gradient(90deg, #EC4899 ${bgVolumeDraftPct}%, #27272a ${bgVolumeDraftPct}%)` }}
-                                    />
-                                </div>
-                                <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{bgVolumeDraftPct}%</span>
-                            </div>
-                            ) : null}
                         </div>
                         {audioPanelOpen ? (
                             <div className={`${quickMenuPanelClass} left-0 w-[min(560px,96vw)] p-3.5`}>

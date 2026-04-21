@@ -1,4 +1,16 @@
 const STEP_IDS = ['stage', 'applause', 'scoring', 'transition'];
+const APPLAUSE_PHASES = new Set(['applause_countdown', 'applause', 'applause_result']);
+
+const clampDelaySec = (value = 10) => Math.max(2, Math.min(45, Number(value || 10) || 10));
+
+const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {}) => {
+    const mediaResolutionStatus = String(song?.mediaResolutionStatus || '').trim().toLowerCase();
+    if (mediaResolutionStatus === 'needs_backing') return false;
+    if (song?.playbackReady === false) return false;
+    const appleMusicId = String(song?.appleMusicId || '').trim();
+    if (appleMusicId) return !!appleMusicEnabled;
+    return !!String(song?.mediaUrl || song?.youtubeId || '').trim();
+};
 
 export const AUTO_DJ_EVENTS = {
     START: 'start',
@@ -30,6 +42,91 @@ export const createAutoDjSequenceState = (now = Date.now()) => ({
     updatedAtMs: Number(now || Date.now()),
     completedSongId: ''
 });
+
+export const getAutoDjQueueAdvanceIntent = ({
+    autoDjEnabled = false,
+    activeMode = '',
+    runOfShowEnabled = false,
+    programMode = '',
+    songs = [],
+    appleMusicEnabled = true,
+    lastPerformanceTs = 0,
+    autoDjDelaySec = 10,
+    now = Date.now(),
+    isQueueEntryPlayable = defaultIsQueueEntryPlayable
+} = {}) => {
+    if (!autoDjEnabled) {
+        return { shouldStart: false, reason: 'disabled' };
+    }
+    const normalizedProgramMode = String(programMode || '').trim().toLowerCase();
+    if (runOfShowEnabled === true && normalizedProgramMode === 'run_of_show') {
+        return { shouldStart: false, reason: 'run_of_show_active' };
+    }
+    const normalizedActiveMode = String(activeMode || '').trim().toLowerCase();
+    if (APPLAUSE_PHASES.has(normalizedActiveMode)) {
+        return { shouldStart: false, reason: 'applause_active' };
+    }
+    if (normalizedActiveMode && normalizedActiveMode !== 'karaoke') {
+        return { shouldStart: false, reason: 'mode_active' };
+    }
+
+    const list = Array.isArray(songs) ? songs : [];
+    if (list.some((song) => song?.status === 'performing')) {
+        return { shouldStart: false, reason: 'performer_on_stage' };
+    }
+
+    const queued = list
+        .filter((song) => (
+            song?.status === 'requested'
+            && isQueueEntryPlayable(song, { appleMusicEnabled })
+        ))
+        .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
+    const next = queued[0] || null;
+    if (!next?.id) {
+        return { shouldStart: false, reason: 'no_playable_queue' };
+    }
+
+    const configuredDelaySec = clampDelaySec(autoDjDelaySec);
+    const configuredDelayMs = configuredDelaySec * 1000;
+    const safeLastPerformanceTs = Math.max(0, Number(lastPerformanceTs || 0) || 0);
+    const safeNow = Number(now || Date.now()) || Date.now();
+    const delayMs = safeLastPerformanceTs
+        ? Math.max(0, Math.round((safeLastPerformanceTs + configuredDelayMs) - safeNow))
+        : 0;
+    if (delayMs > 0) {
+        return {
+            shouldStart: false,
+            reason: 'waiting_delay',
+            delayMs,
+            startAfterMs: safeLastPerformanceTs + configuredDelayMs,
+            songId: next.id,
+            queueCount: queued.length
+        };
+    }
+
+    const startKey = [
+        next.id,
+        queued.length,
+        safeLastPerformanceTs,
+        configuredDelayMs,
+        next.mediaUrl || '',
+        next.youtubeId || '',
+        next.appleMusicId || '',
+        next.playbackReady === false ? 'blocked' : 'ready',
+        next.resolutionStatus || '',
+        next.mediaResolutionStatus || ''
+    ].join(':');
+
+    return {
+        shouldStart: true,
+        reason: 'ready',
+        songId: next.id,
+        song: next,
+        queueCount: queued.length,
+        delayMs: 0,
+        startKey
+    };
+};
 
 const clampRetries = (value, limit = 2) => {
     const safe = Math.max(0, Math.round(Number(value || 0)));

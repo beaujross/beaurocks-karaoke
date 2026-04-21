@@ -331,11 +331,13 @@ const App = () => {
                 params: { mode: 'marketing', page: MARKETING_ROUTE_PAGES.hostAccess },
             }, window.location);
         const returnToUrl = new URL(baseHref);
-        returnToUrl.searchParams.set('intent', resumeIntent);
+        returnToUrl.pathname = window.location.pathname || '/';
+        returnToUrl.search = window.location.search || '';
+        returnToUrl.hash = window.location.hash || '';
         const authGateUrl = new URL(baseHref);
         authGateUrl.searchParams.set('intent', resumeIntent);
         authGateUrl.searchParams.set('targetType', 'host_dashboard');
-        authGateUrl.searchParams.set('return_to', `${returnToUrl.pathname}${returnToUrl.search}`);
+        authGateUrl.searchParams.set('return_to', `${returnToUrl.pathname}${returnToUrl.search}${returnToUrl.hash}`);
         window.location.replace(`${authGateUrl.pathname}${authGateUrl.search}`);
     }, [authReady, hasBeauRocksAccount, isDemoHostEmbed, view]);
     if (canonicalRedirectUrl) return <ViewLoader />;

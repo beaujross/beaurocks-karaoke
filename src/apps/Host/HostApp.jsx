@@ -223,7 +223,8 @@ import {
     createAutoDjSequenceState,
     transitionAutoDjSequenceState,
     deriveAutoDjStepItems,
-    describeAutoDjSequenceState
+    describeAutoDjSequenceState,
+    getAutoDjQueueAdvanceIntent
 } from './autoDjStateMachine';
 import { normalizeHostPermissionLevel } from './launchAccess';
 import {
@@ -710,6 +711,31 @@ const createStageStartError = (code = 'stage_start_failed', message = 'Could not
     return error;
 };
 
+const normalizeDurationSec = (value = 0) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.round(numeric));
+};
+
+const getAssociatedBackingDurationSec = (song = {}) => {
+    const candidates = [
+        song?.performanceStartedDurationSec,
+        song?.backingPlan?.durationSec,
+        song?.selectedBacking?.durationSec,
+        song?.approvedBacking?.durationSec,
+        song?.approvedBrowseBacking?.durationSec,
+        song?.mediaDurationSec,
+        song?.backingDurationSec,
+        song?.trackDurationSec,
+        song?.durationSec
+    ];
+    for (const candidate of candidates) {
+        const durationSec = normalizeDurationSec(candidate);
+        if (durationSec > 0) return durationSec;
+    }
+    return 0;
+};
+
 const startQueueSongOnStage = async ({
     songId = '',
     songs = [],
@@ -763,10 +789,15 @@ const startQueueSongOnStage = async ({
     const songMediaUrl = effectiveBacking.mediaUrl;
     const useAppleBacking = effectiveBacking.usesAppleBacking;
     const performanceStartedAtMs = nowMs();
+    const associatedBackingDurationSec = getAssociatedBackingDurationSec(queueSong);
     const measuredDuration = useAppleBacking
-        ? Math.max(0, Number(queueSong?.duration || roomSnapshot?.appleMusicPlayback?.durationSec || 0))
-        : await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
-    const performanceDurationSec = Math.max(30, Math.round(Number(measuredDuration || queueSong?.duration || 180) || 180));
+        ? Math.max(
+            associatedBackingDurationSec,
+            normalizeDurationSec(queueSong?.duration),
+            normalizeDurationSec(roomSnapshot?.appleMusicPlayback?.durationSec)
+        )
+        : associatedBackingDurationSec || await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
+    const performanceDurationSec = Math.max(30, normalizeDurationSec(measuredDuration || queueSong?.duration || 180) || 180);
 
     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
         status: 'performing',
@@ -925,7 +956,7 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
             ? 'youtube'
             : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
     const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' · ') || 'Queued performance';
-    const durationSec = Math.max(0, Math.round(Number(song?.duration || 0)));
+    const durationSec = getAssociatedBackingDurationSec(song) || normalizeDurationSec(song?.duration);
     const shouldSyncPlannedDuration = durationSec > 0 && String(item?.plannedDurationSource || '').trim().toLowerCase() !== 'manual';
     return {
         performerMode: 'assigned',
@@ -4518,7 +4549,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 submitTrustedReview: !!options?.submitTrustedReview,
                 persistTrustedCatalogChoice
             });
-            toast(options?.submitTrustedReview ? 'Queued and shared as trusted.' : options?.saveFavorite ? 'Queued and saved for this room.' : 'Queued with this track.');
+            toast(options?.successMessage || (options?.submitTrustedReview ? 'Queued and shared as trusted.' : options?.saveFavorite ? 'Queued and saved for this room.' : 'Queued with this track.'));
         } catch (error) {
             hostLogger.warn('Failed to resolve review request', error);
             toast('Could not resolve that request right now.');
@@ -4526,6 +4557,26 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             setReviewActionBusyKey('');
         }
     }, [hostName, persistTrustedCatalogChoice, reviewActionBusyKey, toast]);
+
+    const resolveAppleSingAlongReviewRequest = useCallback(async (song) => {
+        const appleMusicId = String(song?.appleMusicId || song?.trackId || '').trim();
+        if (!song?.id || !appleMusicId) return;
+        await resolveReviewRequest(song, {
+            id: `apple_singalong:${appleMusicId}`,
+            source: 'apple',
+            layer: 'apple_sing_along',
+            label: 'Apple Music full song',
+            title: song.songTitle || '',
+            artist: song.artist || '',
+            trackId: appleMusicId,
+            appleMusicId,
+            mediaUrl: '',
+            duration: getAssociatedBackingDurationSec(song) || normalizeDurationSec(song?.duration)
+        }, {
+            mode: 'apple_singalong',
+            successMessage: 'Queued as Apple Music sing-along.'
+        });
+    }, [resolveReviewRequest]);
 
     const rejectReviewRequest = useCallback(async (song) => {
         if (!song?.id) return;
@@ -5132,18 +5183,36 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         let cancelled = false;
         void (async () => {
             try {
+                const associatedBackingDurationSec = getAssociatedBackingDurationSec(current);
                 const resolvedDuration = await resolveDurationForUrl(
                     currentPlayback.mediaUrl,
                     isAudioUrl(currentPlayback.mediaUrl)
                 );
                 if (cancelled) return;
-                const nextDuration = Math.max(0, Math.round(Number(resolvedDuration || 0)));
-                const existingDuration = Math.max(0, Math.round(Number(current?.duration || 0)));
+                const nextDuration = normalizeDurationSec(resolvedDuration || associatedBackingDurationSec);
+                const existingDuration = Math.max(
+                    0,
+                    normalizeDurationSec(current?.duration),
+                    normalizeDurationSec(current?.performanceStartedDurationSec),
+                    normalizeDurationSec(room?.currentPerformanceMeta?.durationSec)
+                );
                 if (nextDuration < 20 || Math.abs(nextDuration - existingDuration) < 3) return;
                 await updateDoc(
                     doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentId),
-                    { duration: nextDuration }
+                    {
+                        duration: nextDuration,
+                        performanceStartedDurationSec: nextDuration
+                    }
                 );
+                const activeMeta = room?.currentPerformanceMeta || {};
+                if (String(activeMeta?.songId || '').trim() === currentId) {
+                    await updateRoom({
+                        currentPerformanceMeta: {
+                            ...activeMeta,
+                            durationSec: nextDuration
+                        }
+                    });
+                }
             } catch (error) {
                 currentPlaybackDurationSyncKeyRef.current = '';
                 hostLogger.debug('Current playback duration sync failed', error);
@@ -5157,13 +5226,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         current,
         current?.id,
         current?.duration,
+        current?.performanceStartedDurationSec,
         current?.appleMusicId,
         current?.mediaUrl,
         isAudioUrl,
         room,
         room?.activeMode,
         room?.mediaUrl,
-        resolveDurationForUrl
+        resolveDurationForUrl,
+        updateRoom
     ]);
 
     useEffect(() => {
@@ -5525,8 +5596,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     {reviewQueueOpen ? reviewQueueItems.map((song) => {
                         const topCandidate = song.reviewCandidates?.[0] || null;
                         const busy = reviewActionBusyKey.startsWith(`${song.id}:`);
+                        const appleMusicId = String(song?.appleMusicId || song?.trackId || '').trim();
+                        const canUseAppleSingAlong = !!appleMusicId;
+                        const sourceLabel = String(song?.trackSource || song?.source || '').trim().toLowerCase();
+                        const requestLooksApple = canUseAppleSingAlong || sourceLabel.includes('apple') || sourceLabel.includes('itunes');
                         return (
-                            <div key={song.id} className="rounded-2xl border border-white/10 bg-black/30 p-3">
+                            <div key={song.id} className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-3">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2 flex-wrap">
@@ -5539,23 +5614,38 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                         <div className="text-sm text-zinc-400 truncate">{song.artist || 'Unknown'} • {song.singerName || 'Guest'}</div>
                                         <div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
                                             {topCandidate
-                                                ? `Best match: ${topCandidate.label || topCandidate.layer.replace(/_/g, ' ')}`
-                                                : 'No trusted backing found yet. Use the room library or host search.'}
+                                                ? `Best match: ${topCandidate.label || String(topCandidate.layer || 'candidate').replace(/_/g, ' ')}`
+                                                : requestLooksApple
+                                                    ? 'Choose Apple sing-along or find a karaoke backing.'
+                                                    : 'No trusted backing found yet. Use YouTube backing search.'}
                                         </div>
                                     </div>
                                     <div className="text-right text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                                         {song.reviewCandidates?.length || 0} ranked option{(song.reviewCandidates?.length || 0) === 1 ? '' : 's'}
                                     </div>
                                 </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        disabled={busy || !canUseAppleSingAlong || !appleMusicAuthorized}
+                                        onClick={() => resolveAppleSingAlongReviewRequest(song)}
+                                        title={!canUseAppleSingAlong ? 'This request does not include an Apple Music track id' : !appleMusicAuthorized ? 'Connect Apple Music before approving sing-along playback' : 'Approve this as full-song Apple Music sing-along playback'}
+                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] justify-center px-3 py-2 text-[10px] ${(!canUseAppleSingAlong || !appleMusicAuthorized) ? 'cursor-not-allowed opacity-55' : ''}`}
+                                    >
+                                        <i className="fa-brands fa-apple mr-2"></i>
+                                        Apple Sing-Along
+                                    </button>
                                     <button
                                         type="button"
                                         disabled={busy}
                                         onClick={() => openReviewRequestEditor(song, { openSearch: true })}
-                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} min-h-[42px] justify-center px-3 py-2 text-[10px]`}
                                     >
-                                        Host Search
+                                        <i className="fa-brands fa-youtube mr-2"></i>
+                                        Find YouTube Backing
                                     </button>
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
                                     <button
                                         type="button"
                                         disabled={busy}
@@ -5564,9 +5654,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                     >
                                         Edit Request
                                     </button>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        onClick={() => rejectReviewRequest(song)}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}
+                                    >
+                                        Send Back
+                                    </button>
                                 </div>
                                 {song.reviewCandidates?.length > 0 && (
-                                    <div className="mt-3 grid gap-2">
+                                    <div className="mt-3 grid min-w-0 gap-2 overflow-hidden">
                                         {song.reviewCandidates.slice(0, 3).map((candidate) => {
                                             const diagnosticsKey = getYtDiagnosticsKey(candidate);
                                             const diagnosticsEntry = diagnosticsKey ? ytDiagnosticsMap[diagnosticsKey] : null;
@@ -5574,15 +5672,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                             const diagnosticsTone = getTrackDiagnosticsTone(diagnostics);
                                             const diagnosticsSupport = getTrackDiagnosticsSupport(diagnostics);
                                             return (
-                                            <div key={candidate.id} className="rounded-xl border border-white/10 bg-zinc-950/55 px-3 py-2">
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <div className="min-w-0">
-                                                        <div className="text-sm font-bold text-white truncate">
+                                            <div key={candidate.id} className="min-w-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-950/55 px-3 py-2">
+                                                <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+                                                    <div className="min-w-0 overflow-hidden">
+                                                        <div className="break-words text-sm font-bold leading-snug text-white">
                                                             {candidate.title || song.songTitle}
                                                             {candidate.artist ? ` • ${candidate.artist}` : ''}
                                                         </div>
                                                         <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
-                                                            {(candidate.label || candidate.layer.replace(/_/g, ' '))} • {candidate.source || 'track'}
+                                                            {(candidate.label || String(candidate.layer || 'candidate').replace(/_/g, ' '))} • {candidate.source || 'track'}
                                                         </div>
                                                         {candidate.reason && (
                                                             <div className="mt-1 text-xs text-zinc-400">{candidate.reason}</div>
@@ -5611,12 +5709,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             <div className="mt-2 text-xs text-zinc-400">{diagnosticsSupport}</div>
                                                         ) : null}
                                                     </div>
-                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                    <div className="grid min-w-[150px] gap-2 sm:grid-cols-3 xl:grid-cols-1">
                                                         <button
                                                             type="button"
                                                             disabled={busy}
                                                             onClick={() => resolveReviewRequest(song, candidate)}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnPrimary} justify-center px-2 py-1.5 text-[10px]`}
                                                         >
                                                             Queue This
                                                         </button>
@@ -5624,17 +5722,17 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                                             type="button"
                                                             disabled={busy}
                                                             onClick={() => resolveReviewRequest(song, candidate, { saveFavorite: true, mode: 'favorite' })}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-center px-2 py-1.5 text-[10px]`}
                                                         >
-                                                            Save for This Room
+                                                            Save
                                                         </button>
                                                         <button
                                                             type="button"
                                                             disabled={busy}
                                                             onClick={() => resolveReviewRequest(song, candidate, { submitTrustedReview: true, mode: 'trusted' })}
-                                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-center px-2 py-1.5 text-[10px]`}
                                                         >
-                                                            Share as Trusted
+                                                            Trust
                                                         </button>
                                                     </div>
                                                 </div>
@@ -5661,16 +5759,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                         </div>
                                     </div>
                                 )}
-                                <div className="mt-3 flex justify-end">
-                                    <button
-                                        type="button"
-                                        disabled={busy}
-                                        onClick={() => rejectReviewRequest(song)}
-                                        className={`${STYLES.btnStd} ${STYLES.btnDanger} px-3 py-1 text-[10px]`}
-                                    >
-                                        Reject
-                                    </button>
-                                </div>
                             </div>
                         );
                     }) : null}
@@ -6565,17 +6653,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const autoDjEnabled = !!(room?.autoDj || autoDj);
-    const autoDjPlayableQueue = useMemo(
-        () => songs
-            .filter((song) => (
-                song.status === 'requested'
-                && isQueueEntryPlayable(song, { appleMusicEnabled: !!appleMusicAuthorized })
-            ))
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
-        [songs, appleMusicAuthorized]
-    );
-    const autoDjNextPlayableQueueSong = autoDjPlayableQueue[0] || null;
-    const autoDjPlayableQueueCount = autoDjPlayableQueue.length;
     const {
         activeBracket,
         bracketCrowdVotingEnabled,
@@ -7611,7 +7688,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         readiness: ''
     });
     const doodleTimerRef = useRef(null);
-    const lastAutoDjTsRef = useRef(null);
     const lastPartyFlowPerfTsRef = useRef(null);
     const lastPartyAutoBreakTsRef = useRef(null);
     const seededPartyPolicyRoomRef = useRef('');
@@ -10294,33 +10370,84 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearTimeout(autoDjTimerRef.current);
             autoDjTimerRef.current = null;
         }
-        if (!autoDjEnabled || !room?.lastPerformance?.timestamp) return;
-        const lastTs = getTimestampMs(room.lastPerformance.timestamp);
-        if (lastAutoDjTsRef.current === lastTs) return;
-        lastAutoDjTsRef.current = lastTs;
-        const configuredDelaySec = Math.max(2, Math.min(45, Number(room?.autoDjDelaySec || 10) || 10));
-        const configuredDelayMs = configuredDelaySec * 1000;
-        const elapsed = nowMs() - lastTs;
-        const delay = Math.max(0, configuredDelayMs - elapsed);
-        setAutoDjCountdown(Math.ceil(delay / 1000));
-        const tick = setInterval(() => {
-            const remaining = Math.max(0, Math.ceil((lastTs + configuredDelayMs - nowMs()) / 1000));
-            setAutoDjCountdown(remaining);
-            if (remaining <= 0) clearInterval(tick);
-        }, 500);
+
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const intent = getAutoDjQueueAdvanceIntent({
+            autoDjEnabled,
+            activeMode: room?.activeMode,
+            runOfShowEnabled: room?.runOfShowEnabled,
+            programMode: room?.programMode,
+            songs,
+            appleMusicEnabled: !!appleMusicAuthorized,
+            lastPerformanceTs,
+            autoDjDelaySec: room?.autoDjDelaySec,
+            now: nowMs(),
+            isQueueEntryPlayable
+        });
+
+        if (!autoDjEnabled) {
+            autoDjKickoffRef.current = '';
+            setAutoDjCountdown(0);
+            return () => {};
+        }
+
+        if (intent.reason === 'waiting_delay' && intent.delayMs > 0) {
+            const startAfterMs = Number(intent.startAfterMs || 0);
+            setAutoDjCountdown(Math.ceil(intent.delayMs / 1000));
+            const tick = setInterval(() => {
+                const remaining = Math.max(0, Math.ceil((startAfterMs - nowMs()) / 1000));
+                setAutoDjCountdown(remaining);
+                if (remaining <= 0) clearInterval(tick);
+            }, 500);
+            autoDjTimerRef.current = setTimeout(() => {
+                startNextFromQueue().catch((error) => {
+                    hostLogger.warn('Auto DJ delayed queue advance failed', error);
+                });
+            }, intent.delayMs);
+            return () => {
+                if (autoDjTimerRef.current) {
+                    clearTimeout(autoDjTimerRef.current);
+                    autoDjTimerRef.current = null;
+                }
+                clearInterval(tick);
+            };
+        }
+
+        setAutoDjCountdown(0);
+        if (!intent.shouldStart || !intent.songId) return () => {};
+        if (autoDjKickoffRef.current === intent.startKey) return () => {};
+        const scheduledStartKey = intent.startKey;
+        autoDjKickoffRef.current = scheduledStartKey;
         autoDjTimerRef.current = setTimeout(() => {
-            startNextFromQueue().catch((e) => {
-                hostLogger.warn('Auto DJ failed to start next song', e);
+            autoDjTimerRef.current = null;
+            startNextFromQueue().catch((error) => {
+                hostLogger.warn('Auto DJ queue advance failed', error);
+            }).finally(() => {
+                if (autoDjKickoffRef.current === scheduledStartKey) {
+                    autoDjKickoffRef.current = '';
+                }
             });
-        }, delay);
+        }, 450);
         return () => {
             if (autoDjTimerRef.current) {
                 clearTimeout(autoDjTimerRef.current);
                 autoDjTimerRef.current = null;
             }
-            clearInterval(tick);
+            if (autoDjKickoffRef.current === scheduledStartKey) {
+                autoDjKickoffRef.current = '';
+            }
         };
-    }, [autoDjEnabled, room?.autoDjDelaySec, room?.lastPerformance?.timestamp, startNextFromQueue]);
+    }, [
+        appleMusicAuthorized,
+        autoDjEnabled,
+        room?.activeMode,
+        room?.autoDjDelaySec,
+        room?.lastPerformance?.timestamp,
+        room?.programMode,
+        room?.runOfShowEnabled,
+        songs,
+        startNextFromQueue
+    ]);
     useEffect(() => {
         if (!roomCode) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
@@ -10384,41 +10511,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bingoTurnPick: null
         });
     }, [room?.bingoMode, room?.lastPerformance?.timestamp, room?.lastPerformance?.singerUid, room?.lastPerformance?.singerName, room?.bingoTurnOrder, room?.bingoTurnIndex, room?.bingoPickerUid, room?.bingoPickerName, room?.bingoTurnPick, updateRoom]);
-    useEffect(() => {
-        if (!autoDjEnabled) {
-            autoDjKickoffRef.current = '';
-            return;
-        }
-        const activeMode = String(room?.activeMode || '').trim().toLowerCase();
-        if (activeMode && activeMode !== 'karaoke') return;
-        const lastPerfTs = getTimestampMs(room?.lastPerformance?.timestamp);
-        const configuredDelaySec = Math.max(2, Math.min(45, Number(room?.autoDjDelaySec || 10) || 10));
-        const configuredDelayMs = configuredDelaySec * 1000;
-        if (lastPerfTs && nowMs() - lastPerfTs < configuredDelayMs) return;
-        if (performingCount > 0 || autoDjPlayableQueueCount <= 0) return;
-        const next = autoDjNextPlayableQueueSong;
-        if (!next?.id) return;
-        const kickoffKey = [
-            next.id,
-            autoDjPlayableQueueCount,
-            lastPerfTs,
-            configuredDelayMs,
-            next.mediaUrl || '',
-            next.youtubeId || '',
-            next.appleMusicId || '',
-            next.playbackReady === false ? 'blocked' : 'ready',
-            next.resolutionStatus || '',
-            next.mediaResolutionStatus || ''
-        ].join(':');
-        if (autoDjKickoffRef.current === kickoffKey) return;
-        autoDjKickoffRef.current = kickoffKey;
-        const timer = setTimeout(() => {
-            startNextFromQueue().catch((error) => {
-                hostLogger.warn('Auto DJ queue kickoff failed', error);
-            });
-        }, 450);
-        return () => clearTimeout(timer);
-    }, [autoDjEnabled, room?.activeMode, room?.lastPerformance?.timestamp, room?.autoDjDelaySec, performingCount, autoDjNextPlayableQueueSong, autoDjPlayableQueueCount, startNextFromQueue]);
     useEffect(() => {
         if (!autoDjEnabled) return;
         if (queuedCount > 0 || performingCount > 0) return;

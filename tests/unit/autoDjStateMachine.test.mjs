@@ -5,7 +5,8 @@ import {
     createAutoDjSequenceState,
     transitionAutoDjSequenceState,
     deriveAutoDjStepItems,
-    describeAutoDjSequenceState
+    describeAutoDjSequenceState,
+    getAutoDjQueueAdvanceIntent
 } from '../../src/apps/Host/autoDjStateMachine.js';
 
 test("autoDjStateMachine.test", () => {
@@ -39,4 +40,97 @@ test("autoDjStateMachine.test", () => {
 
     const reset = transitionAutoDjSequenceState(failState, AUTO_DJ_EVENTS.RESET, {}, 3700);
     assert.equal(reset.phase, 'idle');
+});
+
+test("Auto DJ queue advance intent starts a playable YouTube queue item independent from TV mode", () => {
+    const intent = getAutoDjQueueAdvanceIntent({
+        autoDjEnabled: true,
+        activeMode: 'karaoke',
+        showLyricsTv: true,
+        showVideoTv: false,
+        songs: [
+            {
+                id: 'song_youtube',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=abc123',
+                playbackReady: true,
+                priorityScore: 2
+            }
+        ],
+        appleMusicEnabled: false,
+        now: 1000
+    });
+
+    assert.equal(intent.shouldStart, true);
+    assert.equal(intent.reason, 'ready');
+    assert.equal(intent.songId, 'song_youtube');
+});
+
+test("Auto DJ queue advance intent reports why it cannot start", () => {
+    const playableSong = {
+        id: 'song_ready',
+        status: 'requested',
+        mediaUrl: 'https://youtube.com/watch?v=ready',
+        playbackReady: true
+    };
+
+    assert.equal(
+        getAutoDjQueueAdvanceIntent({
+            autoDjEnabled: true,
+            activeMode: 'applause',
+            songs: [playableSong]
+        }).reason,
+        'applause_active'
+    );
+
+    assert.equal(
+        getAutoDjQueueAdvanceIntent({
+            autoDjEnabled: true,
+            activeMode: 'karaoke',
+            runOfShowEnabled: true,
+            programMode: 'run_of_show',
+            songs: [playableSong]
+        }).reason,
+        'run_of_show_active'
+    );
+
+    assert.equal(
+        getAutoDjQueueAdvanceIntent({
+            autoDjEnabled: true,
+            activeMode: 'karaoke',
+            songs: [
+                {
+                    id: 'song_apple',
+                    status: 'requested',
+                    appleMusicId: 'apple-track',
+                    playbackReady: true
+                }
+            ],
+            appleMusicEnabled: false
+        }).reason,
+        'no_playable_queue'
+    );
+});
+
+test("Auto DJ queue advance intent waits for the configured post-performance delay", () => {
+    const intent = getAutoDjQueueAdvanceIntent({
+        autoDjEnabled: true,
+        activeMode: 'karaoke',
+        songs: [
+            {
+                id: 'song_ready',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=ready',
+                playbackReady: true
+            }
+        ],
+        lastPerformanceTs: 1000,
+        autoDjDelaySec: 10,
+        now: 5000
+    });
+
+    assert.equal(intent.shouldStart, false);
+    assert.equal(intent.reason, 'waiting_delay');
+    assert.equal(intent.delayMs, 6000);
+    assert.equal(intent.songId, 'song_ready');
 });

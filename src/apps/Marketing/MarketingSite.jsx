@@ -139,6 +139,35 @@ const stripIntentParams = (params = {}) => {
   return next;
 };
 
+const resolveHostDashboardReturnHref = (returnToHref = "", locationLike = null) => {
+  const raw = String(returnToHref || "").trim();
+  if (!raw || !locationLike) return "";
+  try {
+    const parsed = new URL(raw, locationLike.origin || "https://host.beaurocks.app");
+    const normalizedPathname = (parsed.pathname || "/").replace(/\/+$/, "") || "/";
+    const params = new URLSearchParams(parsed.search || "");
+    const legacyPage = String(params.get("page") || "").trim().toLowerCase();
+    const isHostAccessReturn = normalizedPathname === "/host-access"
+      || legacyPage === "host_access"
+      || legacyPage === "host-access";
+    if (isHostAccessReturn) return "";
+
+    const sameOrigin = parsed.origin === locationLike.origin;
+    const targetSurface = inferSurfaceFromHostname(parsed.hostname, locationLike);
+    const targetsHostApp = String(params.get("mode") || "").trim().toLowerCase() === "host"
+      || !!String(params.get("view") || "").trim()
+      || !!String(params.get("tab") || "").trim()
+      || !!String(params.get("game") || "").trim();
+    if (!targetsHostApp) return "";
+    if (!sameOrigin && targetSurface !== "host") return "";
+    return sameOrigin
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : parsed.toString();
+  } catch {
+    return "";
+  }
+};
+
 const APP_VERSION = typeof import.meta !== "undefined" && import.meta?.env
   ? String(import.meta.env.VITE_APP_VERSION || "")
   : "";
@@ -752,8 +781,13 @@ const MarketingSite = () => {
     const intent = String(route.params?.intent || "").trim().toLowerCase();
     if (!hasFullAccount || !session.hasHostWorkspaceAccess) return;
     if (intent !== "host_dashboard_resume") return;
+    const resumeHref = resolveHostDashboardReturnHref(route.params?.return_to, window.location);
+    if (resumeHref) {
+      window.location.href = resumeHref;
+      return;
+    }
     openHostDashboard("host_resume_after_login");
-  }, [hasFullAccount, openHostDashboard, route.params?.intent, session.hasHostWorkspaceAccess]);
+  }, [hasFullAccount, openHostDashboard, route.params?.intent, route.params?.return_to, session.hasHostWorkspaceAccess]);
 
   useEffect(() => {
     const intent = String(route.params?.intent || "").trim().toLowerCase();

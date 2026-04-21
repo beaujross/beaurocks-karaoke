@@ -884,6 +884,10 @@ const SingerApp = ({ roomCode, uid }) => {
         borderColor: withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.24),
         background: `linear-gradient(145deg, rgba(8,10,18,0.96) 0%, ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.14)} 100%)`,
     }), [audienceBrandTheme]);
+    const streamlinedSongsTabActiveStyle = useMemo(() => ({
+        borderBottomColor: audienceBrandTheme.primaryColor,
+        color: '#ECFEFF',
+    }), [audienceBrandTheme]);
     const audienceInputShellClass = isStreamlinedAudienceShell
         ? 'rounded-2xl border-2 border-cyan-200/70 bg-white px-4 py-3 shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus-within:border-pink-300 focus-within:ring-2 focus-within:ring-pink-300/35'
         : 'rounded-2xl border border-cyan-300/20 bg-black/30 px-4 py-3';
@@ -10440,25 +10444,32 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </button>
                 </div>
                 {activePrimaryStageTab === 'request' && (
-                    <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-black/25 p-2">
+                    <div
+                        role="tablist"
+                        aria-label="Song request sections"
+                        className="grid gap-1 border-b border-white/10 px-1 pt-1"
+                        style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
+                    >
                         {streamlinedSongsNavItems.map((item) => {
                             const isActive = songsTab === item.key;
                             return (
                                 <button
                                     key={item.key}
                                     type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
                                     onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-all ${
+                                    className={`relative inline-flex min-h-[38px] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-[11px] font-black uppercase tracking-[0.16em] transition-colors ${
                                         isActive
-                                            ? ''
-                                            : 'border-white/18 bg-white/[0.07] text-zinc-100 hover:border-white/28 hover:bg-white/10'
+                                            ? 'border-cyan-300 bg-transparent text-white'
+                                            : 'border-transparent bg-transparent text-zinc-400 hover:text-zinc-100'
                                     }`}
-                                    style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
+                                    style={isActive ? streamlinedSongsTabActiveStyle : undefined}
                                 >
                                     <i className={`fa-solid ${item.icon} text-[10px]`}></i>
                                     <span>{item.label}</span>
                                     {typeof item.badge === 'number' ? (
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-black/25 text-cyan-50' : 'bg-white/10 text-zinc-100'}`}>
+                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
                                             {item.badge}
                                         </span>
                                     ) : null}

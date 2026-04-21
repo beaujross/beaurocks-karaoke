@@ -94,6 +94,31 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
+    /const streamlinedSongsTabActiveStyle = useMemo\(\(\) => \(\{/,
+    "SingerApp should give streamlined song subtabs a dedicated tab style instead of reusing action pill styling",
+  );
+  assert.match(
+    source,
+    /role="tablist"\s+aria-label="Song request sections"/,
+    "SingerApp should render Add Song and Queue as tabs in the streamlined song area",
+  );
+  assert.match(
+    source,
+    /className="grid gap-1 border-b border-white\/10 px-1 pt-1"\s+style=\{\{ gridTemplateColumns: `repeat\(\$\{streamlinedSongsNavItems\.length\}, minmax\(0, 1fr\)\)` \}\}/,
+    "SingerApp streamlined song tabs should use a flat tab strip that adapts to optional tabs",
+  );
+  assert.match(
+    source,
+    /role="tab"\s+aria-selected=\{isActive\}/,
+    "SingerApp streamlined song tab buttons should expose selected state semantically",
+  );
+  assert.match(
+    source,
+    /relative inline-flex min-h-\[38px\] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-\[11px\]/,
+    "SingerApp streamlined song tabs should look like tabs, not rounded action buttons",
+  );
+  assert.match(
+    source,
     /if \(!isStreamlinedAudienceShell \|\| tab !== 'social'\) return;\s*setTab\('home'\);/,
     "SingerApp should bounce streamlined audiences back to party if stale state lands on social",
   );

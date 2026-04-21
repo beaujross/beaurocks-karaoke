@@ -55,8 +55,8 @@ const StageNowPlayingPanel = ({
     const lastHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(lastBackingUrl);
     const currentAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(current?.resolutionStatus);
     const currentBackingDecisionBusy = currentAudienceSelectedUnverified && String(backingDecisionBusyKey || '').startsWith(`${current?.id}:`);
-    const transportButtonClass = 'min-h-[72px] rounded-2xl border border-white/10 bg-black/35 px-3 py-3 text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-45';
-    const feedbackChipClass = 'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition disabled:cursor-not-allowed disabled:opacity-45';
+    const transportButtonClass = 'min-h-[54px] rounded-lg border border-white/10 bg-black/35 px-2 py-2 text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-45';
+    const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
     const normalizeTimingValue = (value, { fallback, min, max }) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -359,7 +359,8 @@ const StageNowPlayingPanel = ({
                         <i className="fa-solid fa-window-restore"></i> EXTERNAL BACKING WINDOW
                     </div>
                 )}
-                <div className="flex items-start gap-3 mb-3">
+                <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-3 mb-2">
+                    <div className="flex items-start gap-3">
                     <div className="min-w-0 flex-1 text-left">
                         <div className="text-[11px] text-indigo-300 uppercase tracking-widest font-bold">Now Performing</div>
                         <div className="font-bold text-xl leading-none truncate text-white">{current.singerName || 'Singer'}</div>
@@ -380,23 +381,80 @@ const StageNowPlayingPanel = ({
                             {current.emoji || emoji.mic}
                         </div>
                     )}
+                    </div>
+                    {(currentHasYoutubeBacking && currentAudienceSelectedUnverified && typeof onResolveAudienceBacking === 'function') ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-2">
+                            <span className="text-[10px] uppercase tracking-[0.14em] text-cyan-100">Guest track</span>
+                            <button
+                                type="button"
+                                disabled={currentBackingDecisionBusy}
+                                onClick={() => onResolveAudienceBacking(current, 'approve')}
+                                className={`${feedbackChipClass} border-emerald-300/35 bg-emerald-500/12 text-emerald-100`}
+                                title="Mark this track as a good fit for this song"
+                            >
+                                <i className="fa-solid fa-thumbs-up"></i>
+                                Works
+                            </button>
+                            <button
+                                type="button"
+                                disabled={currentBackingDecisionBusy}
+                                onClick={() => onResolveAudienceBacking(current, 'avoid')}
+                                className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
+                                title="Mark this track as a bad fit so it sinks in future picks"
+                            >
+                                <i className="fa-solid fa-thumbs-down"></i>
+                                Bad Track
+                            </button>
+                        </div>
+                    ) : (currentHasYoutubeBacking && typeof onRateBacking === 'function') ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-2">
+                            <span className="text-[10px] uppercase tracking-[0.14em] text-zinc-500">Track note</span>
+                            <button
+                                type="button"
+                                onClick={() => onRateBacking(current, 'up')}
+                                className={`${feedbackChipClass} border-emerald-300/35 bg-emerald-500/12 text-emerald-100`}
+                                title="Mark this as a backing you would use again"
+                            >
+                                <i className="fa-solid fa-thumbs-up"></i>
+                                Use Again
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => onRateBacking(current, 'down')}
+                                className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
+                                title="Mark this as a backing you would avoid next time"
+                            >
+                                <i className="fa-solid fa-thumbs-down"></i>
+                                Skip
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
-                <div className="text-[11px] text-zinc-300 mb-3 truncate">
+                <div className="text-[11px] text-zinc-300 mb-2 truncate">
                     Up Next: <span className="text-white font-semibold">{nextQueueText || (nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued')}</span>
                 </div>
-                <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-3">
-                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400 mb-2">Transport</div>
-                    <div className="grid grid-cols-3 gap-2">
+                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-2">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Transport</div>
+                        <button
+                            type="button"
+                            onClick={() => setShowStageDetails((prev) => !prev)}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 py-1 text-[10px] normal-case tracking-[0.04em]`}
+                        >
+                            {showStageDetails ? 'Less' : 'More'}
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                         <button
                             onClick={togglePlay}
                             className={transportButtonClass}
                             title={currentSourcePlaying ? 'Pause playback' : 'Start playback'}
                         >
-                            <div className="flex flex-col items-center justify-center gap-2 text-center">
-                                <span className={`inline-flex h-10 w-10 items-center justify-center rounded-full border ${currentSourcePlaying ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'}`}>
-                                    <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} text-lg`}></i>
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ${currentSourcePlaying ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'}`}>
+                                    <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} text-sm`}></i>
                                 </span>
-                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-100">
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">
                                     {currentSourcePlaying ? 'Pause' : 'Play'}
                                 </span>
                             </div>
@@ -414,89 +472,13 @@ const StageNowPlayingPanel = ({
                             className={transportButtonClass}
                             title="Restart from the beginning"
                         >
-                            <div className="flex flex-col items-center justify-center gap-2 text-center">
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
-                                    <i className="fa-solid fa-rotate-left text-lg"></i>
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
+                                    <i className="fa-solid fa-rotate-left text-sm"></i>
                                 </span>
-                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-100">Restart</span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Restart</span>
                             </div>
                         </button>
-                        <button
-                            onClick={() => window.open(current.mediaUrl, '_blank')}
-                            disabled={!currentMediaUrl}
-                            className={`${transportButtonClass} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Open backing in a separate window"
-                        >
-                            <div className="flex flex-col items-center justify-center gap-2 text-center">
-                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-100">
-                                    <i className="fa-solid fa-up-right-from-square text-lg"></i>
-                                </span>
-                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-100">Pop Out</span>
-                            </div>
-                        </button>
-                    </div>
-                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {(currentHasYoutubeBacking && currentAudienceSelectedUnverified && typeof onResolveAudienceBacking === 'function') ? (
-                            <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2">
-                                <span className="text-[10px] uppercase tracking-[0.18em] text-cyan-100">Guest-picked track</span>
-                                <button
-                                    type="button"
-                                    disabled={currentBackingDecisionBusy}
-                                    onClick={() => onResolveAudienceBacking(current, 'approve')}
-                                    className={`${feedbackChipClass} border-emerald-300/35 bg-emerald-500/12 text-emerald-100`}
-                                    title="Mark this track as a good fit for this song"
-                                >
-                                    <i className="fa-solid fa-thumbs-up"></i>
-                                    Works
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={currentBackingDecisionBusy}
-                                    onClick={() => onResolveAudienceBacking(current, 'avoid')}
-                                    className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
-                                    title="Mark this track as a bad fit so it sinks in future picks"
-                                >
-                                    <i className="fa-solid fa-thumbs-down"></i>
-                                    Bad Track
-                                </button>
-                            </div>
-                        ) : (currentHasYoutubeBacking && typeof onRateBacking === 'function') ? (
-                            <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2 sm:col-span-2">
-                                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Save a note</span>
-                                <button
-                                    type="button"
-                                    onClick={() => onRateBacking(current, 'up')}
-                                    className={`${feedbackChipClass} border-emerald-300/35 bg-emerald-500/12 text-emerald-100`}
-                                    title="Mark this as a backing you would use again"
-                                >
-                                    <i className="fa-solid fa-thumbs-up"></i>
-                                    Use Again
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onRateBacking(current, 'down')}
-                                    className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
-                                    title="Mark this as a backing you would avoid next time"
-                                >
-                                    <i className="fa-solid fa-thumbs-down"></i>
-                                    Skip Next Time
-                                </button>
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
-                <div className="bg-black/30 border border-white/10 rounded-lg p-3 mb-3">
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                        <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Performance Controls</div>
-                        <button
-                            type="button"
-                            onClick={() => setShowStageDetails((prev) => !prev)}
-                            className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
-                        >
-                            {showStageDetails ? 'Less Controls' : 'More Controls'}
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={() => {
                                 if (typeof onEndPerformance === 'function') {
@@ -505,28 +487,67 @@ const StageNowPlayingPanel = ({
                                 }
                                 updateStatus(current.id, 'performed');
                             }}
-                            className={`${styles.btnStd} ${styles.btnSecondary}`}
+                            className={`${transportButtonClass} border-rose-300/35 bg-rose-500/12 hover:border-rose-200/55 hover:bg-rose-500/18`}
                             title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End performance'}
                         >
-                            <i className="fa-solid fa-flag-checkered mr-2"></i>End
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-300/35 bg-rose-500/12 text-rose-100">
+                                    <i className="fa-solid fa-flag-checkered text-sm"></i>
+                                </span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-50">End</span>
+                            </div>
                         </button>
                         <button
                             onClick={progressStageToNext}
                             disabled={!nextQueueSong}
-                            className={`${styles.btnStd} ${styles.btnHighlight} ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
+                            className={`${transportButtonClass} border-cyan-300/35 bg-cyan-500/12 hover:border-cyan-200/55 hover:bg-cyan-500/18 ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
+                            title="End this performance and stage the next ready song"
                         >
-                            <i className="fa-solid fa-forward-step mr-2"></i>Next
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
+                                    <i className="fa-solid fa-forward-step text-sm"></i>
+                                </span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50">Next</span>
+                            </div>
+                        </button>
+                        <button
+                            onClick={() => window.open(current.mediaUrl, '_blank')}
+                            disabled={!currentMediaUrl}
+                            className={`${transportButtonClass} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="Open backing in a separate window"
+                        >
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-100">
+                                    <i className="fa-solid fa-up-right-from-square text-sm"></i>
+                                </span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Pop Out</span>
+                            </div>
                         </button>
                     </div>
-                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-2">
+                    <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">Stage Options</div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                         <button
                             onClick={() => onReturnCurrentToQueue?.(current.id)}
-                            className={`${styles.btnStd} ${styles.btnNeutral}`}
+                            className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1.5 text-[11px]`}
                         >
                             <i className="fa-solid fa-rotate-left mr-2"></i>Stop & Re-Queue
                         </button>
-                        <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnSecondary}`}>
+                        <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1.5 text-[11px]`}>
                             <i className="fa-solid fa-pen-to-square mr-2"></i>Edit Current Song
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (typeof onMeasureApplause === 'function') {
+                                    onMeasureApplause();
+                                    return;
+                                }
+                                updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
+                            }}
+                            className={`${styles.btnStd} ${styles.btnPrimary} px-2 py-1.5 text-[11px]`}
+                        >
+                            <i className="fa-solid fa-microphone-lines mr-2"></i>Applause
                         </button>
                     </div>
                     {room?.applausePeak !== undefined && room?.applausePeak !== null && (
@@ -545,18 +566,6 @@ const StageNowPlayingPanel = ({
                                     disabled={currentUsesAppleBacking}
                                 >
                                     <i className="fa-solid fa-tv mr-2"></i>Audience sync
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        if (typeof onMeasureApplause === 'function') {
-                                            onMeasureApplause();
-                                            return;
-                                        }
-                                        updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
-                                    }}
-                                    className={`${styles.btnStd} ${styles.btnPrimary}`}
-                                >
-                                    <i className="fa-solid fa-microphone-lines mr-2"></i>Applause
                                 </button>
                                 <div className="flex gap-2 sm:col-span-2">
                                     <input type="number" value={customBonus} onChange={e => setCustomBonus(e.target.value)} className={`${styles.input} w-20`} placeholder="Pts"/>

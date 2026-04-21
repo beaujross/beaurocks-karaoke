@@ -1374,12 +1374,11 @@ const RunOfShowTakeoverSoundtrackEditor = ({
 };
 
 const SelectControl = ({ children, className = '', ...props }) => (
-    <div className="group relative">
-        <select {...props} className={`${selectInputClass} border-cyan-300/18 bg-gradient-to-r from-black/45 to-zinc-900/70 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition group-hover:border-cyan-300/35 ${className}`}>
+    <div className="group relative z-[1] min-w-0 focus-within:z-[90]">
+        <select {...props} className={`${selectInputClass} min-w-0 border-cyan-300/18 bg-zinc-950 text-white shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition group-hover:border-cyan-300/35 ${className}`}>
             {children}
         </select>
-        <span className="pointer-events-none absolute inset-y-1 right-1 flex items-center rounded-xl border border-white/10 bg-black/35 px-2 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100/85">
-            Menu
+        <span className="pointer-events-none absolute inset-y-1 right-1 flex w-8 items-center justify-center rounded-lg border border-white/10 bg-black/50 text-[10px] text-cyan-100/85">
             <i className="fa-solid fa-chevron-down"></i>
         </span>
     </div>
@@ -2553,7 +2552,7 @@ const QuickDraftPanel = ({
     const automationLabel = POLICY_PRESETS.find((preset) => preset.id === (generatorConfig.automationPresetId || 'balanced'))?.label || 'Custom';
 
     return (
-        <article className={`${surfaceClass} p-4`}>
+        <article className={`${surfaceClass} relative z-20 p-4`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Quick Draft</div>
@@ -2597,8 +2596,8 @@ const QuickDraftPanel = ({
                 </>
             ) : (
                 <>
-                    <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1.1fr)_120px_120px_170px_auto]">
-                        <div>
+                    <div className="mt-3 grid min-w-0 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_120px_120px_170px_minmax(150px,auto)]">
+                        <div className="min-w-0 md:col-span-2 xl:col-span-1">
                             <FieldLabel>Format</FieldLabel>
                             <SelectControl value={generatorConfig.format || 'karaoke_heavy'} onChange={(e) => updateGeneratorConfig({ format: e.target.value })} disabled={!canEditFlow}>
                                 {EVENT_FORMAT_OPTIONS.map((option) => (
@@ -2606,15 +2605,15 @@ const QuickDraftPanel = ({
                                 ))}
                             </SelectControl>
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <FieldLabel>Minutes</FieldLabel>
                             <input type="number" value={generatorConfig.durationMin || 0} onChange={(e) => updateGeneratorConfig({ durationMin: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <FieldLabel>Singer Slots</FieldLabel>
                             <input type="number" value={generatorConfig.performanceCount || 0} onChange={(e) => updateGeneratorConfig({ performanceCount: Number(e.target.value || 0) })} disabled={!canEditFlow} className={textInputClass} />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <FieldLabel>Automation</FieldLabel>
                             <SelectControl value={generatorConfig.automationPresetId || 'balanced'} onChange={(e) => updateGeneratorConfig({ automationPresetId: e.target.value })} disabled={!canEditFlow}>
                                 {POLICY_PRESETS.map((preset) => (
@@ -2622,7 +2621,7 @@ const QuickDraftPanel = ({
                                 ))}
                             </SelectControl>
                         </div>
-                        <div className="space-y-2 xl:pl-1">
+                        <div className="min-w-0 space-y-2 md:col-span-2 xl:col-span-1 xl:pl-1">
                             <FieldLabel>Apply Mode</FieldLabel>
                             <div className="flex flex-wrap gap-1.5">
                                 {[
@@ -2674,8 +2673,8 @@ const QuickDraftModal = ({
     const automationLabel = POLICY_PRESETS.find((preset) => preset.id === (generatorConfig.automationPresetId || 'balanced'))?.label || 'Custom';
 
     return (
-        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/72 p-3 sm:items-center sm:p-4">
-            <div className="max-h-[calc(100dvh-1rem)] w-full max-w-6xl overflow-hidden rounded-[28px] border border-cyan-300/22 bg-[linear-gradient(180deg,rgba(5,10,22,0.98),rgba(8,13,24,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+        <div className="fixed inset-0 z-[260] flex items-end justify-center bg-black/72 p-3 sm:items-center sm:p-4">
+            <div className="max-h-[calc(100dvh-1rem)] w-full max-w-6xl overflow-visible rounded-[28px] border border-cyan-300/22 bg-[linear-gradient(180deg,rgba(5,10,22,0.98),rgba(8,13,24,0.98))] shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-4 py-4 sm:px-5">
                     <div className="min-w-0">
                         <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Quick Draft Builder</div>
@@ -2695,7 +2694,7 @@ const QuickDraftModal = ({
                         Close
                     </button>
                 </div>
-                <div className="max-h-[calc(100dvh-10.5rem)] overflow-y-auto px-4 py-4 sm:px-5">
+                <div className="max-h-[calc(100dvh-10.5rem)] overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-5">
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
                         <QuickDraftPanel
                             canEditFlow={canEditFlow}
@@ -3725,6 +3724,9 @@ export default function RunOfShowDirectorPanel({
         const key = sectionKey(itemId, section);
         return Object.prototype.hasOwnProperty.call(sectionOpenState, key) ? !!sectionOpenState[key] : defaultOpen;
     };
+    const hasSectionOpenState = (itemId = '', section = '') => (
+        Object.prototype.hasOwnProperty.call(sectionOpenState, sectionKey(itemId, section))
+    );
     const setSectionOpen = (itemId = '', section = '', open = true) => {
         const key = sectionKey(itemId, section);
         setSectionOpenState((prev) => ({ ...prev, [key]: !!open }));
@@ -3762,6 +3764,24 @@ export default function RunOfShowDirectorPanel({
         if (options?.scroll !== false) {
             scrollPerformancePrepSectionIntoView(safeItemId, safeStep);
         }
+    };
+    const toggleExclusivePrepStep = (itemId = '', step = 'singer') => {
+        const safeItemId = String(itemId || '').trim();
+        const safeStep = ['singer', 'song', 'track'].includes(String(step || '').trim().toLowerCase())
+            ? String(step || '').trim().toLowerCase()
+            : 'singer';
+        if (!safeItemId) return;
+        const openKey = `prep_step_${safeStep}`;
+        if (isSectionOpen(safeItemId, openKey, false)) {
+            setSectionOpenState((prev) => ({
+                ...prev,
+                [sectionKey(safeItemId, 'prep_step_singer')]: false,
+                [sectionKey(safeItemId, 'prep_step_song')]: false,
+                [sectionKey(safeItemId, 'prep_step_track')]: false,
+            }));
+            return;
+        }
+        setExclusivePrepStep(safeItemId, safeStep);
     };
     const clearDragState = () => setDragState({ itemId: '', targetId: '', position: 'after' });
     const updateDragTarget = (targetId = '', position = 'after') => {
@@ -6074,11 +6094,14 @@ export default function RunOfShowDirectorPanel({
                             : slotNeedsSong
                                 ? 'song'
                                 : 'track';
-                        const activePrepStep = isSectionOpen(item.id, 'prep_step_singer', defaultPrepStep === 'singer')
+                        const hasExplicitPrepStepState = ['singer', 'song', 'track'].some((step) => hasSectionOpenState(item.id, `prep_step_${step}`));
+                        const activePrepStep = isSectionOpen(item.id, 'prep_step_singer', !hasExplicitPrepStepState && defaultPrepStep === 'singer')
                             ? 'singer'
-                            : isSectionOpen(item.id, 'prep_step_song', defaultPrepStep === 'song')
+                            : isSectionOpen(item.id, 'prep_step_song', !hasExplicitPrepStepState && defaultPrepStep === 'song')
                                 ? 'song'
-                                : 'track';
+                                : isSectionOpen(item.id, 'prep_step_track', !hasExplicitPrepStepState && defaultPrepStep === 'track')
+                                    ? 'track'
+                                    : '';
                         const singerSetupOpen = activePrepStep === 'singer';
                         const songSetupOpen = activePrepStep === 'song';
                         const trackPicksOpen = isSectionOpen(item.id, 'track_picks', !hasSelectedBacking || !playbackReady || mediaPicker.itemId === item.id || slotNeedsBacking || repairModeActive);
@@ -6799,7 +6822,7 @@ export default function RunOfShowDirectorPanel({
                                                                     ? 'Confirm who should own this slot.'
                                                                     : 'Assign or adjust who will sing this slot.'}
                                                                 open={singerSetupOpen}
-                                                                onToggle={() => setExclusivePrepStep(item.id, 'singer')}
+                                                                onToggle={() => toggleExclusivePrepStep(item.id, 'singer')}
                                                                 badge={performerReady ? 'Ready' : 'Needs singer'}
                                                                 tone={performerReady ? 'cyan' : 'amber'}
                                                                 compact
@@ -6870,7 +6893,7 @@ export default function RunOfShowDirectorPanel({
                                                                 title={songReady && artistReady ? 'Song details locked in' : 'Add song details'}
                                                                 summary="Fill in or adjust the song title and artist used for track search."
                                                                 open={songSetupOpen}
-                                                                onToggle={() => setExclusivePrepStep(item.id, 'song')}
+                                                                onToggle={() => toggleExclusivePrepStep(item.id, 'song')}
                                                                 badge={songReady && artistReady ? 'Ready' : 'Needs song'}
                                                                 tone={songReady && artistReady ? 'cyan' : 'amber'}
                                                                 compact
