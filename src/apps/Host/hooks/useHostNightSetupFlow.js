@@ -22,6 +22,7 @@ const useHostNightSetupFlow = ({
     missionPartyDraft = {},
     missionPrimaryModes = [],
     missionAdvancedOverrides = {},
+    audienceFeatureAccess = {},
     nightSetupAutoPlayMedia = true,
     nightSetupChatOnTv = false,
     nightSetupMarqueeEnabled = true,
@@ -50,6 +51,7 @@ const useHostNightSetupFlow = ({
     requestRoomUpdate,
     serverTimestamp,
     setAudienceBackingMode,
+    setAudienceFeatureAccess,
     setAudienceBingoReopenEnabled,
     setAllowSingerTrackSelect,
     setAutoBgMusic,
@@ -443,6 +445,7 @@ const useHostNightSetupFlow = ({
                 bingoVotingMode: legacyGameDefaults.bingoVotingMode || 'host+votes',
                 bingoAutoApprovePct: Math.max(10, Math.min(100, Number(legacyGameDefaults.bingoAutoApprovePct ?? 50))),
             },
+            audienceFeatureAccess,
             queueSettings: {
                 limitMode: legacyQueueLimitModeValue,
                 limitCount: legacyQueueLimitCountValue,
@@ -451,7 +454,11 @@ const useHostNightSetupFlow = ({
             },
         };
         const missionPayload = compileMissionPayloadWithAssist(missionDraft, missionAdvancedOverrides);
-        const payload = missionControlEnabled ? missionPayload : legacyPayload;
+        const basePayload = missionControlEnabled ? missionPayload : legacyPayload;
+        const payload = {
+            ...basePayload,
+            audienceFeatureAccess,
+        };
         const payloadPreset = hostNightPresets[payload.hostNightPreset] || hostNightPresets.casual;
         const resolvedSpotlightMode = String(
             missionControlEnabled
@@ -503,6 +510,7 @@ const useHostNightSetupFlow = ({
                 requestMode: payload.requestMode,
                 allowSingerTrackSelect: payload.allowSingerTrackSelect,
             }));
+            setAudienceFeatureAccess(payload.audienceFeatureAccess || {});
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setChatShowOnTv(!!payload.chatShowOnTv);
@@ -563,6 +571,7 @@ const useHostNightSetupFlow = ({
         nightSetupPrimaryMode,
         nightSetupQueueRotation,
         nightSetupQueueFirstTimeBoost,
+        audienceFeatureAccess,
         normalizeRoomRequestMode,
         legacyGuestBackingOptionalRequestMode,
         deriveAudienceBackingMode,
@@ -597,6 +606,7 @@ const useHostNightSetupFlow = ({
         setAllowSingerTrackSelect,
         setAudienceBackingMode,
         setUnknownBackingPolicy,
+        setAudienceFeatureAccess,
         setMarqueeEnabled,
         setMarqueeShowMode,
         setChatShowOnTv,

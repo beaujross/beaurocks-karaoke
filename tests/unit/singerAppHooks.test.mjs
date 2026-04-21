@@ -51,6 +51,29 @@ test("SingerApp declares ready-check auto-party copy before the ready-check rend
   );
 });
 
+test("SingerApp declares bracket signup state before streamlined tight15 effects", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+  const bracketSignupDecl = "const bracketSignupActive = isBracketSignupOpen(bracketSignupBracket);";
+  const tight15Effect = "if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;";
+  const bracketSignupIndex = source.indexOf(bracketSignupDecl);
+  const tight15EffectIndex = source.indexOf(tight15Effect);
+
+  assert.notEqual(
+    bracketSignupIndex,
+    -1,
+    "SingerApp should declare bracket signup activity state",
+  );
+  assert.notEqual(
+    tight15EffectIndex,
+    -1,
+    "SingerApp streamlined Tight 15 redirect effect should exist",
+  );
+  assert.ok(
+    bracketSignupIndex < tight15EffectIndex,
+    "SingerApp must declare `bracketSignupActive` before the streamlined Tight 15 effect to avoid TDZ crashes on audience boot",
+  );
+});
+
 test("SingerApp keeps streamlined audience shell inside party and songs flows", () => {
   const source = readFileSync(singerAppPath, "utf8");
 
@@ -86,6 +109,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
+    /Request a Song/,
+    "SingerApp should expose a Request a Song CTA from streamlined party surfaces",
+  );
+  assert.match(
+    source,
     /Open search, pick a song, and it goes straight to the queue\./,
     "SingerApp should explain the streamlined search flow directly under the primary action",
   );
@@ -115,6 +143,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   assert.ok(
     streamlinedStageNavRenderIndex < omnipresentStageAreaIndex,
     "SingerApp should render the streamlined top nav outside the omnipresent stage gate so it stays visible when the stage is idle",
+  );
+  assert.match(
+    source,
+    /Continue with a BeauRocks account to unlock custom emoji in this room\./,
+    "SingerApp should explain room-level custom emoji account gating directly in the unlock path",
   );
 });
 

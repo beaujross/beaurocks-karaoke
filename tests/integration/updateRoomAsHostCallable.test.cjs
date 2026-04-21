@@ -77,6 +77,12 @@ async function run() {
         activeMode: "bingo",
         autoDj: true,
         audienceShellVariant: "streamlined",
+        audienceFeatureAccess: {
+          version: 1,
+          features: {
+            customEmoji: "account_required",
+          },
+        },
         lobbyOrbSkinUrl: "https://example.com/orb.png",
         eventCredits: {
           enabled: true,
@@ -140,6 +146,7 @@ async function run() {
           "activeMode",
           "autoDj",
           "audienceShellVariant",
+          "audienceFeatureAccess",
           "lobbyOrbSkinUrl",
           "eventCredits",
           "programMode",
@@ -157,6 +164,7 @@ async function run() {
       assert.equal(snap.get("activeMode"), "bingo");
       assert.equal(snap.get("autoDj"), true);
       assert.equal(snap.get("audienceShellVariant"), "streamlined");
+      assert.equal(snap.get("audienceFeatureAccess.features.customEmoji"), "account_required");
       assert.equal(snap.get("lobbyOrbSkinUrl"), "https://example.com/orb.png");
       assert.equal(snap.get("eventCredits.enabled"), true);
       assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);

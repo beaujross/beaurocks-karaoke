@@ -20,6 +20,7 @@ test('roomEventProfiles applies AAHF defaults and disables stray overlays', () =
     assert.equal(patch.marqueeEnabled, false);
     assert.equal(patch.popTriviaEnabled, false);
     assert.equal(patch.audienceShellVariant, 'streamlined');
+    assert.equal(patch.audienceFeatureAccess?.features?.customEmoji, 'open');
     assert.equal(patch.programMode, 'run_of_show');
     assert.equal(patch.runOfShowEnabled, true);
     assert.match(patch.logoUrl, /aahf/i);

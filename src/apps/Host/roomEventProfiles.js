@@ -9,6 +9,7 @@ import {
 } from '../../lib/runOfShowDirector';
 import { REQUEST_MODES } from '../../lib/requestModes';
 import { getAudienceBrandThemePreset } from '../../lib/audienceBrandTheme';
+import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.js';
 import { applyEventCreditsPreset } from './hostLaunchHelpers';
 
 export const AAHF_KICKOFF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
@@ -298,6 +299,11 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             audienceShellVariant: 'streamlined',
             audienceBrandTheme: getAudienceBrandThemePreset('festival_sunburst', {
                 appTitle: 'AAHF Festival',
+            }),
+            audienceFeatureAccess: normalizeAudienceFeatureAccess({
+                features: {
+                    customEmoji: 'open',
+                },
             }),
             autoDj: false,
             autoBgMusic: false,

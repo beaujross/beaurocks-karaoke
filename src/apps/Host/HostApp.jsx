@@ -116,6 +116,10 @@ import {
     normalizeAudienceBrandTheme,
 } from '../../lib/audienceBrandTheme';
 import {
+    AUDIENCE_FEATURE_ACCESS_LEVELS,
+    normalizeAudienceFeatureAccess,
+} from '../../lib/audienceFeatureAccess.js';
+import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
@@ -7093,11 +7097,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [unknownBackingPolicy, setUnknownBackingPolicy] = useState(UNKNOWN_BACKING_POLICIES.requireReview);
     const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
+    const [audienceFeatureAccess, setAudienceFeatureAccess] = useState(() => normalizeAudienceFeatureAccess({}));
     const audienceBrandThemePresetMatch = useMemo(
         () => matchAudienceBrandThemePreset(audienceBrandTheme),
         [audienceBrandTheme]
     );
     const audienceBrandThemePresetId = audienceBrandThemePresetMatch?.id || 'custom';
+    const customEmojiAccountRequired = audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired;
     const applyAudienceBrandThemePresetSelection = useCallback((presetId = 'beaurocks') => {
         const safePresetId = String(presetId || '').trim().toLowerCase();
         if (!safePresetId || safePresetId === 'custom') return;
@@ -9828,6 +9834,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setHideNonEmbeddableYouTube(room?.hideNonEmbeddableYouTube === true);
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
+        setAudienceFeatureAccess(normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}));
         const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
         const normalizedRunOfShowEnabled = room?.runOfShowEnabled === true || normalizedProgramMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
         const normalizedDirector = normalizeRunOfShowDirector(room?.runOfShowDirector || {});
@@ -10891,6 +10898,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         missionPartyDraft,
         missionPrimaryModes: NIGHT_SETUP_PRIMARY_MODES,
         missionAdvancedOverrides,
+        audienceFeatureAccess,
         nightSetupAutoPlayMedia,
         nightSetupChatOnTv,
         nightSetupMarqueeEnabled,
@@ -10919,6 +10927,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         requestRoomUpdate: updateRoom,
         serverTimestamp,
         setAudienceBackingMode,
+        setAudienceFeatureAccess,
         setAudienceBingoReopenEnabled,
         setAllowSingerTrackSelect,
         setAutoBgMusic,
@@ -12305,6 +12314,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
                 audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
                 audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
+                audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
                 chatShowOnTv: !!chatShowOnTv,
                 chatTvMode: chatTvMode || 'auto',
                 marqueeEnabled: !!marqueeEnabled,
@@ -16474,6 +16484,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
         audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
+        audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
         chatShowOnTv: !!chatShowOnTv,
         chatTvMode: chatTvMode || 'auto',
         marqueeEnabled: !!marqueeEnabled,
@@ -16537,6 +16548,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hideNonEmbeddableYouTube: room.hideNonEmbeddableYouTube === true,
             audienceShellVariant: String(room.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
             audienceBrandTheme: normalizeAudienceBrandTheme(room.audienceBrandTheme || {}),
+            audienceFeatureAccess: normalizeAudienceFeatureAccess(room.audienceFeatureAccess || {}),
             chatShowOnTv: !!room.chatShowOnTv,
             chatTvMode: room.chatTvMode || 'auto',
             marqueeEnabled: !!room.marqueeEnabled,
@@ -18076,6 +18088,57 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {audienceShellVariant === 'streamlined' ? 'Use this when you want less guest clutter and faster scanning.' : 'Use this when your regulars rely on the full app layout.'}
                                     </div>
                                 </div>
+                            </div>
+                            <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/8 p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="max-w-2xl">
+                                        <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">Audience Access</div>
+                                        <div className="mt-1 text-base font-semibold text-white">Custom emoji can require a BeauRocks account.</div>
+                                        <div className="mt-1 text-sm text-zinc-300">
+                                            Core requests stay open. This only gates the custom emoji picker for guests in this room.
+                                        </div>
+                                    </div>
+                                    <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                                        customEmojiAccountRequired
+                                            ? 'border-amber-300/40 bg-amber-400/14 text-amber-100'
+                                            : 'border-white/10 bg-black/20 text-zinc-300'
+                                    }`}>
+                                        {customEmojiAccountRequired ? 'Account Required' : 'Guest Open'}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setAudienceFeatureAccess((prev) => normalizeAudienceFeatureAccess({
+                                        ...prev,
+                                        features: {
+                                            ...(prev?.features || {}),
+                                            customEmoji: customEmojiAccountRequired ? 'open' : 'account_required',
+                                        },
+                                    }))}
+                                    className={`mt-4 w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                                        customEmojiAccountRequired
+                                            ? 'border-amber-300/40 bg-amber-400/12 shadow-[0_0_20px_rgba(251,191,36,0.12)]'
+                                            : 'border-white/10 bg-black/20 hover:border-amber-400/30'
+                                    }`}
+                                >
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <div className="text-sm font-semibold text-white">Custom Emoji Access</div>
+                                            <div className="mt-1 text-sm text-zinc-300">
+                                                {customEmojiAccountRequired
+                                                    ? 'Guests see the picker, but selecting custom emoji sends them into BeauRocks account access.'
+                                                    : 'Guests can pick any room-available emoji without creating an account first.'}
+                                            </div>
+                                        </div>
+                                        <div className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                            customEmojiAccountRequired
+                                                ? 'bg-amber-300 text-black'
+                                                : 'border border-white/10 bg-white/5 text-zinc-200'
+                                        }`}>
+                                            {customEmojiAccountRequired ? 'On' : 'Off'}
+                                        </div>
+                                    </div>
+                                </button>
                             </div>
                         </div>
                         <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">

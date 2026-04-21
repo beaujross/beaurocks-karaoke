@@ -107,6 +107,10 @@ import {
     normalizeAudienceShellVariant
 } from './audienceShellVariant';
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
+import {
+    AUDIENCE_FEATURE_ACCESS_LEVELS,
+    normalizeAudienceFeatureAccess,
+} from '../../lib/audienceFeatureAccess.js';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
 import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
 import {
@@ -855,10 +859,23 @@ const SingerApp = ({ roomCode, uid }) => {
         () => normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}),
         [room?.audienceBrandTheme]
     );
+    const audienceFeatureAccess = useMemo(
+        () => normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}),
+        [room?.audienceFeatureAccess]
+    );
     const audienceBrandPalette = useMemo(
         () => buildAudienceBrandThemePalette(audienceBrandTheme),
         [audienceBrandTheme]
     );
+    const streamlinedPrimaryActionStyle = useMemo(() => ({
+        borderColor: withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.42),
+        background: `linear-gradient(145deg, ${withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.24)} 0%, ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.22)} 48%, rgba(7,10,18,0.96) 100%)`,
+        boxShadow: `0 16px 40px ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.22)}`,
+    }), [audienceBrandTheme]);
+    const streamlinedSecondaryActionStyle = useMemo(() => ({
+        borderColor: withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.24),
+        background: `linear-gradient(145deg, rgba(8,10,18,0.96) 0%, ${withAudienceBrandAlpha(audienceBrandTheme.primaryColor, 0.14)} 100%)`,
+    }), [audienceBrandTheme]);
     const audienceBrandTitle = audienceBrandTheme.appTitle || 'BeauRocks Karaoke';
     const isCustomAudienceBrand = String(audienceBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
     const poweredByBeauRocksLabel = isCustomAudienceBrand ? 'Powered by: BeauRocks Karaoke' : '';
@@ -892,6 +909,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [takeoverState, setTakeoverState] = useState('closed');
     const authUserUid = String(auth?.currentUser?.uid || '').trim();
     const isAnon = !!auth?.currentUser?.isAnonymous;
+    const customEmojiAccountGateEnabled = audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired;
     const canSaveTight15 = !!authUserUid && !isAnon;
     const [vipUnlockPending, setVipUnlockPending] = useState(false);
     const isVipAccount = vipUnlockPending
@@ -1073,6 +1091,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const getAvatarStatus = useCallback((item) => {
         const unlocked = profile?.unlockedEmojis || [];
         const fameLevel = getLevelFromFame(profile?.totalFamePoints || 0);
+        const gatedByAccount = customEmojiAccountGateEnabled && isAnon && item?.unlock?.type !== 'free';
+
+        if (gatedByAccount) {
+            return { locked: true, note: 'ACCOUNT', unlockType: 'account_required' };
+        }
 
         if (item.unlock.type === 'free') return { locked: false, note: 'FREE' };
         if (item.unlock.type === 'vip') return { locked: !isVipAccount, note: premiumBadgeShortLabel };
@@ -1084,16 +1107,19 @@ const SingerApp = ({ roomCode, uid }) => {
         if (item.unlock.type === 'guitar_winner') return { locked: !unlocked.includes(item.id), note: 'WIN SOLO' };
         if (item.unlock.type === 'points') return { locked: !unlocked.includes(item.id), note: `${item.unlock.cost} PTS` };
         return { locked: false, note: '' };
-    }, [isVipAccount, premiumBadgeShortLabel, profile]);
+    }, [customEmojiAccountGateEnabled, isAnon, isVipAccount, premiumBadgeShortLabel, profile]);
 
     const getUnlockHint = useCallback((item) => {
+        if (customEmojiAccountGateEnabled && isAnon && item?.unlock?.type !== 'free') {
+            return `Continue with a BeauRocks account to unlock custom emoji in this room.`;
+        }
         if (item.unlock.type === 'vip') return `${premiumAccessLabel} only - verify to unlock.`;
         if (item.unlock.type === 'fame') return `Reach Fame Level ${item.unlock.level} to unlock.`;
         if (item.unlock.type === 'first_performance') return 'Sing one song to unlock.';
         if (item.unlock.type === 'guitar_winner') return 'Win Guitar Mode to unlock.';
         if (item.unlock.type === 'points') return `Unlock for ${item.unlock.cost} points.`;
         return '';
-    }, [premiumAccessLabel]);
+    }, [customEmojiAccountGateEnabled, isAnon, premiumAccessLabel]);
 
     // Keep this before getRoomUserProjection() so React never evaluates the
     // memo dependency array before the avatar resolver exists.
@@ -7174,6 +7200,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
         });
     }, [roomCode, shellVariant, songsTab, socialTab, tab]);
+    const bracketSignupBracket = room?.activeMode === 'karaoke_bracket'
+        ? (room?.karaokeBracket || room?.gameData || null)
+        : null;
+    const bracketSignupActive = isBracketSignupOpen(bracketSignupBracket);
+    const bracketSignupSummary = bracketSignupActive
+        ? summarizeBracketSignup({
+            roomUsers: allUsers,
+            room,
+            bracket: bracketSignupBracket
+        })
+        : null;
+    const myBracketSignupEntry = bracketSignupSummary?.roster?.find((entry) => entry.uid === (activeUid || uid)) || null;
+
     useEffect(() => {
         if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;
         setSongsTab('requests');
@@ -8191,19 +8230,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             </div>
         );
     }
-    const bracketSignupBracket = room?.activeMode === 'karaoke_bracket'
-        ? (room?.karaokeBracket || room?.gameData || null)
-        : null;
-    const bracketSignupActive = isBracketSignupOpen(bracketSignupBracket);
-    const bracketSignupSummary = bracketSignupActive
-        ? summarizeBracketSignup({
-            roomUsers: allUsers,
-            room,
-            bracket: bracketSignupBracket
-        })
-        : null;
-    const myBracketSignupEntry = bracketSignupSummary?.roster?.find((entry) => entry.uid === (activeUid || uid)) || null;
-
     // --- GAME INTERCEPTION ---
     if (room?.activeMode
         && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode)
@@ -9030,7 +9056,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     if (avatarUnlockModal) {
         const lockedAvatar = avatarUnlockModal.item || {};
-        const unlockType = String(lockedAvatar?.unlock?.type || '').trim().toLowerCase();
+        const unlockType = String(avatarUnlockModal.status?.unlockType || lockedAvatar?.unlock?.type || '').trim().toLowerCase();
         const pointsCost = Math.max(0, Number(lockedAvatar?.unlock?.cost || 0));
         const effectivePoints = Math.max(0, getEffectivePoints());
         const canBuyWithPoints = unlockType === 'points' && !!user && effectivePoints >= pointsCost;
@@ -9064,6 +9090,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {unlockType === 'vip' ? (
                         <div className="mt-3 rounded-2xl border border-fuchsia-300/18 bg-fuchsia-500/10 px-4 py-3 text-sm text-zinc-200">
                             {premiumAccessLabel} avatars are optional. You can keep going as a guest right now and link or verify later if you want the premium pack.
+                        </div>
+                    ) : null}
+                    {unlockType === 'account_required' ? (
+                        <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                            This room keeps custom emoji behind a BeauRocks account, but song requests stay open to everyone.
                         </div>
                     ) : null}
                     <div className="mt-5 flex gap-2">
@@ -9107,6 +9138,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
                             >
                                 View {premiumAccessLabel} Perks
+                            </button>
+                        ) : unlockType === 'account_required' ? (
+                            <button
+                                onClick={() => {
+                                    setAvatarUnlockModal(null);
+                                    openVipUpgrade('email');
+                                }}
+                                className="flex-1 bg-gradient-to-r from-[#00C4D9] to-[#26D7E8] text-black py-3 rounded-xl font-black"
+                            >
+                                Continue with Account
                             </button>
                         ) : (
                             <button
@@ -10208,7 +10249,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 className={`rounded-2xl border px-3 py-2.5 text-left transition-all ${
                                     isActive
                                         ? ''
-                                        : 'border-white/10 bg-black/30 text-zinc-200 hover:border-white/20 hover:bg-black/40'
+                                        : 'border-white/18 bg-white/[0.07] text-zinc-100 shadow-[0_10px_24px_rgba(0,0,0,0.18)] hover:border-white/30 hover:bg-white/10'
                                 }`}
                                 style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
                             >
@@ -10257,7 +10298,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] transition-all ${
                                         isActive
                                             ? ''
-                                            : 'border-white/10 bg-black/35 text-zinc-300 hover:border-white/20 hover:bg-black/45'
+                                            : 'border-white/18 bg-white/[0.07] text-zinc-100 hover:border-white/28 hover:bg-white/10'
                                     }`}
                                     style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
                                 >
@@ -10753,6 +10794,34 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <span className="text-white/70">|</span>
                                         <span className="text-white/90 truncate max-w-[160px]">{nowPlayingLabel.title}</span>
                                         <span className="text-white/50">({nowPlayingLabel.state})</span>
+                                    </div>
+                                )}
+                                {isStreamlinedAudienceShell && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            data-feature-id="singer-request-song-cta"
+                                            onClick={() => {
+                                                setTab('request');
+                                                setSongsTab('requests');
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_12px_30px_rgba(0,0,0,0.22)]"
+                                            style={audienceBrandPalette.primaryPillStyle}
+                                        >
+                                            <i className="fa-solid fa-plus"></i>
+                                            Request a Song
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTab('request');
+                                                setSongsTab('queue');
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-zinc-100"
+                                        >
+                                            <i className="fa-solid fa-list"></i>
+                                            View Queue
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -11272,10 +11341,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                          <button
                                              type="button"
                                              onClick={openAudienceCatalogSearch}
-                                             className="rounded-2xl border border-cyan-300/35 bg-cyan-500/18 px-4 py-4 text-left text-cyan-50 hover:bg-cyan-500/28"
+                                             data-feature-id="singer-request-song-cta"
+                                             className="rounded-[24px] border px-4 py-4 text-left text-cyan-50"
+                                             style={streamlinedPrimaryActionStyle}
                                          >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Quick Start</div>
-                                             <div className="mt-1 text-base font-black">Search + Add Song</div>
+                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/85">Quick Start</div>
+                                             <div className="mt-1 text-base font-black text-white">Request a Song</div>
+                                             <div className="mt-1 text-sm text-zinc-100/85">Search the catalog or jump into manual entry.</div>
                                          </button>
                                          <button
                                              type="button"
@@ -11283,7 +11355,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                  setTab('request');
                                                  setSongsTab('queue');
                                              }}
-                                             className="rounded-2xl border border-white/12 bg-black/30 px-4 py-4 text-left text-zinc-100 hover:bg-white/8"
+                                             className="rounded-[24px] border px-4 py-4 text-left text-zinc-100"
+                                             style={streamlinedSecondaryActionStyle}
                                          >
                                              <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Queue</div>
                                              <div className="mt-1 text-base font-black">View Queue</div>
@@ -12353,26 +12426,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             id="song-search"
                                             type="button"
                                             onClick={openAudienceCatalogSearch}
-                                            className={`flex w-full items-center gap-3 border px-3 py-3 text-left text-base text-white ${isStreamlinedAudienceShell ? 'rounded-2xl border-cyan-300/20 bg-black/25 shadow-[0_10px_24px_rgba(0,0,0,0.2)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
+                                            className={`flex w-full items-center gap-4 border px-4 py-4 text-left text-base text-white ${isStreamlinedAudienceShell ? 'rounded-[24px] shadow-[0_18px_40px_rgba(0,0,0,0.24)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
+                                            style={isStreamlinedAudienceShell ? streamlinedPrimaryActionStyle : undefined}
                                         >
-                                            <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>
+                                            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/25 text-lg text-cyan-50">
+                                                <i className="fa-solid fa-magnifying-glass"></i>
+                                            </span>
                                             <div className="min-w-0 flex-1">
                                                 {isStreamlinedAudienceShell && (
-                                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200/80">Fastest way in</div>
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/85">Fastest way in</div>
                                                 )}
-                                                <span className={searchQ ? 'text-white' : 'text-zinc-400'}>
+                                                <span className={searchQ ? 'text-white' : 'text-white/92'}>
                                                     {searchQ || (isStreamlinedAudienceShell ? 'Search + Add Song' : 'Search songs...')}
                                                 </span>
                                             </div>
                                             {isStreamlinedAudienceShell && (
-                                                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                    Search
+                                                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-black/15 bg-white/85 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-black">
+                                                    Open
                                                     <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                                                 </span>
                                             )}
                                         </button>
                                         {isStreamlinedAudienceShell && (
-                                            <div className="text-sm text-zinc-400">
+                                            <div className="text-sm text-zinc-300">
                                                 Open search, pick a song, and it goes straight to the queue.
                                             </div>
                                         )}
@@ -12399,19 +12475,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button
                                         type="button"
                                         onClick={() => setManualRequestComposerOpen(true)}
-                                        className={`w-full rounded-2xl border px-4 text-left ${isStreamlinedAudienceShell ? 'border-white/12 bg-black/20 py-3' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
+                                        className={`w-full rounded-[24px] border px-4 text-left ${isStreamlinedAudienceShell ? 'py-4 shadow-[0_16px_36px_rgba(0,0,0,0.2)]' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
+                                        style={isStreamlinedAudienceShell ? streamlinedSecondaryActionStyle : undefined}
                                     >
                                         <div className="flex items-center justify-between gap-3">
                                             <div>
-                                                <div className={`text-sm uppercase tracking-[0.35em] ${isStreamlinedAudienceShell ? 'text-zinc-400' : 'text-pink-100/75'}`}>Manual Entry</div>
+                                                <div className={`text-sm uppercase tracking-[0.35em] ${isStreamlinedAudienceShell ? 'text-zinc-200/80' : 'text-pink-100/75'}`}>Manual Entry</div>
                                                 <div className="text-lg font-black text-white">
                                                     {isStreamlinedAudienceShell ? 'Can’t find it? Type it manually' : 'Type it yourself in a full-screen form'}
                                                 </div>
-                                                {!isStreamlinedAudienceShell && (
+                                                {isStreamlinedAudienceShell ? (
+                                                    <div className="mt-1 text-sm text-zinc-300">Best when you already know the song and artist.</div>
+                                                ) : (
                                                     <div className="text-sm text-zinc-300">Better when you already know the exact song and artist.</div>
                                                 )}
                                             </div>
-                                            <div className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/25 text-pink-100">
+                                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/25 text-pink-100">
                                                 <i className="fa-solid fa-keyboard"></i>
                                             </div>
                                         </div>

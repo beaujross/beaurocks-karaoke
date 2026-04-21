@@ -14,6 +14,71 @@ const formatModeLabel = (value = '') => String(value || '')
 
 const panelClassName = 'rounded-[28px] border border-white/10 bg-white/8 backdrop-blur-xl shadow-[0_24px_80px_rgba(15,23,42,0.55)]';
 
+const JoinStateCard = ({ room = {}, showAbout = false, showPhoneModal = false }) => {
+    const audienceAccessMode = String(room?.eventCredits?.audienceAccessMode || '').trim().toLowerCase();
+    const allowsDonationAccess = audienceAccessMode === 'donation' || audienceAccessMode === 'email_or_donation';
+    const accessLabel = allowsDonationAccess ? 'Support or Continue' : 'Continue with Email';
+
+    return (
+        <div className="relative h-[932px] overflow-hidden rounded-[42px] border border-white/12 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_28%),linear-gradient(180deg,#020617_0%,#0f172a_58%,#020617_100%)] shadow-[0_40px_120px_rgba(2,6,23,0.8)]">
+            <div className="absolute inset-x-0 top-0 h-40 bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.18),transparent_58%)]" />
+            <div className="relative z-10 px-5 py-6">
+                <div className="rounded-[30px] border border-white/12 bg-black/25 p-5 backdrop-blur-xl">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/75">Join</div>
+                            <div className="mt-2 text-3xl font-black tracking-tight text-white">Enter the room</div>
+                            <div className="mt-2 text-sm text-zinc-300">Pick a vibe, add your name, and start requesting songs.</div>
+                        </div>
+                        <div className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-300">
+                            {room.roomCode}
+                        </div>
+                    </div>
+
+                    <div className="mt-5 grid grid-cols-4 gap-2">
+                        {['🎤', '✨', '🔥', '🎉'].map((emoji) => (
+                            <div key={emoji} className={`rounded-2xl border px-3 py-3 text-center text-2xl ${emoji === '🎤' ? 'border-cyan-300/40 bg-cyan-500/15' : 'border-white/10 bg-white/5'}`}>
+                                {emoji}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="mt-5 rounded-2xl border border-white/12 bg-white/8 px-4 py-4 text-center text-base font-semibold text-zinc-100">
+                        Enter Your Name
+                    </div>
+
+                    <button className="mt-4 w-full rounded-2xl bg-cyan-300 px-4 py-4 text-base font-black uppercase tracking-[0.18em] text-slate-950 shadow-[0_18px_40px_rgba(34,211,238,0.3)]">
+                        Join the Party
+                    </button>
+                    <button className="mt-3 w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-zinc-100">
+                        {accessLabel}
+                    </button>
+                </div>
+
+                {showAbout ? (
+                    <div className="mt-4 rounded-[28px] border border-fuchsia-300/25 bg-[linear-gradient(135deg,rgba(88,28,135,0.3),rgba(15,23,42,0.92))] p-5">
+                        <div className="text-[11px] uppercase tracking-[0.32em] text-fuchsia-200/80">About</div>
+                        <div className="mt-2 text-xl font-black text-white">This room is tuned for live karaoke first.</div>
+                        <div className="mt-2 text-sm leading-6 text-zinc-200">Guests can join fast, request songs, and opt into account access only where the room asks for it.</div>
+                    </div>
+                ) : null}
+
+                {showPhoneModal ? (
+                    <div className="mt-4 rounded-[28px] border border-cyan-300/25 bg-[linear-gradient(135deg,rgba(34,211,238,0.22),rgba(15,23,42,0.95))] p-5">
+                        <div className="text-[11px] uppercase tracking-[0.32em] text-cyan-200/80">Audience Access</div>
+                        <div className="mt-2 text-xl font-black text-white">{accessLabel}</div>
+                        <div className="mt-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-zinc-200">you@example.com</div>
+                        <div className="mt-3 flex gap-2">
+                            <button className="flex-1 rounded-2xl border border-white/10 bg-white/8 px-4 py-3 text-sm font-bold text-white">Cancel</button>
+                            <button className="flex-1 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-black text-slate-950">Send Email Link</button>
+                        </div>
+                    </div>
+                ) : null}
+            </div>
+        </div>
+    );
+};
+
 const BottomNav = ({ streamlined = false }) => {
     const items = streamlined
         ? ['Party', 'Songs']
@@ -128,7 +193,7 @@ export default function AudienceQaHarness({ fixtureId = 'classic-home', roomCode
     const fixture = useMemo(() => buildQaAudienceFixture(fixtureId, { roomCode }) || {}, [fixtureId, roomCode]);
     const room = fixture.room || {};
     const songs = Array.isArray(fixture.songs) ? fixture.songs : [];
-    const user = fixture.user || { name: 'Audience Guest' };
+    const user = fixture.user || null;
     const shellVariant = normalizeAudienceShellVariant(room.audienceShellVariant);
     const streamlined = shellVariant === AUDIENCE_SHELL_VARIANTS.streamlined;
     const takeoverKind = deriveAudienceTakeoverKind({ activeMode: room.activeMode, lightMode: room.lightMode });
@@ -137,6 +202,7 @@ export default function AudienceQaHarness({ fixtureId = 'classic-home', roomCode
     const showTakeover = streamlined && !!takeoverKind;
     const roomLabel = room.hostName || 'Host';
     const openShortcuts = streamlined ? ['Lounge', 'DM Host', 'Profile'] : ['Queue', 'Leaderboard', 'VIP Lounge'];
+    const showJoinState = !user || fixture.showAbout === true || fixture.showPhoneModal === true;
 
     if (!fixture?.room) {
         return (
@@ -184,13 +250,19 @@ export default function AudienceQaHarness({ fixtureId = 'classic-home', roomCode
                         <div className="h-full p-4">
                             <StreamlinedTakeover fixture={fixture} label={takeoverLabel} />
                         </div>
+                    ) : showJoinState ? (
+                        <JoinStateCard
+                            room={room}
+                            showAbout={fixture.showAbout === true}
+                            showPhoneModal={fixture.showPhoneModal === true}
+                        />
                     ) : (
                         <>
                             <div className="relative z-10 px-5 pb-32 pt-6">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <div className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/75">{streamlined ? 'Party' : 'Home'}</div>
-                                        <div className="mt-2 text-3xl font-black tracking-tight text-white">Hey, {user.name}</div>
+                                        <div className="mt-2 text-3xl font-black tracking-tight text-white">Hey, {user?.name || 'Audience Guest'}</div>
                                         <div className="mt-2 text-sm text-zinc-400">
                                             {streamlined
                                                 ? 'The room is simplified around the live moment and your song requests.'

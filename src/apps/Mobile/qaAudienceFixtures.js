@@ -1,4 +1,5 @@
 import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
+import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.js';
 
 const DEFAULT_ROOM_CODE = 'DEMOAUD';
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
@@ -16,6 +17,7 @@ const buildBaseRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'classic',
     activeMode,
     lightMode: 'off',
     audienceShellVariant: shellVariant,
+    audienceFeatureAccess: normalizeAudienceFeatureAccess({}),
     showScoring: true,
     showFameLevel: true,
     queueSettings: {
