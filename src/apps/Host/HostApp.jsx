@@ -17120,7 +17120,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad

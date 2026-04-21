@@ -1070,7 +1070,7 @@ const HostTopChrome = ({
         closeAllTopMenus();
     };
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative z-40 border-b border-zinc-800`}>
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
         <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
