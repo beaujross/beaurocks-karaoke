@@ -2,6 +2,10 @@ import {
     PARTY_POLICY_DEFAULTS,
     normalizeMissionParty
 } from './partyOrchestrator.js';
+import {
+    buildAudienceThemeFromPreset,
+    buildHostNightPresetConfig
+} from './hostNightPresets.js';
 
 const DEFAULT_FLOW_RULES = Object.freeze({
     balanced: {
@@ -137,6 +141,8 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
     const archetype = String(draft?.archetype || DEFAULT_ARCHETYPE).trim() || DEFAULT_ARCHETYPE;
     const preset = presets[archetype] || presets[DEFAULT_ARCHETYPE] || { id: archetype, settings: {} };
     const presetSettings = cloneObject(preset?.settings || {});
+    const presetConfig = buildHostNightPresetConfig(preset);
+    const audienceBrandTheme = buildAudienceThemeFromPreset(preset);
     const queueRule = flowRules[draft?.flowRule] || flowRules.balanced || DEFAULT_FLOW_RULES.balanced;
     const queueSettings = normalizeQueueSettings(queueRule?.queueSettings || presetSettings?.queueSettings || {});
     const gameDefaults = presetSettings.gameDefaults || {};
@@ -145,6 +151,7 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
 
     return {
         hostNightPreset: preset?.id || archetype || DEFAULT_ARCHETYPE,
+        hostNightPresetConfig: presetConfig,
         autoDj: !!presetSettings.autoDj,
         autoBgMusic: !!presetSettings.autoBgMusic,
         autoPlayMedia: presetSettings.autoPlayMedia !== false,
@@ -169,6 +176,9 @@ export const compileMissionDraftToRoomPayload = (draft = {}, _capabilities = {},
         bingoAudienceReopenEnabled: presetSettings.bingoAudienceReopenEnabled !== false,
         autoLyricsOnQueue: !!presetSettings.autoLyricsOnQueue,
         popTriviaEnabled: presetSettings.popTriviaEnabled === true,
+        audienceShellVariant: String(presetSettings.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic',
+        audienceFeatureAccess: cloneObject(presetSettings.audienceFeatureAccess || {}),
+        ...(audienceBrandTheme ? { audienceBrandTheme } : {}),
         gamePreviewId: spotlightMode === 'karaoke' ? null : spotlightMode,
         gameDefaults: {
             triviaRoundSec: Math.max(5, toNumber(gameDefaults.triviaRoundSec, 20)),

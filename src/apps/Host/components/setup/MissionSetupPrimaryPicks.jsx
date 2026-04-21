@@ -21,7 +21,12 @@ const MissionSetupPrimaryPicks = ({
     assistLevels = [],
     selectedAssistLevel = '',
     onSelectAssistLevel = () => {}
-}) => (
+}) => {
+    const selectedPreset = presets.find((preset) => preset.id === selectedArchetype) || presets[0] || null;
+    const otherPresets = presets.filter((preset) => preset.id !== selectedPreset?.id);
+    const selectedPresetMeta = presetMeta[selectedPreset?.id] || presetMeta.casual || { icon: 'fa-star', accent: 'from-cyan-500/30 via-sky-500/10 to-transparent' };
+
+    return (
     <>
         <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/8 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -83,30 +88,52 @@ const MissionSetupPrimaryPicks = ({
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
             <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Step 1</div>
             <div className="text-xl font-bold text-white mt-1">Pick the kind of night</div>
-            <div className="text-sm text-zinc-400 mt-1">This sets the starting behavior for the room.</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                {presets.map((preset) => {
-                    const active = selectedArchetype === preset.id;
-                    const meta = presetMeta[preset.id] || presetMeta.casual || { icon: 'fa-star', accent: 'from-cyan-500/30 via-sky-500/10 to-transparent' };
-                    return (
-                        <button
-                            key={`mission-archetype-${preset.id}`}
-                            onClick={() => onSelectArchetype(preset.id)}
-                            className={`relative overflow-hidden text-left rounded-2xl border transition-all ${active ? 'border-[#00C4D9]/70 shadow-[0_0_0_1px_rgba(0,196,217,0.55)]' : 'border-zinc-700 hover:border-zinc-500'}`}
-                        >
-                            <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
-                            <div className="relative px-4 py-4">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
-                                    {active && <span className="text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100">Selected</span>}
-                                </div>
-                                <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
-                                <div className="text-sm text-zinc-300 mt-1">{preset.description}</div>
+            <div className="text-sm text-zinc-400 mt-1">Use the selected package, or change it only when this room needs a different format.</div>
+            {selectedPreset && (
+                <div className="relative mt-3 overflow-hidden rounded-2xl border border-[#00C4D9]/60 bg-zinc-950/70 shadow-[0_0_0_1px_rgba(0,196,217,0.35)]">
+                    <div className={`absolute inset-0 bg-gradient-to-br ${selectedPresetMeta.accent}`}></div>
+                    <div className="relative px-4 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/80">Selected room package</div>
+                                <div className="mt-1 text-xl font-black text-white">{selectedPreset.label}</div>
+                                <div className="mt-1 text-sm text-zinc-200">{selectedPreset.description}</div>
                             </div>
-                        </button>
-                    );
-                })}
-            </div>
+                            <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-300/30 bg-cyan-500/15 text-cyan-100">
+                                <i className={`fa-solid ${selectedPresetMeta.icon}`}></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {otherPresets.length > 0 && (
+                <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/50 px-4 py-3">
+                    <summary className="cursor-pointer list-none text-sm font-bold text-cyan-100">
+                        Change room package
+                    </summary>
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {otherPresets.map((preset) => {
+                            const meta = presetMeta[preset.id] || presetMeta.casual || { icon: 'fa-star', accent: 'from-cyan-500/30 via-sky-500/10 to-transparent' };
+                            return (
+                                <button
+                                    key={`mission-archetype-${preset.id}`}
+                                    onClick={() => onSelectArchetype(preset.id)}
+                                    className="relative overflow-hidden text-left rounded-xl border border-zinc-700 transition-all hover:border-zinc-500"
+                                >
+                                    <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
+                                    <div className="relative px-3 py-3">
+                                        <div className="flex items-center gap-2 text-cyan-100">
+                                            <i className={`fa-solid ${meta.icon}`}></i>
+                                            <span className="font-bold text-white">{preset.label}</span>
+                                        </div>
+                                        <div className="mt-1 text-xs text-zinc-300">{preset.description}</div>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </details>
+            )}
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
@@ -151,6 +178,7 @@ const MissionSetupPrimaryPicks = ({
             </div>
         </div>
     </>
-);
+    );
+};
 
 export default MissionSetupPrimaryPicks;

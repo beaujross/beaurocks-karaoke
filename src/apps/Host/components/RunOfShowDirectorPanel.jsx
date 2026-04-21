@@ -986,7 +986,7 @@ const itemSummary = (item = {}) => {
         const performer = String(item?.assignedPerformerName || '').trim();
         const song = String(item?.songTitle || '').trim();
         const artist = String(item?.artistName || '').trim();
-        return [performer, song, artist].filter(Boolean).join(' Ãƒâ€šÃ‚Â· ') || 'Performer and song still open';
+        return [performer, song, artist].filter(Boolean).join(' - ') || 'Performer and song still open';
     }
     if (item?.type === 'announcement' || item?.type === 'intro' || item?.type === 'closing') {
         return item?.presentationPlan?.headline || item?.notes || 'Presentation block';
@@ -1771,7 +1771,7 @@ const BoardCard = ({ label, item, readiness, emptyLabel, actionLabel, actionTone
                 </div>
                 <div className="text-lg font-bold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
                 <div className="text-sm text-zinc-300">{itemSummary(item)}</div>
-                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">{formatStart(item.startsAtMs)} Ãƒâ€šÃ‚Â· {Math.max(0, Number(item.plannedDurationSec || 0))} sec</div>
+                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">{formatStart(item.startsAtMs)} - {Math.max(0, Number(item.plannedDurationSec || 0))} sec</div>
                 <ReadinessPanel readiness={readiness} compact />
                 {actionLabel ? <ControlButton tone={actionTone} onClick={onAction}>{actionLabel}</ControlButton> : null}
             </div>
@@ -1859,7 +1859,7 @@ const IssueQueuePanel = ({
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                                                Scene {entry.sequence || '?'} Ãƒâ€šÃ‚Â· {entry.kindLabel}
+                                                Scene {entry.sequence || '?'} - {entry.kindLabel}
                                             </div>
                                             <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${badgeClass}`}>
                                                 {entry.badge}
@@ -1890,8 +1890,8 @@ const IssueQueuePanel = ({
                                                     <div className="truncate text-sm font-semibold text-white">{submission.displayName || 'Singer'}</div>
                                                     <div className="truncate text-xs text-zinc-400">
                                                         {submission.songTitle || 'Untitled Song'}
-                                                        {submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}
-                                                        {submission.backingUrl || submission.mediaUrl || submission.youtubeId ? ' Ãƒâ€šÃ‚Â· backing attached' : ' Ãƒâ€šÃ‚Â· song only'}
+                                                        {submission.artistName ? ` - ${submission.artistName}` : ''}
+                                                        {submission.backingUrl || submission.mediaUrl || submission.youtubeId ? ' - backing attached' : ' - song only'}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-2">
@@ -2591,7 +2591,7 @@ const QuickDraftPanel = ({
                                 : 'Start with a fast draft, then fine-tune the scenes one at a time below.'}
                         </span>
                         <ControlButton tone="primary" className="shrink-0 justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                            {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                            {generatorBusy ? 'Applying...' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
                         </ControlButton>
                     </div>
                 </>
@@ -2641,7 +2641,7 @@ const QuickDraftPanel = ({
                                 ))}
                             </div>
                             <ControlButton tone="primary" className="w-full justify-center" disabled={!canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                                {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
+                                {generatorBusy ? 'Applying...' : itemsCount ? (generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Replace Show') : 'Create Show'}
                             </ControlButton>
                         </div>
                     </div>
@@ -3282,7 +3282,7 @@ const ShowMapCard = ({
                                                     </div>
                                                 ) : null}
                                                 {inlinePickerError ? <div className="mt-3 rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{inlinePickerError}</div> : null}
-                                                {inlinePickerLoading ? <div className="mt-3 text-sm text-cyan-100/80">Loading YouTube matches hereÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</div> : null}
+                                                {inlinePickerLoading ? <div className="mt-3 text-sm text-cyan-100/80">Loading YouTube matches here...</div> : null}
                                                 {inlineSuggestedOptions.length ? (
                                                     <div className="mt-3 grid gap-3 lg:grid-cols-2">
                                                         {inlineSuggestedOptions.map((option) => (
@@ -4189,7 +4189,7 @@ export default function RunOfShowDirectorPanel({
         } else if (items.length) {
             parts.push('timeline prep');
         }
-        return parts.join(' Ãƒâ€šÃ‚Â· ');
+        return parts.join(' - ');
     }, [automationPaused, isRunOfShowActive, items.length, totalOpenIssues]);
     useEffect(() => {
         const preferred = currentItemId || liveItem?.id || stagedItem?.id || nextItem?.id || items[0]?.id || '';
@@ -5062,9 +5062,9 @@ export default function RunOfShowDirectorPanel({
                                             {liveAdjustmentTarget.title || getRunOfShowItemLabel(liveAdjustmentTarget.type)}
                                         </div>
                                         <div className="mt-1 text-xs text-zinc-400">
-                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} Ãƒâ€šÃ‚Â· {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
-                                            {liveAdjustmentRequiresHostAdvance ? ` Ãƒâ€šÃ‚Â· ${liveAdjustmentAdvanceSummary}` : ''}
-                                            {liveAdjustmentSoundtrackConfigured ? ` Ãƒâ€šÃ‚Â· takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
+                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} - {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
+                                            {liveAdjustmentRequiresHostAdvance ? ` - ${liveAdjustmentAdvanceSummary}` : ''}
+                                            {liveAdjustmentSoundtrackConfigured ? ` - takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -5782,7 +5782,7 @@ export default function RunOfShowDirectorPanel({
                                                 : 'This room does not have a timeline yet. Applying will create the first draft.'}
                                         </div>
                                         <ControlButton tone="primary" disabled={!safeOperatorCapabilities.canEditFlow || generatorBusy} onClick={applyGeneratorDraft}>
-                                            {generatorBusy ? 'ApplyingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' : generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Apply Draft'}
+                                            {generatorBusy ? 'Applying...' : generatorConfig.applyMode === 'append' ? 'Append Draft' : 'Apply Draft'}
                                         </ControlButton>
                                     </div>
                                 </div>
@@ -6103,9 +6103,9 @@ export default function RunOfShowDirectorPanel({
                                 label: 'Song',
                                 done: slotNeedsQueueAssignment ? false : (songReady && artistReady),
                                 detail: slotNeedsQueueAssignment
-                                    ? `${bestQueueCandidate?.songTitle || 'Queued song'}${bestQueueCandidate?.artist ? ` ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${bestQueueCandidate.artist}` : ''}`
+                                    ? `${bestQueueCandidate?.songTitle || 'Queued song'}${bestQueueCandidate?.artist ? ` - ${bestQueueCandidate.artist}` : ''}`
                                     : songReady
-                                        ? `${item.songTitle || 'Song'}${artistReady ? ` ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ${item.artistName}` : ''}`
+                                        ? `${item.songTitle || 'Song'}${artistReady ? ` - ${item.artistName}` : ''}`
                                         : 'Add title + artist'
                             },
                             {
@@ -6242,7 +6242,7 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">State</div>
                                                     <div className={`mt-1 text-sm font-semibold ${Array.isArray(readiness?.blockers) && readiness.blockers.length ? 'text-amber-100' : 'text-emerald-100'}`}>{readiness.summary}</div>
                                                     <div className="mt-1 text-xs text-zinc-400">
-                                                        {formatStart(item.startsAtMs)} ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}
+                                                        {formatStart(item.startsAtMs)} - {formatDurationSec(item.plannedDurationSec) || `${Math.max(0, Number(item.plannedDurationSec || 0))}s`}
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap items-center gap-2">
@@ -6484,7 +6484,7 @@ export default function RunOfShowDirectorPanel({
                                                                             <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                             {roomUserCandidates.map((candidate) => (
                                                                                 <option key={candidate.uid} value={candidate.uid}>
-                                                                                    {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
+                                                                                    {candidate.label}{candidate.meta ? ` - ${candidate.meta}` : ''}
                                                                                 </option>
                                                                             ))}
                                                                         </SelectControl>
@@ -6596,7 +6596,7 @@ export default function RunOfShowDirectorPanel({
                                                                             <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                             {roomUserCandidates.map((candidate) => (
                                                                                 <option key={candidate.uid} value={candidate.uid}>
-                                                                                    {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
+                                                                                    {candidate.label}{candidate.meta ? ` - ${candidate.meta}` : ''}
                                                                                 </option>
                                                                             ))}
                                                                         </SelectControl>
@@ -6712,7 +6712,7 @@ export default function RunOfShowDirectorPanel({
                                                                     <div key={`${item.id}:prep:${submission.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-3">
                                                                         <div className="min-w-0">
                                                                             <div className="truncate text-sm font-semibold text-white">{submission.songTitle || 'Untitled Song'}</div>
-                                                                            <div className="truncate text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}</div>
+                                                                            <div className="truncate text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` - ${submission.artistName}` : ''}</div>
                                                                         </div>
                                                                         <div className="flex flex-wrap gap-2">
                                                                             <ControlButton tone="success" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => handleSubmissionDecision(submission.id, 'approved', item)}>Approve + Assign</ControlButton>
@@ -6724,7 +6724,7 @@ export default function RunOfShowDirectorPanel({
                                                                     <div key={`${item.id}:prepqueue:${queueSong.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-black/20 px-3 py-3">
                                                                         <div className="min-w-0">
                                                                             <div className="truncate text-sm font-semibold text-white">{queueSong.songTitle || 'Queued Song'}</div>
-                                                                            <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` Ãƒâ€šÃ‚Â· ${queueSong.artist}` : ''}</div>
+                                                                            <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` - ${queueSong.artist}` : ''}</div>
                                                                         </div>
                                                                         <div className="flex flex-wrap items-center gap-2">
                                                                             {queueSong._queueFitScore > 0 ? (
@@ -6756,7 +6756,7 @@ export default function RunOfShowDirectorPanel({
                                                         {
                                                             key: 'song',
                                                             title: 'Song',
-                                                            detail: songReady && artistReady ? `${item.songTitle || 'Song'}${item.artistName ? ` Ãƒâ€šÃ‚Â· ${item.artistName}` : ''}` : 'Needs title and artist',
+                                                            detail: songReady && artistReady ? `${item.songTitle || 'Song'}${item.artistName ? ` - ${item.artistName}` : ''}` : 'Needs title and artist',
                                                             done: songReady && artistReady,
                                                         },
                                                         {
@@ -6849,7 +6849,7 @@ export default function RunOfShowDirectorPanel({
                                                                         <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
                                                                         {roomUserCandidates.map((candidate) => (
                                                                             <option key={candidate.uid} value={candidate.uid}>
-                                                                                {candidate.label}{candidate.meta ? ` Ãƒâ€šÃ‚Â· ${candidate.meta}` : ''}
+                                                                                {candidate.label}{candidate.meta ? ` - ${candidate.meta}` : ''}
                                                                             </option>
                                                                         ))}
                                                                     </SelectControl>
@@ -6948,7 +6948,7 @@ export default function RunOfShowDirectorPanel({
                                                                         <div key={`${item.id}:${queueSong.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-black/10 px-3 py-2">
                                                                             <div className="min-w-0">
                                                                                 <div className="truncate text-sm font-semibold text-white">{queueSong.songTitle || 'Queued Song'}</div>
-                                                                                <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` Ãƒâ€šÃ‚Â· ${queueSong.artist}` : ''}</div>
+                                                                                <div className="truncate text-xs text-zinc-400">{queueSong.singerName || 'Singer'}{queueSong.artist ? ` - ${queueSong.artist}` : ''}</div>
                                                                             </div>
                                                                             <div className="flex items-center gap-2">
                                                                                 {queueSong._queueFitScore > 0 ? (
@@ -7028,7 +7028,7 @@ export default function RunOfShowDirectorPanel({
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track Setup</div>
                                                             <div className="mt-1 text-sm text-zinc-300">Choose the working track for this slot. Open details only if the main path is not enough.</div>
                                                         </div>
-                                                        {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">LoadingÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦</span> : null}
+                                                        {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading...</span> : null}
                                                     </div>
                                                     <div className="rounded-xl bg-black/10 px-3 py-3">
                                                         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -7270,7 +7270,7 @@ export default function RunOfShowDirectorPanel({
                                                             <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
                                                                 <div>
                                                                     <div className="text-sm font-bold text-white">{submission.songTitle || 'Untitled Song'}</div>
-                                                                <div className="text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` Ãƒâ€šÃ‚Â· ${submission.artistName}` : ''}{` Ãƒâ€šÃ‚Â· ${submission.submissionStatus || 'pending'}`}</div>
+                                                                <div className="text-xs text-zinc-400">{submission.displayName || 'Singer'}{submission.artistName ? ` - ${submission.artistName}` : ''}{` - ${submission.submissionStatus || 'pending'}`}</div>
                                                                 </div>
                                                                 <div className="flex gap-2">
                                                                     <ControlButton tone="success" disabled={!safeOperatorCapabilities.canReviewSubmissions} onClick={() => handleSubmissionDecision(submission.id, 'approved', item)}>Approve + Assign</ControlButton>

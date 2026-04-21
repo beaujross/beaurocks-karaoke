@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
+import {
+    buildAudienceThemeFromPreset,
+    buildHostNightPresetConfig,
+} from '../hostNightPresets';
 
 const useHostNightSetupFlow = ({
     applyMissionDraftToNightSetupState,
@@ -51,8 +55,10 @@ const useHostNightSetupFlow = ({
     requestRoomUpdate,
     serverTimestamp,
     setAudienceBackingMode,
+    setAudienceBrandTheme,
     setAudienceFeatureAccess,
     setAudienceBingoReopenEnabled,
+    setAudienceShellVariant,
     setAllowSingerTrackSelect,
     setAutoBgMusic,
     setAutoBonusEnabled,
@@ -455,9 +461,26 @@ const useHostNightSetupFlow = ({
         };
         const missionPayload = compileMissionPayloadWithAssist(missionDraft, missionAdvancedOverrides);
         const basePayload = missionControlEnabled ? missionPayload : legacyPayload;
+        const selectedPayloadPreset = hostNightPresets[basePayload.hostNightPreset]
+            || hostNightPresets[nightSetupPresetId]
+            || legacyPreset
+            || hostNightPresets.casual;
+        const selectedPresetConfig = buildHostNightPresetConfig(selectedPayloadPreset);
+        const selectedPresetSettings = selectedPresetConfig?.settings || {};
+        const selectedPresetTheme = buildAudienceThemeFromPreset(selectedPayloadPreset);
+        const selectedAudienceFeatureAccess = basePayload.audienceFeatureAccess
+            || selectedPresetSettings.audienceFeatureAccess
+            || audienceFeatureAccess;
         const payload = {
             ...basePayload,
-            audienceFeatureAccess,
+            hostNightPresetConfig: selectedPresetConfig,
+            audienceShellVariant: String(basePayload.audienceShellVariant || selectedPresetSettings.audienceShellVariant || '').trim().toLowerCase() === 'streamlined'
+                ? 'streamlined'
+                : 'classic',
+            audienceFeatureAccess: selectedAudienceFeatureAccess,
+            ...(basePayload.audienceBrandTheme || selectedPresetTheme
+                ? { audienceBrandTheme: basePayload.audienceBrandTheme || selectedPresetTheme }
+                : {}),
         };
         const payloadPreset = hostNightPresets[payload.hostNightPreset] || hostNightPresets.casual;
         const resolvedSpotlightMode = String(
@@ -511,6 +534,10 @@ const useHostNightSetupFlow = ({
                 allowSingerTrackSelect: payload.allowSingerTrackSelect,
             }));
             setAudienceFeatureAccess(payload.audienceFeatureAccess || {});
+            setAudienceShellVariant(payload.audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic');
+            if (payload.audienceBrandTheme) {
+                setAudienceBrandTheme(payload.audienceBrandTheme);
+            }
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setChatShowOnTv(!!payload.chatShowOnTv);
@@ -605,8 +632,10 @@ const useHostNightSetupFlow = ({
         setRequestMode,
         setAllowSingerTrackSelect,
         setAudienceBackingMode,
+        setAudienceBrandTheme,
         setUnknownBackingPolicy,
         setAudienceFeatureAccess,
+        setAudienceShellVariant,
         setMarqueeEnabled,
         setMarqueeShowMode,
         setChatShowOnTv,

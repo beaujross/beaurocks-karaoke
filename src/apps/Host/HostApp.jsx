@@ -1178,6 +1178,10 @@ const NIGHT_SETUP_PRESET_META = {
     trivia: {
         icon: 'fa-bolt',
         accent: 'from-fuchsia-500/30 via-violet-500/10 to-transparent'
+    },
+    aahf: {
+        icon: 'fa-star',
+        accent: 'from-pink-500/30 via-cyan-500/10 to-transparent'
     }
 };
 
@@ -10799,8 +10803,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         requestRoomUpdate: updateRoom,
         serverTimestamp,
         setAudienceBackingMode,
+        setAudienceBrandTheme,
         setAudienceFeatureAccess,
         setAudienceBingoReopenEnabled,
+        setAudienceShellVariant,
         setAllowSingerTrackSelect,
         setAutoBgMusic,
         setAutoBonusEnabled,

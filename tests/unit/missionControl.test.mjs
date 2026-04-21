@@ -67,6 +67,14 @@ const PRESETS = {
             bingoAutoApprovePct: 60,
             bingoAudienceReopenEnabled: true,
             autoLyricsOnQueue: true,
+            audienceShellVariant: 'streamlined',
+            audienceBrandThemePresetId: 'festival_sunburst',
+            audienceBrandTitle: 'Competition Stage',
+            audienceFeatureAccess: {
+                features: {
+                    customEmoji: 'open'
+                }
+            },
             queueSettings: {
                 limitMode: 'per_night',
                 limitCount: 2,
@@ -109,6 +117,10 @@ test("missionControl.test", () => {
     assert.equal(compiledNoAi.queueSettings.firstTimeBoost, false);
     assert.equal(compiledNoAi.autoLyricsOnQueue, true);
     assert.equal(compiledNoAi.gamePreviewId, 'trivia_pop');
+    assert.equal(compiledNoAi.hostNightPresetConfig.id, 'competition');
+    assert.equal(compiledNoAi.audienceShellVariant, 'streamlined');
+    assert.equal(compiledNoAi.audienceBrandTheme.appTitle, 'Competition Stage');
+    assert.equal(compiledNoAi.audienceFeatureAccess.features.customEmoji, 'open');
 
     const compiledWithAi = compileMissionDraftToRoomPayload(
         {
