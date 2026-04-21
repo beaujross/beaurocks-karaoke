@@ -313,14 +313,17 @@ const HostTopChrome = ({
     const quickStartPendingCount = Math.max(quickStartTotalCount - (stageQuickStartCompletedCount || 0), 0);
     const quickStartToneClass = quickStartPendingCount === 0 ? styles.btnSuccess : styles.btnInfo;
     const shouldShowQuickStartButton = (stageQuickStartItems?.length || 0) > 0 && (showStageQuickStart || quickStartPendingCount > 0);
-    const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[80]';
+    const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
+    const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[120]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} shrink-0 whitespace-nowrap normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickAudioControlClass = 'flex min-w-[170px] shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-2';
+    const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
+    const showInlineAudioQuickControls = !compactTopQuickStrip;
     const anyTopMenuOpen = showQuickStartMenu
         || showAutomationMenu
         || audioPanelOpen
@@ -1298,10 +1301,10 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`w-full overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-            <div className="host-top-quick-strip flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pb-1 pr-0.5 custom-scrollbar">
+        <div data-host-quick-strip-wrap="true" className={`w-full overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
+            <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : 'flex-nowrap items-center overflow-x-auto overflow-y-visible pb-1 pr-0.5'}`}>
                 {shouldShowQuickStartButton && (
-                    <div className="relative" ref={quickStartMenuRef}>
+                    <div className={quickStripItemClass} ref={quickStartMenuRef}>
                         <button
                             data-feature-id="deck-quick-start-menu-toggle"
                             onClick={() => {
@@ -1309,7 +1312,7 @@ const HostTopChrome = ({
                                 closeAllTopMenus();
                                 setShowQuickStartMenu(next);
                             }}
-                            className={`${quickMenuToggleClass} ${quickStartToneClass} min-w-[168px] sm:min-w-[192px] justify-between`}
+                            className={`${quickMenuToggleClass} ${quickStartToneClass} ${compactTopQuickStrip ? '' : 'min-w-[168px] sm:min-w-[192px]'} justify-between`}
                             title="Quick start checklist"
                             style={{ touchAction: 'manipulation' }}
                         >
@@ -1385,7 +1388,7 @@ const HostTopChrome = ({
                         )}
                     </div>
                 )}
-                <div className="relative" ref={automationMenuRef}>
+                <div className={quickStripItemClass} ref={automationMenuRef}>
                     <button
                         data-feature-id="deck-automation-menu-toggle"
                         onClick={() => {
@@ -1393,7 +1396,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowAutomationMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[176px] sm:min-w-[220px] justify-between`}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[176px] sm:min-w-[220px]'} justify-between`}
                         title="Automation controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -1515,7 +1518,7 @@ const HostTopChrome = ({
                     )}
                 </div>
                 {!runOfShowFocusMode ? (
-                    <div className="relative" ref={audioMenuRef}>
+                    <div className={quickStripItemClass} ref={audioMenuRef}>
                         <div className="flex flex-nowrap items-center gap-2">
                             <button
                                 type="button"
@@ -1525,7 +1528,7 @@ const HostTopChrome = ({
                                     closeAllTopMenus();
                                     setAudioPanelOpen(next);
                                 }}
-                                className={`${quickMenuToggleClass} min-w-[132px] justify-between`}
+                                className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[132px]'} justify-between`}
                                 title="Audio and mix controls"
                                 style={{ touchAction: 'manipulation' }}
                             >
@@ -1535,6 +1538,7 @@ const HostTopChrome = ({
                                 </span>
                                 <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${audioPanelOpen ? 'rotate-180' : ''}`}></i>
                             </button>
+                            {showInlineAudioQuickControls ? (
                             <div className={quickAudioControlClass}>
                                 <button
                                     type="button"
@@ -1564,6 +1568,8 @@ const HostTopChrome = ({
                                 </div>
                                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{stageVolumeDraft}%</span>
                             </div>
+                            ) : null}
+                            {showInlineAudioQuickControls ? (
                             <div className={quickAudioControlClass}>
                                 <button
                                     type="button"
@@ -1596,6 +1602,7 @@ const HostTopChrome = ({
                                 </div>
                                 <span className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{bgVolumeDraftPct}%</span>
                             </div>
+                            ) : null}
                         </div>
                         {audioPanelOpen ? (
                             <div className={`${quickMenuPanelClass} left-0 w-[min(560px,96vw)] p-3.5`}>
@@ -1717,7 +1724,7 @@ const HostTopChrome = ({
                         ) : null}
                     </div>
                 ) : null}
-                <div className="relative" ref={tvQuickMenuRef}>
+                <div className={quickStripItemClass} ref={tvQuickMenuRef}>
                     <button
                         data-feature-id="deck-tv-menu-toggle"
                         onClick={() => {
@@ -1725,7 +1732,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowTvQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[136px] sm:min-w-[156px]`}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[136px] sm:min-w-[156px]'}`}
                         title="TV display modes"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -2005,7 +2012,7 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <div className="relative" ref={overlaysMenuRef}>
+                <div className={quickStripItemClass} ref={overlaysMenuRef}>
                     <button
                         data-feature-id="deck-overlays-menu-toggle"
                         onClick={() => {
@@ -2013,7 +2020,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowOverlaysMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[146px] sm:min-w-[164px]`}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[146px] sm:min-w-[164px]'}`}
                         title="Overlays and guides"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -2171,7 +2178,7 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <div className="relative" ref={sfxQuickMenuRef}>
+                <div className={quickStripItemClass} ref={sfxQuickMenuRef}>
                     <button
                         data-feature-id="deck-sfx-menu-toggle"
                         onClick={() => {
@@ -2179,7 +2186,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowSfxQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[142px] sm:min-w-[160px]`}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[142px] sm:min-w-[160px]'}`}
                         title="Sound effects controls"
                         style={{ touchAction: 'manipulation' }}
                     >
@@ -2242,7 +2249,7 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                <div className="relative" ref={vibeQuickMenuRef}>
+                <div className={quickStripItemClass} ref={vibeQuickMenuRef}>
                     <button
                         data-feature-id="deck-vibe-menu-toggle"
                         onClick={() => {
@@ -2250,7 +2257,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowVibeQuickMenu(next);
                         }}
-                        className={`${quickMenuToggleClass} min-w-[146px] sm:min-w-[164px]`}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[146px] sm:min-w-[164px]'}`}
                         title="Vibe sync modes"
                         style={{ touchAction: 'manipulation' }}
                     >

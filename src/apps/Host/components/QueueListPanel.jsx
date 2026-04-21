@@ -68,6 +68,49 @@ const QueueListPanel = ({
         : (Number(reviewRequiredCount || 0) + Number(pending.length || 0));
     const readyCount = Number.isFinite(Number(counts.ready)) ? Number(counts.ready) : queue.length;
     const assignedCount = Number.isFinite(Number(counts.assigned)) ? Number(counts.assigned) : assigned.length;
+    const queueSummaryChips = [
+        needsAttentionCount
+            ? {
+                key: 'needsAttention',
+                className: 'rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100',
+                label: `Needs Attention ${needsAttentionCount}`
+            }
+            : null,
+        reviewRequiredCount
+            ? {
+                key: 'reviewRequired',
+                className: 'rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-amber-100',
+                label: `Track Check ${reviewRequiredCount}`
+            }
+            : null,
+        pending.length
+            ? {
+                key: 'pending',
+                className: 'rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100',
+                label: `Pending ${pending.length}`
+            }
+            : null,
+        {
+            key: 'ready',
+            className: 'rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100',
+            label: `Ready ${readyCount}`
+        },
+        assignedCount
+            ? {
+                key: 'assigned',
+                className: 'rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100',
+                label: `Assigned ${assignedCount}`
+            }
+            : null,
+        runOfShowAssignableSlots.length
+            ? {
+                key: 'openSlots',
+                className: 'rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-emerald-100',
+                label: `Open Slots ${runOfShowAssignableSlots.length}`
+            }
+            : null
+    ].filter(Boolean);
+    const showQueueSummaryChips = queueSummaryChips.length > 1 || queueSummaryChips.some((chip) => chip.key !== 'ready');
 
     const queueSummary = needsAttentionCount > 0
         ? {
@@ -133,26 +176,13 @@ const QueueListPanel = ({
                             </button>
                         ) : null}
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
-                        {needsAttentionCount ? (
-                            <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Needs Attention {needsAttentionCount}</span>
-                        ) : null}
-                        {reviewRequiredCount ? (
-                            <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-1 text-amber-100">Track Check {reviewRequiredCount}</span>
-                        ) : null}
-                        {pending.length ? (
-                            <span className="rounded-full border border-orange-300/30 bg-orange-500/10 px-2 py-1 text-orange-100">Pending {pending.length}</span>
-                        ) : null}
-                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-1 text-cyan-100">Ready {readyCount}</span>
-                        {assignedCount ? (
-                            <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Assigned {assignedCount}</span>
-                        ) : null}
-                        {runOfShowAssignableSlots.length ? (
-                            <span className="rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-emerald-100">
-                                Open Slots {runOfShowAssignableSlots.length}
-                            </span>
-                        ) : null}
-                    </div>
+                    {showQueueSummaryChips ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
+                            {queueSummaryChips.map((chip) => (
+                                <span key={chip.key} className={chip.className}>{chip.label}</span>
+                            ))}
+                        </div>
+                    ) : null}
                 </div>
             ) : (
                 typeof onToggleQueueSummaryBar === 'function' ? (

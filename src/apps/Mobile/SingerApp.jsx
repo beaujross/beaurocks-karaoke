@@ -130,8 +130,9 @@ const resolveRoomUserUid = (roomUser = {}, fallbackId = '') => {
 };
 
 // Helper Component for Animated Points
-const AnimatedPoints = ({ value, onClick, className = '' }) => {
+const AnimatedPoints = ({ value, onClick, className = '', rewardDelta = 0, rewardPulseKey = '' }) => {
     const [display, setDisplay] = useState(value);
+    const showRewardBadge = !!rewardPulseKey && rewardDelta > 0;
 
     useEffect(() => {
         if (display === value) return;
@@ -146,13 +147,18 @@ const AnimatedPoints = ({ value, onClick, className = '' }) => {
     }, [display, value]);
 
     return (
-        <button onClick={onClick} className={`bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-cyan-500/30 flex items-center gap-2 shadow-lg active:scale-95 transition-transform z-50 points-hint h-11 w-[120px] sm:w-[132px] justify-between ${className}`}>
+        <button onClick={onClick} className={`relative overflow-visible bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-cyan-500/30 flex items-center gap-2 shadow-lg active:scale-95 transition-transform z-50 points-hint h-11 w-[120px] sm:w-[132px] justify-between ${showRewardBadge ? 'scale-[1.04] border-emerald-300/70 shadow-[0_0_28px_rgba(16,185,129,0.38)]' : ''} ${className}`}>
             <span className="text-cyan-300 font-black text-xl font-mono">{display}</span>
             <span className="text-[11px] text-cyan-300 font-bold">PTS</span>
             <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[12px] font-black relative overflow-hidden">
                 <span className="absolute inset-0 flex items-center justify-center points-hint-i">i</span>
                 <span className="absolute inset-0 flex items-center justify-center points-hint-plus">+</span>
             </div>
+            {showRewardBadge ? (
+                <span className="pointer-events-none absolute -top-3 right-2 rounded-full border border-emerald-300/55 bg-emerald-400/16 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-100 shadow-[0_0_18px_rgba(16,185,129,0.26)] animate-bounce">
+                    +{Math.max(0, Math.round(Number(rewardDelta) || 0))}
+                </span>
+            ) : null}
         </button>
     );
 };
@@ -1409,6 +1415,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const [stormJoined, setStormJoined] = useState(false);
     const [stormFlash, setStormFlash] = useState(false);
     const [localPointOffset, setLocalPointOffset] = useState(0);
+    const [pointsRewardPulse, setPointsRewardPulse] = useState({ key: '', delta: 0 });
+    const [popTriviaAwardSync, setPopTriviaAwardSync] = useState({ questionId: '', delta: 0 });
     const [readyTimer, setReadyTimer] = useState(0);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [mobileLayoutMode, setMobileLayoutMode] = useState('native');
@@ -2341,6 +2349,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const pendingPointDelta = useRef(0);
     const pendingRewardToastPointsRef = useRef(0);
     const rewardToastTimerRef = useRef(null);
+    const pointsRewardPulseTimerRef = useRef(null);
+    const lastObservedPointsRef = useRef(null);
     const lastPointsSync = useRef(0);
     const lastBonusDropId = useRef(null);
     const lastPurchaseCelebrationId = useRef(null);
@@ -2377,6 +2387,17 @@ const SingerApp = ({ roomCode, uid }) => {
             showRewardToast(`+${total} PTS`, total, { durationMs: 2600 });
         }, 950);
     }, [showRewardToast]);
+    const triggerPointsRewardPulse = useCallback((delta) => {
+        const safePoints = Math.max(0, Math.round(Number(delta) || 0));
+        if (!safePoints) return;
+        const key = `${Date.now()}_${safePoints}`;
+        setPointsRewardPulse({ key, delta: safePoints });
+        if (pointsRewardPulseTimerRef.current) clearTimeout(pointsRewardPulseTimerRef.current);
+        pointsRewardPulseTimerRef.current = window.setTimeout(() => {
+            setPointsRewardPulse((prev) => (prev.key === key ? { key: '', delta: 0 } : prev));
+            pointsRewardPulseTimerRef.current = null;
+        }, 2200);
+    }, []);
     const billingPlatform = useMemo(() => detectBillingPlatform(), []);
     const billingProvider = useMemo(() => {
         const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -2459,6 +2480,7 @@ const SingerApp = ({ roomCode, uid }) => {
     }, [user, activeUid, roomCode]);
 
     const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
+    const effectivePoints = Math.max(0, getEffectivePoints());
     const activeEventCredits = useMemo(() => {
         const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
         return {
@@ -3440,6 +3462,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     ...rawUser,
                     uid: resolveRoomUserUid(rawUser, s.id) || activeUid
                 };
+                const nextPoints = Math.max(0, Number(u?.points || 0));
+                const prevPoints = Number(lastObservedPointsRef.current);
+                if (Number.isFinite(prevPoints)) {
+                    const pointsDelta = nextPoints - prevPoints;
+                    if (pointsDelta > 0) triggerPointsRewardPulse(pointsDelta);
+                }
+                lastObservedPointsRef.current = nextPoints;
                 setUser((prev) => {
                     const prevVipLevel = Number(prev?.vipLevel || 0);
                     const profileVipLevel = Number(profile?.vipLevel || 0);
@@ -3461,12 +3490,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     setIsFormInitialized(true);
                 }
             } else {
+                lastObservedPointsRef.current = null;
                 setUser(null);
             }
         });
         
         return () => { unsubRoom(); unsubUser(); unsubAllUsers(); unsubSongs(); };
-    }, [roomCode, activeUid, isFormInitialized, isAudienceFixtureMode, profile?.isVip, profile?.vipLevel, vipUnlockPending, resolveAllowedAvatarEmoji]);
+    }, [roomCode, activeUid, isFormInitialized, isAudienceFixtureMode, profile?.isVip, profile?.vipLevel, vipUnlockPending, resolveAllowedAvatarEmoji, triggerPointsRewardPulse]);
     useEffect(() => {
         if (uid && uid !== authReadyUid) {
             setAuthReadyUid(uid);
@@ -3632,9 +3662,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         ? Number(popTriviaRevealSnapshot.myVote)
         : null;
     const popTriviaRevealWasCorrect = popTriviaRevealMyVote !== null && popTriviaRevealMyVote === popTriviaRevealCorrectIndex;
+    const popTriviaRevealQuestionId = String(popTriviaRevealQuestion?.id || '').trim();
     const popTriviaRevealCorrectCount = showPopTriviaEndState
         ? (Array.isArray(popTriviaRevealSnapshot?.votes) ? popTriviaRevealSnapshot.votes.filter((vote) => Number(vote?.val) === popTriviaRevealCorrectIndex).length : 0)
         : 0;
+    const popTriviaAwardSyncedDelta = popTriviaAwardSync.questionId === popTriviaRevealQuestionId
+        ? Math.max(0, Number(popTriviaAwardSync.delta || 0))
+        : 0;
+    const popTriviaAwardSyncPending = !!(
+        showPopTriviaEndState
+        && popTriviaRevealWasCorrect
+        && popTriviaCorrectPoints > 0
+        && popTriviaAwardSyncedDelta <= 0
+    );
     const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaPromptCta = !!popTriviaQuestion && !['home', 'request', 'social'].includes(tab);
@@ -3696,6 +3736,28 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             capturedAtMs: popTriviaNow
         });
     }, [popTriviaMyVote, popTriviaNow, popTriviaQuestion, popTriviaVotes]);
+    useEffect(() => {
+        setPopTriviaAwardSync((prev) => (
+            prev.questionId && prev.questionId === popTriviaRevealQuestionId
+                ? prev
+                : { questionId: '', delta: 0 }
+        ));
+    }, [popTriviaRevealQuestionId]);
+    useEffect(() => {
+        if (!showPopTriviaEndState || !popTriviaRevealWasCorrect || !popTriviaRevealQuestionId) return;
+        const syncedDelta = Math.max(0, Number(pointsRewardPulse?.delta || 0));
+        if (!syncedDelta || syncedDelta < popTriviaCorrectPoints) return;
+        setPopTriviaAwardSync({
+            questionId: popTriviaRevealQuestionId,
+            delta: syncedDelta
+        });
+    }, [
+        pointsRewardPulse?.delta,
+        popTriviaCorrectPoints,
+        popTriviaRevealQuestionId,
+        popTriviaRevealWasCorrect,
+        showPopTriviaEndState
+    ]);
     useEffect(() => {
         if (room?.activeMode !== 'karaoke') return;
         if (room?.popTriviaEnabled !== true) return;
@@ -4093,6 +4155,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (strobeFlushTimer.current) clearTimeout(strobeFlushTimer.current);
         if (stormLayerFlushTimer.current) clearTimeout(stormLayerFlushTimer.current);
         if (rewardToastTimerRef.current) clearTimeout(rewardToastTimerRef.current);
+        if (pointsRewardPulseTimerRef.current) clearTimeout(pointsRewardPulseTimerRef.current);
         stopStormAudio(false);
     }, [stopStormAudio]);
 
@@ -10445,10 +10508,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                       </div>
                       <div />
                       {/* Right: Points */}
-                      <div className="flex items-center justify-end min-w-0 relative z-10">
+                        <div className="flex items-center justify-end min-w-0 relative z-10">
                           <AnimatedPoints
-                              value={Math.max(0, getEffectivePoints())}
+                              value={effectivePoints}
                               onClick={() => setShowPoints(true)}
+                              rewardDelta={pointsRewardPulse.delta}
+                              rewardPulseKey={pointsRewardPulse.key}
                               className="h-10 w-[118px] sm:w-[132px]"
                           />
                       </div>
@@ -11041,11 +11106,44 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 </div>
                                                 <div className="mt-2 text-sm text-zinc-200 leading-relaxed">
                                                     {popTriviaRevealWasCorrect
-                                                        ? (popTriviaCorrectPoints > 0 ? `You got it right. +${popTriviaCorrectPoints} pts should land in your room balance.` : 'You got it right.')
+                                                        ? (
+                                                            popTriviaCorrectPoints > 0
+                                                                ? (popTriviaAwardSyncedDelta > 0
+                                                                    ? `You got it right. +${popTriviaAwardSyncedDelta} pts landed in your room balance.`
+                                                                    : 'You got it right. Reward is syncing into your room balance now.')
+                                                                : 'You got it right.'
+                                                        )
                                                         : popTriviaRevealMyVote !== null
                                                             ? 'Your answer locked in, but this was not the winning choice.'
                                                             : 'Trivia complete. Back to the song.'}
                                                 </div>
+                                                {popTriviaRevealWasCorrect && popTriviaCorrectPoints > 0 ? (
+                                                    <div className={`mt-3 rounded-2xl border px-3 py-3 ${popTriviaAwardSyncedDelta > 0 ? 'border-emerald-300/45 bg-emerald-500/10' : 'border-cyan-300/30 bg-cyan-500/10'}`}>
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <div>
+                                                                <div className={`text-[11px] uppercase tracking-[0.18em] ${popTriviaAwardSyncedDelta > 0 ? 'text-emerald-100' : 'text-cyan-100'}`}>
+                                                                    {popTriviaAwardSyncedDelta > 0 ? 'Points added' : 'Points incoming'}
+                                                                </div>
+                                                                <div className="mt-1 text-xs text-zinc-300">
+                                                                    {popTriviaAwardSyncedDelta > 0
+                                                                        ? 'Your room balance just updated from this trivia win.'
+                                                                        : `Waiting for the room wallet sync to post +${popTriviaCorrectPoints} pts.`}
+                                                                </div>
+                                                            </div>
+                                                            <AnimatedPoints
+                                                                value={effectivePoints}
+                                                                onClick={() => setShowPoints(true)}
+                                                                rewardDelta={popTriviaAwardSyncedDelta}
+                                                                rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
+                                                                className="h-10 w-[132px] shrink-0"
+                                                            />
+                                                        </div>
+                                                        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-300">
+                                                            <span>{popTriviaAwardSyncPending ? 'Syncing reward' : 'Wallet updated'}</span>
+                                                            <span>{popTriviaAwardSyncedDelta > 0 ? `+${popTriviaAwardSyncedDelta} pts` : `+${popTriviaCorrectPoints} pts`}</span>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
                                                 <div className="mt-3 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-300">
                                                     <span>{popTriviaRevealCorrectCount > 0 ? `${popTriviaRevealCorrectCount} correct` : 'No correct answers yet'}</span>
                                                     <span>{popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts` : 'Karaoke resumes'}</span>

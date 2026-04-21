@@ -3543,12 +3543,18 @@ const AudienceMiniPreview = ({
     const viewHref = String(audienceLaunchUrl || '').trim() || `${audienceBase}?room=${encodeURIComponent(roomCode)}`;
     const liveViewportHref = useMemo(() => viewHref, [viewHref]);
     const liveViewportEnabled = normalizedPreviewMode === 'live_audience';
-    const resolvedPreviewSize = liveViewportEnabled && previewSize === 'sm' ? 'md' : previewSize;
-    const previewWidthClass = ({
-        sm: 'w-[340px]',
-        md: 'w-[420px]',
-        lg: 'w-[520px]'
-    })[resolvedPreviewSize] || 'w-[420px]';
+    const resolvedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const previewWidthClass = liveViewportEnabled
+        ? ({
+            sm: 'w-[220px]',
+            md: 'w-[280px]',
+            lg: 'w-[340px]'
+        })[resolvedPreviewSize] || 'w-[280px]'
+        : ({
+            sm: 'w-[340px]',
+            md: 'w-[420px]',
+            lg: 'w-[520px]'
+        })[resolvedPreviewSize] || 'w-[420px]';
     return (
         <div className={`fixed right-3 bottom-3 z-[35] max-w-[calc(100vw-24px)] ${previewWidthClass}`}>
             <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
@@ -3591,9 +3597,8 @@ const AudienceMiniPreview = ({
                                     key={key}
                                     type="button"
                                     onClick={() => onSetPreviewSize?.(key)}
-                                    disabled={liveViewportEnabled && key === 'sm'}
-                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'} ${(liveViewportEnabled && key === 'sm') ? 'cursor-not-allowed opacity-35' : ''}`}
-                                    title={liveViewportEnabled && key === 'sm' ? 'Small is disabled in live app mode' : `Set preview size ${label}`}
+                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
+                                    title={`Set preview size ${label}`}
                                 >
                                     {label}
                                 </button>
@@ -3626,15 +3631,18 @@ const AudienceMiniPreview = ({
                 </div>
                 {!collapsed && (
                     <div className="p-2">
-                        <div className={`relative overflow-hidden aspect-video ${liveViewportEnabled ? 'rounded-[1.1rem] border border-cyan-400/18 bg-black p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'rounded-xl border border-white/10 bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]'}`}>
+                        <div className={`relative overflow-hidden ${liveViewportEnabled ? 'mx-auto aspect-[390/844] rounded-[1.4rem] border border-cyan-400/18 bg-black p-1.5 shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)]' : 'aspect-video rounded-xl border border-white/10 bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]'}`}>
                             {liveViewportEnabled ? (
-                                <div className="absolute inset-0 pointer-events-none rounded-[0.95rem] border border-white/8" />
+                                <>
+                                    <div className="absolute inset-[6px] pointer-events-none rounded-[1.08rem] border border-white/8" />
+                                    <div className="pointer-events-none absolute left-1/2 top-[10px] z-10 h-1.5 w-16 -translate-x-1/2 rounded-full bg-white/12" />
+                                </>
                             ) : null}
                             {liveViewportEnabled ? (
                                 <iframe
                                     src={liveViewportHref}
                                     title="Audience app live preview"
-                                    className={`absolute bg-black pointer-events-none ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[0.9rem]' : 'inset-0 h-full w-full'}`}
+                                    className={`absolute bg-black pointer-events-none ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[1.05rem]' : 'inset-0 h-full w-full'}`}
                                     loading="lazy"
                                     referrerPolicy="strict-origin-when-cross-origin"
                                     allow="autoplay; fullscreen"
@@ -3682,7 +3690,7 @@ const AudienceMiniPreview = ({
                         </div>
                         <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
                             <span>{liveViewportEnabled ? 'Read-only audience app' : 'Audience summary'}</span>
-                            <span>{liveViewportEnabled ? `${resolvedPreviewSize.toUpperCase()} viewport` : `Queue ${queueCount}`}</span>
+                            <span>{liveViewportEnabled ? `${resolvedPreviewSize.toUpperCase()} mobile viewport` : `Queue ${queueCount}`}</span>
                         </div>
                     </div>
                 )}
@@ -5863,24 +5871,40 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud ? runOfShowQueueHudSection : queueListSection}
         </div>
     ) : null;
+    const compactQueueStatusChips = [
+        queueSurface.counts.needsAttention > 0
+            ? {
+                key: 'needsAttention',
+                className: 'rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-amber-100',
+                label: `Needs Attention ${queueSurface.counts.needsAttention}`
+            }
+            : null,
+        {
+            key: 'ready',
+            className: 'rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-100',
+            label: `Ready ${queueSurface.counts.ready}`
+        },
+        queueSurface.counts.assigned > 0
+            ? {
+                key: 'assigned',
+                className: 'rounded-full border border-violet-300/30 bg-violet-500/10 px-2.5 py-1 text-violet-100',
+                label: `Assigned ${queueSurface.counts.assigned}`
+            }
+            : null
+    ].filter(Boolean);
+    const showCompactQueueStatusChips = compactQueueStatusChips.length > 1 || compactQueueStatusChips.some((chip) => chip.key !== 'ready');
     const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
         <div className="border-b border-white/10 bg-black/20 px-3 py-3">
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
-                {queueSurface.counts.needsAttention > 0 ? (
-                    <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-amber-100">
-                        Needs Attention {queueSurface.counts.needsAttention}
-                    </span>
-                ) : null}
-                <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
-                    Ready {queueSurface.counts.ready}
-                </span>
-                {queueSurface.counts.assigned > 0 ? (
-                    <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2.5 py-1 text-violet-100">
-                        Assigned {queueSurface.counts.assigned}
-                    </span>
-                ) : null}
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            {showCompactQueueStatusChips ? (
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
+                    {compactQueueStatusChips.map((chip) => (
+                        <span key={chip.key} className={chip.className}>
+                            {chip.label}
+                        </span>
+                    ))}
+                </div>
+            ) : null}
+            <div className={`${showCompactQueueStatusChips ? 'mt-3 ' : ''}flex flex-wrap items-center gap-2`}>
                 <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
                     <button
                         type="button"

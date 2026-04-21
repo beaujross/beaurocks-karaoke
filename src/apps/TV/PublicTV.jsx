@@ -4337,6 +4337,22 @@ const PublicTV = ({ roomCode }) => {
             });
     }, [showPopTriviaEndState, popTriviaCorrectPoints, popTriviaRevealCorrectIndex, popTriviaRevealVotes]);
     const popTriviaRevealAnswerCount = popTriviaRevealVotes.length;
+    const popTriviaRevealWinnerCount = popTriviaCorrectPoints > 0
+        ? popTriviaRevealAwardableResponders.length
+        : popTriviaRevealCorrectResponders.length;
+    const popTriviaRevealTotalPointsAwarded = popTriviaCorrectPoints > 0
+        ? popTriviaRevealAwardableResponders.length * popTriviaCorrectPoints
+        : 0;
+    const popTriviaRevealResolutionHeadline = popTriviaRevealWinnerCount > 0
+        ? `${popTriviaRevealWinnerCount} ${popTriviaRevealWinnerCount === 1 ? 'player' : 'players'} won this round`
+        : 'No winners this round';
+    const popTriviaRevealResolutionDetail = popTriviaRevealWinnerCount > 0
+        ? (
+            popTriviaCorrectPoints > 0
+                ? `Correct answers paid +${popTriviaCorrectPoints} pts each on audience phones.`
+                : 'Correct answers earned the crowd shoutout.'
+        )
+        : 'Nobody landed the correct answer before the round closed.';
     const marqueeItems = (room?.marqueeItems || []).filter(i => i.enabled !== false);
 
     useEffect(() => {
@@ -6871,6 +6887,31 @@ const PublicTV = ({ roomCode }) => {
                                             </div>
                                             <div className="shrink-0 rounded-full border border-emerald-200/40 bg-emerald-300/18 px-4 py-2 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-emerald-50">
                                                 {popTriviaCorrectPoints > 0 ? `+${popTriviaCorrectPoints} pts each` : 'TV shoutout'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 rounded-[1.6rem] border border-fuchsia-300/24 bg-[linear-gradient(135deg,rgba(168,85,247,0.16),rgba(34,211,238,0.08))] px-5 py-4 md:px-6 md:py-5 shadow-[0_0_28px_rgba(168,85,247,0.14)]">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <div className="text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-fuchsia-100/80">Round resolution</div>
+                                                <div className="mt-2 text-[1.45rem] md:text-[2.25rem] font-black text-white leading-[0.96]">
+                                                    {popTriviaRevealResolutionHeadline}
+                                                </div>
+                                                <div className="mt-2 text-[11px] md:text-[13px] text-zinc-200 leading-relaxed">
+                                                    {popTriviaRevealResolutionDetail}
+                                                </div>
+                                            </div>
+                                            <div className="shrink-0 text-right">
+                                                <div className="rounded-full border border-fuchsia-200/30 bg-black/24 px-4 py-2 text-[11px] md:text-[13px] uppercase tracking-[0.18em] text-fuchsia-50">
+                                                    {popTriviaCorrectPoints > 0
+                                                        ? `+${popTriviaCorrectPoints} pts each`
+                                                        : 'Crowd shoutout'}
+                                                </div>
+                                                {popTriviaRevealTotalPointsAwarded > 0 ? (
+                                                    <div className="mt-2 text-[1.15rem] md:text-[1.65rem] font-black text-white leading-none">
+                                                        {`${popTriviaRevealTotalPointsAwarded} pts total`}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         </div>
                                     </div>
