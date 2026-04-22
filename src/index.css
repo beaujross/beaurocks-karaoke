@@ -329,6 +329,26 @@ html, body, #root { height: 100%; width: 100%; }
   background: #EC4899;
 }
 
+.host-app .post-performance-timing-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #00C4D9, #EC4899);
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 14px rgba(0, 196, 217, 0.42), 0 0 18px rgba(236, 72, 153, 0.28);
+  margin-top: -4px;
+}
+.host-app .post-performance-timing-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #00C4D9, #EC4899);
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 14px rgba(0, 196, 217, 0.42), 0 0 18px rgba(236, 72, 153, 0.28);
+}
+
 /* Host panel readability */
 .host-app .text-zinc-500 { color: #b3b3b3; font-size: 1rem; }
 .host-app .text-zinc-400 { color: #d4d4d8; font-size: 1rem; }
@@ -1017,17 +1037,13 @@ html, body, #root { height: 100%; width: 100%; }
   width: 100vw;
   min-height: 100svh;
   height: 100svh;
+  min-height: 100dvh;
+  height: 100dvh;
   background:
     radial-gradient(circle at 14% -8%, rgba(96, 165, 250, 0.24), transparent 48%),
     radial-gradient(circle at 86% -10%, rgba(45, 212, 191, 0.18), transparent 42%),
     radial-gradient(circle at 50% 100%, rgba(244, 114, 182, 0.2), transparent 52%),
     #090612;
-}
-@supports (height: 100dvh) {
-  .mobile-shell-native {
-    min-height: 100dvh;
-    height: 100dvh;
-  }
 }
 .mobile-native-top-chrome {
   height: calc(env(safe-area-inset-top) + 24px);

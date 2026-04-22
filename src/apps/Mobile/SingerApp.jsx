@@ -403,6 +403,47 @@ const songBelongsToAudienceUser = (song = {}, uidValue = '', nameValue = '') => 
     );
 };
 
+const getAudienceSongLimitState = ({ queueSettings = {}, songs = [], uidValue = '', nameValue = '', nowMs = Date.now() } = {}) => {
+    const limitMode = queueSettings.limitMode || 'none';
+    const limitCount = Math.max(0, Number(queueSettings.limitCount || 0));
+    const mySongs = songs.filter((song) => songBelongsToAudienceUser(song, uidValue, nameValue));
+    const myRecentSongs = mySongs.filter((song) => {
+        const ts = song.timestamp?.seconds ? song.timestamp.seconds * 1000 : song.timestamp?.toMillis?.() || 0;
+        return ts && nowMs - ts < 60 * 60 * 1000;
+    });
+    const myTotalCount = mySongs.length;
+    const myHourCount = myRecentSongs.length;
+    const isLimited = limitMode !== 'none' && limitCount > 0;
+    const perNightExceeded = limitMode === 'per_night' && myTotalCount >= limitCount;
+    const perHourExceeded = limitMode === 'per_hour' && myHourCount >= limitCount;
+    const softReviewPending = limitMode === 'soft' && myTotalCount >= limitCount;
+    const hardBlocked = isLimited && (perNightExceeded || perHourExceeded);
+    const limitLabel = limitMode === 'per_hour'
+        ? `${limitCount} per hour`
+        : limitMode === 'per_night'
+            ? `${limitCount} per night`
+            : limitMode === 'soft'
+                ? `${limitCount} before host review`
+                : 'No request limits';
+    const detail = hardBlocked
+        ? `Host limit reached: ${limitLabel}.`
+        : softReviewPending
+            ? 'Additional songs will go to host review before joining the queue.'
+            : isLimited
+                ? `Host limit: ${limitLabel}.`
+                : 'No host song limit right now.';
+
+    return {
+        limitMode,
+        limitCount,
+        myTotalCount,
+        myHourCount,
+        hardBlocked,
+        softReviewPending,
+        detail
+    };
+};
+
 const normalizeTight15Entry = (entry = {}) => {
     const songTitle = String(entry.songTitle || entry.song || '').trim();
     const artist = String(entry.artist || entry.singerName || '').trim();
@@ -6101,23 +6142,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
         const queueSettings = room?.queueSettings || {};
-        const limitMode = queueSettings.limitMode || 'none';
-        const limitCount = Math.max(0, Number(queueSettings.limitCount || 0));
-        const nowMs = Date.now();
-        const mySongs = songs.filter(song => songBelongsToAudienceUser(song, singerUid, user.name));
-        const myRecentSongs = mySongs.filter(song => {
-            const ts = song.timestamp?.seconds ? song.timestamp.seconds * 1000 : song.timestamp?.toMillis?.() || 0;
-            return ts && nowMs - ts < 60 * 60 * 1000;
+        const songLimitState = getAudienceSongLimitState({
+            queueSettings,
+            songs,
+            uidValue: singerUid,
+            nameValue: user.name
         });
-        const myTotalCount = mySongs.length;
-        const myHourCount = myRecentSongs.length;
-        if (limitMode !== 'none' && limitCount > 0) {
-            const exceeded = (limitMode === 'per_night' && myTotalCount >= limitCount) ||
-                (limitMode === 'per_hour' && myHourCount >= limitCount);
-            if (exceeded && limitMode !== 'soft') {
-                toast('You have reached the host song limit.');
-                return;
-            }
+        if (songLimitState.hardBlocked) {
+            toast('You have reached the host song limit.');
+            return;
         }
         try {
             const song = s || form.song; const artist = a || form.artist; const artwork = art || form.art; 
@@ -6135,7 +6168,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if (firstTimeBoost && performedCount === 0) {
                 priorityScore -= 120000;
             }
-            const enforcePending = (limitMode === 'soft' && limitCount > 0 && myTotalCount >= limitCount);
+            const enforcePending = songLimitState.softReviewPending;
             const allowTrack = guestBackingAllowed || !!options.allowTrack || !!options.mediaUrl;
             const backingUrl = (options.mediaUrl || (allowTrack ? form.backingUrl : '') || '').trim();
             const trackSource = options.trackSource || 'youtube';
@@ -10108,6 +10141,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     ).length;
     const latestMyRequest = myRequestSongs[0] || null;
     const latestMyRequestStateMeta = latestMyRequest ? getAudienceRequestStateMeta(latestMyRequest) : null;
+    const audienceSongLimitState = getAudienceSongLimitState({
+        queueSettings: queueSettingsView,
+        songs,
+        uidValue: activeUid || uid,
+        nameValue: user?.name
+    });
+    const audienceRequestCtaLabel = audienceSongLimitState.hardBlocked
+        ? 'Song Limit Reached'
+        : audienceSongLimitState.softReviewPending
+            ? 'Request for Host Review'
+            : activeRequestCount > 0
+                ? 'Add Another Song'
+                : 'Search + Add Song';
+    const audienceRequestCtaDetail = audienceSongLimitState.hardBlocked || audienceSongLimitState.softReviewPending
+        ? audienceSongLimitState.detail
+        : 'Open search, pick a song, and it goes straight to the queue.';
     const queueWaitTimeSec = songs
         .filter(s => s.status === 'requested')
         .reduce((sum, s) => {
@@ -12113,25 +12162,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <i className="fa-solid fa-xmark"></i>
                                     </button>
                                 </div>
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSongsTab('queue')}
-                                        className="rounded-full bg-white text-black px-4 py-2 text-sm font-black uppercase tracking-[0.18em]"
-                                    >
-                                        View Queue
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setSongsTab('requests');
-                                            setLastSongRequestFeedback(null);
-                                        }}
-                                        className="rounded-full border border-white/15 bg-black/20 px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-white"
-                                    >
-                                        Add Another
-                                    </button>
-                                </div>
                             </div>
                             );
                         })()}
@@ -12630,7 +12660,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             id="song-search"
                                             type="button"
                                             onClick={openAudienceCatalogSearch}
-                                            className={`flex w-full items-center gap-4 border px-4 py-4 text-left text-base text-white ${isStreamlinedAudienceShell ? 'rounded-[24px] shadow-[0_18px_40px_rgba(0,0,0,0.24)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
+                                            disabled={audienceSongLimitState.hardBlocked}
+                                            className={`flex w-full items-center gap-4 border px-4 py-4 text-left text-base text-white ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-70' : ''} ${isStreamlinedAudienceShell ? 'rounded-[24px] shadow-[0_18px_40px_rgba(0,0,0,0.24)]' : 'rounded-lg border-zinc-600 bg-zinc-800'}`}
                                             style={isStreamlinedAudienceShell ? streamlinedPrimaryActionStyle : undefined}
                                         >
                                             <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-black/25 text-lg text-cyan-50">
@@ -12641,7 +12672,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100/85">Fastest way in</div>
                                                 )}
                                                 <span className={searchQ ? 'text-white' : 'text-white/92'}>
-                                                    {searchQ || (isStreamlinedAudienceShell ? 'Search + Add Song' : 'Search songs...')}
+                                                    {searchQ || audienceRequestCtaLabel}
                                                 </span>
                                             </div>
                                             {isStreamlinedAudienceShell && (
@@ -12653,12 +12684,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         </button>
                                         {isStreamlinedAudienceShell && (
                                             <div className="text-sm text-zinc-300">
-                                                Open search, pick a song, and it goes straight to the queue.
+                                                {audienceRequestCtaDetail}
                                             </div>
                                         )}
                                         {!isStreamlinedAudienceShell && (
                                             <div className="text-sm text-zinc-500">
-                                                Search opens a full-screen song picker so results stay visible above the keyboard.
+                                                {audienceRequestCtaDetail}
                                             </div>
                                         )}
                                     </div>
@@ -12679,7 +12710,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button
                                         type="button"
                                         onClick={() => setManualRequestComposerOpen(true)}
-                                        className={`w-full rounded-[24px] border px-4 text-left ${isStreamlinedAudienceShell ? 'py-4 shadow-[0_16px_36px_rgba(0,0,0,0.2)]' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
+                                        disabled={audienceSongLimitState.hardBlocked}
+                                        className={`w-full rounded-[24px] border px-4 text-left ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-60' : ''} ${isStreamlinedAudienceShell ? 'py-4 shadow-[0_16px_36px_rgba(0,0,0,0.2)]' : 'border-pink-400/30 bg-gradient-to-r from-pink-500/18 via-fuchsia-500/12 to-cyan-500/12 py-4'}`}
                                         style={isStreamlinedAudienceShell ? streamlinedSecondaryActionStyle : undefined}
                                     >
                                         <div className="flex items-center justify-between gap-3">
@@ -13118,6 +13150,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="text-xl font-bebas text-cyan-400">Up Next</div>
                                     </div>
                                     <div className="flex flex-wrap gap-2 text-sm text-zinc-200">
+                                        <button
+                                            type="button"
+                                            onClick={openAudienceCatalogSearch}
+                                            disabled={audienceSongLimitState.hardBlocked}
+                                            title={audienceRequestCtaDetail}
+                                            className={`flex items-center gap-1 rounded-full px-3 py-1 text-sm font-black uppercase tracking-[0.16em] ${
+                                                audienceSongLimitState.hardBlocked
+                                                    ? 'cursor-not-allowed border border-zinc-700 bg-zinc-900/70 text-zinc-500'
+                                                    : audienceSongLimitState.softReviewPending
+                                                        ? 'border border-amber-300/35 bg-amber-500/15 text-amber-100'
+                                                        : 'bg-[#00C4D9] text-black'
+                                            }`}
+                                        >
+                                            <i className={`fa-solid ${audienceSongLimitState.hardBlocked ? 'fa-ban' : 'fa-plus'}`}></i>
+                                            <span>{audienceRequestCtaLabel}</span>
+                                        </button>
                                         <div className="flex items-center gap-1 bg-black/40 border border-white/10 rounded-full px-2 py-0.5">
                                             <i className="fa-solid fa-clock text-cyan-300 text-sm"></i>
                                             <span className="text-sm">{formatWaitTime(queueWaitTimeSec)} est wait</span>
@@ -13138,9 +13186,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     {queueSongsView.length === 0 && (
                                         <div className="bg-zinc-900/60 border border-zinc-700 rounded-xl p-4 text-center">
                                             <div className="text-base text-white font-bold mb-2">Queue is empty</div>
-                                            <div className="text-base text-zinc-300 mb-3">Add a song to get the party started.</div>
-                                            <button onClick={() => { setTab('request'); setSongsTab('requests'); }} className="bg-[#00C4D9] text-black px-4 py-2 rounded-full text-base font-bold">
-                                                Add a Song
+                                            <div className="text-base text-zinc-300 mb-3">{audienceRequestCtaDetail}</div>
+                                            <button
+                                                type="button"
+                                                onClick={openAudienceCatalogSearch}
+                                                disabled={audienceSongLimitState.hardBlocked}
+                                                className={`px-4 py-2 rounded-full text-base font-bold ${
+                                                    audienceSongLimitState.hardBlocked
+                                                        ? 'cursor-not-allowed bg-zinc-700 text-zinc-400'
+                                                        : 'bg-[#00C4D9] text-black'
+                                                }`}
+                                            >
+                                                {audienceRequestCtaLabel}
                                             </button>
                                         </div>
                                     )}

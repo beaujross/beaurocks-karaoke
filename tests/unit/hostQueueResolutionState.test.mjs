@@ -35,6 +35,13 @@ describe('host queue resolution state', () => {
         resolutionStatus: 'resolved',
         priorityScore: 15,
       },
+      {
+        id: 'held_not_here',
+        status: 'held',
+        resolutionStatus: 'resolved',
+        priorityScore: 5,
+        heldAt: { seconds: 123 },
+      },
     ]);
 
     expect(partitioned.reviewRequired.map((song) => song.id)).toEqual([
@@ -44,6 +51,7 @@ describe('host queue resolution state', () => {
     expect(partitioned.queue.map((song) => song.id)).toEqual(['requested_unverified']);
     expect(partitioned.pending.map((song) => song.id)).toEqual(['pending_resolved']);
     expect(partitioned.assigned.map((song) => song.id)).toEqual(['assigned_resolved']);
+    expect(partitioned.held.map((song) => song.id)).toEqual(['held_not_here']);
   });
 
   it('ignores already rejected queue entries because they are no longer active queue work', () => {
@@ -60,5 +68,6 @@ describe('host queue resolution state', () => {
     expect(partitioned.queue).toEqual([]);
     expect(partitioned.pending).toEqual([]);
     expect(partitioned.assigned).toEqual([]);
+    expect(partitioned.held).toEqual([]);
   });
 });

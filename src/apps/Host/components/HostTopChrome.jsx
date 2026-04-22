@@ -163,6 +163,8 @@ const HostTopChrome = ({
     setAudiencePreviewVisible,
     audiencePreviewMode = 'thumbnail',
     setAudiencePreviewMode,
+    publicTvPreviewVisible = false,
+    setPublicTvPreviewVisible,
     tabletTouchViewport = false,
     runOfShowEnabled = false,
     runOfShowDirector = null,
@@ -1981,26 +1983,39 @@ const HostTopChrome = ({
                                     <span className="inline-flex items-center gap-2 text-left">
                                         <i className="fa-solid fa-mobile-screen-button"></i>
                                         <span className="flex flex-col">
-                                            <span>Public TV Preview</span>
-                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Host-side view of the live TV output</span>
+                                            <span>Audience App Preview</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Persistent host-side phone view</span>
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{audiencePreviewVisible ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
-                                    onClick={() => setAudiencePreviewMode?.((prev) => prev === 'live_tv' ? 'thumbnail' : 'live_tv')}
-                                    disabled={!audiencePreviewVisible || !showTimeClockEnabled}
-                                    className={`${styles.btnStd} ${audiencePreviewMode === 'live_tv' ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em] ${(!audiencePreviewVisible || !showTimeClockEnabled) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                    title="Switch between the light thumbnail and a muted live TV viewport"
+                                    onClick={() => setAudiencePreviewMode?.((prev) => prev === 'live_audience' ? 'thumbnail' : 'live_audience')}
+                                    disabled={!audiencePreviewVisible}
+                                    className={`${styles.btnStd} ${audiencePreviewMode === 'live_audience' ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em] ${!audiencePreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    title="Switch between the light summary and the live audience app"
                                 >
                                     <span className="inline-flex items-center gap-2 text-left">
-                                        <i className="fa-solid fa-tv"></i>
+                                        <i className="fa-solid fa-mobile-screen"></i>
                                         <span className="flex flex-col">
-                                            <span>Viewport Mode</span>
-                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Thumbnail stays light. Live TV mounts a muted TV client.</span>
+                                            <span>Audience Viewport</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Summary or interactive live app</span>
                                         </span>
                                     </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{audiencePreviewMode === 'live_tv' ? 'Live TV' : 'Thumb'}</span>
+                                    <span className="text-[11px] uppercase tracking-widest">{audiencePreviewMode === 'live_audience' ? 'Live App' : 'Thumb'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setPublicTvPreviewVisible?.((prev) => !prev)}
+                                    className={`${styles.btnStd} ${publicTvPreviewVisible ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-display"></i>
+                                        <span className="flex flex-col">
+                                            <span>Public TV Preview</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Host-side view of live TV output</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{publicTvPreviewVisible ? 'On' : 'Off'}</span>
                                 </button>
                             </div>
                         </div>

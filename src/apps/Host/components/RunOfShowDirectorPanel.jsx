@@ -202,6 +202,84 @@ const VIBE_TIMELINE_OPTIONS = Object.freeze([
     { id: 'strobe', label: 'Strobe', detail: 'Short strobe burst.', icon: 'fa-burst', tone: 'amber' },
     { id: 'volley', label: 'Volley', detail: 'Back-and-forth crowd volley.', icon: 'fa-arrows-left-right', tone: 'emerald' },
 ]);
+
+const buildSpotlightLaunchConfig = (modeId = '', option = null) => {
+    const safeModeId = String(modeId || '').trim().toLowerCase();
+    const label = String(option?.label || safeModeId || 'Game Break').trim();
+    const detail = String(option?.detail || '').trim();
+    if (safeModeId === 'bingo') {
+        return {
+            boardTitle: label,
+            bingoMode: 'karaoke',
+            participantMode: 'all'
+        };
+    }
+    if (safeModeId === 'team_pong') {
+        return {
+            question: detail || 'Left side vs right side rally.',
+            participantMode: 'all',
+            windowMs: 18000,
+            rallyTimeoutMs: 3200,
+            targetRally: 45
+        };
+    }
+    if (safeModeId === 'doodle_oke') {
+        return {
+            question: 'Draw the karaoke moment',
+            participantMode: 'all',
+            durationSec: 45,
+            guessSec: 12,
+            requireReview: false
+        };
+    }
+    if (safeModeId === 'selfie_challenge') {
+        return {
+            question: 'Best karaoke face',
+            participantMode: 'all',
+            requireApproval: true,
+            autoStartVoting: true
+        };
+    }
+    if (safeModeId === 'karaoke_bracket') {
+        return {
+            question: 'Sweet 16 bracket spotlight',
+            participantMode: 'all'
+        };
+    }
+    if (safeModeId === 'flappy_bird' || safeModeId === 'vocal_challenge') {
+        return {
+            question: detail || `${label} crowd mic run`,
+            participantMode: 'all',
+            inputSource: 'ambient',
+            durationSec: 60,
+            difficulty: 'normal',
+            guideTone: 'C4'
+        };
+    }
+    if (safeModeId === 'riding_scales') {
+        return {
+            question: detail || 'Crowd scale challenge',
+            participantMode: 'all',
+            durationSec: 60,
+            maxStrikes: 3,
+            rewardPerRound: 50,
+            difficulty: 'normal',
+            guideTone: 'C4'
+        };
+    }
+    if (safeModeId === 'applause_countdown') {
+        return {
+            question: 'Measure the room',
+            durationSec: 35,
+            participantMode: 'all'
+        };
+    }
+    return {
+        question: detail || label,
+        participantMode: 'all'
+    };
+};
+
 const MOMENT_PACKS = Object.freeze([
     {
         id: 'hype_intro',
@@ -2357,7 +2435,7 @@ const TimelineStudio = ({
             plannedDurationSec: safeModeId === 'applause_countdown' ? 35 : 60,
             modeLaunchPlan: {
                 modeKey: safeModeId,
-                launchConfig: {},
+                launchConfig: buildSpotlightLaunchConfig(safeModeId, option),
                 requiresAudienceTakeover: safeModeId !== 'applause_countdown'
             },
             presentationPlan: {

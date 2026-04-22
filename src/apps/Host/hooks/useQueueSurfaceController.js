@@ -9,6 +9,7 @@ const useQueueSurfaceController = ({
     pending = [],
     queue = [],
     assigned = [],
+    held = [],
     showAddForm,
     setShowAddForm,
     showQueueList,
@@ -27,8 +28,8 @@ const useQueueSurfaceController = ({
     const [touchReorderMode, setTouchReorderMode] = useState(false);
     const queueVisibilityCountsRef = useRef(null);
     const counts = useMemo(
-        () => buildQueueSurfaceCounts({ reviewRequired, pending, queue, assigned }),
-        [reviewRequired, pending, queue, assigned]
+        () => buildQueueSurfaceCounts({ reviewRequired, pending, queue, assigned, held }),
+        [reviewRequired, pending, queue, assigned, held]
     );
     const stageSummary = useMemo(
         () => buildQueueStageSummary({ counts, nextQueueSong: queue[0] || null }),
@@ -81,7 +82,8 @@ const useQueueSurfaceController = ({
             review: counts.review,
             pending: counts.pending,
             ready: counts.ready,
-            assigned: counts.assigned
+            assigned: counts.assigned,
+            held: counts.held
         };
         const previousCounts = queueVisibilityCountsRef.current;
         queueVisibilityCountsRef.current = nextCounts;
@@ -111,6 +113,7 @@ const useQueueSurfaceController = ({
     }, [
         assignedQueueOpen,
         counts.assigned,
+        counts.held,
         counts.pending,
         counts.ready,
         counts.review,
@@ -124,6 +127,7 @@ const useQueueSurfaceController = ({
         setReadyQueueOpen,
         setReviewQueueOpen,
         setShowQueueList,
+        showAddForm,
         showQueueList
     ]);
 

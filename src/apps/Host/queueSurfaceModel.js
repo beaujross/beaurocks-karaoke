@@ -7,20 +7,23 @@ export const buildQueueSurfaceCounts = ({
     reviewRequired = [],
     pending = [],
     queue = [],
-    assigned = []
+    assigned = [],
+    held = []
 } = {}) => {
     const review = normalizeCount(reviewRequired?.length);
     const pendingCount = normalizeCount(pending?.length);
     const ready = normalizeCount(queue?.length);
     const assignedCount = normalizeCount(assigned?.length);
+    const heldCount = normalizeCount(held?.length);
     const needsAttention = review + pendingCount;
     return {
         review,
         pending: pendingCount,
         ready,
         assigned: assignedCount,
+        held: heldCount,
         needsAttention,
-        total: needsAttention + ready + assignedCount
+        total: needsAttention + ready + assignedCount + heldCount
     };
 };
 
@@ -33,6 +36,7 @@ export const buildQueueStageSummary = ({
         pending: normalizeCount(counts.pending),
         ready: normalizeCount(counts.ready),
         assigned: normalizeCount(counts.assigned),
+        held: normalizeCount(counts.held),
         needsAttention: normalizeCount(counts.needsAttention),
         total: normalizeCount(counts.total)
     };
@@ -44,11 +48,12 @@ export const buildQueueStageSummary = ({
             ? `${normalizedCounts.needsAttention} request${normalizedCounts.needsAttention === 1 ? '' : 's'} need host attention`
             : normalizedCounts.assigned > 0
                 ? `${normalizedCounts.assigned} song${normalizedCounts.assigned === 1 ? '' : 's'} tied to the show`
-                : 'No one queued';
+                : normalizedCounts.held > 0
+                    ? `${normalizedCounts.held} singer${normalizedCounts.held === 1 ? '' : 's'} held`
+                    : 'No one queued';
 
     return {
         queueCount: normalizedCounts.total,
         nextQueueText
     };
 };
-

@@ -112,13 +112,35 @@ const StageNowPlayingPanel = ({
             ? 'Relaxed'
             : 'Balanced';
     React.useEffect(() => {
-        if (pendingPostPerformancePace !== null && postPerformancePace === pendingPostPerformancePace) {
-            setPendingPostPerformancePace(null);
+        if (pendingPostPerformancePace !== null) {
+            const pendingPatch = buildPostPerformanceTimingPatch(pendingPostPerformancePace, postPerformancePace);
+            const pendingPatchApplied = (
+                applauseWarmupSec === pendingPatch.applauseWarmupSec
+                && applauseCountdownSec === pendingPatch.applauseCountdownSec
+                && applauseMeasureSec === pendingPatch.applauseMeasureSec
+                && recapBreakdownMs === pendingPatch.performanceRecapBreakdownMs
+                && recapLeaderboardMs === pendingPatch.performanceRecapLeaderboardMs
+            );
+            if (pendingPatchApplied) {
+                setPendingPostPerformancePace(null);
+                setPostPerformancePaceDraft(postPerformancePace);
+            }
+            return;
         }
         if (!postPerformancePaceDragging) {
             setPostPerformancePaceDraft(postPerformancePace);
         }
-    }, [pendingPostPerformancePace, postPerformancePace, postPerformancePaceDragging]);
+    }, [
+        applauseCountdownSec,
+        applauseMeasureSec,
+        applauseWarmupSec,
+        buildPostPerformanceTimingPatch,
+        pendingPostPerformancePace,
+        postPerformancePace,
+        postPerformancePaceDragging,
+        recapBreakdownMs,
+        recapLeaderboardMs
+    ]);
     const commitPostPerformancePace = React.useCallback(async (rawValue) => {
         const nextPace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
         setPostPerformancePaceDraft(nextPace);
@@ -159,8 +181,8 @@ const StageNowPlayingPanel = ({
             <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Show Pace</div>
-                        <div className="mt-1 text-xs text-zinc-300">Automation timing for applause, recap, and leaderboard beats.</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Post-song Timing</div>
+                        <div className="mt-1 text-xs text-zinc-300">Set how quickly applause, recap, and leaderboard beats move.</div>
                     </div>
                     <span className="inline-flex min-w-[96px] items-center justify-center rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         {postPerformancePaceLabel}
@@ -183,7 +205,7 @@ const StageNowPlayingPanel = ({
                                 void commitPostPerformancePace(event.currentTarget.value);
                             }
                         }}
-                        className="h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800"
+                        className="post-performance-timing-slider h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800"
                         style={{ background: `linear-gradient(90deg, #22d3ee ${effectivePostPerformancePace}%, #27272a ${effectivePostPerformancePace}%)` }}
                     />
                     <div className="mt-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">

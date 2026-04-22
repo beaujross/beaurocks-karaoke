@@ -32,6 +32,7 @@ export const getAutoEndSchedule = ({
     pausedAt = 0,
     capturedDurationSec = 0,
     currentDurationSec = 0,
+    autoEndSafe = true,
     now = Date.now()
 } = {}) => {
     const AUTO_END_POST_TRACK_BUFFER_SEC = 6;
@@ -48,6 +49,7 @@ export const getAutoEndSchedule = ({
     const mediaClockRunning = hasMediaUrl && Number(videoStartTimestamp || 0) > 0 && !mediaPaused;
     const mediaRunning = applePlaying || !!videoPlaying || mediaClockRunning;
     if (!mediaRunning) return null;
+    if (!applePlaying && autoEndSafe === false) return null;
 
     const startedAt = applePlaying
         ? Number(appleStartedAt || 0)

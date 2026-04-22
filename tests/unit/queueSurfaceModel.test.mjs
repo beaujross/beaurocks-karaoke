@@ -12,6 +12,7 @@ describe('queue surface model', () => {
       pending: [{ id: 'pending-1' }],
       queue: [{ id: 'ready-1' }, { id: 'ready-2' }, { id: 'ready-3' }],
       assigned: [{ id: 'assigned-1' }],
+      held: [{ id: 'held-1' }],
     });
 
     expect(counts).toEqual({
@@ -19,8 +20,9 @@ describe('queue surface model', () => {
       pending: 1,
       ready: 3,
       assigned: 1,
+      held: 1,
       needsAttention: 3,
-      total: 7,
+      total: 8,
     });
   });
 
@@ -31,6 +33,7 @@ describe('queue surface model', () => {
         pending: 1,
         ready: 0,
         assigned: 2,
+        held: 0,
         needsAttention: 2,
         total: 4,
       },
@@ -50,6 +53,7 @@ describe('queue surface model', () => {
         pending: 0,
         ready: 1,
         assigned: 0,
+        held: 0,
         needsAttention: 0,
         total: 1,
       },
@@ -62,6 +66,26 @@ describe('queue surface model', () => {
     expect(summary).toEqual({
       queueCount: 1,
       nextQueueText: 'Alex - Pretty Woman',
+    });
+  });
+
+  it('surfaces held singers when no active queue work is runnable', () => {
+    const summary = buildQueueStageSummary({
+      counts: {
+        review: 0,
+        pending: 0,
+        ready: 0,
+        assigned: 0,
+        held: 2,
+        needsAttention: 0,
+        total: 2,
+      },
+      nextQueueSong: null,
+    });
+
+    expect(summary).toEqual({
+      queueCount: 2,
+      nextQueueText: '2 singers held',
     });
   });
 });

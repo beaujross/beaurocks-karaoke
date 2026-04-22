@@ -56,10 +56,53 @@ const formatItemSummary = (item = {}) => {
     return String(item?.notes || '').trim() || getRunOfShowItemLabel(type);
 };
 
+const getItemExecutionMeta = (item = {}) => {
+    const type = String(item?.type || '').trim().toLowerCase();
+    const modeKey = String(item?.modeLaunchPlan?.modeKey || item?.roomMomentPlan?.activeMode || '').trim().toLowerCase();
+    if (type === 'performance') {
+        return {
+            lane: 'Stage',
+            icon: 'fa-microphone-lines',
+            launchLabel: 'Singer performance',
+            nowLabel: 'On Stage',
+            nextLabel: 'Up Next'
+        };
+    }
+    if (type === 'trivia_break' || type === 'would_you_rather_break' || type === 'game_break') {
+        return {
+            lane: 'Game',
+            icon: modeKey === 'bingo'
+                ? 'fa-table-cells-large'
+                : modeKey === 'team_pong'
+                    ? 'fa-table-tennis-paddle-ball'
+                    : modeKey === 'selfie_challenge'
+                        ? 'fa-camera-retro'
+                        : 'fa-dice',
+            launchLabel: modeKey ? `Launches ${modeKey.replaceAll('_', ' ')}` : 'Interactive launch',
+            nowLabel: 'Live Game',
+            nextLabel: 'Next Game'
+        };
+    }
+    return {
+        lane: 'Event',
+        icon: type === 'announcement'
+            ? 'fa-bullhorn'
+            : type === 'winner_declaration'
+                ? 'fa-trophy'
+                : type === 'intermission'
+                    ? 'fa-martini-glass-citrus'
+                    : 'fa-layer-group',
+        launchLabel: item?.presentationPlan?.publicTvTakeoverEnabled ? 'TV event card' : 'Host event card',
+        nowLabel: 'Live Event',
+        nextLabel: 'Next Event'
+    };
+};
+
 const buildHudItems = ({ items = [], liveItemId = '', stagedItemId = '', nextItemId = '' } = {}) => (
     items.map((item, index) => {
         const status = String(item?.status || '').trim().toLowerCase();
         const type = String(item?.type || '').trim().toLowerCase();
+        const executionMeta = getItemExecutionMeta(item);
         const isLive = !!item?.id && item.id === liveItemId;
         const isStaged = !!item?.id && item.id === stagedItemId;
         const isNext = !!item?.id && item.id === nextItemId;
@@ -69,6 +112,11 @@ const buildHudItems = ({ items = [], liveItemId = '', stagedItemId = '', nextIte
             title: String(item?.title || '').trim() || getRunOfShowItemLabel(type),
             summary: formatItemSummary(item),
             durationLabel: formatDuration(getItemDurationSec(item)),
+            typeLabel: executionMeta.lane,
+            icon: executionMeta.icon,
+            launchLabel: executionMeta.launchLabel,
+            nowLabel: executionMeta.nowLabel,
+            nextLabel: executionMeta.nextLabel,
             badgeLabel: isLive ? 'Live' : isStaged ? 'Staged' : isNext ? 'Next' : status === 'blocked' ? 'Blocked' : `#${Number(item?.sequence || index + 1)}`,
             toneClass: isLive
                 ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
@@ -329,21 +377,37 @@ export default function RunOfShowQueueHud({
 
             <div className="mt-3 grid gap-2 lg:grid-cols-2">
                 <div className={`rounded-2xl border px-3 py-3 ${nowItem?.toneClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Now</div>
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{nowItem?.nowLabel || 'Now'}</div>
+                        {nowItem?.typeLabel ? (
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
+                                <i className={`fa-solid ${nowItem.icon || 'fa-layer-group'} mr-1`}></i>{nowItem.typeLabel}
+                            </span>
+                        ) : null}
+                    </div>
                     <div className="mt-1 text-sm font-black text-white">{nowItem?.title || (enabled ? 'No live slot yet' : 'Show not started')}</div>
                     <div className="mt-1 text-xs text-zinc-300">{nowItem?.summary || (enabled ? 'Use the primary action to keep the next move obvious.' : 'Go live check owns the last launch fixes.')}</div>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                         {nowItem?.badgeLabel ? <span>{nowItem.badgeLabel}</span> : null}
                         {nowItem?.durationLabel ? <span>{nowItem.durationLabel}</span> : null}
+                        {nowItem?.launchLabel ? <span>{nowItem.launchLabel}</span> : null}
                     </div>
                 </div>
                 <div className={`rounded-2xl border px-3 py-3 ${nextVisibleItem?.toneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">Next</div>
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{nextVisibleItem?.nextLabel || 'Next'}</div>
+                        {nextVisibleItem?.typeLabel ? (
+                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
+                                <i className={`fa-solid ${nextVisibleItem.icon || 'fa-layer-group'} mr-1`}></i>{nextVisibleItem.typeLabel}
+                            </span>
+                        ) : null}
+                    </div>
                     <div className="mt-1 text-sm font-black text-white">{nextVisibleItem?.title || 'No next slot queued'}</div>
                     <div className="mt-1 text-xs text-zinc-300">{nextVisibleItem?.summary || 'Queue can keep feeding the show once the next slot is ready.'}</div>
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                         {nextVisibleItem?.badgeLabel ? <span>{nextVisibleItem.badgeLabel}</span> : null}
                         {nextVisibleItem?.durationLabel ? <span>{nextVisibleItem.durationLabel}</span> : null}
+                        {nextVisibleItem?.launchLabel ? <span>{nextVisibleItem.launchLabel}</span> : null}
                     </div>
                 </div>
             </div>
@@ -362,6 +426,9 @@ export default function RunOfShowQueueHud({
                                         {item.badgeLabel}
                                     </span>
                                     <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-300">{item.durationLabel}</span>
+                                </div>
+                                <div className="mt-1 text-[9px] font-black uppercase tracking-[0.14em] text-current/75">
+                                    <i className={`fa-solid ${item.icon || 'fa-layer-group'} mr-1`}></i>{item.typeLabel} - {item.launchLabel}
                                 </div>
                                 <div className="mt-1 truncate text-[12px] font-black text-white">{item.title}</div>
                                 <div className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{item.summary}</div>

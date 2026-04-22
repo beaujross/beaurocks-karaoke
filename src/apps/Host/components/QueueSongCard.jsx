@@ -21,6 +21,9 @@ const QueueSongCard = ({
     startEdit,
     onApproveAudienceBacking,
     onAvoidAudienceBacking,
+    onMoveNext,
+    onHoldSinger,
+    onRestoreSinger,
     backingDecisionBusyKey = '',
     statusPill,
     styles,
@@ -29,6 +32,7 @@ const QueueSongCard = ({
     onAssignQueueSongToRunOfShowItem
 }) => {
     const [selectedRunOfShowSlotId, setSelectedRunOfShowSlotId] = useState('');
+    const [moreActionsOpen, setMoreActionsOpen] = useState(false);
     const queueBacking = normalizeBackingChoice({
         mediaUrl: song.mediaUrl,
         appleMusicId: song.appleMusicId
@@ -39,6 +43,7 @@ const QueueSongCard = ({
     const queuePlaybackReady = isQueueEntryPlayable(song);
     const queueUsesExternalWindow = !!song?.backingAudioOnly && !!queueMediaUrl;
     const songStatus = String(song?.status || '').trim().toLowerCase();
+    const isHeld = songStatus === 'held';
     const isAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(song?.resolutionStatus);
     const backingDecisionBusy = String(backingDecisionBusyKey || '').startsWith(`${song.id}:`);
     const isAssignedToRunOfShow = songStatus === 'assigned';
@@ -87,6 +92,7 @@ const QueueSongCard = ({
         lyricsChipTone = ' border-sky-300/40 text-sky-100 bg-sky-500/10';
     }
     const showSupportText = isAssignedToRunOfShow
+        || isHeld
         || queueUsesExternalWindow
         || isAudienceSelectedUnverified
         || ['needs_user_token', 'capability_blocked', 'error'].includes(lyricsStatus);
@@ -95,7 +101,7 @@ const QueueSongCard = ({
     return (
         <div
             data-queue-id={song.id}
-            draggable={!touchReorderEnabled}
+            draggable={!touchReorderEnabled && !isHeld}
             onDragStart={() => setDragQueueId(song.id)}
             onDragEnd={() => { setDragQueueId(null); setDragOverId(null); }}
             onDragOver={(e) => { e.preventDefault(); setDragOverId(song.id); }}
@@ -161,6 +167,12 @@ const QueueSongCard = ({
                                     Assigned
                                 </span>
                             ) : null}
+                            {isHeld ? (
+                                <span className={`${statusPill} border-zinc-300/35 text-zinc-100 bg-zinc-500/10`}>
+                                    <i className="fa-solid fa-pause mr-1"></i>
+                                    Held
+                                </span>
+                            ) : null}
                             {isAudienceSelectedUnverified ? (
                                 <span className={`${statusPill} border-cyan-300/40 text-cyan-100 bg-cyan-500/10`}>
                                     <i className="fa-solid fa-circle-question mr-1"></i>
@@ -172,6 +184,8 @@ const QueueSongCard = ({
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 {isAssignedToRunOfShow
                                     ? `Reserved for ${assignedRunOfShowSlot?.label || 'a run of show slot'}.`
+                                    : isHeld
+                                        ? `Held: ${String(song?.holdReason || 'not_here').replace(/_/g, ' ')}. Restore when the singer is ready.`
                                     : queueUsesExternalWindow
                                         ? 'YouTube does not allow this backing to run inside the TV embed, so it opens in a separate host window.'
                                         : isAudienceSelectedUnverified
@@ -234,27 +248,91 @@ const QueueSongCard = ({
                 {showCompactActionRail ? (
                     <div className={`${compactViewport ? 'w-full' : 'shrink-0 min-w-[88px]'}`}>
                         <div className={`${compactViewport ? 'grid grid-cols-3 gap-1' : 'flex flex-col gap-1'}`}>
+                            {isHeld ? (
+                                <button
+                                    type="button"
+                                    title="Restore singer to the lineup"
+                                    onClick={() => {
+                                        setMoreActionsOpen(false);
+                                        onRestoreSinger?.(song.id);
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-rotate-left mr-1.5"></i>Restore
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    title="Start performance"
+                                    onClick={() => {
+                                        setMoreActionsOpen(false);
+                                        updateStatus(song.id, 'performing');
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-play mr-1.5"></i>Start
+                                </button>
+                            )}
+                            {!isHeld && typeof onMoveNext === 'function' ? (
+                                <button
+                                    type="button"
+                                    title="Move this singer next"
+                                    onClick={() => {
+                                        setMoreActionsOpen(false);
+                                        onMoveNext(song.id);
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-arrow-up mr-1.5"></i>Next
+                                </button>
+                            ) : null}
                             <button
-                                title="Start performance"
-                                onClick={() => updateStatus(song.id, 'performing')}
-                                className={`${styles.btnStd} ${styles.btnPrimary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
-                            >
-                                <i className="fa-solid fa-play mr-1.5"></i>Start
-                            </button>
-                            <button
-                                title="Edit queue item"
-                                onClick={() => startEdit(song)}
+                                type="button"
+                                title={moreActionsOpen ? 'Hide queue item actions' : 'Show queue item actions'}
+                                onClick={() => setMoreActionsOpen((value) => !value)}
                                 className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
                             >
-                                <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
+                                <i className={`fa-solid ${moreActionsOpen ? 'fa-chevron-up' : 'fa-ellipsis'} mr-1.5`}></i>More
                             </button>
-                            <button
-                                title="Delete queue item"
-                                onClick={() => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id))}
-                                className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
-                            >
-                                <i className="fa-solid fa-trash mr-1.5"></i>Remove
-                            </button>
+                            {moreActionsOpen ? (
+                                <div className={`${compactViewport ? 'col-span-3 grid grid-cols-3 gap-1' : 'flex flex-col gap-1 border-t border-white/10 pt-1'}`}>
+                                    {!isHeld && typeof onHoldSinger === 'function' ? (
+                                        <button
+                                            type="button"
+                                            title="Mark this singer not here and hold them for later"
+                                            onClick={() => {
+                                                setMoreActionsOpen(false);
+                                                onHoldSinger(song.id, 'not_here');
+                                            }}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                        >
+                                            <i className="fa-solid fa-person-circle-question mr-1.5"></i>Not Here
+                                        </button>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        title="Edit queue item"
+                                        onClick={() => {
+                                            setMoreActionsOpen(false);
+                                            startEdit(song);
+                                        }}
+                                        className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                    >
+                                        <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
+                                    </button>
+                                    <button
+                                        type="button"
+                                        title="Delete queue item"
+                                        onClick={() => {
+                                            setMoreActionsOpen(false);
+                                            deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id));
+                                        }}
+                                        className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                    >
+                                        <i className="fa-solid fa-trash mr-1.5"></i>Remove
+                                    </button>
+                                </div>
+                            ) : null}
                         </div>
                     </div>
                 ) : (

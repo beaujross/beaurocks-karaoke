@@ -37,6 +37,17 @@ export const partitionQueueSongsByResolution = (songs = []) => {
                 return status === 'assigned' && !requiresBackingHostReview(song?.resolutionStatus);
             })
             .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0)),
+        held: safeSongs
+            .filter((song) => {
+                const status = String(song?.status || '').trim().toLowerCase();
+                return status === 'held';
+            })
+            .sort((a, b) => {
+                const aHeld = a.heldAt?.seconds ? a.heldAt.seconds : 0;
+                const bHeld = b.heldAt?.seconds ? b.heldAt.seconds : 0;
+                if (aHeld !== bHeld) return bHeld - aHeld;
+                return (a.priorityScore || 0) - (b.priorityScore || 0);
+            }),
         pending: safeSongs.filter((song) => {
             const status = String(song?.status || '').trim().toLowerCase();
             return status === 'pending' && !requiresBackingHostReview(song?.resolutionStatus);
@@ -54,7 +65,7 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
         [safeSongs]
     );
     const hasLyrics = !!current?.lyrics || (Array.isArray(current?.lyricsTimed) && current.lyricsTimed.length > 0);
-    const { reviewRequired, queue, assigned, pending } = partitionedSongs;
+    const { reviewRequired, queue, assigned, held, pending } = partitionedSongs;
     const lobbyCount = safeUsers.length;
     const queueCount = queue.length;
     const waitTimeSec = useMemo(() => queue.reduce((sum, s) => {
@@ -91,6 +102,7 @@ const useQueueDerivedState = ({ songs, room, users, appleMusicPlaying }) => {
         reviewRequired,
         queue,
         assigned,
+        held,
         pending,
         lobbyCount,
         queueCount,

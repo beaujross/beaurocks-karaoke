@@ -135,6 +135,25 @@ test("Run-of-show performance launch resolves real media duration before seeding
   assert.match(source, /currentPerformanceMeta:\s*\{[\s\S]*durationSec:\s*performanceDurationSec,/);
 });
 
+test("Run-of-show game cards launch through the shared live game mapper", () => {
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
+  const queueHudSource = readFileSync(runOfShowQueueHudPath, "utf8");
+
+  assert.match(hostSource, /import \{\s*buildRunOfShowGameLaunchRoomUpdates\s*\} from '..\/..\/lib\/gameLaunchSupport';/);
+  assert.match(
+    hostSource,
+    /buildRunOfShowGameLaunchRoomUpdates\(\{\s*item,\s*room: roomRef\.current \|\| \{\},\s*roomUsers: users,\s*startedAtMs\s*\}\)/s,
+  );
+  assert.match(hostSource, /Object\.assign\(roomUpdates, gameLaunchUpdates \|\| \{/);
+  assert.match(directorPanelSource, /const buildSpotlightLaunchConfig = \(modeId = '', option = null\) => \{/);
+  assert.match(directorPanelSource, /launchConfig: buildSpotlightLaunchConfig\(safeModeId, option\),/);
+  assert.match(directorPanelSource, /requiresAudienceTakeover: safeModeId !== 'applause_countdown'/);
+  assert.match(queueHudSource, /const getItemExecutionMeta = \(item = \{\}\) => \{/);
+  assert.match(queueHudSource, /lane: 'Game'/);
+  assert.match(queueHudSource, /launchLabel: modeKey \? `Launches \$\{modeKey\.replaceAll\('_', ' '\)\}` : 'Interactive launch'/);
+});
+
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {
   const source = readFileSync(hostAppPath, "utf8");
 

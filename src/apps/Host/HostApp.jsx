@@ -143,6 +143,9 @@ import {
     getBracketSignupState
 } from '../../lib/karaokeBracketSupport';
 import {
+    buildRunOfShowGameLaunchRoomUpdates
+} from '../../lib/gameLaunchSupport';
+import {
     POP_TRIVIA_VOTE_TYPE
 } from '../../lib/popTrivia';
 import {
@@ -790,20 +793,42 @@ const startQueueSongOnStage = async ({
     const useAppleBacking = effectiveBacking.usesAppleBacking;
     const performanceStartedAtMs = nowMs();
     const associatedBackingDurationSec = getAssociatedBackingDurationSec(queueSong);
+    const resolvedBackingDurationSec = !useAppleBacking && songMediaUrl
+        ? normalizeDurationSec(await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null))
+        : 0;
     const measuredDuration = useAppleBacking
         ? Math.max(
             associatedBackingDurationSec,
             normalizeDurationSec(queueSong?.duration),
             normalizeDurationSec(roomSnapshot?.appleMusicPlayback?.durationSec)
         )
-        : associatedBackingDurationSec || await resolveDurationForUrl(stageMediaUrl, isAudioUrl(stageMediaUrl)).catch(() => null);
+        : resolvedBackingDurationSec || associatedBackingDurationSec;
     const performanceDurationSec = Math.max(30, normalizeDurationSec(measuredDuration || queueSong?.duration || 180) || 180);
+    const durationSource = useAppleBacking
+        ? 'apple_music'
+        : resolvedBackingDurationSec > 0
+            ? 'backing_media'
+            : associatedBackingDurationSec > 0
+                ? 'backing_metadata'
+                : normalizeDurationSec(queueSong?.duration) > 0
+                    ? 'canonical_or_manual'
+                    : 'fallback';
+    const durationConfidence = useAppleBacking || resolvedBackingDurationSec > 0
+        ? 'high'
+        : associatedBackingDurationSec > 0
+            ? 'medium'
+            : 'low';
+    const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0 || associatedBackingDurationSec > 0;
 
     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
         status: 'performing',
         performingStartedAt: serverTimestamp(),
         performanceStartedDurationSec: performanceDurationSec,
-        duration: performanceDurationSec
+        duration: performanceDurationSec,
+        backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
+        durationSource,
+        durationConfidence,
+        autoEndSafe
     });
 
     const stageDisplayFlags = {
@@ -830,6 +855,10 @@ const startQueueSongOnStage = async ({
                 songId: safeSongId,
                 startedAtMs: performanceStartedAtMs,
                 durationSec: performanceDurationSec,
+                backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
+                durationSource,
+                durationConfidence,
+                autoEndSafe,
                 source: 'apple_music',
                 appleMusicId: queueSong.appleMusicId || '',
                 ...performanceMetaExtras
@@ -851,6 +880,10 @@ const startQueueSongOnStage = async ({
                 songId: safeSongId,
                 startedAtMs: performanceStartedAtMs,
                 durationSec: performanceDurationSec,
+                backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
+                durationSource,
+                durationConfidence,
+                autoEndSafe,
                 source: songMediaUrl ? 'backing_media' : 'none',
                 mediaUrl: songMediaUrl || '',
                 ...performanceMetaExtras
@@ -3441,10 +3474,10 @@ const AudienceMiniPreview = ({
     const resolvedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
     const previewWidthClass = liveViewportEnabled
         ? ({
-            sm: 'w-[220px]',
-            md: 'w-[280px]',
-            lg: 'w-[340px]'
-        })[resolvedPreviewSize] || 'w-[280px]'
+            sm: 'w-[190px]',
+            md: 'w-[240px]',
+            lg: 'w-[300px]'
+        })[resolvedPreviewSize] || 'w-[240px]'
         : ({
             sm: 'w-[340px]',
             md: 'w-[420px]',
@@ -3537,7 +3570,7 @@ const AudienceMiniPreview = ({
                                 <iframe
                                     src={liveViewportHref}
                                     title="Audience app live preview"
-                                    className={`absolute bg-black pointer-events-none ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[1.05rem]' : 'inset-0 h-full w-full'}`}
+                                    className={`absolute bg-black ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[1.05rem]' : 'inset-0 h-full w-full'}`}
                                     loading="lazy"
                                     referrerPolicy="strict-origin-when-cross-origin"
                                     allow="autoplay; fullscreen"
@@ -3584,8 +3617,108 @@ const AudienceMiniPreview = ({
                             )}
                         </div>
                         <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
-                            <span>{liveViewportEnabled ? 'Read-only audience app' : 'Audience summary'}</span>
+                            <span>{liveViewportEnabled ? 'Interactive audience app' : 'Audience summary'}</span>
                             <span>{liveViewportEnabled ? `${resolvedPreviewSize.toUpperCase()} mobile viewport` : `Queue ${queueCount}`}</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const PublicTvMiniPreview = ({
+    room,
+    roomCode,
+    tvBase,
+    tvLaunchUrl = '',
+    collapsed = false,
+    previewSize = 'md',
+    onSetPreviewSize,
+    onToggleCollapsed,
+    onHide
+}) => {
+    const viewHref = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
+    const liveViewportHref = useMemo(() => viewHref, [viewHref]);
+    const resolvedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const previewWidthClass = ({
+        sm: 'w-[320px]',
+        md: 'w-[430px]',
+        lg: 'w-[560px]'
+    })[resolvedPreviewSize] || 'w-[430px]';
+    const layoutLabel = room?.layoutMode || 'standard';
+
+    return (
+        <div className={`fixed left-3 bottom-3 z-[35] max-w-[calc(100vw-24px)] ${previewWidthClass}`}>
+            <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 border-b border-white/10 bg-black/45">
+                    <div className="min-w-0 flex items-center gap-2">
+                        <div className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100">
+                            Public TV
+                        </div>
+                        <div className="min-w-0">
+                            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-zinc-500">Preview</div>
+                            <div className="truncate text-[11px] font-semibold text-cyan-200">{layoutLabel}</div>
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                            {[
+                                ['sm', 'S'],
+                                ['md', 'M'],
+                                ['lg', 'L']
+                            ].map(([key, label]) => (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => onSetPreviewSize?.(key)}
+                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
+                                    title={`Set Public TV preview size ${label}`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+                        <button
+                            onClick={onToggleCollapsed}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
+                            title={collapsed ? 'Expand Public TV preview' : 'Collapse Public TV preview'}
+                        >
+                            <i className={`fa-solid ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                        </button>
+                        <a
+                            href={viewHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`${STYLES.btnStd} ${STYLES.btnInfo} px-2 py-1 text-[10px]`}
+                            title="Open full Public TV"
+                        >
+                            <i className="fa-solid fa-up-right-from-square"></i>
+                        </a>
+                        <button
+                            onClick={onHide}
+                            className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-[10px]`}
+                            title="Hide Public TV preview"
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                {!collapsed && (
+                    <div className="p-2">
+                        <div className="relative overflow-hidden aspect-video rounded-xl border border-cyan-400/18 bg-black shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)]">
+                            <iframe
+                                src={liveViewportHref}
+                                title="Public TV live preview"
+                                className="absolute inset-0 h-full w-full bg-black"
+                                loading="lazy"
+                                referrerPolicy="strict-origin-when-cross-origin"
+                                allow="autoplay; fullscreen"
+                            />
+                        </div>
+                        <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                            <span>Live Public TV</span>
+                            <span>{resolvedPreviewSize.toUpperCase()} widescreen viewport</span>
                         </div>
                     </div>
                 )}
@@ -3710,6 +3843,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         reviewRequired,
         queue,
         assigned,
+        held,
         pending,
         lobbyCount,
         waitTimeSec,
@@ -3726,6 +3860,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         pending,
         queue,
         assigned,
+        held,
         showAddForm,
         setShowAddForm,
         showQueueList,
@@ -5059,6 +5194,77 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     }
     updateStatusRef.current = updateStatus;
 
+    const moveSingerNext = useCallback(async (songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
+        if (!targetSong) {
+            toast('Singer not found in queue.');
+            return;
+        }
+        const base = nowMs();
+        const ordered = [
+            targetSong,
+            ...(queue || []).filter((song) => song.id !== targetSongId)
+        ];
+        await Promise.all(ordered.map((song, idx) => {
+            const patch = { priorityScore: base + idx };
+            if (song.id === targetSongId) {
+                patch.status = 'requested';
+                patch.holdReason = null;
+                patch.heldAt = null;
+                patch.restoredAt = serverTimestamp();
+            }
+            return updateDoc(
+                doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', song.id),
+                patch
+            );
+        }));
+        pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'lineup_moved_next' });
+        toast(`${targetSong.singerName || 'Singer'} moved next.`);
+    }, [pushAutoDjEvent, queue, songs, toast]);
+
+    const holdSinger = useCallback(async (songId = '', reason = 'not_here') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
+        if (!targetSong) {
+            toast('Singer not found in queue.');
+            return;
+        }
+        const previousStatus = String(targetSong.status || 'requested').trim().toLowerCase() || 'requested';
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', targetSongId), {
+            status: 'held',
+            previousStatus: previousStatus === 'held' ? (targetSong.previousStatus || 'requested') : previousStatus,
+            holdReason: reason,
+            heldAt: serverTimestamp(),
+            heldBy: hostName || 'Host'
+        });
+        pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'lineup_held' });
+        toast(`${targetSong.singerName || 'Singer'} held.`);
+    }, [hostName, pushAutoDjEvent, songs, toast]);
+
+    const restoreHeldSinger = useCallback(async (songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
+        if (!targetSong) {
+            toast('Held singer not found.');
+            return;
+        }
+        const previousStatus = String(targetSong.previousStatus || '').trim().toLowerCase();
+        const nextStatus = ['assigned', 'pending', 'requested'].includes(previousStatus) ? previousStatus : 'requested';
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', targetSongId), {
+            status: nextStatus,
+            priorityScore: nextStatus === 'requested' ? nowMs() : (targetSong.priorityScore || nowMs()),
+            holdReason: null,
+            heldAt: null,
+            restoredAt: serverTimestamp()
+        });
+        pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'lineup_restored' });
+        toast(`${targetSong.singerName || 'Singer'} restored.`);
+    }, [pushAutoDjEvent, songs, toast]);
+
     const clearAutoDjApplauseFallback = useCallback(() => {
         if (!autoDjApplauseFallbackTimerRef.current) return;
         clearTimeout(autoDjApplauseFallbackTimerRef.current);
@@ -5201,7 +5407,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', currentId),
                     {
                         duration: nextDuration,
-                        performanceStartedDurationSec: nextDuration
+                        performanceStartedDurationSec: nextDuration,
+                        backingDurationSec: nextDuration,
+                        durationSource: 'backing_media',
+                        durationConfidence: 'high',
+                        autoEndSafe: true
                     }
                 );
                 const activeMeta = room?.currentPerformanceMeta || {};
@@ -5209,7 +5419,11 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     await updateRoom({
                         currentPerformanceMeta: {
                             ...activeMeta,
-                            durationSec: nextDuration
+                            durationSec: nextDuration,
+                            backingDurationSec: nextDuration,
+                            durationSource: 'backing_media',
+                            durationConfidence: 'high',
+                            autoEndSafe: true
                         }
                     });
                 }
@@ -5267,6 +5481,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 Number(current?.performanceStartedDurationSec || 0),
                 Number(room?.currentPerformanceMeta?.durationSec || 0)
             ),
+            autoEndSafe: room?.currentPerformanceMeta?.autoEndSafe !== undefined
+                ? room.currentPerformanceMeta.autoEndSafe !== false
+                : current?.autoEndSafe !== false,
             now: nowMs()
         });
         if (!schedule) return;
@@ -5296,6 +5513,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.activeMode,
         room?.autoEndOnTrackFinish,
         room?.currentPerformanceMeta?.durationSec,
+        room?.currentPerformanceMeta?.autoEndSafe,
         room?.currentPerformanceMeta?.startedAtMs,
         room?.currentPerformanceMeta?.mediaUrl,
         room?.appleMusicPlayback?.status,
@@ -5305,6 +5523,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.videoPlaying,
         room?.videoStartTimestamp,
         room?.pausedAt,
+        current?.autoEndSafe,
         handleEndPerformance
     ]);
 
@@ -5777,8 +5996,12 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 assigned={assigned}
                 assignedQueueOpen={assignedQueueOpen}
                 onToggleAssignedQueue={() => setAssignedQueueOpen((v) => !v)}
+                held={held}
                 onApprovePending={(songId) => updateStatus(songId, 'requested')}
                 onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                onMoveNext={moveSingerNext}
+                onHoldSinger={holdSinger}
+                onRestoreSinger={restoreHeldSinger}
                 dragQueueId={dragQueueId}
                 dragOverId={dragOverId}
                 setDragQueueId={setDragQueueId}
@@ -7187,6 +7410,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return 'md';
         }
     });
+    const [publicTvPreviewVisible, setPublicTvPreviewVisible] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return false;
+            return localStorage.getItem('bross_host_public_tv_preview_visible') === '1';
+        } catch {
+            return false;
+        }
+    });
+    const [publicTvPreviewCollapsed, setPublicTvPreviewCollapsed] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return false;
+            return localStorage.getItem('bross_host_public_tv_preview_collapsed') === '1';
+        } catch {
+            return false;
+        }
+    });
+    const [publicTvPreviewSize, setPublicTvPreviewSize] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return 'md';
+            const saved = String(localStorage.getItem('bross_host_public_tv_preview_size') || '').trim().toLowerCase();
+            return saved === 'sm' || saved === 'lg' ? saved : 'md';
+        } catch {
+            return 'md';
+        }
+    });
     const [autoBgFadeOutMs, setAutoBgFadeOutMs] = useState(900);
     const [autoBgFadeInMs, setAutoBgFadeInMs] = useState(900);
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
@@ -7925,14 +8173,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             roomUpdates.gameData = null;
             roomUpdates.triviaQuestion = null;
         } else if (item.type === 'game_break') {
-            roomUpdates.activeMode = item.modeLaunchPlan?.modeKey || 'karaoke';
-            roomUpdates.gameData = {
-                ...(item.modeLaunchPlan?.launchConfig || {}),
-                id: `${item.id}_${startedAtMs}`,
-                runOfShowItemId: item.id
-            };
-            roomUpdates.triviaQuestion = null;
-            roomUpdates.wyrData = null;
+            const gameLaunchUpdates = buildRunOfShowGameLaunchRoomUpdates({
+                item,
+                room: roomRef.current || {},
+                roomUsers: users,
+                startedAtMs
+            });
+            Object.assign(roomUpdates, gameLaunchUpdates || {
+                activeMode: item.modeLaunchPlan?.modeKey || 'karaoke',
+                gameData: {
+                    ...(item.modeLaunchPlan?.launchConfig || {}),
+                    id: `${item.id}_${startedAtMs}`,
+                    runOfShowItemId: item.id
+                },
+                triviaQuestion: null,
+                wyrData: null
+            });
         } else {
             roomUpdates.activeMode = 'karaoke';
             roomUpdates.gameData = null;
@@ -7950,7 +8206,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? item.roomMomentPlan.lightMode
             : 'off';
         return roomUpdates;
-    }, [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
+    }, [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions, users]);
     useEffect(() => () => {
         if (runOfShowPerformanceIntroTimerRef.current) {
             clearTimeout(runOfShowPerformanceIntroTimerRef.current);
@@ -10258,10 +10514,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 'bross_host_audience_preview_size',
                 audiencePreviewSize === 'sm' || audiencePreviewSize === 'lg' ? audiencePreviewSize : 'md'
             );
+            localStorage.setItem('bross_host_public_tv_preview_visible', publicTvPreviewVisible ? '1' : '0');
+            localStorage.setItem('bross_host_public_tv_preview_collapsed', publicTvPreviewCollapsed ? '1' : '0');
+            localStorage.setItem(
+                'bross_host_public_tv_preview_size',
+                publicTvPreviewSize === 'sm' || publicTvPreviewSize === 'lg' ? publicTvPreviewSize : 'md'
+            );
         } catch {
             // Ignore storage failures.
         }
-    }, [audiencePreviewVisible, audiencePreviewCollapsed, audiencePreviewMode, audiencePreviewSize]);
+    }, [
+        audiencePreviewVisible,
+        audiencePreviewCollapsed,
+        audiencePreviewMode,
+        audiencePreviewSize,
+        publicTvPreviewVisible,
+        publicTvPreviewCollapsed,
+        publicTvPreviewSize
+    ]);
     useEffect(() => {
         if (!room || layoutDefaultedRef.current) return;
         if (!room.layoutMode) {
@@ -17265,6 +17535,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setAudiencePreviewVisible={setAudiencePreviewVisible}
                     audiencePreviewMode={audiencePreviewMode}
                     setAudiencePreviewMode={setAudiencePreviewMode}
+                    publicTvPreviewVisible={publicTvPreviewVisible}
+                    setPublicTvPreviewVisible={setPublicTvPreviewVisible}
                     tabletTouchViewport={tabletTouchViewport}
                     runOfShowEnabled={isRunOfShowRoom}
                     runOfShowDirector={runOfShowDirector}
@@ -17910,6 +18182,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     />
                 ) : null
             )}
+            {roomCode && (
+                publicTvPreviewVisible ? (
+                    <PublicTvMiniPreview
+                        room={room}
+                        roomCode={roomCode}
+                        tvBase={tvBase}
+                        tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
+                        collapsed={publicTvPreviewCollapsed}
+                        previewSize={publicTvPreviewSize}
+                        onSetPreviewSize={setPublicTvPreviewSize}
+                        onToggleCollapsed={() => setPublicTvPreviewCollapsed(prev => !prev)}
+                        onHide={() => setPublicTvPreviewVisible(false)}
+                    />
+                ) : null
+            )}
             {modifyingScoreId && (
                 <div className="fixed inset-0 z-[85] bg-black/70 flex items-center justify-center p-4">
                     <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
@@ -17968,7 +18255,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <button
                                         data-admin-sections-toggle
                                         onClick={() => setSettingsNavOpen((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} lg:hidden`}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
                                     >
                                         <i className="fa-solid fa-bars"></i>
                                         Sections
@@ -18040,10 +18327,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             showContext={!inAdminWorkspace}
                             fullBleed={inAdminWorkspace}
                         >
-                            <div className="h-full min-h-0 grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
-                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} lg:block border-b lg:border-b-0 lg:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
+                            <div className="h-full min-h-0 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
+                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
                                     <div data-admin-sections-rail>
-                                    <div className="mb-2 flex items-center justify-between lg:hidden">
+                                    <div className="mb-2 flex items-center justify-between md:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                         <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
                                     </div>
@@ -18094,6 +18381,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <i className="fa-solid fa-tv text-[11px]"></i> TV
                                                 </button>
                                                 <button
+                                                    onClick={() => setPublicTvPreviewVisible(prev => !prev)}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                                                        publicTvPreviewVisible ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                    }`}
+                                                >
+                                                    <i className="fa-solid fa-display text-[11px]"></i>
+                                                    TV Preview {publicTvPreviewVisible ? 'On' : 'Off'}
+                                                </button>
+                                                <button
                                                     onClick={() => setAudiencePreviewVisible(prev => !prev)}
                                                     className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
                                                         audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
@@ -18114,6 +18410,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-3 py-1.5 hover:bg-cyan-500/20"
                                                 >
                                                     <i className="fa-solid fa-tv text-[11px]"></i> Open TV
+                                                </button>
+                                                <button
+                                                    onClick={() => setPublicTvPreviewVisible(prev => !prev)}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+                                                        publicTvPreviewVisible ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                    }`}
+                                                >
+                                                    <i className="fa-solid fa-display text-[11px]"></i>
+                                                    TV Preview {publicTvPreviewVisible ? 'On' : 'Off'}
                                                 </button>
                                                 <button
                                                     onClick={() => setAudiencePreviewVisible(prev => !prev)}
@@ -18143,7 +18448,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
                                     <span className="px-2 py-1 rounded-full border border-white/15">Mode: {room?.activeMode || 'karaoke'}</span>
                                     <span className="px-2 py-1 rounded-full border border-white/15">Queue: {queuedSongs.length}</span>
-                                    <span className="px-2 py-1 rounded-full border border-white/15">Preview: {audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                    <span className="px-2 py-1 rounded-full border border-white/15">Audience Preview: {audiencePreviewVisible ? 'On' : 'Off'}</span>
+                                    <span className="px-2 py-1 rounded-full border border-white/15">TV Preview: {publicTvPreviewVisible ? 'On' : 'Off'}</span>
                                     <span className={`px-2 py-1 rounded-full border ${appleMusicAuthorized ? 'border-emerald-400/30 text-emerald-200 bg-emerald-500/10' : 'border-zinc-500/30 text-zinc-300 bg-zinc-900/70'}`}>
                                         Apple {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
                                     </span>
@@ -18199,26 +18505,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     Review Approvals
                                 </button>
-                                <button
-                                    onClick={() => {
-                                        if (canUseAiTools) {
-                                            setShowAiSetupGuide(true);
-                                            return;
-                                        }
-                                        setSettingsTab('billing');
-                                        toast('Enable AI in Billing to unlock AI tools.');
-                                    }}
-                                    className={`${STYLES.btnStd} ${canUseAiTools ? STYLES.btnInfo : STYLES.btnSecondary} justify-start`}
-                                >
-                                    {canUseAiTools ? 'AI Setup Guide' : 'Unlock AI Tools'}
-                                </button>
-                                <button
-                                    onClick={toggleAiDemoBypass}
-                                    className={`${STYLES.btnStd} ${aiDemoBypassEnabled ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
-                                    title="Temporary demo-only bypass for AI lyrics in this room."
-                                >
-                                    {aiDemoBypassEnabled ? 'Disable AI Demo Bypass' : 'Enable AI Demo Bypass'}
-                                </button>
                             </div>
                         </div>
                         <div className="rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-4">
@@ -18273,7 +18559,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                 ))}
                             </div>
-                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
                                 <button
                                     onClick={() => setAudiencePreviewVisible(prev => !prev)}
                                     className={`${STYLES.btnStd} ${audiencePreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
@@ -18288,6 +18574,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                                     <i className={`fa-solid ${audiencePreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
                                     {audiencePreviewCollapsed ? 'Expand Preview' : 'Compact Preview'}
+                                </button>
+                                <button
+                                    onClick={() => setPublicTvPreviewVisible(prev => !prev)}
+                                    className={`${STYLES.btnStd} ${publicTvPreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
+                                >
+                                    <i className="fa-solid fa-display"></i>
+                                    {publicTvPreviewVisible ? 'Public TV Preview On' : 'Public TV Preview Off'}
+                                </button>
+                                <button
+                                    onClick={() => setPublicTvPreviewCollapsed(prev => !prev)}
+                                    disabled={!publicTvPreviewVisible}
+                                    className={`${STYLES.btnStd} ${publicTvPreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!publicTvPreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    <i className={`fa-solid ${publicTvPreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
+                                    {publicTvPreviewCollapsed ? 'Expand TV Preview' : 'Compact TV Preview'}
                                 </button>
                             </div>
                             <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
@@ -19702,6 +20003,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {orgContext.error}
                                     </div>
                                 )}
+                                <div className="rounded-xl border border-fuchsia-300/25 bg-gradient-to-r from-cyan-500/8 via-zinc-950/80 to-fuchsia-500/10 p-3 space-y-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-widest text-fuchsia-100/70">AI Access</div>
+                                            <div className="mt-1 text-sm text-zinc-200">
+                                                Host AI tools are controlled here with billing status and usage.
+                                            </div>
+                                        </div>
+                                        <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${
+                                            canUseAiTools
+                                                ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100'
+                                                : 'border-zinc-700 bg-zinc-900 text-zinc-300'
+                                        }`}>
+                                            {canUseAiTools ? 'AI Available' : 'AI Locked'}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                                        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Entitlement</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">
+                                                {canGenerateAiContent ? 'Plan Enabled' : 'Plan Locked'}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Demo Bypass</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">
+                                                {aiDemoBypassEnabled ? 'Enabled For This Room' : 'Disabled'}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-lg border border-white/10 bg-black/25 px-3 py-2">
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Usage</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">
+                                                {Number(aiUsageMeter?.used || 0).toLocaleString()} / {Number(aiUsageMeter?.included || 0).toLocaleString()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button
+                                            onClick={() => setShowAiSetupGuide(true)}
+                                            className={`${STYLES.btnStd} ${canUseAiTools ? STYLES.btnInfo : STYLES.btnSecondary}`}
+                                        >
+                                            <i className="fa-solid fa-robot"></i>
+                                            AI Setup Guide
+                                        </button>
+                                        <button
+                                            onClick={toggleAiDemoBypass}
+                                            className={`${STYLES.btnStd} ${aiDemoBypassEnabled ? STYLES.btnHighlight : STYLES.btnNeutral}`}
+                                            title="Temporary demo-only bypass for AI lyrics in this room."
+                                        >
+                                            <i className="fa-solid fa-flask"></i>
+                                            {aiDemoBypassEnabled ? 'Disable Demo Bypass' : 'Enable Demo Bypass'}
+                                        </button>
+                                        <button
+                                            onClick={() => refreshBillingEntitlements(true)}
+                                            disabled={orgContext.loading}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} ${orgContext.loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                        >
+                                            <i className="fa-solid fa-rotate"></i>
+                                            Refresh Access
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 space-y-2">
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="text-xs uppercase tracking-widest text-zinc-500">Usage ({usagePeriodLabel})</div>
@@ -20542,27 +20905,70 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                         )}
                         {settingsTab === 'chat' && (
-                            <ChatSettingsPanel
-                                styles={STYLES}
-                                chatAudienceMode={chatAudienceMode}
-                                setChatAudienceMode={setChatAudienceMode}
-                                updateRoom={updateRoom}
-                                chatEnabled={chatEnabled}
-                                setChatEnabled={setChatEnabled}
-                                chatShowOnTv={chatShowOnTv}
-                                setChatShowOnTv={setChatShowOnTv}
-                                chatTvMode={chatTvMode}
-                                setChatTvMode={setChatTvMode}
-                                chatSlowModeSec={chatSlowModeSec}
-                                setChatSlowModeSec={setChatSlowModeSec}
-                                handleChatViewMode={handleChatViewMode}
-                                chatViewMode={chatViewMode}
-                                chatMessages={chatMessages}
-                                emoji={EMOJI}
-                                chatDraft={chatDraft}
-                                setChatDraft={setChatDraft}
-                                sendHostChat={sendHostChat}
-                            />
+                            <div className="space-y-4">
+                                <div className="rounded-xl border border-cyan-300/25 bg-cyan-500/8 p-4">
+                                    <div className="text-sm uppercase tracking-[0.3em] text-cyan-100/80">Live Chat Console</div>
+                                    <div className="mt-1 text-sm text-zinc-300">Read room chat, reply to host DMs, and send audience messages from here during the show.</div>
+                                    <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
+                                        <HostChatPanel
+                                            chatOpen={true}
+                                            chatUnread={chatUnread}
+                                            openChatSettings={openChatSettings}
+                                            styles={STYLES}
+                                            appBase={hostBase}
+                                            hostBase={hostBase}
+                                            roomCode={roomCode}
+                                            chatEnabled={chatEnabled}
+                                            setChatEnabled={setChatEnabled}
+                                            updateRoom={updateRoom}
+                                            chatShowOnTv={chatShowOnTv}
+                                            setChatShowOnTv={setChatShowOnTv}
+                                            chatAudienceMode={chatAudienceMode}
+                                            setChatAudienceMode={setChatAudienceMode}
+                                            handleChatViewMode={handleChatViewMode}
+                                            chatViewMode={chatViewMode}
+                                            dmUnread={dmUnread}
+                                            dmTargetUid={dmTargetUid}
+                                            setDmTargetUid={setDmTargetUid}
+                                            users={users}
+                                            dmDraft={dmDraft}
+                                            setDmDraft={setDmDraft}
+                                            sendHostDmMessage={sendHostDmMessage}
+                                            roomChatMessages={roomChatMessages}
+                                            hostDmMessages={hostDmMessages}
+                                            pinnedChatIds={pinnedChatIds}
+                                            setPinnedChatIds={setPinnedChatIds}
+                                            emoji={EMOJI}
+                                            chatDraft={chatDraft}
+                                            setChatDraft={setChatDraft}
+                                            sendHostChat={sendHostChat}
+                                            showSettingsButton={false}
+                                            showPopoutButton={false}
+                                        />
+                                    </div>
+                                </div>
+                                <ChatSettingsPanel
+                                    styles={STYLES}
+                                    chatAudienceMode={chatAudienceMode}
+                                    setChatAudienceMode={setChatAudienceMode}
+                                    updateRoom={updateRoom}
+                                    chatEnabled={chatEnabled}
+                                    setChatEnabled={setChatEnabled}
+                                    chatShowOnTv={chatShowOnTv}
+                                    setChatShowOnTv={setChatShowOnTv}
+                                    chatTvMode={chatTvMode}
+                                    setChatTvMode={setChatTvMode}
+                                    chatSlowModeSec={chatSlowModeSec}
+                                    setChatSlowModeSec={setChatSlowModeSec}
+                                    handleChatViewMode={handleChatViewMode}
+                                    chatViewMode={chatViewMode}
+                                    chatMessages={chatMessages}
+                                    emoji={EMOJI}
+                                    chatDraft={chatDraft}
+                                    setChatDraft={setChatDraft}
+                                    sendHostChat={sendHostChat}
+                                />
+                            </div>
                         )}
                         {settingsTab === 'live_effects' && (
                             <div className="space-y-4">

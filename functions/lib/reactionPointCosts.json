@@ -1,10 +1,10 @@
 {
-  "fire": 10,
-  "heart": 10,
-  "clap": 5,
-  "drink": 50,
-  "rocket": 20,
-  "diamond": 100,
-  "money": 250,
-  "crown": 500
+  "fire": 5,
+  "heart": 5,
+  "clap": 2,
+  "drink": 15,
+  "rocket": 8,
+  "diamond": 25,
+  "money": 50,
+  "crown": 75
 }

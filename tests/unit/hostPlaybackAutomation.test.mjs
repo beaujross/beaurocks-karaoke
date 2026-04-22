@@ -117,3 +117,19 @@ test('getAutoEndSchedule does not auto-end paused media from the persisted clock
 
     expect(schedule).toBeNull();
 });
+
+test('getAutoEndSchedule does not auto-end unsafe non-Apple backing durations', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'unsafe_youtube',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        autoEndSafe: false,
+        now: 1000
+    });
+
+    expect(schedule).toBeNull();
+});

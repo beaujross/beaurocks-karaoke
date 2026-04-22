@@ -34,8 +34,12 @@ const QueueListPanel = ({
     assigned = [],
     assignedQueueOpen = true,
     onToggleAssignedQueue,
+    held = [],
     onApprovePending,
     onDeletePending,
+    onMoveNext,
+    onHoldSinger,
+    onRestoreSinger,
     dragQueueId,
     dragOverId,
     setDragQueueId,
@@ -68,6 +72,7 @@ const QueueListPanel = ({
         : (Number(reviewRequiredCount || 0) + Number(pending.length || 0));
     const readyCount = Number.isFinite(Number(counts.ready)) ? Number(counts.ready) : queue.length;
     const assignedCount = Number.isFinite(Number(counts.assigned)) ? Number(counts.assigned) : assigned.length;
+    const heldCount = Number.isFinite(Number(counts.held)) ? Number(counts.held) : held.length;
     const queueSummaryChips = [
         needsAttentionCount
             ? {
@@ -102,6 +107,13 @@ const QueueListPanel = ({
                 label: `Assigned ${assignedCount}`
             }
             : null,
+        heldCount
+            ? {
+                key: 'held',
+                className: 'rounded-full border border-zinc-300/25 bg-zinc-500/10 px-2 py-1 text-zinc-200',
+                label: `Held ${heldCount}`
+            }
+            : null,
         runOfShowAssignableSlots.length
             ? {
                 key: 'openSlots',
@@ -120,11 +132,11 @@ const QueueListPanel = ({
                 ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the queue.`
                 : reviewRequiredCount > 0
                     ? `${reviewRequiredCount} request${reviewRequiredCount === 1 ? '' : 's'} still need a host track pick.`
-                    : 'Clear the approval stack so the live queue reflects what can actually go on stage.',
+                : 'Clear the approval stack so the live queue reflects what can actually go on stage.',
             toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
             accentClass: 'text-amber-100'
         }
-        : readyCount === 0 && assignedCount === 0
+        : readyCount === 0 && assignedCount === 0 && heldCount === 0
             ? {
                 eyebrow: 'Queue status',
                 title: 'Queue is empty',
@@ -149,11 +161,15 @@ const QueueListPanel = ({
                         accentClass: 'text-emerald-100'
                     }
                     : {
-                        eyebrow: 'Run of show linked',
-                        title: `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
-                        detail: 'These songs are tied to show slots and will move through the run-of-show lane.',
-                        toneClass: 'border-violet-300/25 bg-violet-500/10 text-violet-100',
-                        accentClass: 'text-violet-100'
+                        eyebrow: heldCount > 0 ? 'Singers held' : 'Run of show linked',
+                        title: heldCount > 0
+                            ? `${heldCount} singer${heldCount === 1 ? '' : 's'} temporarily held`
+                            : `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
+                        detail: heldCount > 0
+                            ? 'Held singers stay recoverable but will not be picked by Start Next or Auto-DJ.'
+                            : 'These songs are tied to show slots and will move through the run-of-show lane.',
+                        toneClass: heldCount > 0 ? 'border-zinc-300/20 bg-zinc-500/10 text-zinc-200' : 'border-violet-300/25 bg-violet-500/10 text-violet-100',
+                        accentClass: heldCount > 0 ? 'text-zinc-100' : 'text-violet-100'
                     };
 
     return (
@@ -258,6 +274,9 @@ const QueueListPanel = ({
                         onFetchTimedLyrics={onFetchTimedLyrics}
                         onApproveAudienceBacking={onApproveAudienceBacking}
                         onAvoidAudienceBacking={onAvoidAudienceBacking}
+                        onMoveNext={onMoveNext}
+                        onHoldSinger={onHoldSinger}
+                        onRestoreSinger={onRestoreSinger}
                         backingDecisionBusyKey={backingDecisionBusyKey}
                         statusPill={statusPill}
                         styles={styles}
@@ -299,6 +318,9 @@ const QueueListPanel = ({
                                 onFetchTimedLyrics={onFetchTimedLyrics}
                                 onApproveAudienceBacking={onApproveAudienceBacking}
                                 onAvoidAudienceBacking={onAvoidAudienceBacking}
+                                onMoveNext={onMoveNext}
+                                onHoldSinger={onHoldSinger}
+                                onRestoreSinger={onRestoreSinger}
                                 backingDecisionBusyKey={backingDecisionBusyKey}
                                 statusPill={statusPill}
                                 styles={styles}
@@ -309,6 +331,49 @@ const QueueListPanel = ({
                         ))}
                         </>
                     ) : null}
+                </div>
+            ) : null}
+            {held.length > 0 ? (
+                <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
+                    <QueueSectionToggle
+                        label="Held"
+                        count={held.length}
+                        toneClass="text-zinc-200"
+                        open
+                        onToggle={() => {}}
+                    />
+                    {held.map((s, i) => (
+                        <QueueSongCard
+                            key={s.id}
+                            song={s}
+                            index={i}
+                            dragQueueId={dragQueueId}
+                            dragOverId={dragOverId}
+                            setDragQueueId={setDragQueueId}
+                            setDragOverId={setDragOverId}
+                            reorderQueue={reorderQueue}
+                            touchReorderEnabled={false}
+                            touchReorderMode={false}
+                            handleTouchStart={handleTouchStart}
+                            handleTouchMove={handleTouchMove}
+                            handleTouchEnd={handleTouchEnd}
+                            updateStatus={updateStatus}
+                            startEdit={startEdit}
+                            onRetryLyrics={onRetryLyrics}
+                            onFetchTimedLyrics={onFetchTimedLyrics}
+                            onApproveAudienceBacking={onApproveAudienceBacking}
+                            onAvoidAudienceBacking={onAvoidAudienceBacking}
+                            onMoveNext={onMoveNext}
+                            onHoldSinger={onHoldSinger}
+                            onRestoreSinger={onRestoreSinger}
+                            backingDecisionBusyKey={backingDecisionBusyKey}
+                            statusPill={statusPill}
+                            styles={styles}
+                            compactViewport={compactViewport}
+                            runOfShowAssignableSlots={runOfShowAssignableSlots}
+                            onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                        />
+                    ))}
                 </div>
             ) : null}
         </>
