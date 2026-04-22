@@ -166,6 +166,31 @@ const main = async () => {
       return "audio quick controls stay visible and the dropdown reveals the full mix panel";
     });
 
+    await runCheck(checks, "host_app_default_bg_track_is_lantern_circuit", async () => {
+      await ensureStageWorkspace(page, timeoutMs);
+      const audioToggle = page.locator('[data-feature-id="deck-audio-menu-toggle"]').first();
+      await audioToggle.waitFor({ state: "visible", timeout: timeoutMs });
+      if (!(await page.getByText("Audio + Mix").first().isVisible().catch(() => false))) {
+        await audioToggle.click({ force: true });
+      }
+      await page.getByText("Lantern Circuit").first().waitFor({ state: "visible", timeout: timeoutMs });
+      const assetStatus = await page.evaluate(async () => {
+        const response = await fetch("/audio/Lantern%20Circuit.mp3", { method: "HEAD" });
+        return {
+          ok: response.ok,
+          status: response.status,
+          contentType: response.headers.get("content-type") || "",
+        };
+      });
+      if (!assetStatus.ok) {
+        throw new Error(`Lantern Circuit audio asset was not fetchable: ${assetStatus.status}`);
+      }
+      if (!/audio|mpeg|octet-stream/i.test(assetStatus.contentType)) {
+        throw new Error(`Unexpected Lantern Circuit content type: ${assetStatus.contentType}`);
+      }
+      return "Lantern Circuit is the first host background track and its audio asset is served";
+    });
+
     await runCheck(checks, "host_app_launch_catalogue_routes_to_queue_catalog", async () => {
       await ensureStageWorkspace(page, timeoutMs);
       const launchToggle = page.locator('button').filter({ has: page.locator('.fa-rocket') }).first();
@@ -193,16 +218,14 @@ const main = async () => {
     await runCheck(checks, "host_app_stage_timing_uses_pace_slider_with_advanced_toggle", async () => {
       await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
       await ensureStageWorkspace(page, timeoutMs);
-      const moreControlsButton = page.getByRole("button", { name: /More Controls/i }).first();
-      await moreControlsButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await moreControlsButton.click({ force: true });
       await page.getByText("Post-Performance Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Show Pace").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Post-song Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.locator(".post-performance-timing-slider").first().waitFor({ state: "visible", timeout: timeoutMs });
       const customizeButton = page.getByRole("button", { name: /Customize Timing/i }).first();
       await customizeButton.waitFor({ state: "visible", timeout: timeoutMs });
       await customizeButton.click({ force: true });
       await page.getByText("Leaderboard beat").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage timing uses the new pace slider with optional advanced controls";
+      return "stage timing exposes the pace slider with optional advanced controls";
     });
 
     await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);

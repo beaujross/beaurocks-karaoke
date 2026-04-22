@@ -7,6 +7,7 @@
 
 // Background music tracks for host
 export const BG_TRACKS = [ 
+    { name: "Lantern Circuit", url: "/audio/Lantern%20Circuit.mp3" },
     { name: "Retro Lounge", url: "https://beauross.com/wp-content/uploads/retro-lounge-389644.mp3" }, 
     { name: "Inspiring Synth", url: "https://beauross.com/wp-content/uploads/inspiring-motivation-synthwave-398285.mp3" }, 
     { name: "80s Retro", url: "https://beauross.com/wp-content/uploads/synthwave-80s-retro-background-music-400483.mp3" }, 
