@@ -30,6 +30,7 @@ export const getAutoEndSchedule = ({
     videoPlaying = false,
     videoStartTimestamp = 0,
     pausedAt = 0,
+    performanceMetaSongId = '',
     capturedDurationSec = 0,
     currentDurationSec = 0,
     autoEndSafe = true,
@@ -41,6 +42,8 @@ export const getAutoEndSchedule = ({
     if (!normalizedCurrentId) return null;
     if (String(applausePendingSongId || '').trim()) return null;
     if (String(activeMode || '').trim().toLowerCase() !== 'karaoke') return null;
+    const normalizedMetaSongId = String(performanceMetaSongId || '').trim();
+    if (normalizedMetaSongId && normalizedMetaSongId !== normalizedCurrentId) return null;
 
     const normalizedAppleStatus = String(appleStatus || '').trim().toLowerCase();
     const applePlaying = !!String(appleMusicId || '').trim() && normalizedAppleStatus === 'playing';

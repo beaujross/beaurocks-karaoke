@@ -5408,6 +5408,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             videoPlaying: room?.videoPlaying,
             videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
             pausedAt: room?.pausedAt,
+            performanceMetaSongId: room?.currentPerformanceMeta?.songId,
             capturedDurationSec: Math.max(
                 0,
                 Number(room?.currentPerformanceMeta?.durationSec || 0),
@@ -5453,6 +5454,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.currentPerformanceMeta?.durationSec,
         room?.currentPerformanceMeta?.autoEndSafe,
         room?.currentPerformanceMeta?.startedAtMs,
+        room?.currentPerformanceMeta?.songId,
         room?.currentPerformanceMeta?.mediaUrl,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,

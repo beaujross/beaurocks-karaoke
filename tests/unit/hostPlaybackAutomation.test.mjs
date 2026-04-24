@@ -102,6 +102,22 @@ test('getAutoEndSchedule uses persisted media clock when YouTube playing flag is
     });
 });
 
+test('getAutoEndSchedule ignores stale room playback metadata from a previous performer', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'new_audience_request',
+        activeMode: 'karaoke',
+        performanceMetaSongId: 'previous_song',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 240,
+        now: 300000
+    });
+
+    expect(schedule).toBeNull();
+});
+
 test('getAutoEndSchedule does not auto-end paused media from the persisted clock', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
