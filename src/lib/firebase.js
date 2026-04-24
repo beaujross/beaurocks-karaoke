@@ -231,16 +231,11 @@ const getAppCheckProviderMode = () => {
     ? window.__app_check_provider.trim()
     : "";
   const envProvider = readEnv("VITE_APP_CHECK_PROVIDER");
-  const resolvedMode = resolveAppCheckProviderMode({
+  return resolveAppCheckProviderMode({
     runtimeProvider,
     envProvider,
     fallback: "enterprise",
   });
-  // In soft mode, prefer the simpler v3 provider until Enterprise is fully healthy.
-  if (resolvedMode === "enterprise" && !shouldRequireLocalAppCheck()) {
-    return "v3";
-  }
-  return resolvedMode;
 };
 
 const createAppCheckProvider = (siteKey = "", providerMode = "enterprise") => {
@@ -637,6 +632,18 @@ const joinRoomAudience = async (payload = {}) => {
   return data || null;
 };
 
+const claimTimedLobbyCredits = async (payload = {}) => {
+  await requireAppCheckToken("claimTimedLobbyCredits");
+  const data = await callFunction("claimTimedLobbyCredits", payload || {});
+  return data || null;
+};
+
+const submitAudienceEmailCapture = async (payload = {}) => {
+  await requireAppCheckToken("submitAudienceEmailCapture");
+  const data = await callFunction("submitAudienceEmailCapture", payload || {});
+  return data || null;
+};
+
 const updateAudienceIdentity = async (payload = {}) => {
   await requireAppCheckToken("updateAudienceIdentity");
   const data = await callFunction("updateAudienceIdentity", payload || {});
@@ -646,6 +653,12 @@ const updateAudienceIdentity = async (payload = {}) => {
 const uploadAudienceRoomPhoto = async (payload = {}) => {
   await requireAppCheckToken("uploadAudienceRoomPhoto");
   const data = await callFunction("uploadAudienceRoomPhoto", payload || {});
+  return data || null;
+};
+
+const uploadHostSceneMedia = async (payload = {}) => {
+  await requireAppCheckToken("uploadHostSceneMedia");
+  const data = await callFunction("uploadHostSceneMedia", payload || {});
   return data || null;
 };
 
@@ -1157,8 +1170,11 @@ export {
   previewDirectoryRoomSessionByCode,
   sendBeauRocksEmailSignInLink,
   joinRoomAudience,
+  claimTimedLobbyCredits,
+  submitAudienceEmailCapture,
   updateAudienceIdentity,
   uploadAudienceRoomPhoto,
+  uploadHostSceneMedia,
   submitAudienceQueueSong,
   castKaraokeBracketVote,
   manageKaraokeBracket,

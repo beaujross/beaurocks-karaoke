@@ -18,6 +18,8 @@ import {
     updateAudienceIdentity,
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
+    claimTimedLobbyCredits,
+    submitAudienceEmailCapture,
     submitBracketRoundSong,
     submitDoodleOkeEntry,
     castDoodleOkeVote,
@@ -41,6 +43,7 @@ import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/so
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import {
     AUDIENCE_ACCESS_MODES,
+    CREDIT_EARNING_MODES,
     MONEYBAGS_BADGE_LABEL,
     normalizeAudienceExperience,
     buildAudienceSupportOffer,
@@ -1341,6 +1344,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [emailLinkSent, setEmailLinkSent] = useState(false);
     const [accountAuthLoading, setAccountAuthLoading] = useState(false);
     const audienceEmailLinkAttemptRef = useRef({ href: '', phase: 'idle', email: '' });
+    const timedLobbyClaimRef = useRef({ key: '', lastAttemptAt: 0 });
     const openEmailAccessModal = useCallback(() => {
         setAccountEmail((current) => current || auth.currentUser?.email || profile?.email || '');
         setEmailLinkSent(false);
@@ -2639,6 +2643,11 @@ const SingerApp = ({ roomCode, uid }) => {
                 })).filter((offer) => offer.id && offer.amount > 0 && offer.points > 0)
                 : [],
             audienceAccessMode: String(source.audienceAccessMode || '').trim().toLowerCase(),
+            creditEarningMode: String(source.creditEarningMode || '').trim().toLowerCase(),
+            timedLobbyEnabled: source.timedLobbyEnabled === true,
+            timedLobbyPoints: Math.max(0, Number(source.timedLobbyPoints || 0) || 0),
+            timedLobbyIntervalMin: Math.max(1, Number(source.timedLobbyIntervalMin || 10) || 10),
+            timedLobbyMaxPerGuest: Math.max(0, Number(source.timedLobbyMaxPerGuest || 0) || 0),
             supportCelebrationStyle: String(source.supportCelebrationStyle || '').trim().toLowerCase(),
             promoCampaignCount: Math.max(0, Number(source.promoCampaignCount || 0) || 0),
             promoCampaigns: Array.isArray(source.promoCampaigns)
@@ -2687,11 +2696,13 @@ const SingerApp = ({ roomCode, uid }) => {
         () => normalizeAudienceExperience(activeEventCredits),
         [activeEventCredits]
     );
+    const simpleEmailCaptureMode = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailCapture;
     const supporterAccessLabel = isCustomAudienceBrand ? 'Festival Supporter' : 'VIP';
     const supportCtaLabel = roomSupportOffer?.label
         || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
     const isDonationFirstAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.donation;
     const allowsEmailFallbackAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.email
+        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailCapture
         || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
         || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account;
     const allowsDonationAccess = !!roomSupportOffer
@@ -2717,20 +2728,68 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
     const accessActionLabel = allowsDonationAccess
         ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
-        : (isCustomAudienceBrand ? `Continue with ${audienceBrandTitle}` : 'Continue with Email');
+        : (simpleEmailCaptureMode ? 'Submit Email' : (isCustomAudienceBrand ? `Continue with ${audienceBrandTitle}` : 'Continue with Email'));
     const accessConnectedLabel = hasSupporterAccess && !isVipAccount
         ? `${supporterAccessLabel} Ready`
         : (isCustomAudienceBrand ? `${audienceBrandTitle} Access Ready` : 'Email Access Ready');
     const audienceAccessHeadline = allowsDonationAccess
         ? (isDonationFirstAccess ? `Support ${audienceBrandTitle}` : `Support ${audienceBrandTitle} or continue with email`)
-        : 'Continue with Email';
+        : (simpleEmailCaptureMode ? 'Submit Email' : 'Continue with Email');
     const audienceAccessBody = allowsDonationAccess
         ? (
             isDonationFirstAccess
                 ? `Givebutter support can unlock ${supporterAccessLabel.toLowerCase()} perks, featured reactions, and room moments without interrupting the night.`
                 : `You can unlock ${supporterAccessLabel.toLowerCase()} perks by supporting the fundraiser, or keep the standard email path for profile sync and cross-room history.`
         )
-        : `Enter your email and we will send a secure sign-in link. Open the link on this device to reconnect, unlock ${premiumPerksLabel}, and carry your history forward.`;
+        : (simpleEmailCaptureMode
+            ? `Enter your email for this room only. No account creation or sign-in link is required.`
+            : `Enter your email and we will send a secure sign-in link. Open the link on this device to reconnect, unlock ${premiumPerksLabel}, and carry your history forward.`);
+    useEffect(() => {
+        if (!roomCode || !activeUid || !user) return undefined;
+        if (!activeEventCredits.enabled || !activeEventCredits.timedLobbyEnabled) return undefined;
+        const points = Math.max(0, Number(activeEventCredits.timedLobbyPoints || 0) || 0);
+        if (!points) return undefined;
+        const intervalMs = Math.max(60 * 1000, Number(activeEventCredits.timedLobbyIntervalMin || 10) * 60 * 1000);
+        const claimKey = `${roomCode}:${activeUid}:${activeEventCredits.creditEarningMode || CREDIT_EARNING_MODES.standard}:${points}:${intervalMs}:${activeEventCredits.timedLobbyMaxPerGuest || 0}`;
+        let disposed = false;
+        const tryClaim = async () => {
+            if (disposed) return;
+            const now = Date.now();
+            if (timedLobbyClaimRef.current.key !== claimKey) {
+                timedLobbyClaimRef.current = { key: claimKey, lastAttemptAt: 0 };
+            }
+            if (now - Number(timedLobbyClaimRef.current.lastAttemptAt || 0) < Math.max(30000, intervalMs - 5000)) return;
+            timedLobbyClaimRef.current.lastAttemptAt = now;
+            try {
+                const result = await claimTimedLobbyCredits({ roomCode });
+                const granted = Math.max(0, Number(result?.pointsGranted || 0) || 0);
+                if (granted > 0) {
+                    showRewardToast(`Lobby refill +${granted} PTS`, granted, { durationMs: 2600 });
+                }
+            } catch (error) {
+                console.debug('timed lobby credit claim skipped', error);
+            }
+        };
+        const startupDelay = Math.min(intervalMs, 15000);
+        const startup = setTimeout(tryClaim, startupDelay);
+        const timer = setInterval(tryClaim, Math.max(60000, intervalMs));
+        return () => {
+            disposed = true;
+            clearTimeout(startup);
+            clearInterval(timer);
+        };
+    }, [
+        activeEventCredits.creditEarningMode,
+        activeEventCredits.enabled,
+        activeEventCredits.timedLobbyEnabled,
+        activeEventCredits.timedLobbyIntervalMin,
+        activeEventCredits.timedLobbyMaxPerGuest,
+        activeEventCredits.timedLobbyPoints,
+        activeUid,
+        roomCode,
+        showRewardToast,
+        user,
+    ]);
     const openVipUpgrade = useCallback((preferredPath = 'auto') => {
         const wantsEmail = preferredPath === 'email';
         if (!wantsEmail && allowsDonationAccess) {
@@ -6995,6 +7054,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         setAccountAuthLoading(true);
         try {
+            if (simpleEmailCaptureMode) {
+                await submitAudienceEmailCapture({
+                    roomCode,
+                    email: normalizedEmail,
+                    name: form.name || user?.name || 'Guest'
+                });
+                setAccountEmail(normalizedEmail);
+                setEmailLinkSent(true);
+                setShowPhoneModal(false);
+                toast('Email saved for this room.');
+                return;
+            }
             const sourceUid = String(auth.currentUser?.uid || activeUid || '').trim();
             await sendBeauRocksEmailSignInLink({
                 email: normalizedEmail,
@@ -9369,16 +9440,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 {!emailLinkSent ? (
                     <div className="flex gap-2">
                         <button onClick={()=>setShowPhoneModal(false)} className="flex-1 rounded-2xl border border-white/10 bg-white/10 py-3 font-bold text-white transition hover:bg-white/15">Cancel</button>
-                        <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-cyan-500 py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Send Email Link'}</button>
+                        <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-cyan-500 py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : (simpleEmailCaptureMode ? 'Submit Email' : 'Send Email Link')}</button>
                     </div>
                 ) : (
                     <>
                         <div className="mb-3 rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                            Sign-in link sent to <span className="font-bold text-white">{accountEmail}</span>. Open it on this device and the app will finish automatically.
+                            {simpleEmailCaptureMode ? 'Email saved for this room: ' : 'Sign-in link sent to '}<span className="font-bold text-white">{accountEmail}</span>{simpleEmailCaptureMode ? '.' : '. Open it on this device and the app will finish automatically.'}
                         </div>
                         <div className="flex gap-2">
                             <button onClick={()=>{ setEmailLinkSent(false); }} className="flex-1 rounded-2xl border border-white/10 bg-white/10 py-3 font-bold text-white transition hover:bg-white/15">Use Different Email</button>
-                            <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-[#00C4D9] py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
+                            <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-[#00C4D9] py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : (simpleEmailCaptureMode ? 'Save Again' : 'Resend Link')}</button>
                         </div>
                     </>
                 )}
@@ -12058,7 +12129,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     {premiumAccessChipLabel}
                                 </div>
                                 <h3 className="text-2xl font-bold text-cyan-300 mb-2">{premiumUnlockHeadline}</h3>
-                                <p className="mb-4 text-zinc-300">{premiumAccessLabel} is unlocked through secure email access. Verify once to unlock premium reactions, visuals, and carryover perks.</p>
+                                <p className="mb-4 text-zinc-300">
+                                    {simpleEmailCaptureMode
+                                        ? 'This room is using simple email capture. Submit an email to stay connected without creating an account.'
+                                        : `${premiumAccessLabel} is unlocked through secure email access. Verify once to unlock premium reactions, visuals, and carryover perks.`}
+                                </p>
                                 <div className="bg-black/50 border border-cyan-500/30 rounded-xl p-4 mb-4 text-left">
                                     <div className="text-xs uppercase tracking-[0.35em] text-cyan-300 mb-3">{premiumBenefitsLabel}</div>
                                     <ul className="space-y-2 text-sm text-zinc-200">
@@ -12073,20 +12148,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <label className="text-xs uppercase tracking-widest text-zinc-400">Email Address</label>
                                     <input value={accountEmail} onChange={e=>setAccountEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 mt-2 rounded bg-zinc-800 border border-zinc-700 text-white" />
                                     {!emailLinkSent ? (
-                                        <button onClick={sendAccountEmailLink} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{accountAuthLoading ? 'Sending...' : 'Send Sign-In Link'}</button>
+                                        <button onClick={sendAccountEmailLink} className="w-full bg-cyan-500 text-black py-3 rounded-lg font-bold mt-3">{accountAuthLoading ? 'Sending...' : (simpleEmailCaptureMode ? 'Submit Email' : 'Send Sign-In Link')}</button>
                                     ) : (
                                         <>
                                             <div className="mt-4 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                                                Check <span className="font-bold text-white">{accountEmail}</span> and open the secure sign-in link on this device.
+                                                {simpleEmailCaptureMode ? 'Email saved for this room: ' : 'Check '}<span className="font-bold text-white">{accountEmail}</span>{simpleEmailCaptureMode ? '.' : ' and open the secure sign-in link on this device.'}
                                             </div>
                                             <div className="flex gap-2 mt-3">
                                                 <button onClick={()=>setEmailLinkSent(false)} className="flex-1 bg-zinc-700 py-3 rounded">Use Different Email</button>
-                                                <button onClick={sendAccountEmailLink} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : 'Resend Link'}</button>
+                                                <button onClick={sendAccountEmailLink} className="flex-1 bg-[#00C4D9] text-black py-3 rounded font-bold">{accountAuthLoading ? 'Sending...' : (simpleEmailCaptureMode ? 'Save Again' : 'Resend Link')}</button>
                                             </div>
                                         </>
                                     )}
                                 </div>
-                                <p className="text-xs text-zinc-400 mb-3">Email link verification for now. No SMS required.</p>
+                                <p className="text-xs text-zinc-400 mb-3">{simpleEmailCaptureMode ? 'This room is using email capture only. No account link required.' : 'Email link verification for now. No SMS required.'}</p>
                                 <button onClick={()=>setTab('home')} className="text-zinc-500 underline block">Maybe Later</button>
                             </>
                         ) : (

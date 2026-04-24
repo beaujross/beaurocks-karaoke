@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
     AUDIENCE_ACCESS_MODES,
+    CREDIT_EARNING_MODES,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     buildAudienceSupportOffer,
@@ -13,6 +14,11 @@ describe('roomMonetization', () => {
     test('normalizes audience experience defaults safely', () => {
         expect(normalizeAudienceExperience({})).toEqual({
             audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+            creditEarningMode: CREDIT_EARNING_MODES.standard,
+            timedLobbyEnabled: false,
+            timedLobbyPoints: 0,
+            timedLobbyIntervalMin: 1,
+            timedLobbyMaxPerGuest: 0,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
         });
     });
@@ -20,9 +26,19 @@ describe('roomMonetization', () => {
     test('keeps supported audience experience values', () => {
         expect(normalizeAudienceExperience({
             audienceAccessMode: AUDIENCE_ACCESS_MODES.emailOrDonation,
+            creditEarningMode: CREDIT_EARNING_MODES.friendly,
+            timedLobbyEnabled: true,
+            timedLobbyPoints: 25,
+            timedLobbyIntervalMin: 10,
+            timedLobbyMaxPerGuest: 150,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.moneybagsBurst,
         })).toEqual({
             audienceAccessMode: AUDIENCE_ACCESS_MODES.emailOrDonation,
+            creditEarningMode: CREDIT_EARNING_MODES.friendly,
+            timedLobbyEnabled: true,
+            timedLobbyPoints: 25,
+            timedLobbyIntervalMin: 10,
+            timedLobbyMaxPerGuest: 150,
             supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.moneybagsBurst,
         });
     });

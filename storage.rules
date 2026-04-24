@@ -90,6 +90,22 @@ service firebase.storage {
       allow delete: if isRoomHost(roomCode);
     }
 
+    match /round_winner_prizes/{roomCode}/{fileName=**} {
+      allow read: if isRoomHost(roomCode);
+      allow create, update: if isRoomHost(roomCode) && isAllowedPhotoUpload();
+      allow delete: if isRoomHost(roomCode);
+    }
+
+    match /room_scene_media/{roomCode}/{fileName=**} {
+      allow read: if isRoomHost(roomCode);
+      allow create, update: if isRoomHost(roomCode)
+        && request.resource != null
+        && request.resource.size <= 150 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^(image|video)/.*$');
+      allow delete: if isRoomHost(roomCode);
+    }
+
     match /room_photos/{roomCode}/{uploaderUid}/{fileName=**} {
       allow read: if isRoomHost(roomCode)
         || isRoomParticipant(roomCode)

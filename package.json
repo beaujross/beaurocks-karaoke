@@ -69,6 +69,8 @@
     "ops:alerts:verify": "powershell -ExecutionPolicy Bypass -File scripts/ops/verify-launch-alerts.ps1",
     "ops:watch:launch": "powershell -ExecutionPolicy Bypass -File scripts/ops/watch-launch-signals.ps1",
     "ops:report:playtest": "node scripts/ops/playtest-room-report.mjs",
+    "ops:appcheck:event-mode": "node scripts/ops/set-app-check-event-mode.mjs",
+    "ops:appcheck:event-mode:check": "node scripts/ops/set-app-check-event-mode.mjs --check",
     "ops:audit:async-pipelines": "node scripts/ops/async-pipeline-audit.mjs",
     "ops:overnight:intelligence": "node scripts/ops/overnight-product-intelligence.mjs",
     "seed:directory:import": "node scripts/ingest/import-kitsap-seed.mjs --help",

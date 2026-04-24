@@ -992,6 +992,30 @@ async function run() {
       );
     }],
 
+    ["storage: host can upload round winner prize image", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const ref = storage.ref(`round_winner_prizes/${ROOM_CODE}/prize.jpg`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/jpeg" })
+      );
+    }],
+
+    ["storage: host can upload room scene image", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_scene_media/${ROOM_CODE}/slide.png`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
+    ["storage: host can upload room scene video", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const ref = storage.ref(`room_scene_media/${ROOM_CODE}/scene.mp4`);
+      await assertSucceeds(
+        ref.putString("abc", "raw", { contentType: "video/mp4" })
+      );
+    }],
+
     ["storage: host can overwrite branding image at same path", async () => {
       const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
       const ref = storage.ref(`room_branding/${ROOM_CODE}/logo.png`);
@@ -1069,6 +1093,48 @@ async function run() {
       const ref = storage.ref(`room_branding/${ROOM_CODE}/logo.png`);
       await assertFails(
         ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
+    ["storage: non-host cannot upload round winner prize image", async () => {
+      const storage = testEnv.authenticatedContext(OTHER_UID).storage(BUCKET);
+      const ref = storage.ref(`round_winner_prizes/${ROOM_CODE}/prize.jpg`);
+      await assertFails(
+        ref.putString("abc", "raw", { contentType: "image/jpeg" })
+      );
+    }],
+
+    ["storage: non-host cannot upload room scene media", async () => {
+      const storage = testEnv.authenticatedContext(OTHER_UID).storage(BUCKET);
+      const ref = storage.ref(`room_scene_media/${ROOM_CODE}/slide.png`);
+      await assertFails(
+        ref.putString("abc", "raw", { contentType: "image/png" })
+      );
+    }],
+
+    ["firestore: host can create room scene preset", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/room_scene_presets/${ROOM_CODE}_scene_1`).set({
+          roomCode: ROOM_CODE,
+          title: "Sponsor slide",
+          mediaUrl: "https://example.com/slide.png",
+          mediaType: "image",
+          durationSec: 20,
+        })
+      );
+    }],
+
+    ["firestore: non-host cannot create room scene preset", async () => {
+      const db = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/room_scene_presets/${ROOM_CODE}_scene_2`).set({
+          roomCode: ROOM_CODE,
+          title: "Intrude",
+          mediaUrl: "https://example.com/slide.png",
+          mediaType: "image",
+          durationSec: 20,
+        })
       );
     }],
 

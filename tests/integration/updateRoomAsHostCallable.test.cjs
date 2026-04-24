@@ -99,6 +99,11 @@ async function run() {
           generalAdmissionPoints: 200,
           vipBonusPoints: 400,
           audienceAccessMode: "email_or_donation",
+          creditEarningMode: "friendly",
+          timedLobbyEnabled: true,
+          timedLobbyPoints: 25,
+          timedLobbyIntervalMin: 10,
+          timedLobbyMaxPerGuest: 150,
           supportCelebrationStyle: "moneybags_burst",
         },
         programMode: "run_of_show",
@@ -179,6 +184,9 @@ async function run() {
       assert.equal(snap.get("eventCredits.enabled"), true);
       assert.equal(snap.get("eventCredits.generalAdmissionPoints"), 200);
       assert.equal(snap.get("eventCredits.audienceAccessMode"), "email_or_donation");
+      assert.equal(snap.get("eventCredits.creditEarningMode"), "friendly");
+      assert.equal(snap.get("eventCredits.timedLobbyEnabled"), true);
+      assert.equal(Number(snap.get("eventCredits.timedLobbyPoints")), 25);
       assert.equal(snap.get("eventCredits.supportCelebrationStyle"), "moneybags_burst");
       assert.equal(snap.get("programMode"), "run_of_show");
       assert.equal(snap.get("runOfShowEnabled"), true);

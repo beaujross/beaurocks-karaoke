@@ -2,8 +2,16 @@ export const MONEYBAGS_BADGE_LABEL = 'Moneybags';
 export const AUDIENCE_ACCESS_MODES = Object.freeze({
     account: 'account',
     email: 'email',
+    emailCapture: 'email_capture',
     donation: 'donation',
     emailOrDonation: 'email_or_donation',
+});
+export const CREDIT_EARNING_MODES = Object.freeze({
+    standard: 'standard',
+    lean: 'lean',
+    friendly: 'friendly',
+    playful: 'playful',
+    custom: 'custom',
 });
 export const SUPPORT_CELEBRATION_STYLES = Object.freeze({
     standard: 'standard',
@@ -11,6 +19,7 @@ export const SUPPORT_CELEBRATION_STYLES = Object.freeze({
 });
 
 const AUDIENCE_ACCESS_MODE_VALUES = new Set(Object.values(AUDIENCE_ACCESS_MODES));
+const CREDIT_EARNING_MODE_VALUES = new Set(Object.values(CREDIT_EARNING_MODES));
 const SUPPORT_CELEBRATION_STYLE_VALUES = new Set(Object.values(SUPPORT_CELEBRATION_STYLES));
 const SUPPORT_REWARD_SCOPES = new Set(['buyer', 'room', 'buyer_and_room']);
 
@@ -79,6 +88,11 @@ export const normalizeAudienceAccessMode = (value = '') => {
     return AUDIENCE_ACCESS_MODE_VALUES.has(token) ? token : AUDIENCE_ACCESS_MODES.account;
 };
 
+export const normalizeCreditEarningMode = (value = '') => {
+    const token = String(value || '').trim().toLowerCase();
+    return CREDIT_EARNING_MODE_VALUES.has(token) ? token : CREDIT_EARNING_MODES.standard;
+};
+
 export const normalizeSupportCelebrationStyle = (value = '') => {
     const token = String(value || '').trim().toLowerCase();
     return SUPPORT_CELEBRATION_STYLE_VALUES.has(token)
@@ -90,6 +104,11 @@ export const normalizeAudienceExperience = (input = {}) => {
     const source = input && typeof input === 'object' ? input : {};
     return {
         audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || ''),
+        creditEarningMode: normalizeCreditEarningMode(source.creditEarningMode || ''),
+        timedLobbyEnabled: source.timedLobbyEnabled === true,
+        timedLobbyPoints: Math.max(0, Math.floor(Number(source.timedLobbyPoints || 0) || 0)),
+        timedLobbyIntervalMin: Math.max(1, Math.floor(Number(source.timedLobbyIntervalMin || 0) || 0)),
+        timedLobbyMaxPerGuest: Math.max(0, Math.floor(Number(source.timedLobbyMaxPerGuest || 0) || 0)),
         supportCelebrationStyle: normalizeSupportCelebrationStyle(source.supportCelebrationStyle || ''),
     };
 };

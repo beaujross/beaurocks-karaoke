@@ -5,9 +5,11 @@ import {
 } from '../hostLaunchHelpers';
 import {
     AUDIENCE_ACCESS_MODES,
+    CREDIT_EARNING_MODES,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     normalizeAudienceAccessMode,
+    normalizeCreditEarningMode,
     normalizeSupportCelebrationStyle,
 } from '../../../lib/roomMonetization';
 
@@ -31,6 +33,11 @@ const ACCESS_MODE_OPTIONS = [
         note: 'Keep the custom skin, but make the unlock action clearly email-first.',
     },
     {
+        value: AUDIENCE_ACCESS_MODES.emailCapture,
+        label: 'Simple email submit',
+        note: 'Capture an email for this room without making guests create or verify an account.',
+    },
+    {
         value: AUDIENCE_ACCESS_MODES.donation,
         label: 'Donation unlock',
         note: 'Send guests into the Givebutter flow first for supporter perks.',
@@ -39,6 +46,39 @@ const ACCESS_MODE_OPTIONS = [
         value: AUDIENCE_ACCESS_MODES.emailOrDonation,
         label: 'Email or donation',
         note: 'Let guests support the fundraiser first, with email as the fallback path.',
+    },
+];
+
+const CREDIT_MODE_OPTIONS = [
+    {
+        value: CREDIT_EARNING_MODES.standard,
+        label: 'Standard',
+        note: 'One join grant only. Good when points should feel controlled.',
+        patch: { generalAdmissionPoints: 100, timedLobbyEnabled: false, timedLobbyPoints: 0, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 0 },
+    },
+    {
+        value: CREDIT_EARNING_MODES.lean,
+        label: 'Lean night',
+        note: 'Small starting balance and no automatic drip.',
+        patch: { generalAdmissionPoints: 75, timedLobbyEnabled: false, timedLobbyPoints: 0, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 0 },
+    },
+    {
+        value: CREDIT_EARNING_MODES.friendly,
+        label: 'Friendly refill',
+        note: 'Guests get starter credits plus a capped lobby refill every 10 minutes.',
+        patch: { generalAdmissionPoints: 200, timedLobbyEnabled: true, timedLobbyPoints: 25, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 150 },
+    },
+    {
+        value: CREDIT_EARNING_MODES.playful,
+        label: 'Playful party',
+        note: 'More room to play, still capped per guest so it is not a free-for-all.',
+        patch: { generalAdmissionPoints: 300, timedLobbyEnabled: true, timedLobbyPoints: 50, timedLobbyIntervalMin: 10, timedLobbyMaxPerGuest: 300 },
+    },
+    {
+        value: CREDIT_EARNING_MODES.custom,
+        label: 'Custom',
+        note: 'Use the fields below to tune the room economy.',
+        patch: {},
     },
 ];
 
@@ -70,6 +110,7 @@ const EventCreditsConfigPanel = ({
     const supportProvider = String(eventCreditsConfig?.supportProvider || '').trim().toLowerCase();
     const showAdvancedCredits = !!eventCreditsConfig?.enabled;
     const accessMode = normalizeAudienceAccessMode(eventCreditsConfig?.audienceAccessMode || '');
+    const creditMode = normalizeCreditEarningMode(eventCreditsConfig?.creditEarningMode || '');
     const celebrationStyle = normalizeSupportCelebrationStyle(eventCreditsConfig?.supportCelebrationStyle || '');
     const presetLabel = (
         EVENT_CREDITS_PRESET_OPTIONS.find((preset) => preset.id === (eventCreditsConfig?.presetId || ''))
@@ -77,11 +118,13 @@ const EventCreditsConfigPanel = ({
         || EVENT_CREDITS_PRESET_OPTIONS[0]
     )?.label || 'Advanced Credits';
     const accessModeMeta = ACCESS_MODE_OPTIONS.find((option) => option.value === accessMode) || ACCESS_MODE_OPTIONS[0];
+    const creditModeMeta = CREDIT_MODE_OPTIONS.find((option) => option.value === creditMode) || CREDIT_MODE_OPTIONS[0];
     const celebrationMeta = CELEBRATION_OPTIONS.find((option) => option.value === celebrationStyle) || CELEBRATION_OPTIONS[0];
     const summaryPills = [
         presetLabel,
         accessModeMeta.label,
         supportProvider === 'givebutter' ? 'Givebutter live' : 'No donation flow',
+        creditModeMeta.label,
         celebrationMeta.label,
     ];
 
@@ -139,6 +182,82 @@ const EventCreditsConfigPanel = ({
                             placeholder="AAHF Festival Night"
                             className={inputClass}
                         />
+                    </label>
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-500/6 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Credit earning mode</div>
+                            <div className="mt-1 text-sm text-zinc-300">Tune how generous this room feels without opening unlimited play.</div>
+                        </div>
+                        <select
+                            value={creditMode}
+                            onChange={(e) => {
+                                const selected = CREDIT_MODE_OPTIONS.find((option) => option.value === e.target.value) || CREDIT_MODE_OPTIONS[0];
+                                updateConfig({
+                                    creditEarningMode: selected.value,
+                                    ...selected.patch,
+                                });
+                            }}
+                            className="min-w-[13rem] rounded-xl border border-cyan-400/20 bg-black/35 px-3 py-2 text-sm text-white outline-none focus:border-cyan-300/45"
+                        >
+                            {CREDIT_MODE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="mt-2 text-xs text-zinc-400">{creditModeMeta.note}</div>
+                    <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-4'}`}>
+                        <label className="block">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Join credits</div>
+                            <input
+                                type="number"
+                                min="0"
+                                value={numberValue(eventCreditsConfig?.generalAdmissionPoints)}
+                                onChange={(e) => updateConfig({ generalAdmissionPoints: e.target.value, creditEarningMode: CREDIT_EARNING_MODES.custom })}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className="block">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Lobby refill</div>
+                            <input
+                                type="number"
+                                min="0"
+                                value={numberValue(eventCreditsConfig?.timedLobbyPoints)}
+                                onChange={(e) => updateConfig({ timedLobbyPoints: e.target.value, timedLobbyEnabled: Number(e.target.value || 0) > 0, creditEarningMode: CREDIT_EARNING_MODES.custom })}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className="block">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Every minutes</div>
+                            <input
+                                type="number"
+                                min="1"
+                                max="120"
+                                value={numberValue(eventCreditsConfig?.timedLobbyIntervalMin, 10)}
+                                onChange={(e) => updateConfig({ timedLobbyIntervalMin: e.target.value, creditEarningMode: CREDIT_EARNING_MODES.custom })}
+                                className={inputClass}
+                            />
+                        </label>
+                        <label className="block">
+                            <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Refill cap</div>
+                            <input
+                                type="number"
+                                min="0"
+                                value={numberValue(eventCreditsConfig?.timedLobbyMaxPerGuest)}
+                                onChange={(e) => updateConfig({ timedLobbyMaxPerGuest: e.target.value, creditEarningMode: CREDIT_EARNING_MODES.custom })}
+                                className={inputClass}
+                            />
+                        </label>
+                    </div>
+                    <label className="mt-3 inline-flex items-center gap-2 text-sm text-cyan-100">
+                        <input
+                            type="checkbox"
+                            checked={eventCreditsConfig?.timedLobbyEnabled === true}
+                            onChange={(e) => updateConfig({ timedLobbyEnabled: e.target.checked, creditEarningMode: CREDIT_EARNING_MODES.custom })}
+                        />
+                        Award capped lobby refill credits while guests stay active
                     </label>
                 </div>
 
@@ -275,7 +394,7 @@ const EventCreditsConfigPanel = ({
                                 type="number"
                                 min="0"
                                 value={numberValue(eventCreditsConfig?.generalAdmissionPoints)}
-                                onChange={(e) => updateConfig({ generalAdmissionPoints: e.target.value })}
+                                onChange={(e) => updateConfig({ generalAdmissionPoints: e.target.value, creditEarningMode: CREDIT_EARNING_MODES.custom })}
                                 className={inputClass}
                             />
                         </label>

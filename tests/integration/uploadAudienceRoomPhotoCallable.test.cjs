@@ -1,11 +1,12 @@
 const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
-const { uploadAudienceRoomPhoto } = require("../../functions/index.js");
+const { uploadAudienceRoomPhoto, uploadHostSceneMedia } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
 const ROOT = `artifacts/${APP_ID}/public/data`;
 const ROOM_CODE = "ROOM1";
+const HOST_UID = "host-uid";
 const USER_UID = "audience-uid";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
@@ -46,8 +47,8 @@ async function resetState() {
   }
 
   await roomRef.set({
-    hostUid: "host-uid",
-    hostUids: ["host-uid"],
+    hostUid: HOST_UID,
+    hostUids: [HOST_UID],
     activeMode: "karaoke",
   });
 }
@@ -109,6 +110,36 @@ async function run() {
       assert.equal(result.roomCode, ROOM_CODE);
       assert.equal(result.uid, USER_UID);
       assert.match(String(result.storagePath || ""), new RegExp(`^room_photos/${ROOM_CODE}/${USER_UID}/`));
+      assert.match(String(result.url || ""), /alt=media&token=/);
+
+      const [exists] = await bucket.file(result.storagePath).exists();
+      assert.equal(exists, true);
+    }],
+
+    ["host scene media upload requires host access", async () => {
+      await expectHttpsError(
+        () => uploadHostSceneMedia.run(requestFor(USER_UID, {
+          roomCode: ROOM_CODE,
+          fileName: "flyer.jpg",
+          mimeType: "image/jpeg",
+          mediaBase64: Buffer.from("fake-scene-image").toString("base64"),
+        })),
+        "permission-denied"
+      );
+    }],
+
+    ["host scene media upload stores image for room host", async () => {
+      const result = await uploadHostSceneMedia.run(requestFor(HOST_UID, {
+        roomCode: ROOM_CODE,
+        fileName: "karaoke flyer.jpg",
+        mimeType: "image/jpeg",
+        mediaBase64: `data:image/jpeg;base64,${Buffer.from("fake-scene-image").toString("base64")}`,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.equal(result.roomCode, ROOM_CODE);
+      assert.equal(result.mediaType, "image");
+      assert.match(String(result.storagePath || ""), new RegExp(`^room_scene_media/${ROOM_CODE}/`));
       assert.match(String(result.url || ""), /alt=media&token=/);
 
       const [exists] = await bucket.file(result.storagePath).exists();

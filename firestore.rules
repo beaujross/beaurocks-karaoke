@@ -870,6 +870,16 @@ service cloud.firestore {
         allow update: if false;
       }
 
+      match /room_scene_presets/{presetId} {
+        allow read: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && request.resource.data.roomCode is string
+          && isRoomHost(request.resource.data.roomCode);
+        allow delete: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
+        allow update: if false;
+      }
+
       match /room_users/{roomUserId} {
         allow create: if isBrossApp(appId)
           && isAuthed()

@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const admin = require("../../functions/node_modules/firebase-admin");
-const { joinRoomAudience } = require("../../functions/index.js");
+const { joinRoomAudience, claimTimedLobbyCredits, submitAudienceEmailCapture } = require("../../functions/index.js");
 
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "demo-bross";
 const APP_ID = "bross-app";
@@ -23,6 +23,7 @@ const grantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${US
 const entitlementRef = db.doc(`event_attendee_entitlements/givebutter_order123`);
 const entitlementGrantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_givebutter_order123`);
 const supportPurchaseRef = db.doc(`support_purchase_events/givebutter_support_donation123`);
+const contactRef = db.doc(`${ROOT}/contacts/${ROOM_CODE}_${require("node:crypto").createHash("sha256").update("guest@example.com").digest("hex").slice(0, 24)}`);
 
 const requestFor = (uid, data = {}) => ({
   auth: uid ? { uid, token: data.__token || {} } : null,
@@ -35,7 +36,7 @@ const requestFor = (uid, data = {}) => ({
 });
 
 async function resetState() {
-  const docs = [roomUserRef, roomRef, userRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef];
+  const docs = [roomUserRef, roomRef, userRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
   for (const ref of docs) {
     try {
       await ref.delete();
@@ -252,6 +253,68 @@ async function run() {
       const supportSnap = await supportPurchaseRef.get();
       assert.equal(String(supportSnap.get("matchedUid")), USER_UID);
       assert.equal(String(supportSnap.get("matchedRoomCode")), ROOM_CODE);
+    }],
+
+    ["timed lobby credits grant on interval and respect per-guest cap", async () => {
+      await roomRef.set({
+        hostUid: "host-uid",
+        hostUids: ["host-uid"],
+        eventCredits: {
+          enabled: true,
+          creditEarningMode: "friendly",
+          generalAdmissionPoints: 100,
+          timedLobbyEnabled: true,
+          timedLobbyPoints: 25,
+          timedLobbyIntervalMin: 1,
+          timedLobbyMaxPerGuest: 25,
+        },
+      }, { merge: true });
+
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest",
+        avatar: "ðŸŽ¤",
+      }));
+      await roomUserRef.set({ lastTimedLobbyCreditAtMs: Date.now() - 61000 }, { merge: true });
+
+      const first = await claimTimedLobbyCredits.run(requestFor(USER_UID, { roomCode: ROOM_CODE }));
+      assert.equal(first.ok, true);
+      assert.equal(Number(first.pointsGranted), 25);
+
+      const second = await claimTimedLobbyCredits.run(requestFor(USER_UID, { roomCode: ROOM_CODE }));
+      assert.equal(second.ok, true);
+      assert.equal(Number(second.pointsGranted), 0);
+
+      const roomUserSnap = await roomUserRef.get();
+      assert.equal(Number(roomUserSnap.get("timedLobbyEarnedPoints")), 25);
+      assert.equal(Number(roomUserSnap.get("points")), 125);
+    }],
+
+    ["simple audience email capture stores room contact without email-link account creation", async () => {
+      await roomRef.set({
+        hostUid: "host-uid",
+        hostUids: ["host-uid"],
+        eventCredits: {
+          enabled: true,
+          audienceAccessMode: "email_capture",
+        },
+      }, { merge: true });
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest",
+        avatar: "ðŸŽ¤",
+      }));
+
+      const result = await submitAudienceEmailCapture.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        email: "guest@example.com",
+        name: "Guest",
+      }));
+      assert.equal(result.ok, true);
+      const snap = await contactRef.get();
+      assert.equal(snap.exists, true);
+      assert.equal(snap.get("email"), "guest@example.com");
+      assert.equal(snap.get("source"), "audience_email_capture");
     }],
   ];
 

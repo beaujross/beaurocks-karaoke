@@ -65,6 +65,7 @@ import {
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     updateRoomAsHost,
+    uploadHostSceneMedia,
     manageKaraokeBracket,
     resolveKaraokeBracketMatch,
     provisionHostRoom,
@@ -3665,7 +3666,7 @@ const PublicTvMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onClearScenePreset, onDeleteScenePreset, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3733,6 +3734,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         _previewIframe,
         _setPreviewIframe
     } = useQueueTabState({ hostName, roomCode });
+    const [scenePresetTitle, setScenePresetTitle] = useState('');
+    const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
 
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
@@ -5723,9 +5726,84 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             />
         </div>
     ) : null;
+    const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
+        ? room.announcement
+        : null;
+    const scenePresetsSection = (
+        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">Scene Presets</div>
+                    <div className="mt-1 text-xs text-zinc-400">Upload an image or video and launch it on Public TV without building a full Run of Show.</div>
+                </div>
+                {activeMediaScene ? (
+                    <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                        End Scene
+                    </button>
+                ) : null}
+            </div>
+            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_7rem_auto]">
+                <input value={scenePresetTitle} onChange={(event) => setScenePresetTitle(event.target.value)} className={STYLES.input} placeholder="Scene title" />
+                <input type="number" min="5" max="600" value={scenePresetDurationSec} onChange={(event) => setScenePresetDurationSec(event.target.value)} className={STYLES.input} title="Duration in seconds" />
+                <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
+                    <input
+                        type="file"
+                        accept="image/*,video/*"
+                        className="hidden"
+                        disabled={scenePresetUploading}
+                        onChange={async (event) => {
+                            const file = event.target.files?.[0] || null;
+                            if (file && typeof onCreateScenePreset === 'function') {
+                                const saved = await onCreateScenePreset(file, { title: scenePresetTitle, durationSec: scenePresetDurationSec });
+                                if (saved) setScenePresetTitle('');
+                            }
+                            event.target.value = '';
+                        }}
+                    />
+                    {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scene'}
+                </label>
+            </div>
+            {activeMediaScene ? (
+                <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                    Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}
+                </div>
+            ) : null}
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {(scenePresets || []).slice(0, 6).map((preset) => (
+                    <div key={preset.id || preset.mediaUrl} className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
+                        <div className="flex gap-3">
+                            <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/35">
+                                {preset.mediaType === 'video'
+                                    ? <video src={preset.mediaUrl} className="h-full w-full object-cover" muted playsInline />
+                                    : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover" />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-black text-white">{preset.title || 'Media Scene'}</div>
+                                <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                    {preset.mediaType === 'video' ? 'Video' : 'Image'} / {Math.max(5, Number(preset.durationSec || 20))}s
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>
+                                Run Scene
+                            </button>
+                            <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                ))}
+                {!scenePresets?.length ? (
+                    <div className="rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-4 text-xs text-zinc-500">No scene presets yet.</div>
+                ) : null}
+            </div>
+        </div>
+    );
     const queueListSection = (
         <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
+            {scenePresetsSection}
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
@@ -6790,6 +6868,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [roundWinnersSubmitting, setRoundWinnersSubmitting] = useState(false);
     const [roundWinnersPrizeUploading, setRoundWinnersPrizeUploading] = useState(false);
     const openRoundWinnersEditorRef = useRef(() => {});
+    const [scenePresets, setScenePresets] = useState([]);
+    const [scenePresetUploading, setScenePresetUploading] = useState(false);
+    const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
@@ -6839,7 +6920,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [localLibrary, setLocalLibrary] = useState(() => LOCAL_LIBRARY);
     const [ytIndex, setYtIndex] = useState([]);
     const [searchSources, setSearchSources] = useState({ local: true, youtube: true, itunes: true });
-    const [hideNonEmbeddableYouTube, setHideNonEmbeddableYouTube] = useState(false);
+    const [hideNonEmbeddableYouTube, setHideNonEmbeddableYouTube] = useState(true);
     const [ytPlaylistUrl, setYtPlaylistUrl] = useState('');
     const [qaYtPlaylistUrl, setQaYtPlaylistUrl] = useState(() => {
         try {
@@ -10107,7 +10188,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             requestMode: room?.requestMode,
             allowSingerTrackSelect: room?.allowSingerTrackSelect,
         }));
-        setHideNonEmbeddableYouTube(room?.hideNonEmbeddableYouTube === true);
+        setHideNonEmbeddableYouTube(room?.hideNonEmbeddableYouTube !== false);
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         setAudienceFeatureAccess(normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}));
@@ -10764,13 +10845,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 });
             }
         );
+        const unsubScenePresets = onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), where('roomCode', '==', roomCode)),
+            snap => {
+                const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                items.sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
+                setScenePresets(items);
+            }
+        );
         
         // VIP Contacts if tab is active
         if (tab === 'lobby' && lobbyTab === 'vip') {
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), where('roomCode', '==', roomCode))).then(snap => setContacts(snap.docs.map(d => d.data())));
         }
 
-        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); };
+        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); unsubScenePresets(); };
     }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId]);
     useEffect(() => () => {
         localUploadsRef.current.forEach(url => URL.revokeObjectURL(url));
@@ -12741,6 +12830,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             { merge: true }
         );
     };
+    const prepareHostStorageWrite = useCallback(async (forceRefresh = false) => {
+        const appCheckReady = await ensureAppCheckToken(forceRefresh).catch(() => false);
+        const currentUser = auth.currentUser;
+        if (typeof currentUser?.getIdToken === 'function') {
+            await currentUser.getIdToken(forceRefresh).catch(() => null);
+        }
+        if (!appCheckReady && !forceRefresh) {
+            return prepareHostStorageWrite(true);
+        }
+        return {
+            appCheckReady,
+            authUid: String(currentUser?.uid || '').trim()
+        };
+    }, []);
+    const fileToDataUrl = useCallback((file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Could not read file.'));
+        reader.readAsDataURL(file);
+    }), []);
 
     const uploadLogoFile = async (file) => {
         if (!roomCode) {
@@ -12768,6 +12877,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .slice(0, 60);
             const storagePath = `room_branding/${roomCode}/${nowMs()}-${stem}.${ext}`;
             const fileRef = storageRef(storage, storagePath);
+            await prepareHostStorageWrite();
             await uploadBytes(fileRef, file, {
                 contentType: file.type,
                 cacheControl: 'public,max-age=604800'
@@ -12813,6 +12923,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .slice(0, 60);
             const storagePath = `room_branding/${roomCode}/orb-skins/${nowMs()}-${stem}.${ext}`;
             const fileRef = storageRef(storage, storagePath);
+            await prepareHostStorageWrite();
             await uploadBytes(fileRef, file, {
                 contentType: file.type,
                 cacheControl: 'public,max-age=604800'
@@ -13364,6 +13475,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const storagePath = `room_uploads/${roomCode}/${nowMs()}_${safeName}`;
             const fileRef = storageRef(storage, storagePath);
+            await prepareHostStorageWrite();
             const uploadTask = uploadBytesResumable(fileRef, file, file.type ? { contentType: file.type } : undefined);
 
             await new Promise((resolve, reject) => {
@@ -13462,6 +13574,156 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (e) {
             hostLogger.error(e);
             toast('Failed to delete upload');
+        }
+    };
+    const createScenePresetFromFile = async (file, options = {}) => {
+        if (!file || !roomCode) return null;
+        const contentType = String(file.type || '').trim();
+        const mediaType = contentType.startsWith('video/') ? 'video' : contentType.startsWith('image/') ? 'image' : '';
+        if (!mediaType) {
+            toast('Scene presets must be an image or video file.');
+            return null;
+        }
+        if (file.size && file.size > 150 * 1024 * 1024) {
+            toast('Scene file too large. Keep files under 150MB.');
+            return null;
+        }
+        setScenePresetUploading(true);
+        setScenePresetUploadProgress(0);
+        try {
+            const safeName = String(file.name || 'scene-media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
+            const directUpload = async () => {
+                const storagePath = `room_scene_media/${roomCode}/${nowMs()}_${safeName}`;
+                const fileRef = storageRef(storage, storagePath);
+                await prepareHostStorageWrite();
+                const uploadTask = uploadBytesResumable(fileRef, file, contentType ? { contentType } : undefined);
+                await new Promise((resolve, reject) => {
+                    uploadTask.on('state_changed',
+                        (snap) => {
+                            const progress = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
+                            setScenePresetUploadProgress(progress);
+                        },
+                        (err) => reject(err),
+                        () => resolve(true)
+                    );
+                });
+                const mediaUrl = await getDownloadURL(fileRef);
+                return { storagePath, mediaUrl };
+            };
+            const callableUpload = async () => {
+                setScenePresetUploadProgress(15);
+                const uploaded = await uploadHostSceneMedia({
+                    roomCode,
+                    fileName: file.name || safeName,
+                    mimeType: contentType || 'image/jpeg',
+                    mediaBase64: await fileToDataUrl(file)
+                });
+                const storagePath = String(uploaded?.storagePath || '').trim();
+                const mediaUrl = String(uploaded?.url || '').trim();
+                if (!storagePath || !mediaUrl) {
+                    throw new Error('Scene media upload returned an incomplete payload.');
+                }
+                setScenePresetUploadProgress(100);
+                return { storagePath, mediaUrl };
+            };
+            let storagePath = '';
+            let mediaUrl = '';
+            try {
+                ({ storagePath, mediaUrl } = await directUpload());
+            } catch (directError) {
+                if (mediaType !== 'image' || Number(file.size || 0) > 8 * 1024 * 1024) {
+                    throw directError;
+                }
+                hostLogger.warn('Scene preset direct upload failed; trying host callable fallback', directError);
+                ({ storagePath, mediaUrl } = await callableUpload());
+            }
+            const rawTitle = String(options?.title || '').trim();
+            const fallbackTitle = safeName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
+            const durationSec = Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20));
+            const createdAtMs = nowMs();
+            const payload = {
+                roomCode,
+                title: rawTitle || fallbackTitle || (mediaType === 'video' ? 'Video Scene' : 'Image Scene'),
+                mediaUrl,
+                mediaType,
+                durationSec,
+                storagePath,
+                fileName: file.name || safeName,
+                size: file.size || 0,
+                createdAt: serverTimestamp(),
+                createdAtMs,
+                createdBy: hostName || room?.hostName || 'Host'
+            };
+            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+            toast('Scene preset saved.');
+            return { id: docRef.id, ...payload };
+        } catch (error) {
+            hostLogger.error('Scene preset upload failed', error);
+            toast(error?.code === 'storage/unauthorized' ? 'Could not upload scene media. Host storage access is not allowed for this room.' : 'Could not upload scene media.');
+            return null;
+        } finally {
+            setScenePresetUploading(false);
+            setScenePresetUploadProgress(0);
+        }
+    };
+    const launchScenePreset = async (preset = {}) => {
+        const mediaUrl = String(preset?.mediaUrl || '').trim();
+        if (!mediaUrl) {
+            toast('Scene preset is missing media.');
+            return;
+        }
+        const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+        const durationSec = Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20));
+        const startedAtMs = nowMs();
+        try {
+            await updateRoom({
+                tvPreviewOverlay: null,
+                announcement: {
+                    active: true,
+                    id: `media_scene_${startedAtMs}`,
+                    type: 'media_scene',
+                    title: String(preset?.title || '').trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene'),
+                    headline: String(preset?.title || '').trim() || '',
+                    subhead: '',
+                    takeoverScene: 'media_scene',
+                    accentTheme: 'cyan',
+                    durationSec,
+                    startedAtMs,
+                    mediaScene: {
+                        mediaUrl,
+                        mediaType,
+                        fit: 'contain'
+                    }
+                }
+            });
+            toast('Scene sent to Public TV.');
+        } catch (error) {
+            hostLogger.error('Could not launch scene preset', error);
+            toast('Could not send scene to Public TV.');
+        }
+    };
+    const clearScenePreset = async () => {
+        try {
+            await updateRoom({ announcement: null, tvPreviewOverlay: null });
+            toast('Scene cleared from Public TV.');
+        } catch (error) {
+            hostLogger.error('Could not clear scene preset', error);
+            toast('Could not clear scene.');
+        }
+    };
+    const deleteScenePreset = async (preset = {}) => {
+        if (!preset?.id) return;
+        const confirmed = window.confirm(`Delete scene preset "${preset.title || 'Media Scene'}"?`);
+        if (!confirmed) return;
+        try {
+            if (preset.storagePath) {
+                await deleteObject(storageRef(storage, preset.storagePath)).catch(() => {});
+            }
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id));
+            toast('Scene preset deleted.');
+        } catch (error) {
+            hostLogger.error('Could not delete scene preset', error);
+            toast('Could not delete scene preset.');
         }
     };
     const deleteOfflineBackup = async (item) => {
@@ -13746,6 +14008,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [toast, updateRoom]);
     const uploadRoundWinnersPrizeImage = useCallback(async (file) => {
         if (!file || !roomCode) return;
+        if (!String(file.type || '').startsWith('image/')) {
+            toast('Choose an image file for the prize.');
+            return;
+        }
+        if (Number(file.size || 0) > 12 * 1024 * 1024) {
+            toast('Prize image must be 12 MB or smaller.');
+            return;
+        }
         setRoundWinnersPrizeUploading(true);
         try {
             const safeName = String(file.name || 'prize-image')
@@ -13753,6 +14023,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .slice(-80);
             const storagePath = `round_winner_prizes/${roomCode}/${nowMs()}_${safeName}`;
             const fileRef = storageRef(storage, storagePath);
+            await prepareHostStorageWrite();
             await uploadBytes(fileRef, file, file.type ? { contentType: file.type } : undefined);
             const imageUrl = await getDownloadURL(fileRef);
             setRoundWinnersPrizeDraft((prev) => ({
@@ -13763,11 +14034,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Prize image uploaded.');
         } catch (error) {
             hostLogger.error('Could not upload round winners prize image', error);
-            toast('Could not upload prize image.');
+            toast(error?.code === 'storage/unauthorized'
+                ? 'Could not upload prize image. Host storage access is not allowed for this room.'
+                : 'Could not upload prize image.'
+            );
         } finally {
             setRoundWinnersPrizeUploading(false);
         }
-    }, [roomCode, toast]);
+    }, [prepareHostStorageWrite, roomCode, toast]);
     const launchRoundWinnersMoment = useCallback(async () => {
         const leaderboardMode = getRoundWinnerLeaderboardMode(roundWinnersMetricKey);
         const winners = ROUND_WINNER_SLOTS.map((slot, idx) => {
@@ -13823,8 +14097,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     winners,
                 }
             });
-            closeRoundWinnersEditor();
-            toast('Round winners sent to Public TV.');
+            toast('Round winners sent to Public TV. Use End Podium On TV when you are done.');
             try {
                 await logActivity(
                     roomCode,
@@ -13841,7 +14114,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } finally {
             setRoundWinnersSubmitting(false);
         }
-    }, [closeRoundWinnersEditor, hostName, logActivity, rankedRoundWinnerCandidates, roomCode, roundWinnerCandidates, roundWinnersDraft, roundWinnersEditorContext, roundWinnersMetricKey, roundWinnersPrizeDraft?.imagePath, roundWinnersPrizeDraft?.imageUrl, roundWinnersPrizeDraft?.title, toast, updateRoom]);
+    }, [hostName, logActivity, rankedRoundWinnerCandidates, roomCode, roundWinnerCandidates, roundWinnersDraft, roundWinnersEditorContext, roundWinnersMetricKey, roundWinnersPrizeDraft?.imagePath, roundWinnersPrizeDraft?.imageUrl, roundWinnersPrizeDraft?.title, toast, updateRoom]);
     // Fix: Simple reload for silence
     const silenceAll = () => stopAllSfx();
     
@@ -17103,6 +17376,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onToggleRunOfShowPause: toggleRunOfShowAutomationPause,
         onStopRunOfShow: stopRunOfShowNow,
         onClearRunOfShow: clearRunOfShowNow,
+        scenePresets,
+        scenePresetUploading,
+        scenePresetUploadProgress,
+        onCreateScenePreset: createScenePresetFromFile,
+        onLaunchScenePreset: launchScenePreset,
+        onClearScenePreset: clearScenePreset,
+        onDeleteScenePreset: deleteScenePreset,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
         getYtDiagnosticsKey,
@@ -18753,9 +19033,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                               <div className="host-form-helper">Builds a shareable recap link and closes the room.</div>
                           </div>
 
-                        <div className="mt-6 space-y-3">
-                            <div className="text-sm uppercase tracking-widest text-zinc-400">Search sources</div>
-                            <div className="flex flex-wrap gap-2">
+                        <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-sm uppercase tracking-widest text-zinc-300">Search & Requests</div>
+                                    <div className="host-form-helper mt-1">Controls search sources, guest song requests, unknown guest-picked tracks, and YouTube playback safety.</div>
+                                </div>
+                                <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                    hideNonEmbeddableYouTube
+                                        ? 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'
+                                        : 'border-orange-300/45 bg-orange-500/10 text-orange-100'
+                                }`}>
+                                    {hideNonEmbeddableYouTube ? 'TV-safe search' : 'Non-embeddables included'}
+                                </span>
+                            </div>
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+                                <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Search sources</div>
+                                <div className="host-form-helper mt-1">Choose which catalogs power host autocomplete and guest browsing.</div>
+                                <div className="mt-3 flex flex-wrap gap-2">
                                 {['local', 'youtube', 'itunes'].map(src => {
                                     return (
                                     <button
@@ -18774,12 +19069,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     );
                                 })}
                             </div>
+                                </div>
                             {searchSources.youtube && (
-                                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                                <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 px-4 py-3">
                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                         <div>
-                                            <div className="text-sm uppercase tracking-widest text-zinc-300">Hide Non-Embeddable YouTube</div>
-                                            <div className="host-form-helper mt-1">Audience YouTube search and host auto-search only show tracks that can embed on Public TV.</div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">YouTube playback safety</div>
+                                            <div className="host-form-helper mt-1">Keep embeddable-only on for normal shows. Non-embeddable picks cannot play inside the synced Public TV player.</div>
                                         </div>
                                         <button
                                             type="button"
@@ -18796,19 +19092,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             }}
                                             className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
                                                 hideNonEmbeddableYouTube
-                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
-                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                                    ? 'bg-emerald-500/15 text-emerald-100 border-emerald-300/45'
+                                                    : 'bg-orange-500/12 text-orange-100 border-orange-300/45'
                                             }`}
                                         >
-                                            {hideNonEmbeddableYouTube ? 'Embeddable Only' : 'Show All'}
+                                            {hideNonEmbeddableYouTube ? 'Embeddable Only' : 'Include Non-Embeddable'}
                                         </button>
                                     </div>
+                                    {!hideNonEmbeddableYouTube && (
+                                        <div className="mt-3 rounded-xl border border-orange-300/25 bg-orange-500/10 px-3 py-2 text-xs text-orange-100">
+                                            Rare fallback mode. Use it only when a song is hard to find and the host is ready to manage an external backing window.
+                                        </div>
+                                    )}
                                 </div>
                             )}
-                            <div className="pt-3">
-                                <div className="text-sm uppercase tracking-widest text-zinc-400">Guest song requests</div>
-                                <div className="host-form-helper mt-2">Choose how much freedom guests have when the room does not already know a good backing track.</div>
-                                <div className="mt-2 flex flex-wrap gap-2">
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+                                <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Guest song requests</div>
+                                <div className="host-form-helper mt-1">Choose how much freedom guests have when the room does not already know a good backing track.</div>
+                                <div className="mt-3 flex flex-wrap gap-2">
                                     {REQUEST_MODE_OPTIONS.map((option) => (
                                         <button
                                             key={option.id}
@@ -18829,12 +19130,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                                 {requestMode === REQUEST_MODES.guestBackingOptional && (
                                     <div className="mt-3 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-4">
-                                        <div className="text-sm uppercase tracking-widest text-zinc-400">When guests pick a new track</div>
-                                        <div className="mt-2 flex flex-wrap gap-2">
+                                        <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">When guests pick a new track</div>
+                                        <div className="host-form-helper mt-1">Use review-first unless you trust the room to self-queue unknown YouTube picks.</div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
                                             {[
                                                 { id: UNKNOWN_BACKING_POLICIES.requireReview, label: 'Send to me first' },
                                                 { id: UNKNOWN_BACKING_POLICIES.autoQueueUnverified, label: 'Let it into the queue' },
-                                                { id: UNKNOWN_BACKING_POLICIES.blockUnknown, label: 'Do not show new tracks' }
+                                                { id: UNKNOWN_BACKING_POLICIES.blockUnknown, label: 'Known tracks only' }
                                             ].map((option) => (
                                                 <button
                                                     key={option.id}
@@ -18860,6 +19162,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 )}
                             </div>
+                        </div>
                             <div className="pt-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <div className="text-sm uppercase tracking-widest text-zinc-400">Audience branding</div>
@@ -18974,7 +19277,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
                             </div>
                             </div>
                         </details>
@@ -21294,7 +21596,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <button
                                 onClick={closeRoundWinnersEditor}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs`}
+                                title="Close reward leaderboard editor"
                             >
+                                <i className="fa-solid fa-xmark"></i>
                                 Close
                             </button>
                         </div>
@@ -21449,9 +21753,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         onClick={clearRoundWinnersMoment}
                                         className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
                                     >
-                                        Clear Current
+                                        End Podium On TV
                                     </button>
                                 )}
+                                <button
+                                    onClick={closeRoundWinnersEditor}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                >
+                                    Close Editor
+                                </button>
                                 <button
                                     onClick={launchRoundWinnersMoment}
                                     disabled={roundWinnersSubmitting || roundWinnersPrizeUploading}

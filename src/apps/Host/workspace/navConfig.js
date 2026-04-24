@@ -16,7 +16,6 @@ export const HOST_WORKSPACE_SECTIONS = Object.freeze([
     { id: 'queue.catalog', view: 'queue', label: 'Catalog', hostTab: 'browse' },
     { id: 'show.timeline', view: 'show', label: 'Run Of Show', hostTab: 'run_of_show' },
     { id: 'audience.roster', view: 'audience', label: 'Roster', hostTab: 'lobby' },
-    { id: 'audience.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' },
     { id: 'audience.moderation', view: 'audience', label: 'Moderation', legacyTab: 'moderation' },
     { id: 'audience.monetization', view: 'audience', label: 'Tips + Boosts', legacyTab: 'monetization' },
     { id: 'media.playback', view: 'media', label: 'Screens + Playback', legacyTab: 'media' },

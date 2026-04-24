@@ -1072,8 +1072,16 @@ const MONEYBAGS_BADGE_LABEL = "Moneybags";
 const AUDIENCE_ACCESS_MODES = Object.freeze({
   account: "account",
   email: "email",
+  emailCapture: "email_capture",
   donation: "donation",
   emailOrDonation: "email_or_donation",
+});
+const CREDIT_EARNING_MODES = Object.freeze({
+  standard: "standard",
+  lean: "lean",
+  friendly: "friendly",
+  playful: "playful",
+  custom: "custom",
 });
 const SUPPORT_CELEBRATION_STYLES = Object.freeze({
   standard: "standard",
@@ -1100,6 +1108,11 @@ const buildDefaultRoomEventCredits = () => ({
   supportBadge: true,
   supportOffers: [],
   audienceAccessMode: AUDIENCE_ACCESS_MODES.account,
+  creditEarningMode: CREDIT_EARNING_MODES.standard,
+  timedLobbyEnabled: false,
+  timedLobbyPoints: 0,
+  timedLobbyIntervalMin: 10,
+  timedLobbyMaxPerGuest: 0,
   supportCelebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
   promoCampaigns: [],
 });
@@ -1119,9 +1132,18 @@ const normalizeRoomEventSafePerk = (value = "") =>
 const normalizeAudienceAccessMode = (value = "") => {
   const token = normalizeDirectoryToken(value || AUDIENCE_ACCESS_MODES.account, 40);
   if (token === AUDIENCE_ACCESS_MODES.email) return AUDIENCE_ACCESS_MODES.email;
+  if (token === AUDIENCE_ACCESS_MODES.emailCapture) return AUDIENCE_ACCESS_MODES.emailCapture;
   if (token === AUDIENCE_ACCESS_MODES.donation) return AUDIENCE_ACCESS_MODES.donation;
   if (token === AUDIENCE_ACCESS_MODES.emailOrDonation) return AUDIENCE_ACCESS_MODES.emailOrDonation;
   return AUDIENCE_ACCESS_MODES.account;
+};
+const normalizeCreditEarningMode = (value = "") => {
+  const token = normalizeDirectoryToken(value || CREDIT_EARNING_MODES.standard, 40);
+  if (token === CREDIT_EARNING_MODES.lean) return CREDIT_EARNING_MODES.lean;
+  if (token === CREDIT_EARNING_MODES.friendly) return CREDIT_EARNING_MODES.friendly;
+  if (token === CREDIT_EARNING_MODES.playful) return CREDIT_EARNING_MODES.playful;
+  if (token === CREDIT_EARNING_MODES.custom) return CREDIT_EARNING_MODES.custom;
+  return CREDIT_EARNING_MODES.standard;
 };
 const normalizeSupportCelebrationStyle = (value = "") => {
   const token = normalizeDirectoryToken(value || SUPPORT_CELEBRATION_STYLES.standard, 40);
@@ -1204,6 +1226,11 @@ const normalizeRoomEventCredits = (input = {}) => {
     supportBadge: source.supportBadge !== false,
     supportOffers: normalizeRoomSupportOfferList(source.supportOffers || defaults.supportOffers),
     audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || defaults.audienceAccessMode),
+    creditEarningMode: normalizeCreditEarningMode(source.creditEarningMode || defaults.creditEarningMode),
+    timedLobbyEnabled: source.timedLobbyEnabled === true,
+    timedLobbyPoints: clampNumber(source.timedLobbyPoints ?? defaults.timedLobbyPoints, 0, 1000, 0),
+    timedLobbyIntervalMin: clampNumber(source.timedLobbyIntervalMin ?? defaults.timedLobbyIntervalMin, 1, 120, 10),
+    timedLobbyMaxPerGuest: clampNumber(source.timedLobbyMaxPerGuest ?? defaults.timedLobbyMaxPerGuest, 0, 10000, 0),
     supportCelebrationStyle: normalizeSupportCelebrationStyle(
       source.supportCelebrationStyle || defaults.supportCelebrationStyle
     ),
@@ -1258,6 +1285,11 @@ const buildRoomEventCreditPublicSummary = (config = {}) => {
       supportFundCode: offer.supportFundCode,
     })),
     audienceAccessMode: normalized.audienceAccessMode,
+    creditEarningMode: normalized.creditEarningMode,
+    timedLobbyEnabled: normalized.timedLobbyEnabled,
+    timedLobbyPoints: normalized.timedLobbyPoints,
+    timedLobbyIntervalMin: normalized.timedLobbyIntervalMin,
+    timedLobbyMaxPerGuest: normalized.timedLobbyMaxPerGuest,
     supportCelebrationStyle: normalized.supportCelebrationStyle,
     promoCampaignCount: normalized.promoCampaigns.length,
     promoCampaigns: normalized.promoCampaigns
@@ -14265,6 +14297,9 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
       totalEmojis: Math.max(0, Number(roomUserData.totalEmojis || 0) || 0),
       points: existingPoints + seededPoints,
       visits: admin.firestore.FieldValue.increment(1),
+      ...(eventCredits.enabled && eventCredits.timedLobbyEnabled && !roomUserData.lastTimedLobbyCreditAtMs
+        ? { lastTimedLobbyCreditAtMs: Date.now(), timedLobbyEarnedPoints: Math.max(0, Number(roomUserData.timedLobbyEarnedPoints || 0) || 0) }
+        : {}),
       ...(matchedEntitlement ? {
         matchedEntitlementId: matchedEntitlement.entitlementId,
         matchedTicketTier: matchedEntitlement.ticketTier,
@@ -14327,6 +14362,174 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
     roomCode,
     uid: callerUid,
     avatar: resolvedAvatar,
+  };
+});
+
+exports.claimTimedLobbyCredits = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "claim_timed_lobby_credits", { perMinute: 20, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "claim_timed_lobby_credits");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const userRef = db.collection("users").doc(callerUid);
+  const nowMs = Date.now();
+  let result = {
+    ok: true,
+    roomCode,
+    pointsGranted: 0,
+    nextEligibleAtMs: nowMs,
+    earnedTotal: 0,
+    cap: 0,
+  };
+
+  await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("failed-precondition", "Join the room before earning lobby credits.");
+    }
+
+    const eventCredits = normalizeRoomEventCredits((roomSnap.data() || {}).eventCredits || {});
+    if (!eventCredits.enabled || !eventCredits.timedLobbyEnabled || eventCredits.timedLobbyPoints <= 0) {
+      result = { ...result, reason: "disabled" };
+      return;
+    }
+
+    const intervalMs = Math.max(60 * 1000, eventCredits.timedLobbyIntervalMin * 60 * 1000);
+    const maxPerGuest = Math.max(0, eventCredits.timedLobbyMaxPerGuest);
+    const roomUserData = roomUserSnap.data() || {};
+    const earnedTotal = clampNumber(roomUserData.timedLobbyEarnedPoints || 0, 0, 100000, 0);
+    const lastClaimAtMs = clampNumber(roomUserData.lastTimedLobbyCreditAtMs || 0, 0, 9999999999999, 0);
+    const nextEligibleAtMs = lastClaimAtMs > 0 ? lastClaimAtMs + intervalMs : nowMs;
+    if (lastClaimAtMs > 0 && nowMs < nextEligibleAtMs) {
+      result = {
+        ...result,
+        reason: "cooldown",
+        nextEligibleAtMs,
+        earnedTotal,
+        cap: maxPerGuest,
+      };
+      return;
+    }
+    if (maxPerGuest > 0 && earnedTotal >= maxPerGuest) {
+      result = {
+        ...result,
+        reason: "cap_reached",
+        nextEligibleAtMs,
+        earnedTotal,
+        cap: maxPerGuest,
+      };
+      return;
+    }
+
+    const pointsGranted = maxPerGuest > 0
+      ? Math.min(eventCredits.timedLobbyPoints, Math.max(0, maxPerGuest - earnedTotal))
+      : eventCredits.timedLobbyPoints;
+    if (pointsGranted <= 0) {
+      result = {
+        ...result,
+        reason: "no_points",
+        nextEligibleAtMs,
+        earnedTotal,
+        cap: maxPerGuest,
+      };
+      return;
+    }
+
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    tx.set(roomUserRef, {
+      points: admin.firestore.FieldValue.increment(pointsGranted),
+      timedLobbyEarnedPoints: admin.firestore.FieldValue.increment(pointsGranted),
+      lastTimedLobbyCreditAtMs: nowMs,
+      lastTimedLobbyCreditAt: serverNow,
+      lastActiveAt: serverNow,
+      lastSeen: serverNow,
+    }, { merge: true });
+    tx.set(userRef, {
+      uid: callerUid,
+      pointsBalance: admin.firestore.FieldValue.increment(pointsGranted),
+      updatedAt: serverNow,
+    }, { merge: true });
+    result = {
+      ok: true,
+      roomCode,
+      pointsGranted,
+      nextEligibleAtMs: nowMs + intervalMs,
+      earnedTotal: earnedTotal + pointsGranted,
+      cap: maxPerGuest,
+    };
+  });
+
+  return result;
+});
+
+exports.submitAudienceEmailCapture = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_audience_email_capture", { perMinute: 12, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "submit_audience_email_capture");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const email = normalizeEmailToken(request.data?.email || "");
+  const name = normalizeOptionalName(request.data?.name || "Guest", "Guest");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!email) {
+    throw new HttpsError("invalid-argument", "A valid email address is required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const eventCredits = normalizeRoomEventCredits((roomSnap.data() || {}).eventCredits || {});
+  if (eventCredits.audienceAccessMode !== AUDIENCE_ACCESS_MODES.emailCapture) {
+    throw new HttpsError("failed-precondition", "Simple email capture is not enabled for this room.");
+  }
+
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const emailHash = crypto.createHash("sha256").update(email).digest("hex").slice(0, 24);
+  const contactRef = rootRef.collection("contacts").doc(`${roomCode}_${emailHash}`);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  await Promise.all([
+    contactRef.set({
+      roomCode,
+      email,
+      normalizedEmail: email,
+      name,
+      uid: callerUid,
+      source: "audience_email_capture",
+      updatedAt: now,
+      createdAt: now,
+    }, { merge: true }),
+    roomUserRef.set({
+      roomCode,
+      uid: callerUid,
+      email,
+      emailCaptured: true,
+      emailCapturedAt: now,
+      lastActiveAt: now,
+      lastSeen: now,
+    }, { merge: true }),
+  ]);
+
+  return {
+    ok: true,
+    roomCode,
+    email,
   };
 });
 
@@ -14485,6 +14688,82 @@ exports.uploadAudienceRoomPhoto = onCall({ cors: true }, async (request) => {
     roomCode,
     uid: callerUid,
     storagePath,
+    url: `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`,
+  };
+});
+
+exports.uploadHostSceneMedia = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "upload_host_scene_media", { perMinute: 24, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "upload_host_scene_media");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  await ensureRoomHostAccess({
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can upload scene media.",
+  });
+
+  const rawMimeType = String(request.data?.mimeType || "image/jpeg").trim().toLowerCase();
+  const rawFileName = safeDirectoryString(request.data?.fileName || "scene-media", 160) || "scene-media";
+  const base64Input = String(request.data?.mediaBase64 || "").trim();
+  if (!base64Input) {
+    throw new HttpsError("invalid-argument", "mediaBase64 is required.");
+  }
+
+  let mimeType = rawMimeType || "image/jpeg";
+  let base64Payload = base64Input;
+  const dataUrlMatch = base64Input.match(/^data:([^;,]+);base64,(.+)$/i);
+  if (dataUrlMatch) {
+    mimeType = String(dataUrlMatch[1] || mimeType).trim().toLowerCase() || mimeType;
+    base64Payload = String(dataUrlMatch[2] || "").trim();
+  }
+  if (!mimeType.startsWith("image/")) {
+    throw new HttpsError("invalid-argument", "Only scene images can use this upload path.");
+  }
+
+  let mediaBuffer = null;
+  try {
+    mediaBuffer = Buffer.from(base64Payload, "base64");
+  } catch (_error) {
+    throw new HttpsError("invalid-argument", "mediaBase64 could not be decoded.");
+  }
+  if (!mediaBuffer || !mediaBuffer.length) {
+    throw new HttpsError("invalid-argument", "mediaBase64 is empty.");
+  }
+  if (mediaBuffer.length > 8 * 1024 * 1024) {
+    throw new HttpsError("invalid-argument", "Scene image payload too large.");
+  }
+
+  const bucket = admin.storage().bucket();
+  const bucketName = String(bucket?.name || "").trim();
+  if (!bucketName) {
+    throw new HttpsError("failed-precondition", "Storage bucket is unavailable.");
+  }
+
+  const extFromMime = mimeType.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "jpg";
+  const safeName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-90) || `scene.${extFromMime}`;
+  const token = crypto.randomUUID();
+  const storagePath = `room_scene_media/${roomCode}/${nowMs()}_${safeName}`;
+  await bucket.file(storagePath).save(mediaBuffer, {
+    resumable: false,
+    metadata: {
+      contentType: mimeType,
+      cacheControl: "public,max-age=604800",
+      metadata: {
+        firebaseStorageDownloadTokens: token,
+      },
+    },
+  });
+
+  return {
+    ok: true,
+    roomCode,
+    storagePath,
+    mediaType: "image",
     url: `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`,
   };
 });
