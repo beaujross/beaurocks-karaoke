@@ -10,32 +10,35 @@ const MissionSetupFooter = ({
     onLaunchPackage = () => {}
 }) => (
     <div className="fixed bottom-0 left-0 right-0 z-[95] border-t border-white/10 bg-zinc-950/95 backdrop-blur-md">
-        <div className="mx-auto w-full max-w-6xl px-4 py-3 md:px-6 flex flex-wrap items-center justify-between gap-2">
-            <button onClick={onOpenAdmin} className={`${styles.btnStd} ${styles.btnSecondary}`}>
-                Open Full Setup
-            </button>
-            <div className="text-xs text-zinc-400">{summaryText}</div>
-            <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-2 px-4 py-3 md:px-6">
+            <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-200">Autopilot Plan</div>
+                <div className="max-w-[680px] truncate text-xs text-zinc-400">{summaryText}</div>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+                <button onClick={onOpenAdmin} className={`${styles.btnStd} ${styles.btnNeutral}`}>
+                    More Settings
+                </button>
                 <button
                     onClick={onSaveDraft}
                     disabled={applying}
                     className={`${styles.btnStd} ${styles.btnSecondary} ${applying ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                    {applying ? 'Saving...' : 'Save Setup'}
+                    {applying ? 'Saving...' : 'Save'}
                 </button>
                 <button
                     onClick={onStartNight}
                     disabled={applying}
                     className={`${styles.btnStd} ${styles.btnHighlight} ${applying ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                    {applying ? 'Starting...' : 'Save And Start'}
+                    {applying ? 'Starting...' : 'Start Room'}
                 </button>
                 <button
                     onClick={onLaunchPackage}
                     disabled={applying}
                     className={`${styles.btnStd} ${styles.btnNeutral} ${applying ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                    {applying ? 'Launching...' : 'Save And Open Links'}
+                    {applying ? 'Opening...' : 'Open TV + Copy Link'}
                 </button>
             </div>
         </div>

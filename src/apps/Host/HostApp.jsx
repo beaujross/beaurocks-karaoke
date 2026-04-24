@@ -17,10 +17,12 @@ import HostQaDebugPanel from './components/HostQaDebugPanel';
 import RunOfShowDirectorPanel from './components/RunOfShowDirectorPanel';
 import RunOfShowQueueHud from './components/RunOfShowQueueHud';
 import HostRoomLaunchPad from './components/HostRoomLaunchPad';
+import HostRoomReadinessPanel from './components/HostRoomReadinessPanel';
 import EventCreditsConfigPanel from './components/EventCreditsConfigPanel';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
+import MissionSetupAutopilotPreview from './components/setup/MissionSetupAutopilotPreview';
 import MissionSetupPrimaryPicks from './components/setup/MissionSetupPrimaryPicks';
 import MissionSetupAdvancedDrawer from './components/setup/MissionSetupAdvancedDrawer';
 import MissionSetupPlanPreview from './components/setup/MissionSetupPlanPreview';
@@ -127,6 +129,11 @@ import {
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
 import {
+    DEAD_AIR_AUTOFILL_SOURCE,
+    buildDeadAirFillerSongPlan,
+    getDeadAirAutoFillIntent,
+} from './deadAirAutopilot';
+import {
     getYouTubeEmbedCacheStatus,
     isYouTubeEmbeddable,
     normalizeYouTubePlaybackState,
@@ -186,8 +193,7 @@ import {
     normalizeMissionParty,
     recordCompletedPerformance,
     recordGroupMoment,
-    shouldAllowGroupMoment,
-    recommendAutoCrowdMoment
+    shouldAllowGroupMoment
 } from './partyOrchestrator';
 import {
     RUN_OF_SHOW_PROGRAM_MODES,
@@ -224,14 +230,20 @@ import {
     createAutoDjSequenceState,
     transitionAutoDjSequenceState,
     deriveAutoDjStepItems,
-    describeAutoDjSequenceState,
-    getAutoDjQueueAdvanceIntent
+    describeAutoDjSequenceState
 } from './autoDjStateMachine';
+import {
+    buildApplePlaybackSyncPatch,
+    getApplePlaybackSnapshot
+} from './applePlaybackSession';
 import { normalizeHostPermissionLevel } from './launchAccess';
 import {
     getAutoEndSchedule,
     getTrackDurationSecFromSearchResult
 } from './hostPlaybackAutomation';
+import {
+    getRoomFlowSnapshot
+} from './roomFlowOrchestrator';
 import {
     buildProvisionEventCreditsPayload,
     createEventCreditsDraft,
@@ -718,6 +730,19 @@ const normalizeDurationSec = (value = 0) => {
     return Math.max(0, Math.round(numeric));
 };
 
+const getPerformanceSessionSourceType = ({
+    usesAppleBacking = false,
+    effectiveBacking = {},
+    mediaUrl = ''
+} = {}) => {
+    if (usesAppleBacking) return 'apple_music';
+    if (effectiveBacking?.isYouTube) return 'youtube';
+    const safeMediaUrl = String(mediaUrl || '').trim().toLowerCase();
+    if (/\.(mp3|m4a|wav|ogg|aac|flac)(\?|$)/i.test(safeMediaUrl)) return 'native_audio';
+    if (/\.(mp4|webm|ogg)(\?|$)/i.test(safeMediaUrl)) return 'native_video';
+    return safeMediaUrl ? 'backing_media' : 'none';
+};
+
 const getAssociatedBackingDurationSec = (song = {}) => {
     const candidates = [
         song?.performanceStartedDurationSec,
@@ -817,6 +842,33 @@ const startQueueSongOnStage = async ({
             ? 'medium'
             : 'low';
     const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0 || associatedBackingDurationSec > 0;
+    const stageDisplayFlags = {
+        showLyricsTv: !!roomSnapshot?.showLyricsTv,
+        showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
+        showLyricsSinger: !!roomSnapshot?.showLyricsSinger
+    };
+    const autoStartMedia = !!(roomSnapshot?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
+    const performanceSessionId = `perf_${safeSongId}_${performanceStartedAtMs}`;
+    const performanceSessionSourceType = getPerformanceSessionSourceType({
+        usesAppleBacking: useAppleBacking,
+        effectiveBacking,
+        mediaUrl: songMediaUrl
+    });
+    const currentPerformanceSession = {
+        sessionId: performanceSessionId,
+        songId: safeSongId,
+        sourceType: performanceSessionSourceType,
+        appleMusicId: queueSong?.appleMusicId || '',
+        mediaUrl: songMediaUrl || '',
+        startedAtMs: performanceStartedAtMs,
+        playbackState: autoStartMedia ? 'starting' : 'idle',
+        playerReportedDurationSec: performanceDurationSec,
+        expectedDurationSec: performanceDurationSec,
+        lastHeartbeatAtMs: autoStartMedia ? performanceStartedAtMs : 0,
+        lastReportedAtMs: performanceStartedAtMs,
+        completionReason: '',
+        watchdogDeadlineMs: performanceStartedAtMs + ((performanceDurationSec + 90) * 1000)
+    };
 
     await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
         status: 'performing',
@@ -828,13 +880,6 @@ const startQueueSongOnStage = async ({
         durationConfidence,
         autoEndSafe
     });
-
-    const stageDisplayFlags = {
-        showLyricsTv: !!roomSnapshot?.showLyricsTv,
-        showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
-        showLyricsSinger: !!roomSnapshot?.showLyricsSinger
-    };
-    const autoStartMedia = !!(roomSnapshot?.autoPlayMedia !== false) && !!(songMediaUrl || useAppleBacking);
 
     if (useAppleBacking && autoStartMedia) {
         await playAppleMusicTrack(queueSong.appleMusicId, {
@@ -861,6 +906,7 @@ const startQueueSongOnStage = async ({
                 appleMusicId: queueSong.appleMusicId || '',
                 ...performanceMetaExtras
             },
+            currentPerformanceSession,
             videoVolume: 100,
             ...stageDisplayFlags,
             ...extraRoomUpdates
@@ -886,6 +932,7 @@ const startQueueSongOnStage = async ({
                 mediaUrl: songMediaUrl || '',
                 ...performanceMetaExtras
             },
+            currentPerformanceSession,
             videoVolume: 100,
             ...stageDisplayFlags,
             ...extraRoomUpdates,
@@ -3756,6 +3803,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
     const autoDjAutoEndKeyRef = useRef('');
+    const performanceSessionCompletionKeyRef = useRef('');
     const currentPlaybackDurationSyncKeyRef = useRef('');
     const updateStatusRef = useRef(null);
     const mediaOverrideStopRef = useRef('');
@@ -5022,13 +5070,33 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         hostLogger.warn('Auto bonus sync failed; recap will still use auto bonus value', error);
                     }
                 }
+                const performanceSession = (
+                    String(room?.currentPerformanceSession?.songId || '').trim() === id
+                        ? room.currentPerformanceSession
+                        : null
+                );
+                const performanceStartedAtMs = Math.max(
+                    0,
+                    Number(performanceSession?.startedAtMs || 0),
+                    getTimestampMs(latestSong?.performingStartedAt),
+                    getTimestampMs(s?.performingStartedAt),
+                    getTimestampMs(s?.timestamp)
+                );
+                const performanceEndedAtMs = Math.max(
+                    performanceStartedAtMs,
+                    Number(performanceSession?.endedAtMs || 0),
+                    nowMs()
+                );
+                const actualPerformanceDurationSec = performanceStartedAtMs > 0
+                    ? Math.max(0, Math.round((performanceEndedAtMs - performanceStartedAtMs) / 1000))
+                    : 0;
                 let reconciled = null;
                 try {
                     const reconciledData = await callFunction('reconcilePerformanceRecap', {
                         roomCode,
                         performanceId: id,
-                        startedAtMs: getTimestampMs(latestSong?.performingStartedAt) || getTimestampMs(s?.performingStartedAt) || getTimestampMs(s?.timestamp),
-                        endedAtMs: nowMs(),
+                        startedAtMs: performanceStartedAtMs,
+                        endedAtMs: performanceEndedAtMs,
                         fallbackHypeScore: latestHypeScore,
                         fallbackApplauseScore: finalApplauseScore,
                         fallbackHostBonus: resolvedHostBonus,
@@ -5104,11 +5172,16 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     hypeScore: resolvedHypeScore,
                     applauseScore: finalApplauseScore,
                     hostBonus: resolvedHostBonus,
-                    timestamp: nowMs(),
+                    duration: actualPerformanceDurationSec > 0
+                        ? actualPerformanceDurationSec
+                        : Math.max(0, Number(latestSong?.duration || s?.duration || 0)),
+                    timestamp: performanceEndedAtMs,
                     albumArtUrl: latestSong?.albumArtUrl || s.albumArtUrl || '',
                     topFan: resolvedTopFan,
                     vibeStats: resolvedVibeStats,
                     popTriviaSummary,
+                    performanceSessionId: String(performanceSession?.sessionId || '').trim() || null,
+                    playbackCompletionReason: String(performanceSession?.completionReason || '').trim() || null,
                     recapLedgerSource: reconciled?.source || null,
                     recapEventCount: Number(reconciled?.eventCount || 0)
                 };
@@ -5118,6 +5191,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                     activeMode: 'karaoke',
                     mediaUrl: '',
                     currentPerformanceMeta: null,
+                    currentPerformanceSession: null,
                     singAlongMode: false,
                     videoPlaying: false,
                     showLyricsTv: false,
@@ -5218,6 +5292,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             activeMode: 'karaoke',
             mediaUrl: '',
             currentPerformanceMeta: null,
+            currentPerformanceSession: null,
             singAlongMode: false,
             videoPlaying: false,
             videoStartTimestamp: null,
@@ -5311,6 +5386,29 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 hostLogger.warn('Auto-DJ applause finalization failed', error);
             });
     }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+
+    useEffect(() => {
+        performanceSessionCompletionKeyRef.current = '';
+    }, [room?.currentPerformanceSession?.sessionId]);
+
+    useEffect(() => {
+        const session = room?.currentPerformanceSession || null;
+        const currentSongId = String(current?.id || '').trim();
+        const sessionId = String(session?.sessionId || '').trim();
+        const sessionSongId = String(session?.songId || '').trim();
+        const playbackState = String(session?.playbackState || '').trim().toLowerCase();
+        if (!sessionId || !currentSongId || sessionSongId !== currentSongId || playbackState !== 'ended') return;
+        const completionKey = `${sessionId}:${String(session?.completionReason || 'player_ended').trim().toLowerCase()}`;
+        if (performanceSessionCompletionKeyRef.current === completionKey) return;
+        performanceSessionCompletionKeyRef.current = completionKey;
+        handleEndPerformance(currentSongId).catch((error) => {
+            hostLogger.warn('Performance session completion trigger failed', error);
+        });
+    }, [
+        current?.id,
+        handleEndPerformance,
+        room?.currentPerformanceSession
+    ]);
 
     useEffect(() => {
         const currentId = String(current?.id || '').trim();
@@ -5412,6 +5510,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
             videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
             pausedAt: room?.pausedAt,
             performanceMetaSongId: room?.currentPerformanceMeta?.songId,
+            performanceSessionState: room?.currentPerformanceSession?.playbackState,
+            performanceSessionSourceType: room?.currentPerformanceSession?.sourceType,
+            performanceSessionLastHeartbeatAtMs: room?.currentPerformanceSession?.lastHeartbeatAtMs,
+            performanceSessionEndedAtMs: room?.currentPerformanceSession?.endedAtMs,
             capturedDurationSec: Math.max(
                 0,
                 Number(room?.currentPerformanceMeta?.durationSec || 0),
@@ -5459,6 +5561,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         room?.currentPerformanceMeta?.startedAtMs,
         room?.currentPerformanceMeta?.songId,
         room?.currentPerformanceMeta?.mediaUrl,
+        room?.currentPerformanceSession?.playbackState,
+        room?.currentPerformanceSession?.sourceType,
+        room?.currentPerformanceSession?.lastHeartbeatAtMs,
+        room?.currentPerformanceSession?.endedAtMs,
         room?.appleMusicPlayback?.status,
         room?.appleMusicPlayback?.startedAt,
         room?.appleMusicPlayback?.durationSec,
@@ -6633,6 +6739,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [uid]);
 
+    const syncApplePlaybackState = useCallback(async ({ force = false } = {}) => {
+        if (!roomCode) return;
+        const liveRoom = roomRef.current || {};
+        const session = liveRoom?.currentPerformanceSession || null;
+        const applePlayback = liveRoom?.appleMusicPlayback || null;
+        const shouldTrackSession = String(session?.sourceType || '').trim().toLowerCase() === 'apple_music';
+        const shouldTrackPlayback = !!String(applePlayback?.id || '').trim();
+        if (!shouldTrackSession && !shouldTrackPlayback) return;
+
+        const snapshot = getApplePlaybackSnapshot(appleMusicRef.current, {
+            fallbackTrackId: session?.appleMusicId || applePlayback?.id || '',
+            fallbackDurationSec: session?.playerReportedDurationSec
+                || session?.expectedDurationSec
+                || applePlayback?.durationSec
+                || liveRoom?.currentPerformanceMeta?.durationSec
+                || 0,
+            fallbackStatus: applePlayback?.status || ''
+        });
+        if (!snapshot) return;
+
+        const patch = buildApplePlaybackSyncPatch({
+            session,
+            applePlayback,
+            snapshot,
+            now: nowMs()
+        });
+        if (!patch || Object.keys(patch).length === 0) return;
+
+        const syncKey = JSON.stringify(patch);
+        if (!force && applePlaybackSyncKeyRef.current === syncKey) return;
+        applePlaybackSyncKeyRef.current = syncKey;
+
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch);
+        } catch (error) {
+            applePlaybackSyncKeyRef.current = '';
+            hostLogger.debug('Apple playback sync failed', error);
+        }
+    }, [roomCode]);
+    syncApplePlaybackStateRef.current = syncApplePlaybackState;
+
     const ensureAppleMusic = useCallback(async () => {
         if (!roomCode) {
             const missingRoomError = new Error('Open a room before connecting Apple Music.');
@@ -6655,6 +6802,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAppleMusicAuthorized(!!instance.isAuthorized);
         instance.addEventListener('playbackStateDidChange', () => {
             setAppleMusicPlaying(instance.isPlaying);
+            syncApplePlaybackStateRef.current({ force: true }).catch((error) => {
+                hostLogger.debug('Apple playback event sync failed', error);
+            });
         });
         setAppleMusicStatus('');
         return instance;
@@ -6778,6 +6928,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAppleMusicPlaying(false);
     }, []);
 
+    useEffect(() => {
+        applePlaybackSyncKeyRef.current = '';
+    }, [room?.currentPerformanceSession?.sessionId, room?.appleMusicPlayback?.id]);
+
+    useEffect(() => {
+        const session = room?.currentPerformanceSession || null;
+        const shouldTrackSession = String(session?.sourceType || '').trim().toLowerCase() === 'apple_music';
+        const shouldTrackPlayback = !!String(room?.appleMusicPlayback?.id || '').trim();
+        if (!roomCode || (!shouldTrackSession && !shouldTrackPlayback)) return undefined;
+
+        syncApplePlaybackState({ force: true }).catch((error) => {
+            hostLogger.debug('Initial Apple playback sync failed', error);
+        });
+
+        const timer = setInterval(() => {
+            syncApplePlaybackState().catch((error) => {
+                hostLogger.debug('Apple playback poll failed', error);
+            });
+        }, 4000);
+
+        return () => clearInterval(timer);
+    }, [
+        roomCode,
+        room?.appleMusicPlayback,
+        room?.currentPerformanceSession,
+        room?.currentPerformanceSession?.sessionId,
+        room?.currentPerformanceSession?.sourceType,
+        room?.currentPerformanceSession?.appleMusicId,
+        room?.appleMusicPlayback?.id,
+        room?.appleMusicPlayback?.status,
+        syncApplePlaybackState
+    ]);
+
     const playAppleMusicPlaylist = useCallback(async (playlistId, meta = {}) => {
         if (!playlistId) return;
         const instance = await ensureAppleMusic();
@@ -6880,6 +7063,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicAutoPlaylistId, setAppleMusicAutoPlaylistId] = useState('');
     const [appleMusicAutoPlaylistTitle, setAppleMusicAutoPlaylistTitle] = useState('');
     const appleMusicRef = useRef(null);
+    const applePlaybackSyncKeyRef = useRef('');
+    const syncApplePlaybackStateRef = useRef(async () => {});
     const [accountMusicPrefsReady, setAccountMusicPrefsReady] = useState(false);
     const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
     const getAppleMusicUserToken = () => appleMusicRef.current?.musicUserToken || '';
@@ -7312,6 +7497,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         joinLinkCopied: false,
         roomSetupOpened: false,
     });
+    const [roomReadinessLaunching, setRoomReadinessLaunching] = useState(false);
     const [marqueeEnabled, setMarqueeEnabled] = useState(false);
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
@@ -7951,6 +8137,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const stageMicRafRef = useRef(null);
     const autoDjTimerRef = useRef(null);
     const autoDjKickoffRef = useRef('');
+    const deadAirAutoFillTimerRef = useRef(null);
+    const deadAirAutoFillKeyRef = useRef('');
+    const queueBrowseSongRef = useRef(null);
     const nightSetupPlanSnapshotRef = useRef({
         night: '',
         pacing: '',
@@ -8321,6 +8510,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             videoPlaying: false,
             videoStartTimestamp: null,
             currentPerformanceMeta: null,
+            currentPerformanceSession: null,
             videoVolume: 100,
             tvPreviewOverlay: null,
             gameData: null,
@@ -9270,6 +9460,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 wyrData: null,
                 tvPreviewOverlay: null,
                 currentPerformanceMeta: null,
+                currentPerformanceSession: null,
                 mediaUrl: '',
                 videoPlaying: false,
                 videoStartTimestamp: null,
@@ -10622,27 +10813,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [room?.lightMode, room?.strobeEndsAt, updateRoom]);
     const startNextFromQueue = useCallback(async () => {
         const activeRoom = roomRef.current;
-        if (!(activeRoom?.autoDj || autoDj)) return;
-        if (
-            activeRoom?.runOfShowEnabled === true
-            && normalizeRunOfShowProgramMode(activeRoom?.programMode) === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
-        ) {
-            return;
-        }
-        const activeMode = String(activeRoom?.activeMode || '').trim().toLowerCase();
-        const applauseFlowActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
-        if (applauseFlowActive) return;
-        if (activeMode && activeMode !== 'karaoke') return;
         const list = songsRef.current || [];
-        const performing = list.find(s => s.status === 'performing');
-        if (performing) return;
-        const queued = list.filter((s) => (
-            s.status === 'requested'
-            && isQueueEntryPlayable(s, { appleMusicEnabled: !!appleMusicAuthorized })
-        ))
-            .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
-        const next = queued[0];
-        if (!next) return;
+        const flow = getRoomFlowSnapshot({
+            roomCode,
+            room: activeRoom,
+            songs: list,
+            autoDjEnabled: !!(activeRoom?.autoDj || autoDj),
+            appleMusicEnabled: !!appleMusicAuthorized,
+            party: buildMissionPartyFromRoom(activeRoom),
+            assistLevel: activeRoom?.missionControl?.setupDraft?.assistLevel || '',
+            lastPerformanceTs: getTimestampMs(activeRoom?.lastPerformance?.timestamp),
+            queuedCount: list.filter((song) => song?.status === 'requested').length,
+            performingCount: list.filter((song) => song?.status === 'performing').length,
+            runOfShowLiveItem,
+            runOfShowStagedItem,
+            runOfShowNextItem,
+            autoDjDelaySec: activeRoom?.autoDjDelaySec,
+            now: nowMs(),
+            isQueueEntryPlayable
+        });
+        if (flow.autoPartyIntent.shouldStart) return;
+        if (!flow.autoDjIntent.shouldStart) return;
+        const next = flow.autoDjIntent.song || flow.nextQueuedSong;
+        if (!next?.id) return;
         await startQueueSongOnStage({
             songId: next.id,
             songs: list,
@@ -10656,7 +10849,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowStagedItem, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -10664,20 +10857,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
 
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
-        const intent = getAutoDjQueueAdvanceIntent({
-            autoDjEnabled,
-            activeMode: room?.activeMode,
-            runOfShowEnabled: room?.runOfShowEnabled,
-            programMode: room?.programMode,
+        const flow = getRoomFlowSnapshot({
+            roomCode,
+            room,
             songs,
+            autoDjEnabled,
             appleMusicEnabled: !!appleMusicAuthorized,
+            party: buildMissionPartyFromRoom(room),
+            assistLevel: room?.missionControl?.setupDraft?.assistLevel || '',
             lastPerformanceTs,
+            queuedCount,
+            performingCount,
+            runOfShowLiveItem,
+            runOfShowStagedItem,
+            runOfShowNextItem,
             autoDjDelaySec: room?.autoDjDelaySec,
             now: nowMs(),
             isQueueEntryPlayable
         });
+        const intent = flow.autoDjIntent;
 
         if (!autoDjEnabled) {
+            autoDjKickoffRef.current = '';
+            setAutoDjCountdown(0);
+            return () => {};
+        }
+
+        if (flow.autoPartyIntent.shouldStart) {
             autoDjKickoffRef.current = '';
             setAutoDjCountdown(0);
             return () => {};
@@ -10732,12 +10938,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [
         appleMusicAuthorized,
         autoDjEnabled,
+        room,
         room?.activeMode,
         room?.autoDjDelaySec,
         room?.lastPerformance?.timestamp,
+        room?.missionControl?.autoMoment?.status,
         room?.programMode,
+        room?.readyCheck?.active,
         room?.runOfShowEnabled,
+        roomCode,
         songs,
+        queuedCount,
+        performingCount,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem,
         startNextFromQueue
     ]);
     useEffect(() => {
@@ -11212,6 +11427,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return mergePayloadWithOverrides(withAssist, overridesInput);
     }, [applyAssistLevelToPayload, capabilities, hostNightPresets, missionAdvancedOverrides, missionDraft]);
 
+    const missionDeadAirFillerSongs = useMemo(() => buildDeadAirFillerSongPlan(), []);
+
     const applyMissionDraftToNightSetupState = useCallback((draftInput = missionDraft, overridesInput = missionAdvancedOverrides) => {
         const merged = compileMissionPayloadWithAssist(draftInput, overridesInput);
         setNightSetupPresetId(merged.hostNightPreset || 'casual');
@@ -11306,6 +11523,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         missionControlEnabled,
         missionControlVersion: MISSION_CONTROL_VERSION,
         missionDraft,
+        missionDeadAirFillerSongs,
         missionFlowRules: MISSION_FLOW_RULES,
         missionPartyDraft,
         missionPrimaryModes: NIGHT_SETUP_PRIMARY_MODES,
@@ -12363,15 +12581,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [autoCrowdMomentsEnabled, room, autoDj, updateRoom]);
     useEffect(() => {
         if (!roomCode || !room?.autoDj) return;
-        const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
-        const partyRaw = room?.missionControl?.party || {};
-        const explicitAutoPartyEnabled = buildMissionPartyFromRoom(room).autoCrowdMomentsEnabled;
-        if (assistLevel !== 'autopilot_first' && !explicitAutoPartyEnabled) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
         if (!lastPerformanceTs) return;
         if (lastPartyAutoBreakTsRef.current === lastPerformanceTs) return;
-        if (queuedCount <= 0) return;
-
+        const explicitAutoPartyEnabled = buildMissionPartyFromRoom(room).autoCrowdMomentsEnabled;
+        const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || '').trim().toLowerCase();
+        const partyRaw = room?.missionControl?.party || {};
         const partyConfig = buildMissionPartyPayload({
             ...partyRaw,
             autoCrowdMomentsEnabled: explicitAutoPartyEnabled || assistLevel === 'autopilot_first'
@@ -12381,15 +12596,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const flowStateForGuard = hasTrackedPerformance
             ? partyConfig.state
             : recordCompletedPerformance(partyConfig.state, { durationSec });
-        const recommendedMoment = recommendAutoCrowdMoment({
-            party: partyConfig,
-            flowState: flowStateForGuard,
-            queueDepth: queuedCount,
-            hasCurrentSinger: performingCount > 0,
-            activeMode: room?.activeMode,
-            currentLightMode: room?.lightMode
+        const flow = getRoomFlowSnapshot({
+            roomCode,
+            room,
+            songs,
+            autoDjEnabled: !!room?.autoDj,
+            appleMusicEnabled: !!appleMusicAuthorized,
+            party: {
+                ...partyConfig,
+                state: flowStateForGuard
+            },
+            assistLevel,
+            lastPerformanceTs,
+            queuedCount,
+            performingCount,
+            runOfShowLiveItem,
+            runOfShowStagedItem,
+            runOfShowNextItem,
+            autoDjDelaySec: room?.autoDjDelaySec,
+            now: nowMs(),
+            isQueueEntryPlayable
         });
-        if (!recommendedMoment.allowed) return;
+        if (!flow.autoPartyIntent.shouldStart || !flow.autoPartyIntent.moment) return;
+        const recommendedMoment = flow.autoPartyIntent.moment;
 
         lastPartyAutoBreakTsRef.current = lastPerformanceTs;
         const timer = setTimeout(() => {
@@ -12428,12 +12657,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.lastPerformance?.timestamp,
         room?.lastPerformance?.duration,
         room?.missionControl,
+        room?.programMode,
+        room?.readyCheck?.active,
+        room?.runOfShowEnabled,
         queuedCount,
         performingCount,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem,
+        songs,
         startAutoCrowdMoment,
         updateRoom,
         logActivity,
-        hostName
+        hostName,
+        appleMusicAuthorized
     ]);
     useEffect(() => () => {
         if (autoCrowdMomentTimerRef.current) {
@@ -14362,8 +14599,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
-        openAdminWorkspace('ops.room_setup');
-    }, [openAdminWorkspace, updateStageQuickStartProgress]);
+        openNightSetupWizard(room?.hostNightPreset || hostNightPreset || 'casual');
+    }, [hostNightPreset, openNightSetupWizard, room?.hostNightPreset, updateStageQuickStartProgress]);
+    const handleRoomReadinessLaunch = useCallback(async () => {
+        if (roomReadinessLaunching) return;
+        setRoomReadinessLaunching(true);
+        try {
+            await launchNightSetupPackage();
+            updateStageQuickStartProgress({
+                tvOpened: true,
+                joinLinkCopied: true,
+                roomSetupOpened: true
+            });
+        } finally {
+            setRoomReadinessLaunching(false);
+        }
+    }, [launchNightSetupPackage, roomReadinessLaunching, updateStageQuickStartProgress]);
+    const roomReadinessQueueSummary = useMemo(() => {
+        const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
+        const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
+        const limitLabel = limitOption?.label || 'No limit';
+        const rotationLabel = rotationOption?.label || 'Round robin';
+        return `${limitLabel}${nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''} | ${rotationLabel}`;
+    }, [nightSetupQueueLimitCount, nightSetupQueueLimitMode, nightSetupQueueRotation]);
+    const roomReadinessAutomationLabel = useMemo(() => {
+        const assistLevel = String(room?.missionControl?.setupDraft?.assistLevel || missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL).trim().toLowerCase();
+        const assist = MISSION_ASSIST_LEVELS.find((entry) => entry.id === assistLevel);
+        if (assist?.label) return assist.label;
+        return autoDj ? 'Auto DJ' : 'Manual';
+    }, [autoDj, missionDraft?.assistLevel, room?.missionControl?.setupDraft?.assistLevel]);
     const stageQuickStartSummary = stageQuickStartCompletedCount === 4
         ? 'Quick start complete. Keep running the room from this live deck.'
         : (isFirstHostRoomRun
@@ -14836,10 +15100,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const base = hashString(artKey) + (idx * 7);
         return sampleArtPool[base % sampleArtPool.length];
     };
-    const queueBrowseSong = async (song, singerOverride) => {
+    const queueBrowseSong = async (song, singerOverride, options = {}) => {
         if (!song?.title) return;
         const art = await fetchTop100Art(song);
         const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        const automationSource = String(options?.automationSource || '').trim().toLowerCase();
         const approvedBrowseBacking = isApprovedPlayableBrowseSong(song) ? song.backing : null;
         const canonicalMatch = await (async () => {
             try {
@@ -14930,7 +15195,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             priorityScore: nowMs(),
             emoji: EMOJI.mic,
             backingAudioOnly: false,
-            audioOnly: false
+            audioOnly: false,
+            ...(automationSource ? { automationSource } : {})
         });
         if (playbackReady) {
             toast(room?.autoLyricsOnQueue ? 'Queued and ready (finalizing lyrics...)' : 'Added to queue and ready');
@@ -14938,6 +15204,104 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         toast(room?.autoLyricsOnQueue ? 'Queued (finalizing lyrics...)' : 'Added to queue');
     };
+    queueBrowseSongRef.current = queueBrowseSong;
+
+    useEffect(() => {
+        if (deadAirAutoFillTimerRef.current) {
+            clearTimeout(deadAirAutoFillTimerRef.current);
+            deadAirAutoFillTimerRef.current = null;
+        }
+
+        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
+        const flow = getRoomFlowSnapshot({
+            roomCode,
+            room,
+            songs,
+            autoDjEnabled,
+            appleMusicEnabled: !!appleMusicAuthorized,
+            party: buildMissionPartyFromRoom(room),
+            assistLevel: room?.missionControl?.setupDraft?.assistLevel || '',
+            lastPerformanceTs,
+            queuedCount,
+            performingCount,
+            fallbackDeadAirSongs: missionDeadAirFillerSongs,
+            runOfShowLiveItem,
+            runOfShowStagedItem,
+            runOfShowNextItem,
+            autoDjDelaySec: room?.autoDjDelaySec,
+            now: nowMs(),
+            isQueueEntryPlayable
+        });
+        const intent = getDeadAirAutoFillIntent({
+            roomCode,
+            deadAirFiller: room?.missionControl?.deadAirFiller || {},
+            autoDjEnabled,
+            queuedCount,
+            performingCount,
+            runOfShowEnabled: flow.runOfShowActive,
+            programMode: flow.normalizedProgramMode,
+            activeMode: room?.activeMode,
+            sourceSongs: room?.missionControl?.deadAirFiller?.songs,
+            fallbackSongs: missionDeadAirFillerSongs,
+            songs,
+            lastPerformanceTs,
+            previousFillKey: deadAirAutoFillKeyRef.current,
+            autoDjDelaySec: room?.autoDjDelaySec,
+        });
+        if (!intent.shouldQueue) return () => {};
+
+        deadAirAutoFillTimerRef.current = setTimeout(() => {
+            deadAirAutoFillTimerRef.current = null;
+            const latestSongs = songsRef.current || [];
+            const latestRoom = roomRef.current || {};
+            const latestActiveMode = String(latestRoom?.activeMode || '').trim().toLowerCase();
+            const hasQueueWork = latestSongs.some((song) => song?.status === 'requested' || song?.status === 'performing');
+            if (hasQueueWork || (latestActiveMode && latestActiveMode !== 'karaoke')) return;
+            const queueBrowseSongRunner = queueBrowseSongRef.current;
+            if (!queueBrowseSongRunner) return;
+            deadAirAutoFillKeyRef.current = intent.fillKey;
+            queueBrowseSongRunner(intent.song, 'BeauRocks Autopilot', {
+                automationSource: DEAD_AIR_AUTOFILL_SOURCE
+            })
+                .then(() => {
+                    trackEvent('host_dead_air_autofill_queued', {
+                        room_code: roomCode,
+                        title: intent.song.title,
+                        artist: intent.song.artist || '',
+                        source: 'browse_catalog_known_good',
+                    });
+                })
+                .catch((error) => {
+                    deadAirAutoFillKeyRef.current = '';
+                    hostLogger.warn('Dead-air autofill failed', error);
+                });
+        }, intent.delayMs);
+
+        return () => {
+            if (deadAirAutoFillTimerRef.current) {
+                clearTimeout(deadAirAutoFillTimerRef.current);
+                deadAirAutoFillTimerRef.current = null;
+            }
+        };
+    }, [
+        appleMusicAuthorized,
+        autoDjEnabled,
+        missionDeadAirFillerSongs,
+        performingCount,
+        queuedCount,
+        room,
+        room?.activeMode,
+        room?.autoDjDelaySec,
+        room?.lastPerformance?.timestamp,
+        room?.missionControl?.deadAirFiller,
+        room?.programMode,
+        room?.runOfShowEnabled,
+        roomCode,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowStagedItem,
+        songs
+    ]);
 
     const getRoomUserTight15 = async (roomUser = {}) => {
         const fallback = sanitizeTight15List(roomUser?.tight15 || roomUser?.tight15Temp || []);
@@ -15981,6 +16345,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const missionImpactItems = [
                 { label: 'Queue', value: previewQueueSummary },
                 { label: 'Auto DJ', value: missionPayloadPreview?.autoDj ? 'On' : 'Off' },
+                { label: 'Dead Air', value: assistLevel.id === 'autopilot_first' ? 'Auto-fill' : assistLevel.id === 'manual_first' ? 'Off' : 'Suggest' },
                 { label: 'Auto-Play', value: missionPayloadPreview?.autoPlayMedia ? 'On' : 'Off' },
                 { label: 'Scoring', value: missionPayloadPreview?.showScoring ? 'On' : 'Off' },
                 { label: 'TV Chat', value: missionPayloadPreview?.chatShowOnTv ? 'On' : 'Off' },
@@ -16006,6 +16371,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     )}
                     primaryContent={(
                         <>
+                            <MissionSetupAutopilotPreview
+                                assistLevels={MISSION_ASSIST_LEVELS}
+                                selectedAssistLevel={missionDraft?.assistLevel || MISSION_DEFAULT_ASSIST_LEVEL}
+                                onSelectAssistLevel={(assistLevelId) => updateMissionDraftPick({ assistLevel: assistLevelId }, 'assist_level')}
+                                presetLabel={missionPreset.label}
+                                flowRuleLabel={flowRule.label}
+                                spotlightLabel={missionMode.label}
+                                queueSummary={previewQueueSummary}
+                                deadAirSongs={missionDeadAirFillerSongs}
+                            />
                             <MissionSetupPrimaryPicks
                                 missionPickCount={missionPickCount}
                                 eventProfiles={ROOM_EVENT_PROFILE_OPTIONS}
@@ -17248,7 +17623,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </span>
                     </button>
                     <button
-                        onClick={() => openAdminWorkspace('ops.room_setup')}
+                        onClick={handleStageQuickStartOpenRoomSetup}
                         data-feature-id="quick-open-queue-settings"
                         className="w-full bg-zinc-900/70 px-3 py-2.5 text-left text-sm text-zinc-100 hover:bg-zinc-900"
                     >
@@ -17642,6 +18017,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                     />
                 )}
+                {tab === 'stage' && roomCode ? (
+                    <HostRoomReadinessPanel
+                        roomCode={roomCode}
+                        roomName={room?.roomName || room?.name || room?.title || ''}
+                        queueSummary={roomReadinessQueueSummary}
+                        automationLabel={roomReadinessAutomationLabel}
+                        tvReady={stageQuickStartTvReady}
+                        tvOpened={!!activeQuickStartProgress.tvOpened}
+                        joinLinkReady={stageQuickStartAudienceReady}
+                        joinLinkCopied={!!activeQuickStartProgress.joinLinkCopied}
+                        appleMusicConnected={appleMusicAuthorized}
+                        hasRunOfShowPlan={Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0}
+                        runOfShowEnabled={isRunOfShowRoom}
+                        launchBusy={roomReadinessLaunching || nightSetupApplying}
+                        onLaunchRoom={handleRoomReadinessLaunch}
+                        onOpenTv={handleStageQuickStartOpenTv}
+                        onCopyJoinLink={handleStageQuickStartCopyJoinLink}
+                        onOpenSetup={handleStageQuickStartOpenRoomSetup}
+                        onOpenShowPlan={() => handleTopChromeTabChange('run_of_show')}
+                        onConnectAppleMusic={handleStageQuickStartConnectAppleMusic}
+                    />
+                ) : null}
                 <div
                     data-host-queue-runtime="mounted"
                     aria-hidden={tab !== 'stage' ? 'true' : undefined}
@@ -17651,7 +18048,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
                 {tab === 'run_of_show' && (
                     <div className="flex min-h-0 flex-col gap-4">
-                        <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/92 px-4 py-3 backdrop-blur">
+                        <div className="hidden flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/82 px-4 py-3 sm:flex">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Workspace</div>
                                 <div className="mt-1 text-sm text-zinc-400">Build, preflight, and repair live issues. Queue stays the runtime home.</div>
@@ -17684,6 +18081,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     runOfShowRoles={runOfShowRoles}
                                     runOfShowTemplateMeta={runOfShowTemplateMeta}
                                     runOfShowTemplates={runOfShowTemplates}
+                                    missionControl={room?.missionControl || null}
                                     submissions={runOfShowSubmissions}
                                     roomUsers={users}
                                     localLibrary={localLibrary}
@@ -18208,7 +18606,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
             </div>
             {roomCode && (
-                audiencePreviewVisible ? (
+                audiencePreviewVisible && tab !== 'run_of_show' ? (
                     <AudienceMiniPreview
                         room={room}
                         roomCode={roomCode}
@@ -18501,7 +18899,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
                                 <button
-                                    onClick={() => openAdminWorkspace('ops.room_setup')}
+                                    onClick={handleStageQuickStartOpenRoomSetup}
                                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
                                 >
                                     1. Night Setup

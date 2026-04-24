@@ -34,6 +34,11 @@ import {
     getHostMomentCueMeta
 } from '../../../lib/hostMomentCues';
 import { BG_TRACK_OPTIONS, getBgTrackById } from '../../../lib/bgTrackOptions';
+import {
+    buildRunOfShowAutopilotPlan,
+    buildRunOfShowBufferPlan,
+    buildRunOfShowGeneratorSeedFromMissionControl,
+} from '../runOfShowAutopilot';
 
 const ITEM_TYPE_OPTIONS = RUN_OF_SHOW_ITEM_TYPES
     .filter((type) => type !== 'trivia_break')
@@ -155,6 +160,15 @@ const GENERATOR_FORMAT_DEFAULTS = Object.freeze({
     corporate_private: { performanceCount: 8, announcementCount: 3, interactiveCount: 2, includeIntermission: false, bufferCount: 2, automationPresetId: 'autopilot' },
     blank_custom: { performanceCount: 6, announcementCount: 1, interactiveCount: 1, includeIntermission: false, bufferCount: 1, automationPresetId: 'balanced' }
 });
+const buildGeneratorConfigDefaults = (missionControl = null) => {
+    const seed = buildRunOfShowGeneratorSeedFromMissionControl(missionControl || {});
+    const formatDefaults = seed.format ? (GENERATOR_FORMAT_DEFAULTS[seed.format] || {}) : {};
+    return {
+        ...GENERATOR_DEFAULTS,
+        ...formatDefaults,
+        ...seed
+    };
+};
 const BACKING_SOURCE_OPTIONS = [
     { value: 'canonical_default', label: 'Default', title: 'Canonical Default', description: 'Use the room-approved default track for this song.', trustLabel: 'Auto-ready when approved', tone: 'emerald' },
     { value: 'youtube', label: 'YouTube', title: 'YouTube', description: 'Assign a specific approved YouTube backing for this performance.', trustLabel: 'Needs approved id or media URL', tone: 'rose' },
@@ -999,11 +1013,12 @@ const buildGeneratedRunOfShowItems = (config = {}) => {
             }));
         }
         if (bufferPositions.has(index)) {
-            items.push(createGeneratedBlock('buffer', {
-                title: 'Recovery Buffer',
-                plannedDurationSec: bufferDuration,
-                notes: 'Use this if the room needs a timing reset.'
-            }));
+            const bufferIndex = Array.from(bufferPositions).indexOf(index) + 1;
+            items.push(createGeneratedBlock('buffer', buildRunOfShowBufferPlan({
+                config: safeConfig,
+                durationSec: bufferDuration,
+                index: bufferIndex
+            })));
         }
     }
     items.push(createGeneratedBlock('closing', {
@@ -2628,6 +2643,8 @@ const QuickDraftPanel = ({
 }) => {
     const formatLabel = EVENT_FORMAT_OPTIONS.find((option) => option.value === (generatorConfig.format || 'karaoke_heavy'))?.label || 'Custom';
     const automationLabel = POLICY_PRESETS.find((preset) => preset.id === (generatorConfig.automationPresetId || 'balanced'))?.label || 'Custom';
+    const automationPlan = buildRunOfShowAutopilotPlan(generatorConfig);
+    const fillerPreviewSongs = (automationPlan.deadAirFiller?.songs || []).slice(0, 3);
 
     return (
         <article className={`${surfaceClass} relative z-20 p-4`}>
@@ -2650,6 +2667,42 @@ const QuickDraftPanel = ({
                             {generatorOpen ? 'Hide Advanced Builder' : 'Open Advanced Builder'}
                         </ControlButton>
                     ) : null}
+                </div>
+            </div>
+            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)]">
+                <div className="rounded-2xl border border-cyan-300/14 bg-black/24 px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-cyan-300/24 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                            Show Autopilot
+                        </span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                            {automationPlan.modeLabel}
+                        </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {automationPlan.flowNodes.map((node, index) => (
+                            <React.Fragment key={node.id}>
+                                {index > 0 ? <i className="fa-solid fa-arrow-right text-[10px] text-cyan-200/50"></i> : null}
+                                <span className={`rounded-xl border px-2.5 py-2 text-xs font-semibold ${node.id === 'dead_air' ? 'border-cyan-300/24 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-white/[0.04] text-zinc-200'}`}>
+                                    {node.label}
+                                </span>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                    <div className="mt-2 text-xs text-zinc-400">{automationPlan.summary}</div>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Known-good filler</div>
+                    <div className="mt-2 space-y-1.5">
+                        {fillerPreviewSongs.length ? fillerPreviewSongs.map((song) => (
+                            <div key={`${song.title}:${song.artist}`} className="flex min-w-0 items-center justify-between gap-2 text-xs">
+                                <span className="truncate font-semibold text-white">{song.title}</span>
+                                <span className="truncate text-zinc-500">{song.artist || 'Browse catalog'}</span>
+                            </div>
+                        )) : (
+                            <div className="text-xs text-zinc-500">Filler suggestions are unavailable.</div>
+                        )}
+                    </div>
                 </div>
             </div>
             {collapsed ? (
@@ -3453,6 +3506,7 @@ export default function RunOfShowDirectorPanel({
     runOfShowRoles = null,
     runOfShowTemplateMeta = null,
     runOfShowTemplates = [],
+    missionControl = null,
     submissions = [],
     queueSongs = [],
     roomUsers = [],
@@ -3542,7 +3596,8 @@ export default function RunOfShowDirectorPanel({
     const [liveControlsOpen, setLiveControlsOpen] = useState(false);
     const [coHostSearch, setCoHostSearch] = useState('');
     const [generatorOpen, setGeneratorOpen] = useState(items.length === 0);
-    const [generatorConfig, setGeneratorConfig] = useState({ ...GENERATOR_DEFAULTS });
+    const [generatorConfig, setGeneratorConfig] = useState(() => buildGeneratorConfigDefaults(missionControl));
+    const [generatorTouched, setGeneratorTouched] = useState(false);
     const [generatorBusy, setGeneratorBusy] = useState(false);
     const [quickDraftModalOpen, setQuickDraftModalOpen] = useState(false);
     const [approvalInboxOpen, setApprovalInboxOpen] = useState(true);
@@ -3564,6 +3619,7 @@ export default function RunOfShowDirectorPanel({
     const [buildSequenceOpen, setBuildSequenceOpen] = useState(items.length === 0);
     const [buildMapOpen, setBuildMapOpen] = useState(false);
     const [topBoardCollapsed, setTopBoardCollapsed] = useState(items.length > 0);
+    const [boardActionsOpen, setBoardActionsOpen] = useState(false);
     const [pendingSetupScrollItemId, setPendingSetupScrollItemId] = useState('');
     const [repairFocus, setRepairFocus] = useState(null);
     const [sectionOpenState, setSectionOpenState] = useState({});
@@ -4700,6 +4756,19 @@ export default function RunOfShowDirectorPanel({
         const target = [...newItems].reverse().find((entry) => !fallbackType || entry.type === fallbackType) || nextItems[nextItems.length - 1];
         if (target?.id) openItem(target.id, { scrollToSetup: target.type === 'performance' });
     };
+    const missionGeneratorSeed = useMemo(
+        () => buildRunOfShowGeneratorSeedFromMissionControl(missionControl || {}),
+        [missionControl]
+    );
+    useEffect(() => {
+        const seedKeys = Object.keys(missionGeneratorSeed || {});
+        if (generatorTouched || items.length > 0 || seedKeys.length === 0) return;
+        setGeneratorConfig((prev) => ({
+            ...prev,
+            ...(missionGeneratorSeed.format ? (GENERATOR_FORMAT_DEFAULTS[missionGeneratorSeed.format] || {}) : {}),
+            ...missionGeneratorSeed
+        }));
+    }, [generatorTouched, items.length, missionGeneratorSeed]);
     const handleAddItemAndFocus = async (type = 'buffer', overrides = {}) => {
         const nextDirector = await onAddItem?.(type, overrides);
         focusNewestItemFromDirector(nextDirector, type);
@@ -4715,6 +4784,7 @@ export default function RunOfShowDirectorPanel({
         onUpdateRoles?.({ coHosts: nextCoHosts });
     };
     const updateGeneratorConfig = (patch = {}) => {
+        setGeneratorTouched(true);
         setGeneratorConfig((prev) => {
             const nextFormat = patch.format || prev.format;
             const formatDefaults = GENERATOR_FORMAT_DEFAULTS[nextFormat] || {};
@@ -5006,12 +5076,12 @@ export default function RunOfShowDirectorPanel({
 
     return (
         <section className={`rounded-3xl border border-cyan-500/20 bg-zinc-950/70 ${compactViewport ? 'p-3.5 space-y-3.5' : 'p-4 space-y-4'}`} aria-label="Run of Show Director">
-            <div className="sticky top-0 z-20 space-y-3 rounded-[28px] bg-zinc-950/96 pb-3 backdrop-blur-md">
-                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(11,17,32,0.98),rgba(17,24,39,0.96))] px-4 py-4 shadow-[0_14px_40px_rgba(0,0,0,0.28)]">
+            <div className="z-20 space-y-3 rounded-[28px] bg-zinc-950/96 pb-3 md:sticky md:top-0 md:backdrop-blur-md">
+                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(11,17,32,0.98),rgba(17,24,39,0.96))] px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.28)] sm:px-4 sm:py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Run Of Show Board</div>
-                            <div className="mt-1 text-sm text-white">
+                            <div className="mt-1 hidden text-sm text-white sm:block">
                                 {isRunOfShowActive
                                     ? automationPaused
                                         ? 'Show is paused. Fix the issue or resume when you are ready.'
@@ -5022,7 +5092,7 @@ export default function RunOfShowDirectorPanel({
                                 {compactBoardSummary || 'No scenes yet'}
                             </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
                             <button
                                 type="button"
                                 onClick={() => setStudioMode('build')}
@@ -5080,7 +5150,7 @@ export default function RunOfShowDirectorPanel({
                                     type="button"
                                     onClick={() => onClearRunOfShow()}
                                     disabled={!isHostOperator || modeActionBusy}
-                                    className="rounded-full border border-rose-300/25 bg-rose-500/8 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-rose-100 disabled:opacity-40"
+                                    className="hidden rounded-full border border-rose-300/25 bg-rose-500/8 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-rose-100 disabled:opacity-40 sm:inline-flex"
                                 >
                                     Clear Show
                                 </button>
@@ -5091,14 +5161,14 @@ export default function RunOfShowDirectorPanel({
                                         type="button"
                                         onClick={() => onToggleAutomationPause?.(!automationPaused)}
                                         disabled={!safeOperatorCapabilities.canPauseAutomation}
-                                        className="rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-40"
+                                        className="hidden rounded-full border border-white/15 bg-white/5 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-white disabled:opacity-40 sm:inline-flex"
                                     >
                                         {automationPaused ? 'Resume' : 'Pause'}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => setLiveControlsOpen((prev) => !prev)}
-                                        className="rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25"
+                                        className="hidden rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25 sm:inline-flex"
                                     >
                                         {liveControlsOpen ? 'Hide Controls' : 'More Controls'}
                                     </button>
@@ -5108,14 +5178,64 @@ export default function RunOfShowDirectorPanel({
                                 type="button"
                                 onClick={() => setTopBoardCollapsed((prev) => !prev)}
                                 aria-expanded={!topBoardCollapsed}
-                                className="inline-flex items-center justify-center rounded-full border border-white/10 bg-black/25 px-3.5 py-2 min-h-[42px] touch-manipulation text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25"
+                                className="hidden items-center justify-center rounded-full border border-white/10 bg-black/25 px-3.5 py-2 min-h-[42px] touch-manipulation text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25 sm:inline-flex"
                             >
                                 <span>{topBoardCollapsed ? 'Open Board' : 'Collapse Board'}</span>
                                 <i className={`fa-solid fa-chevron-down ml-2 transition-transform ${topBoardCollapsed ? '' : 'rotate-180'}`}></i>
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setBoardActionsOpen((prev) => !prev)}
+                                aria-expanded={boardActionsOpen}
+                                className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25 sm:hidden"
+                            >
+                                More
+                                <i className={`fa-solid fa-chevron-down ml-2 transition-transform ${boardActionsOpen ? 'rotate-180' : ''}`}></i>
+                            </button>
                         </div>
                     </div>
                 </div>
+                {boardActionsOpen ? (
+                    <div className="grid gap-2 rounded-[20px] border border-white/10 bg-black/35 p-2 sm:hidden">
+                        {(items.length > 0 || safeTemplateMeta.currentTemplateId || safeTemplateMeta.currentTemplateName) && typeof onClearRunOfShow === 'function' ? (
+                            <button
+                                type="button"
+                                onClick={() => onClearRunOfShow()}
+                                disabled={!isHostOperator || modeActionBusy}
+                                className="rounded-full border border-rose-300/25 bg-rose-500/8 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-rose-100 disabled:opacity-40"
+                            >
+                                Clear Show
+                            </button>
+                        ) : null}
+                        {isRunOfShowActive ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => onToggleAutomationPause?.(!automationPaused)}
+                                    disabled={!safeOperatorCapabilities.canPauseAutomation}
+                                    className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white disabled:opacity-40"
+                                >
+                                    {automationPaused ? 'Resume' : 'Pause'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setLiveControlsOpen((prev) => !prev)}
+                                    className="rounded-full border border-white/10 bg-black/25 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
+                                >
+                                    {liveControlsOpen ? 'Hide Controls' : 'More Controls'}
+                                </button>
+                            </>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => setTopBoardCollapsed((prev) => !prev)}
+                            aria-expanded={!topBoardCollapsed}
+                            className="rounded-full border border-white/10 bg-black/25 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
+                        >
+                            {topBoardCollapsed ? 'Open Board' : 'Collapse Board'}
+                        </button>
+                    </div>
+                ) : null}
                 {topBoardCollapsed ? (
                     <div className="rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-300">
                         <span className="font-semibold text-white">{topBoardTarget ? (topBoardTarget.title || getRunOfShowItemLabel(topBoardTarget.type)) : 'No scenes yet'}</span>

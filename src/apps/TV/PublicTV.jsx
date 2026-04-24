@@ -1036,6 +1036,48 @@ const RunOfShowTakeoverOverlay = ({
         modeKey ? toTitleCaseWords(modeKey) : detailModeLabel,
     ].filter(Boolean);
     const bodyCopy = summary || subhead;
+    const mediaScene = overlay?.mediaScene && typeof overlay.mediaScene === 'object' ? overlay.mediaScene : null;
+    const mediaSceneUrl = String(mediaScene?.mediaUrl || '').trim();
+    const mediaSceneType = String(mediaScene?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+    if (sceneKey === 'media_scene' && mediaSceneUrl) {
+        return (
+            <div
+                data-tv-takeover-scene={sceneKey}
+                data-tv-room-code={String(roomCode || '').trim().toUpperCase()}
+                className={`public-tv fixed inset-0 ${zClass} overflow-hidden bg-black text-white`}
+            >
+                {mediaSceneType === 'video' ? (
+                    <video
+                        key={`${mediaSceneUrl}_${startedAtMs || 0}`}
+                        src={mediaSceneUrl}
+                        autoPlay
+                        playsInline
+                        className="h-full w-full object-contain"
+                    />
+                ) : (
+                    <img src={mediaSceneUrl} alt={headline || 'Scene'} className="h-full w-full object-contain" />
+                )}
+                <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-black/70 via-black/18 to-transparent px-8 py-6">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div>
+                            <div className="text-xs font-black uppercase tracking-[0.28em] text-cyan-100/75">Media Scene</div>
+                            {headline ? <div className="mt-1 text-3xl font-bebas tracking-[0.08em] text-white md:text-5xl">{headline}</div> : null}
+                        </div>
+                        {remainingMs > 0 ? (
+                            <div className="rounded-full border border-white/15 bg-black/45 px-5 py-2.5 text-sm font-black uppercase tracking-[0.22em] text-white/85">
+                                {formatRunOfShowCountdown(remainingMs)}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+                {remainingMs > 0 ? (
+                    <div className="absolute inset-x-8 bottom-8 h-3 overflow-hidden rounded-full border border-white/10 bg-white/10">
+                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-300 to-pink-300" style={{ width: `${progressPct}%` }}></div>
+                    </div>
+                ) : null}
+            </div>
+        );
+    }
 
     return (
         <div
@@ -1856,6 +1898,82 @@ const PublicTV = ({ roomCode }) => {
     const tvChatLockedLabel = isCustomTvBrand ? 'Chat is festival-pass only right now.' : 'Chat is VIP-only right now.';
     const tvScoreLabel = isCustomTvBrand ? `${tvBrandTitle} Score` : 'BeauRocks Score';
     const tvLogoAlt = tvBrandTitle;
+    const performanceSessionWriteKeyRef = useRef('');
+
+    useEffect(() => {
+        performanceSessionWriteKeyRef.current = '';
+    }, [room?.currentPerformanceSession?.sessionId]);
+
+    const reportPerformanceSessionPlayback = useCallback(async (event = {}) => {
+        if (!roomCode) return;
+        const session = room?.currentPerformanceSession || null;
+        const sessionId = String(session?.sessionId || '').trim();
+        if (!sessionId) return;
+
+        const eventType = String(event?.type || '').trim().toLowerCase();
+        const playbackState = eventType === 'heartbeat'
+            ? String(session?.playbackState || '').trim().toLowerCase() || 'playing'
+            : eventType;
+        const nowValue = nowMs();
+        const currentTimeSec = Math.max(0, Number(event?.currentTimeSec || 0));
+        const durationSec = Math.max(0, Number(event?.durationSec || 0));
+        const dedupeSuffix = eventType === 'heartbeat'
+            ? `heartbeat:${Math.floor(currentTimeSec / 5)}`
+            : `${playbackState}:${Math.floor(currentTimeSec)}:${Math.floor(durationSec)}:${String(event?.completionReason || '').trim().toLowerCase()}`;
+        const dedupeKey = `${sessionId}:${dedupeSuffix}`;
+        if (performanceSessionWriteKeyRef.current === dedupeKey) return;
+        performanceSessionWriteKeyRef.current = dedupeKey;
+
+        const patch = {
+            'currentPerformanceSession.lastReportedAtMs': nowValue,
+            ...(durationSec > 0 ? { 'currentPerformanceSession.playerReportedDurationSec': durationSec } : {}),
+            ...(currentTimeSec > 0 ? { 'currentPerformanceSession.playerPositionSec': currentTimeSec } : {})
+        };
+        if (playbackState) {
+            patch['currentPerformanceSession.playbackState'] = playbackState;
+        }
+        if (eventType === 'playing' || eventType === 'heartbeat') {
+            patch['currentPerformanceSession.lastHeartbeatAtMs'] = nowValue;
+            if (!Number(session?.playbackStartedAtMs || 0)) {
+                patch['currentPerformanceSession.playbackStartedAtMs'] = nowValue;
+            }
+        }
+        if (eventType === 'paused') {
+            patch['currentPerformanceSession.pausedAtMs'] = nowValue;
+        }
+        if (eventType === 'ended') {
+            patch['currentPerformanceSession.lastHeartbeatAtMs'] = nowValue;
+            patch['currentPerformanceSession.endedAtMs'] = nowValue;
+            patch['currentPerformanceSession.completionReason'] = String(event?.completionReason || 'player_ended').trim().toLowerCase();
+        }
+        if (eventType === 'error') {
+            patch['currentPerformanceSession.completionReason'] = String(event?.completionReason || 'player_error').trim().toLowerCase();
+            patch['currentPerformanceSession.error'] = String(event?.error || 'player_error').trim().toLowerCase();
+        }
+        if (
+            durationSec > 0
+            && String(room?.currentPerformanceMeta?.songId || '').trim() === String(session?.songId || '').trim()
+        ) {
+            patch['currentPerformanceMeta.durationSec'] = Math.max(
+                durationSec,
+                Number(room?.currentPerformanceMeta?.durationSec || 0)
+            );
+            patch['currentPerformanceMeta.backingDurationSec'] = Math.max(
+                durationSec,
+                Number(room?.currentPerformanceMeta?.backingDurationSec || 0)
+            );
+            patch['currentPerformanceMeta.durationSource'] = 'player_reported';
+            patch['currentPerformanceMeta.durationConfidence'] = 'high';
+            patch['currentPerformanceMeta.autoEndSafe'] = true;
+        }
+
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch);
+        } catch (error) {
+            console.warn('Failed to report performance session playback', error);
+            performanceSessionWriteKeyRef.current = '';
+        }
+    }, [room?.currentPerformanceMeta?.backingDurationSec, room?.currentPerformanceMeta?.durationSec, room?.currentPerformanceMeta?.songId, room?.currentPerformanceSession, roomCode]);
 
     useEffect(() => {
         if (!isMarketingDemoEmbed) return;
@@ -5537,7 +5655,13 @@ const PublicTV = ({ roomCode }) => {
     const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
     if (room?.announcement?.active && !activeGameCartridgeMode) {
         const announcement = room.announcement || {};
-        return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
+        const isExpiredMediaScene = String(announcement?.type || '').trim().toLowerCase() === 'media_scene'
+            && Number(announcement?.durationSec || 0) > 0
+            && Number(announcement?.startedAtMs || 0) > 0
+            && (Number(announcement.startedAtMs) + (Number(announcement.durationSec) * 1000)) <= nowMs();
+        if (!isExpiredMediaScene) {
+            return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
+        }
     }
     if (chatTvFullscreenActive) {
         return (
@@ -7123,6 +7247,7 @@ const PublicTV = ({ roomCode }) => {
                                     fitToWindow
                                     showVideo
                                     runOfShowHud={runOfShowHud}
+                                    onPlaybackEvent={reportPerformanceSessionPlayback}
                                 />
                             </>
                         )}

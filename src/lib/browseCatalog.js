@@ -28,7 +28,7 @@ export const isApprovedPlayableBrowseSong = (song = {}) => {
 };
 
 export const decorateBrowseSong = (song = {}) => {
-  const backing = getBrowseBacking(song);
+  const backing = song?.backing || getBrowseBacking(song);
   return {
     ...song,
     browseSongKey: buildBrowseSongKey(song?.title || song?.songTitle || '', song?.artist || song?.artistName || ''),
@@ -42,4 +42,3 @@ export const decorateBrowseSongs = (songs = [], { playableOnly = false } = {}) =
   const decorated = safeSongs.map((song) => decorateBrowseSong(song));
   return playableOnly ? decorated.filter((song) => song.hasApprovedBacking) : decorated;
 };
-

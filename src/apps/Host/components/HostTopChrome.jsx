@@ -1281,7 +1281,7 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`w-full overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
+        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
             <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 <div className={quickStripItemClass} ref={automationMenuRef}>
                     <button

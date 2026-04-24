@@ -46,6 +46,8 @@ export const createAutoDjSequenceState = (now = Date.now()) => ({
 export const getAutoDjQueueAdvanceIntent = ({
     autoDjEnabled = false,
     activeMode = '',
+    readyCheckActive = false,
+    autoMomentLive = false,
     runOfShowEnabled = false,
     programMode = '',
     songs = [],
@@ -65,6 +67,12 @@ export const getAutoDjQueueAdvanceIntent = ({
     const normalizedActiveMode = String(activeMode || '').trim().toLowerCase();
     if (APPLAUSE_PHASES.has(normalizedActiveMode)) {
         return { shouldStart: false, reason: 'applause_active' };
+    }
+    if (readyCheckActive) {
+        return { shouldStart: false, reason: 'ready_check_active' };
+    }
+    if (autoMomentLive) {
+        return { shouldStart: false, reason: 'auto_moment_live' };
     }
     if (normalizedActiveMode && normalizedActiveMode !== 'karaoke') {
         return { shouldStart: false, reason: 'mode_active' };

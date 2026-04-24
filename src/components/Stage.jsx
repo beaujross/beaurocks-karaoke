@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import AppleLyricsRenderer from './AppleLyricsRenderer';
 import { EMOJI } from '../lib/emoji';
 
 const nowMs = () => Date.now();
 
-const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null }) => {
+const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null, onPlaybackEvent = null }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
     const isBackingAudioOnly = current?.backingAudioOnly || false;
     const applePlayback = room?.appleMusicPlayback || null;
@@ -43,13 +43,21 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const layout = room?.layoutMode || 'standard';
     const iframeSrc = useMemo(() => {
         const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1`;
+        const pageOrigin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&rel=0&modestbranding=1`;
     }, [youtubeId, room?.videoStartTimestamp]);
 
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
     const audioRef = useRef(null);
     const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+    const nativeHeartbeatBucketRef = useRef('');
+    const youtubeHeartbeatBucketRef = useRef('');
+    const youtubeEndedEventRef = useRef('');
+    const reportPlaybackEvent = useCallback((event = {}) => {
+        if (typeof onPlaybackEvent !== 'function') return;
+        onPlaybackEvent(event);
+    }, [onPlaybackEvent]);
     const idleMicSizeClass = fitToWindow ? 'text-[clamp(4.5rem,15vw,8.5rem)]' : 'text-[12rem]';
     const idleHeadingSizeClass = fitToWindow ? 'text-[clamp(2.75rem,8vw,6rem)]' : 'text-8xl';
     const idleCtaSizeClass = fitToWindow ? 'text-[clamp(1rem,3vw,2rem)] px-5 py-2 md:px-7' : 'text-4xl px-8 py-2';
@@ -100,6 +108,134 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             audioRef.current.volume = room.videoVolume / 100;
         }
     }, [room?.videoVolume]);
+
+    useEffect(() => {
+        nativeHeartbeatBucketRef.current = '';
+        youtubeHeartbeatBucketRef.current = '';
+        youtubeEndedEventRef.current = '';
+    }, [mediaUrl, room?.videoStartTimestamp]);
+
+    useEffect(() => {
+        const mediaElement = isAudioOnly ? audioRef.current : nativeVideoRef.current;
+        if (!mediaElement || isYoutube || isBackingAudioOnly) return undefined;
+
+        const getDurationSec = () => {
+            const duration = Number(mediaElement.duration || 0);
+            return Number.isFinite(duration) && duration > 0 ? duration : 0;
+        };
+        const emit = (type, extra = {}) => {
+            reportPlaybackEvent({
+                type,
+                currentTimeSec: Math.max(0, Number(mediaElement.currentTime || 0)),
+                durationSec: getDurationSec(),
+                ...extra
+            });
+        };
+        const handleLoadedMetadata = () => emit('ready');
+        const handlePlay = () => emit('playing');
+        const handlePause = () => {
+            if (!mediaElement.ended) emit('paused');
+        };
+        const handleEnded = () => emit('ended', { completionReason: 'player_ended' });
+        const handleError = () => emit('error', { error: 'media_error', completionReason: 'player_error' });
+        const handleTimeUpdate = () => {
+            const heartbeatBucket = `${String(mediaUrl || '')}:${Math.floor(Math.max(0, Number(mediaElement.currentTime || 0)) / 5)}`;
+            if (nativeHeartbeatBucketRef.current === heartbeatBucket) return;
+            nativeHeartbeatBucketRef.current = heartbeatBucket;
+            emit('heartbeat');
+        };
+
+        mediaElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+        mediaElement.addEventListener('play', handlePlay);
+        mediaElement.addEventListener('pause', handlePause);
+        mediaElement.addEventListener('ended', handleEnded);
+        mediaElement.addEventListener('error', handleError);
+        mediaElement.addEventListener('timeupdate', handleTimeUpdate);
+        return () => {
+            mediaElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+            mediaElement.removeEventListener('play', handlePlay);
+            mediaElement.removeEventListener('pause', handlePause);
+            mediaElement.removeEventListener('ended', handleEnded);
+            mediaElement.removeEventListener('error', handleError);
+            mediaElement.removeEventListener('timeupdate', handleTimeUpdate);
+        };
+    }, [isAudioOnly, isBackingAudioOnly, isYoutube, mediaUrl, reportPlaybackEvent]);
+
+    useEffect(() => {
+        if (!isYoutube || !youtubeId) return undefined;
+        const handleMessage = (event) => {
+            const origin = String(event?.origin || '').toLowerCase();
+            if (!origin.includes('youtube.com')) return;
+            let payload = event?.data;
+            if (typeof payload === 'string') {
+                try {
+                    payload = JSON.parse(payload);
+                } catch {
+                    return;
+                }
+            }
+            if (!payload || typeof payload !== 'object') return;
+
+            const safeDurationSec = Number(payload?.info?.duration || payload?.info?.videoData?.duration || 0);
+            const safeCurrentTimeSec = Number(payload?.info?.currentTime || 0);
+            if (payload.event === 'onReady') {
+                reportPlaybackEvent({ type: 'ready', durationSec: safeDurationSec });
+                return;
+            }
+            if (payload.event === 'onStateChange') {
+                const stateCode = Number(payload.info);
+                if (stateCode === 1) reportPlaybackEvent({ type: 'playing', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec });
+                else if (stateCode === 2) reportPlaybackEvent({ type: 'paused', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec });
+                else if (stateCode === 0) {
+                    const endedKey = `${youtubeId}:${room?.videoStartTimestamp || 0}`;
+                    if (youtubeEndedEventRef.current === endedKey) return;
+                    youtubeEndedEventRef.current = endedKey;
+                    reportPlaybackEvent({ type: 'ended', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec, completionReason: 'player_ended' });
+                } else if (stateCode === 3) {
+                    reportPlaybackEvent({ type: 'heartbeat', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec });
+                }
+                return;
+            }
+            if (payload.event === 'infoDelivery' && payload.info && typeof payload.info === 'object') {
+                if (safeCurrentTimeSec > 0 || safeDurationSec > 0) {
+                    const heartbeatBucket = `${youtubeId}:${Math.floor(Math.max(0, safeCurrentTimeSec) / 5)}`;
+                    if (youtubeHeartbeatBucketRef.current !== heartbeatBucket) {
+                        youtubeHeartbeatBucketRef.current = heartbeatBucket;
+                        reportPlaybackEvent({ type: 'heartbeat', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec });
+                    }
+                }
+                if (Number(payload.info.playerState) === 0) {
+                    const endedKey = `${youtubeId}:${room?.videoStartTimestamp || 0}`;
+                    if (youtubeEndedEventRef.current === endedKey) return;
+                    youtubeEndedEventRef.current = endedKey;
+                    reportPlaybackEvent({ type: 'ended', currentTimeSec: safeCurrentTimeSec, durationSec: safeDurationSec, completionReason: 'player_ended' });
+                }
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
+    }, [isYoutube, room?.videoStartTimestamp, reportPlaybackEvent, youtubeId]);
+
+    useEffect(() => {
+        if (!isYoutube || !youtubeId || !iframeRef.current?.contentWindow) return undefined;
+        const sendListening = () => {
+            if (!iframeRef.current?.contentWindow) return;
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                event: 'listening',
+                id: youtubeId,
+                channel: 'widget'
+            }), '*');
+        };
+        const first = setTimeout(sendListening, 100);
+        const second = setTimeout(sendListening, 900);
+        const third = setTimeout(sendListening, 1800);
+        return () => {
+            clearTimeout(first);
+            clearTimeout(second);
+            clearTimeout(third);
+        };
+    }, [iframeSrc, isYoutube, youtubeId]);
 
     // Open backing audio window for non-embeddable videos
     useEffect(() => {

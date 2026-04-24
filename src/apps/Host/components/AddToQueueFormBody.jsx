@@ -32,6 +32,45 @@ const AddToQueueFormBody = ({
     addSong,
     appleMusicAuthorized
 }) => {
+    const performerSelect = (
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.65fr)] gap-2">
+            <select
+                data-feature-id="host-manual-performer-select"
+                value={manualSingerMode === 'custom' ? '__custom' : manual.singer}
+                onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '__custom') {
+                        setManualSingerMode('custom');
+                        setManual(prev => ({ ...prev, singer: '' }));
+                        return;
+                    }
+                    setManualSingerMode('select');
+                    setManual(prev => ({ ...prev, singer: value }));
+                }}
+                className={`${styles.input} text-sm`}
+            >
+                <option value="">Select Performer</option>
+                {hostName && (
+                    <option value={hostName}>{hostName} (Host)</option>
+                )}
+                {users.map(u => (
+                    <option key={u.uid || u.name} value={u.name}>
+                        {u.avatar ? `${u.avatar} ` : ''}{u.name}
+                    </option>
+                ))}
+                <option value="__custom">Custom performer...</option>
+            </select>
+            {manualSingerMode === 'custom' && (
+                <input
+                    value={manual.singer}
+                    onChange={e=>setManual({...manual, singer:e.target.value})}
+                    className={styles.input}
+                    placeholder="Custom performer"
+                />
+            )}
+        </div>
+    );
+
     return (
     <div className="mt-2 pr-1">
         <div className="host-autocomplete-shell relative mb-2 z-30">
@@ -44,6 +83,10 @@ const AddToQueueFormBody = ({
                         className={`${styles.input} host-autocomplete-input py-2 text-sm pl-8`}
                         placeholder="Search songs (autocomplete source + local library)"
                     />
+                </div>
+                <div className="mt-2">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-1">Performer</div>
+                    {performerSelect}
                 </div>
                 <div className="mt-2">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-1">Autocomplete Source</div>
@@ -91,6 +134,13 @@ const AddToQueueFormBody = ({
                         Quick Add on click
                     </label>
                     <span>{quickAddOnResultClick ? 'Tap row to queue instantly' : 'Tap row to fill form'}</span>
+                </div>
+                <div className="mt-2 border-t border-white/10 pt-2">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-1">Manual Entry</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input data-feature-id="host-manual-song-input" value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={styles.input} placeholder="Song"/>
+                        <input data-feature-id="host-manual-artist-input" value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={styles.input} placeholder="Artist"/>
+                    </div>
                 </div>
             </div>
             {(results.length > 0 || searchQ.length >= 3) && (
@@ -211,47 +261,6 @@ const AddToQueueFormBody = ({
                 </div>
             </div>
         )}
-        <div className="mb-2 rounded-xl border border-white/10 bg-black/30 p-3">
-            <div className="text-xs uppercase tracking-widest text-zinc-400 mb-2">Song Details</div>
-            <div className="grid grid-cols-1 md:grid-cols-[2fr_1.4fr_1.4fr_1.1fr] gap-2">
-                <input data-feature-id="host-manual-song-input" value={manual.song} onChange={e=>setManual({...manual, song:e.target.value})} className={styles.input} placeholder="Song"/>
-                <input data-feature-id="host-manual-artist-input" value={manual.artist} onChange={e=>setManual({...manual, artist:e.target.value})} className={styles.input} placeholder="Artist"/>
-                <select
-                    data-feature-id="host-manual-performer-select"
-                    value={manualSingerMode === 'custom' ? '__custom' : manual.singer}
-                    onChange={(e) => {
-                        const value = e.target.value;
-                        if (value === '__custom') {
-                            setManualSingerMode('custom');
-                            setManual(prev => ({ ...prev, singer: '' }));
-                            return;
-                        }
-                        setManualSingerMode('select');
-                        setManual(prev => ({ ...prev, singer: value }));
-                    }}
-                    className={`${styles.input} text-sm`}
-                >
-                    <option value="">Select Performer</option>
-                    {hostName && (
-                        <option value={hostName}>{hostName} (Host)</option>
-                    )}
-                    {users.map(u => (
-                        <option key={u.uid || u.name} value={u.name}>
-                            {u.avatar ? `${u.avatar} ` : ''}{u.name}
-                        </option>
-                    ))}
-                    <option value="__custom">Custom performer...</option>
-                </select>
-                {manualSingerMode === 'custom' && (
-                    <input
-                        value={manual.singer}
-                        onChange={e=>setManual({...manual, singer:e.target.value})}
-                        className={styles.input}
-                        placeholder="Custom performer"
-                    />
-                )}
-            </div>
-        </div>
         <div className="mb-2 flex justify-end">
             <button data-feature-id="host-manual-queue-submit" onClick={addSong} className={`${styles.btnStd} ${styles.btnHighlight} px-4`}>
                 Add to Queue

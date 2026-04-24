@@ -3,6 +3,9 @@ import {
     buildAudienceThemeFromPreset,
     buildHostNightPresetConfig,
 } from '../hostNightPresets';
+import {
+    buildDeadAirFillerPayload,
+} from '../deadAirAutopilot';
 
 const useHostNightSetupFlow = ({
     applyMissionDraftToNightSetupState,
@@ -22,6 +25,7 @@ const useHostNightSetupFlow = ({
     missionControlEnabled = false,
     missionControlVersion = 1,
     missionDraft = {},
+    missionDeadAirFillerSongs = [],
     missionFlowRules = [],
     missionPartyDraft = {},
     missionPrimaryModes = [],
@@ -488,6 +492,12 @@ const useHostNightSetupFlow = ({
                 ? (missionDraft?.spotlightMode || payload.gamePreviewId || nightSetupPrimaryMode || 'karaoke')
                 : (nightSetupPrimaryMode || payload.gamePreviewId || 'karaoke')
         ).trim().toLowerCase();
+        const assistLevel = String(missionDraft?.assistLevel || missionAssistDefaultLevel || 'smart_assist').trim().toLowerCase();
+        const deadAirFiller = buildDeadAirFillerPayload({
+            assistLevel,
+            delaySec: payload.autoDjDelaySec,
+            songs: missionDeadAirFillerSongs,
+        });
         setNightSetupApplying(true);
         try {
             await requestRoomUpdate({
@@ -499,10 +509,11 @@ const useHostNightSetupFlow = ({
                         archetype: missionDraft?.archetype || payload.hostNightPreset || 'casual',
                         flowRule: missionDraft?.flowRule || 'balanced',
                         spotlightMode: missionDraft?.spotlightMode || (payload.gamePreviewId || 'karaoke'),
-                        assistLevel: missionDraft?.assistLevel || missionAssistDefaultLevel,
+                        assistLevel,
                     },
                     advancedOverrides: missionAdvancedOverrides || {},
                     party: buildMissionPartyPayload(missionPartyDraft),
+                    deadAirFiller,
                     lastAppliedAt: serverTimestamp(),
                     lastSuggestedAction: room?.missionControl?.lastSuggestedAction || '',
                 },
@@ -605,6 +616,7 @@ const useHostNightSetupFlow = ({
         deriveUnknownBackingPolicy,
         compileMissionPayloadWithAssist,
         missionDraft,
+        missionDeadAirFillerSongs,
         missionAdvancedOverrides,
         missionControlEnabled,
         setNightSetupApplying,

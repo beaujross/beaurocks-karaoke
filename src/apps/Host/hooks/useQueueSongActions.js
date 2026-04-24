@@ -451,7 +451,7 @@ const useQueueSongActions = ({
                 setManual({
                     song: '',
                     artist: '',
-                    singer: hostName || 'Host',
+                    singer: singerName,
                     url: '',
                     art: '',
                     lyrics: '',
@@ -479,6 +479,7 @@ const useQueueSongActions = ({
             await ensureAppCheckToken(false).catch(() => false);
             const manualTitle = manual.song;
             const manualArtist = manual.artist || 'Unknown';
+            const manualSingerName = manual.singer || room?.hostName || hostName || 'Host';
             const manualBacking = normalizeBackingChoice({
                 mediaUrl: manual.url,
                 appleMusicId: manual.appleMusicId
@@ -518,7 +519,7 @@ const useQueueSongActions = ({
                 trackSource: trackSource || null,
                 songTitle: manualTitle,
                 artist: manualArtist,
-                singerName: manual.singer,
+                singerName: manualSingerName,
                 mediaUrl: manualUrl,
                 albumArtUrl: manual.art || '',
                 lyrics: hasManualLyrics ? String(manual.lyrics || '') : '',
@@ -627,7 +628,7 @@ const useQueueSongActions = ({
             setManual({
                 song: '',
                 artist: '',
-                singer: hostName || 'Host',
+                singer: manualSingerName,
                 url: '',
                 art: '',
                 lyrics: '',
