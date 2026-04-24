@@ -499,3 +499,40 @@ Everything is built, tested, and ready to integrate. Pick one game, follow the i
 **Estimated ROI**: $40-80K Year 1  
 
 Enjoy! 🌟
+# Current Product Context Memory
+
+Last updated: 2026-04-24
+
+## Host Room Readiness Direction
+
+The current host-panel UX direction is: hosts should not need to understand BeauRocks product architecture to start a room.
+
+The problem being solved is uncertainty, not only click count:
+
+- hosts need to know whether the room is ready
+- hosts need one obvious launch action
+- TV launch, guest link copy, setup application, automation, and show planning must not feel like separate required systems
+- optional configuration should stay behind focused edits
+
+Current implementation direction:
+
+- `src/apps/Host/components/HostRoomReadinessPanel.jsx` is the new host-facing readiness surface above the live queue.
+- `Launch Room` should behave as an atomic launch action by reusing the setup launch package flow: apply/start setup, open Public TV, and copy the guest link.
+- `Night Setup` entry points should open the simplified setup modal, not drop hosts into the full admin/settings surface.
+- The setup modal leads with generated/autopilot context through `MissionSetupAutopilotPreview`.
+- Room setup persists `missionControl.deadAirFiller` so automation can bridge dead air with known-good browse songs.
+- The run-of-show creator reads the same setup context through `runOfShowAutopilot.js` and turns generated Autopilot buffers into explicit `Dead-Air Bridge` blocks.
+
+Product principle to preserve:
+
+> Make readiness obvious, make launch atomic, and make deeper configuration optional.
+
+Relevant tests:
+
+- `tests/unit/hostSetupSource.test.mjs`
+- `tests/unit/deadAirAutopilot.test.mjs`
+- `tests/unit/runOfShowAutopilot.test.mjs`
+- `tests/unit/runOfShowDirectorPanelSource.test.mjs`
+- `tests/integration/updateRoomAsHostCallable.test.cjs`
+
+---

@@ -19,6 +19,10 @@ Multi-screen karaoke platform with real-time Host, Singer (mobile), TV, and Reca
 
 ## Current Product Invariants
 
+- Host room launch should be framed as `Room Readiness`: one obvious launch action, visible readiness state, optional focused edits.
+- `Launch Room` should apply/start setup, open Public TV, and copy the guest link rather than making hosts coordinate those actions manually.
+- `Night Setup` entry points should open the simplified setup modal; full admin/settings is an escape hatch, not the default launch path.
+- Run-of-show generation should inherit room setup context, including automation style and known-good dead-air bridge behavior.
 - Audience requests are `song intent -> backing resolution`, not direct source selection.
 - Audience browse/search should stay source-agnostic even when known YouTube backings are auto-resolved behind the scenes.
 - AI/automation should rank and normalize candidate backings; it should not expose raw YouTube search to guests as the default model.

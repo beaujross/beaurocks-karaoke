@@ -1,6 +1,6 @@
 # Run Of Show Low-Interaction Spec
 
-Last updated: 2026-04-04
+Last updated: 2026-04-24
 Owner: Product / Host surface
 
 Companion docs:
@@ -23,6 +23,27 @@ The run-of-show surface should behave more like a cue sheet than an editor durin
 Planned pacing cues, including short audio stings, should live here by default. The queue page should only expose a tiny set of safe live moment overrides, not a full soundboard workflow.
 Each eligible scene should be able to store one optional `Scene Cue` with simple timing (`start` or `end`) so intros, reveals, and closing beats can auto-fire from the run of show itself.
 Those scene cues should use the same preset family as the live queue-page `Moments` strip, so planned beats and live overrides feel like one console language instead of separate tools.
+
+## 2026-04-24 Setup And Dead-Air Context
+
+Run of show now needs to stay aligned with the host `Room Readiness` model:
+
+- setup is not a separate admin concept; it is the room-readiness state that launch and run-of-show should consume
+- the run-of-show creator should inherit persisted `missionControl.setupDraft` where possible
+- automation preset mapping should stay consistent with setup assist levels:
+  - `hands_on` maps to `manual_first`
+  - `balanced` maps to `smart_assist`
+  - `autopilot` maps to `autopilot_first`
+- generated Autopilot buffers should be explicit `Dead-Air Bridge` blocks
+- generated Balanced buffers should keep known-good filler suggestions ready for host approval
+- dead-air filler candidates come from the browse catalog known-good song plan
+
+Implementation anchors:
+
+- `src/apps/Host/runOfShowAutopilot.js`
+- `src/apps/Host/deadAirAutopilot.js`
+- `src/apps/Host/components/RunOfShowDirectorPanel.jsx`
+- `tests/unit/runOfShowAutopilot.test.mjs`
 
 ## Core Principle
 

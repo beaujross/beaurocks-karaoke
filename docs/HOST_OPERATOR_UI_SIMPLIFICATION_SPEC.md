@@ -1,6 +1,6 @@
 # Host Operator UI Simplification Spec
 
-Last updated: 2026-04-16
+Last updated: 2026-04-24
 Owner: Product / Host surface
 
 ## Goal
@@ -27,6 +27,39 @@ Companion docs:
 - `RUN_OF_SHOW_LOW_INTERACTION_SPEC.md`
 - `HOST_CONSOLE_MOMENT_AUDIO_SPEC.md`
 - `RUN_OF_SHOW_LOW_INTERACTION_SPEC.md`
+
+## 2026-04-24 Room Readiness Direction
+
+The current setup simplification target is not only fewer clicks. It is less uncertainty.
+
+Problem statement:
+
+> The host setup flow must clearly communicate when the room is ready, what has already been configured, and what still requires action before guests can join and the show can run.
+
+Product rules:
+
+- Treat setup as `Room Readiness`, not as a tour through settings.
+- The queue page should show one readiness surface before the live queue when a room is active.
+- `Launch Room` should be the atomic action for the common path: apply setup, open Public TV, and copy the guest link.
+- `Night Setup` should open the simplified setup modal for focused changes.
+- Full admin/settings remains available, but it should be an escape hatch rather than the main launch path.
+- Run-of-show generation should inherit setup context, including automation style and dead-air behavior.
+- Dead-air automation should use known-good browse catalog songs, with Autopilot able to create `Dead-Air Bridge` moments in generated show plans.
+
+Current implementation anchors:
+
+- `src/apps/Host/components/HostRoomReadinessPanel.jsx`
+- `src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx`
+- `src/apps/Host/deadAirAutopilot.js`
+- `src/apps/Host/runOfShowAutopilot.js`
+- `src/apps/Host/components/RunOfShowDirectorPanel.jsx`
+
+Interaction budget for room launch:
+
+- returning host with defaults: `1` action from readiness
+- review generated setup then launch: `2` actions
+- change one major setting then launch: `3` actions
+- deep admin tuning: explicitly secondary
 
 ## 2026-04-16 Run Of Show Admin Notes
 
