@@ -6711,6 +6711,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => clearInterval(timer);
     }, []);
 
+    const appleMusicRef = useRef(null);
+    const applePlaybackSyncKeyRef = useRef('');
+    const syncApplePlaybackStateRef = useRef(async () => {});
+    const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
+
     const persistAccountMusicPrefs = useCallback(async (patch = {}) => {
         const activeUid = auth.currentUser?.uid || uid || '';
         if (!activeUid) return;
@@ -7062,11 +7067,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [appleMusicStatus, setAppleMusicStatus] = useState('');
     const [appleMusicAutoPlaylistId, setAppleMusicAutoPlaylistId] = useState('');
     const [appleMusicAutoPlaylistTitle, setAppleMusicAutoPlaylistTitle] = useState('');
-    const appleMusicRef = useRef(null);
-    const applePlaybackSyncKeyRef = useRef('');
-    const syncApplePlaybackStateRef = useRef(async () => {});
     const [accountMusicPrefsReady, setAccountMusicPrefsReady] = useState(false);
-    const accountMusicPrefsRef = useRef(DEFAULT_HOST_MUSIC_PREFS);
     const getAppleMusicUserToken = () => appleMusicRef.current?.musicUserToken || '';
     const mixFadeRef = useRef(null);
     const mixFadeTargetRef = useRef(mixFader);

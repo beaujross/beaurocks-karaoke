@@ -108,6 +108,20 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
 });
 
+test('host app declares Apple playback refs before assigning the sync callback', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const refDeclarationIndex = hostAppSource.indexOf("const syncApplePlaybackStateRef = useRef(async () => {});");
+  const callbackAssignmentIndex = hostAppSource.indexOf('syncApplePlaybackStateRef.current = syncApplePlaybackState;');
+
+  assert.notEqual(refDeclarationIndex, -1, 'Host app should keep a ref for the Apple playback sync callback');
+  assert.notEqual(callbackAssignmentIndex, -1, 'Host app should assign the Apple playback sync callback into the ref');
+  assert.equal(
+    refDeclarationIndex < callbackAssignmentIndex,
+    true,
+    'Apple playback sync refs must be declared before the callback assignment to avoid first-render TDZ crashes',
+  );
+});
+
 test('room settings avoids duplicate-looking event and base preset choices', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
 
