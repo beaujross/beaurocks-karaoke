@@ -65,6 +65,8 @@ import {
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     updateRoomAsHost,
+    manageKaraokeBracket,
+    resolveKaraokeBracketMatch,
     provisionHostRoom,
     reviewRunOfShowSlotSubmission,
     executeRunOfShowAction,
@@ -137,11 +139,6 @@ import {
     isRecoverableAppCheckError,
 } from '../../lib/appCheckErrors';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
-import {
-    BRACKET_SIGNUP_MIN_READY_COUNT,
-    buildBracketSignupState,
-    getBracketSignupState
-} from '../../lib/karaokeBracketSupport';
 import {
     buildRunOfShowGameLaunchRoomUpdates
 } from '../../lib/gameLaunchSupport';
@@ -1834,55 +1831,6 @@ const sanitizeTight15List = (list = []) => {
     return cleaned.slice(0, TIGHT15_MAX);
 };
 
-const shuffleList = (list = []) => {
-    const next = [...list];
-    for (let i = next.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [next[i], next[j]] = [next[j], next[i]];
-    }
-    return next;
-};
-
-const getBracketRoundName = (size = 2) => {
-    if (size >= 16) return 'Round of 16';
-    if (size === 8) return 'Quarterfinals';
-    if (size === 4) return 'Semifinals';
-    return 'Final';
-};
-
-const pickRandomTight15Song = (contestant = {}) => {
-    const list = Array.isArray(contestant?.tight15) ? contestant.tight15 : [];
-    if (!list.length) return null;
-    const pick = list[Math.floor(Math.random() * list.length)];
-    return normalizeTight15Entry(pick);
-};
-
-const buildBracketRound = ({ contestantUids = [], contestantsByUid = {}, roundIndex = 0 }) => {
-    const safeUids = contestantUids.filter(Boolean);
-    const matches = [];
-    for (let i = 0; i < safeUids.length; i += 2) {
-        const aUid = safeUids[i] || null;
-        const bUid = safeUids[i + 1] || null;
-        matches.push({
-            id: `m_${roundIndex + 1}_${Math.floor(i / 2) + 1}`,
-            slot: Math.floor(i / 2) + 1,
-            aUid,
-            bUid,
-            aSong: aUid ? pickRandomTight15Song(contestantsByUid[aUid]) : null,
-            bSong: bUid ? pickRandomTight15Song(contestantsByUid[bUid]) : null,
-            winnerUid: bUid ? null : aUid,
-            queuedAt: null,
-            completedAt: bUid ? null : nowMs()
-        });
-    }
-    return {
-        id: `round_${roundIndex + 1}`,
-        index: roundIndex,
-        name: getBracketRoundName(safeUids.length),
-        matches
-    };
-};
-
 const resolveBracketVoterUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
 const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
 const resolveLobbyUserToken = (roomUser = {}) => {
@@ -1916,37 +1864,6 @@ const getBracketMatchCrowdVotes = ({ users = [], bracketId = '', match = null })
         }
     });
     return summary;
-};
-
-const appendBracketAuditEvent = (bracket = {}, event = {}) => {
-    const trail = Array.isArray(bracket?.auditTrail) ? bracket.auditTrail : [];
-    const normalized = {
-        id: event.id || `audit_${nowMs()}_${Math.random().toString(36).slice(2, 7)}`,
-        at: Number(event.at || nowMs()),
-        type: String(event.type || 'event'),
-        text: String(event.text || ''),
-        ...event
-    };
-    return {
-        ...bracket,
-        auditTrail: [...trail, normalized].slice(-200)
-    };
-};
-
-const upsertBracketMatchHistoryEntry = (bracket = {}, entry = {}) => {
-    if (!entry?.matchId) return bracket;
-    const history = Array.isArray(bracket?.matchHistory) ? bracket.matchHistory : [];
-    const nextEntry = {
-        id: entry.id || `mh_${entry.matchId}_${nowMs()}`,
-        at: Number(entry.at || nowMs()),
-        ...entry
-    };
-    const filtered = history.filter((item) => item?.matchId !== entry.matchId);
-    const next = [...filtered, nextEntry].sort((a, b) => Number(a.at || 0) - Number(b.at || 0));
-    return {
-        ...bracket,
-        matchHistory: next
-    };
 };
 
 const buildBracketSummary = (bracket = {}) => {
@@ -2007,55 +1924,6 @@ const buildBracketSummary = (bracket = {}) => {
             posterTitle: championName ? `${championName} Takes The Crown` : 'Sweet 16 Showdown',
             tagline: championName ? `Champion of Room ${bracket?.roomCode || ''}` : 'One room. One champion.',
             moments
-        }
-    };
-};
-
-const advanceBracketState = (bracket = {}) => {
-    const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
-    const activeRoundIndex = Math.max(0, Number(bracket?.activeRoundIndex || 0));
-    const currentRound = rounds[activeRoundIndex];
-    if (!currentRound) return bracket;
-    const matches = Array.isArray(currentRound.matches) ? currentRound.matches : [];
-    if (!matches.length || !matches.every((match) => !!match?.winnerUid)) return bracket;
-    const winners = matches.map((match) => match.winnerUid).filter(Boolean);
-    if (winners.length <= 1) {
-        const completedAt = nowMs();
-        const championUid = winners[0] || null;
-        const champion = championUid ? bracket?.contestantsByUid?.[championUid] : null;
-        return {
-            ...bracket,
-            status: 'complete',
-            championUid,
-            championName: champion?.name || '',
-            activeMatchId: null,
-            roundTransition: null,
-            championCelebration: {
-                id: `champion_${championUid || 'winner'}_${completedAt}`,
-                at: completedAt,
-                championUid,
-                championName: champion?.name || ''
-            }
-        };
-    }
-    const completedAt = nowMs();
-    const nextRound = buildBracketRound({
-        contestantUids: winners,
-        contestantsByUid: bracket?.contestantsByUid || {},
-        roundIndex: rounds.length
-    });
-    return {
-        ...bracket,
-        status: 'in_progress',
-        activeRoundIndex: rounds.length,
-        activeMatchId: null,
-        rounds: [...rounds, nextRound],
-        roundTransition: {
-            id: `transition_${currentRound.id || activeRoundIndex}_${nextRound.id}_${completedAt}`,
-            at: completedAt,
-            completedRoundIndex: activeRoundIndex,
-            fromRoundName: currentRound?.name || `Round ${activeRoundIndex + 1}`,
-            toRoundName: nextRound?.name || `Round ${rounds.length + 1}`
         }
     };
 };
@@ -2623,11 +2491,6 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     const doodlePromptId = doodle?.promptId || '';
     const selfiePromptId = selfie?.promptId || '';
     const doodleRequireReview = !!doodle?.requireReview;
-    const doodleApprovedUids = useMemo(() => {
-        const ids = Array.isArray(doodle?.approvedUids) ? doodle.approvedUids : [];
-        return ids.filter(Boolean);
-    }, [doodle?.approvedUids]);
-    const doodleApprovedSet = useMemo(() => new Set(doodleApprovedUids), [doodleApprovedUids]);
     const modeLabel = {
         doodle_oke: 'Doodle-oke',
         selfie_challenge: 'Selfie Challenge',
@@ -2710,10 +2573,10 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     }, [isQaMode, qaIsReveal, qaHasTimer, qaData?.id]);
 
     const doodleVisibleCount = doodleRequireReview
-        ? doodleSubmissions.filter((submission) => doodleApprovedSet.has(submission.uid)).length
+        ? doodleSubmissions.filter((submission) => submission.approved).length
         : doodleSubmissions.length;
     const doodlePendingCount = doodleRequireReview
-        ? doodleSubmissions.filter((submission) => !doodleApprovedSet.has(submission.uid)).length
+        ? doodleSubmissions.filter((submission) => !submission.approved).length
         : 0;
     const selfieApprovedCount = selfie?.requireApproval
         ? selfieSubmissions.filter((submission) => submission.approved).length
@@ -2733,6 +2596,12 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                     updatedAt: nowMs()
                 }
             });
+            if (roomCode && doodlePromptId) {
+                await callFunction('syncDoodleOkePublicProjection', {
+                    roomCode,
+                    promptId: doodlePromptId
+                });
+            }
             if (message) toast(message);
         } catch (err) {
             hostLogger.error('Host controlpad doodle patch failed', err);
@@ -2763,30 +2632,99 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
 
     const toggleDoodleReview = async () => {
         const next = !doodleRequireReview;
-        const patch = { requireReview: next };
-        if (!next) patch.approvedUids = [];
-        await patchDoodle(patch, next ? 'Host review enabled' : 'Auto-show enabled');
+        await patchDoodle({ requireReview: next }, next ? 'Host review enabled' : 'Auto-show enabled');
     };
 
     const approveDoodleUid = async (uid) => {
-        if (!uid) return;
-        const next = Array.from(new Set([...doodleApprovedUids, uid]));
-        await patchDoodle({ approvedUids: next }, 'Sketch approved for TV');
+        const submission = doodleSubmissions.find((entry) => entry.uid === uid) || null;
+        if (!roomCode || !submission?.id) return;
+        setBusy(true);
+        try {
+            await callFunction('setDoodleSubmissionApproval', {
+                roomCode,
+                submissionId: submission.id,
+                approved: true
+            });
+            setDoodleSubmissions((prev) => prev.map((entry) => (
+                entry.id === submission.id
+                    ? { ...entry, approved: true, moderatedAt: nowMs() }
+                    : entry
+            )));
+            toast('Sketch approved for TV');
+        } catch (err) {
+            hostLogger.error('Host controlpad doodle approval failed', err);
+            toast('Could not approve sketch');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const hideDoodleUid = async (uid) => {
-        if (!uid) return;
-        const next = doodleApprovedUids.filter((existingUid) => existingUid !== uid);
-        await patchDoodle({ approvedUids: next }, 'Sketch hidden from TV');
+        const submission = doodleSubmissions.find((entry) => entry.uid === uid) || null;
+        if (!roomCode || !submission?.id) return;
+        setBusy(true);
+        try {
+            await callFunction('setDoodleSubmissionApproval', {
+                roomCode,
+                submissionId: submission.id,
+                approved: false
+            });
+            setDoodleSubmissions((prev) => prev.map((entry) => (
+                entry.id === submission.id
+                    ? { ...entry, approved: false, moderatedAt: nowMs() }
+                    : entry
+            )));
+            toast('Sketch hidden from TV');
+        } catch (err) {
+            hostLogger.error('Host controlpad doodle hide failed', err);
+            toast('Could not hide sketch');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const approveAllDoodles = async () => {
-        const next = Array.from(new Set(doodleSubmissions.map((submission) => submission.uid).filter(Boolean)));
-        await patchDoodle({ approvedUids: next }, 'All sketches approved');
+        const pendingSubmissions = doodleSubmissions.filter((submission) => submission?.id && !submission.approved);
+        if (!roomCode || !pendingSubmissions.length) return;
+        setBusy(true);
+        try {
+            await Promise.all(pendingSubmissions.map((submission) => (
+                callFunction('setDoodleSubmissionApproval', {
+                    roomCode,
+                    submissionId: submission.id,
+                    approved: true
+                })
+            )));
+            setDoodleSubmissions((prev) => prev.map((entry) => ({ ...entry, approved: true, moderatedAt: nowMs() })));
+            toast('All sketches approved');
+        } catch (err) {
+            hostLogger.error('Host controlpad approve all doodles failed', err);
+            toast('Could not approve all sketches');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const clearDoodleApprovals = async () => {
-        await patchDoodle({ approvedUids: [] }, 'Approvals cleared');
+        const approvedSubmissions = doodleSubmissions.filter((submission) => submission?.id && submission.approved);
+        if (!roomCode || !approvedSubmissions.length) return;
+        setBusy(true);
+        try {
+            await Promise.all(approvedSubmissions.map((submission) => (
+                callFunction('setDoodleSubmissionApproval', {
+                    roomCode,
+                    submissionId: submission.id,
+                    approved: false
+                })
+            )));
+            setDoodleSubmissions((prev) => prev.map((entry) => ({ ...entry, approved: false, moderatedAt: nowMs() })));
+            toast('Approvals cleared');
+        } catch (err) {
+            hostLogger.error('Host controlpad clear doodle approvals failed', err);
+            toast('Could not clear approvals');
+        } finally {
+            setBusy(false);
+        }
     };
 
     const openTv = () => {
@@ -3294,8 +3232,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                             </button>
                             <button
                                 onClick={clearDoodleApprovals}
-                                disabled={busy || !doodleApprovedUids.length}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs ${(busy || !doodleApprovedUids.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                disabled={busy || !doodleSubmissions.some((submission) => submission.approved)}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-xs ${(busy || !doodleSubmissions.some((submission) => submission.approved)) ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 Hide Approved
                             </button>
@@ -3303,7 +3241,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         {doodleSubmissions.length > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 {doodleSubmissions.slice(0, 4).map((submission) => {
-                                    const isApproved = doodleApprovedSet.has(submission.uid);
+                                    const isApproved = !!submission.approved;
                                     return (
                                         <div key={submission.id} className="rounded-xl border border-zinc-700 bg-zinc-900/70 overflow-hidden">
                                             <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-20 object-contain bg-zinc-950" />
@@ -6885,8 +6823,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipCrates, setTipCrates] = useState(DEFAULT_TIP_CRATES);
     const [catalogueName, setCatalogueName] = useState('');
     const [catalogueUserId, setCatalogueUserId] = useState('');
-    const [_showCataloguePrompt, setShowCataloguePrompt] = useState(false);
-    const [_cataloguePendingSong, setCataloguePendingSong] = useState(null);
+    const [showCataloguePrompt, setShowCataloguePrompt] = useState(false);
+    const [cataloguePendingSong, setCataloguePendingSong] = useState(null);
+    const [cataloguePromptBusy, setCataloguePromptBusy] = useState(false);
     const [catalogueSearchQ, setCatalogueSearchQ] = useState('');
     const [_catalogueResults, setCatalogueResults] = useState([]);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
@@ -14888,51 +14827,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
-            const openedAt = nowMs();
-            const signup = buildBracketSignupState({
+            const result = await manageKaraokeBracket({
+                roomCode,
+                action: 'open_signup',
                 durationMin: options?.durationMin,
                 readySongMin: options?.readySongMin,
-                openedAt
-            }, openedAt);
-            const bracketPayload = appendBracketAuditEvent({
-                id: room?.karaokeBracket?.id || `sweet16_${openedAt}`,
-                style: 'sweet16',
-                format: 'single_elimination',
-                roomCode,
-                size: 0,
-                status: 'signup',
-                createdAt: Number(room?.karaokeBracket?.createdAt || openedAt),
-                contestantOrder: [],
-                contestantsByUid: {},
-                rounds: [],
-                activeRoundIndex: 0,
-                activeMatchId: null,
-                crowdVotingEnabled: room?.karaokeBracket?.crowdVotingEnabled !== false,
-                roundTransition: null,
-                championCelebration: null,
-                seedMode: 'signup',
-                matchHistory: [],
-                auditTrail: Array.isArray(room?.karaokeBracket?.auditTrail) ? room.karaokeBracket.auditTrail : [],
-                championUid: null,
-                championName: '',
-                signup
-            }, {
-                type: 'signup_opened',
-                text: `Bracket signup opened (${signup.durationMin}m / ${signup.readySongMin}+ songs).`,
-                durationMin: signup.durationMin,
-                readySongMin: signup.readySongMin
+                songSelectionMode: options?.songSelectionMode || 'tight15_random'
             });
-            await updateRoom({
-                activeMode: 'karaoke_bracket',
-                karaokeBracket: bracketPayload,
-                gameData: bracketPayload,
-                gameParticipantMode: 'all',
-                gameParticipants: []
-            });
+            const pickRound = result?.songSelectionMode === 'singer_pick_round';
             await logActivity(
                 roomCode,
                 hostName || 'Host',
-                `opened Sweet 16 signup (${signup.durationMin} min / ${signup.readySongMin}+ songs).`,
+                pickRound ? 'opened Sweet 16 signup (singers pick each round).' : 'opened Sweet 16 signup.',
                 EMOJI.star
             );
             toast('Bracket signup is live.');
@@ -14948,121 +14854,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
-            const bracketSignup = getBracketSignupState(room?.karaokeBracket);
-            const readySongMin = Math.max(1, Number(bracketSignup?.readySongMin || 1));
-            const seedUids = Array.isArray(options?.seedUids) ? options.seedUids.filter(Boolean) : [];
-            const seedMode = seedUids.length ? 'manual' : 'auto';
-            const shouldRandomize = seedMode === 'manual' ? !!options?.randomize : true;
-            const candidateUsers = users.filter((u) => {
-                const uid = resolveRoomUserUid(u);
-                if (!uid) return false;
-                if (room?.hostUid && uid === room.hostUid) return false;
-                if (room?.hostName && String(u?.name || '').trim() === String(room.hostName).trim()) return false;
-                return true;
-            });
-            const hydrated = await Promise.all(candidateUsers.map(async (u) => ({
-                roomUser: u,
-                uid: resolveRoomUserUid(u),
-                tight15: await getRoomUserTight15(u)
-            })));
-            const eligible = hydrated.filter((entry) => entry.uid && entry.tight15.length >= readySongMin);
-            if (eligible.length < BRACKET_SIGNUP_MIN_READY_COUNT) {
-                toast(bracketSignup
-                    ? `Need at least ${BRACKET_SIGNUP_MIN_READY_COUNT} singers with ${readySongMin}+ Tight 15 songs for this bracket.`
-                    : 'Need at least 2 singers with Tight 15 songs for a bracket.'
-                );
-                return;
-            }
-            const eligibleByUid = new Map(eligible.map((entry) => [entry.uid, entry]));
-            let seededPool = eligible;
-            if (seedMode === 'manual') {
-                const seen = new Set();
-                const ordered = [];
-                seedUids.forEach((uid) => {
-                    if (seen.has(uid)) return;
-                    seen.add(uid);
-                    const entry = eligibleByUid.get(uid);
-                    if (entry) ordered.push(entry);
-                });
-                if (ordered.length < BRACKET_SIGNUP_MIN_READY_COUNT) {
-                    toast(bracketSignup
-                        ? `Need at least ${BRACKET_SIGNUP_MIN_READY_COUNT} selected singers with ${readySongMin}+ Tight 15 songs.`
-                        : 'Need at least 2 selected singers with Tight 15 songs.'
-                    );
-                    return;
-                }
-                seededPool = ordered;
-            }
-            const maxSupported = Math.min(16, seededPool.length);
-            const bracketSize = Math.pow(2, Math.floor(Math.log2(maxSupported)));
-            if (bracketSize < 2) {
-                toast('Not enough bracket-ready singers.');
-                return;
-            }
-            const seeded = (shouldRandomize ? shuffleList(seededPool) : [...seededPool]).slice(0, bracketSize);
-            const contestantsByUid = {};
-            const contestantOrder = [];
-            seeded.forEach((entry) => {
-                contestantsByUid[entry.uid] = {
-                    uid: entry.uid,
-                    name: entry.roomUser?.name || 'Singer',
-                    avatar: entry.roomUser?.avatar || EMOJI.mic,
-                    tight15: sanitizeTight15List(entry.tight15)
-                };
-                contestantOrder.push(entry.uid);
-            });
-            const firstRound = buildBracketRound({
-                contestantUids: contestantOrder,
-                contestantsByUid,
-                roundIndex: 0
-            });
-            const bracketPayload = {
-                id: `sweet16_${nowMs()}`,
-                style: 'sweet16',
-                format: 'single_elimination',
+            const result = await manageKaraokeBracket({
                 roomCode,
-                size: bracketSize,
-                status: 'setup',
-                createdAt: Number(room?.karaokeBracket?.createdAt || nowMs()),
-                contestantOrder,
-                contestantsByUid,
-                rounds: [firstRound],
-                activeRoundIndex: 0,
-                activeMatchId: null,
-                crowdVotingEnabled: true,
-                roundTransition: null,
-                championCelebration: null,
-                seedMode,
-                matchHistory: [],
-                auditTrail: [],
-                championUid: null,
-                championName: '',
-                signup: null
-            };
-            const seededNames = contestantOrder
-                .map((uid, idx) => `${idx + 1}. ${contestantsByUid?.[uid]?.name || 'Singer'}`)
-                .join(', ');
-            const withAudit = appendBracketAuditEvent(bracketPayload, {
-                type: 'bracket_created',
-                text: `Bracket created (${seedMode}${shouldRandomize ? '/random' : '/ordered'}).`,
-                bracketSize,
-                seedMode,
-                randomize: !!shouldRandomize,
-                seededUids: contestantOrder,
-                seededNames
+                action: 'create',
+                seedUids: Array.isArray(options?.seedUids) ? options.seedUids.filter(Boolean) : [],
+                randomize: !!options?.randomize,
+                songSelectionMode: options?.songSelectionMode || room?.karaokeBracket?.songSelectionMode || room?.karaokeBracket?.signup?.songSelectionMode || 'tight15_random'
             });
-            await updateRoom({
-                activeMode: 'karaoke_bracket',
-                karaokeBracket: withAudit,
-                gameData: withAudit,
-                gameParticipantMode: 'all',
-                gameParticipants: []
-            });
-            await logActivity(roomCode, hostName || 'Host', `created a Sweet ${bracketSize} bracket (${seedMode}).`, EMOJI.star);
-            toast(`Sweet ${bracketSize} bracket ready.`);
+            await logActivity(roomCode, hostName || 'Host', `created a Sweet ${result?.bracketSize || 0} bracket.`, EMOJI.star);
+            toast(`Sweet ${result?.bracketSize || 0} bracket ready.`);
         } catch (error) {
             hostLogger.error('Create Sweet 16 bracket failed', error);
-            toast('Could not create bracket.');
+            toast(error?.message || 'Could not create bracket.');
         } finally {
             setBracketBusy(false);
         }
@@ -15073,19 +14876,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!bracket?.rounds?.length || bracketBusy) return;
         setBracketBusy(true);
         try {
-            let nextBracket = {
-                ...bracket,
-                crowdVotingEnabled: !!enabled
-            };
-            nextBracket = appendBracketAuditEvent(nextBracket, {
-                type: 'crowd_voting_toggled',
-                text: enabled ? 'Crowd voting enabled.' : 'Crowd voting paused.',
+            await manageKaraokeBracket({
+                roomCode,
+                action: 'toggle_crowd_voting',
                 enabled: !!enabled
-            });
-            await updateRoom({
-                activeMode: 'karaoke_bracket',
-                karaokeBracket: nextBracket,
-                gameData: nextBracket
             });
             toast(enabled ? 'Crowd voting enabled.' : 'Crowd voting paused.');
         } catch (error) {
@@ -15105,85 +14899,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
-            const roundIndex = Math.max(0, Number(bracket.activeRoundIndex || 0));
-            const rounds = Array.isArray(bracket.rounds) ? [...bracket.rounds] : [];
-            const round = rounds[roundIndex];
-            if (!round) {
-                toast('No active bracket round.');
-                return;
-            }
-            const matchIndex = round.matches.findIndex((match) => !match?.queuedAt && !match?.winnerUid);
-            if (matchIndex < 0) {
-                toast('All matches in this round are already queued.');
-                return;
-            }
-            const matches = [...round.matches];
-            const target = { ...matches[matchIndex], queuedAt: nowMs() };
-            const aContestant = target.aUid ? bracket?.contestantsByUid?.[target.aUid] : null;
-            const bContestant = target.bUid ? bracket?.contestantsByUid?.[target.bUid] : null;
-            const presentUids = new Set(users.map((entry) => resolveRoomUserUid(entry)).filter(Boolean));
-            const aMissing = !!target?.aUid && !presentUids.has(target.aUid);
-            const bMissing = !!target?.bUid && !presentUids.has(target.bUid);
-            if (aMissing && bMissing) {
-                toast('Both singers are offline. Wait for one to return or reseed.');
-                return;
-            }
-            if (aMissing !== bMissing) {
-                const winnerUid = aMissing ? target.bUid : target.aUid;
-                const loserUid = aMissing ? target.aUid : target.bUid;
-                const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || 'Singer';
-                await setBracketMatchWinner(target.id, winnerUid, {
-                    reason: 'forfeit_no_show_auto',
-                    source: 'queue_next_auto',
-                    loserUid,
-                    allowWhileBusy: true
-                });
-                toast(`${winnerName} advances by no-show.`);
-                return;
-            }
-            if (aContestant && target.aSong) {
-                await queueTight15EntryForSinger({
-                    roomUser: { uid: aContestant.uid, name: aContestant.name, avatar: aContestant.avatar },
-                    entry: target.aSong,
-                    sourceLabel: 'sweet16_match'
-                });
-            }
-            if (bContestant && target.bSong) {
-                await queueTight15EntryForSinger({
-                    roomUser: { uid: bContestant.uid, name: bContestant.name, avatar: bContestant.avatar },
-                    entry: target.bSong,
-                    sourceLabel: 'sweet16_match'
-                });
-            }
-            matches[matchIndex] = target;
-            rounds[roundIndex] = { ...round, matches };
-            const nextBracketState = {
-                ...bracket,
-                status: 'in_progress',
-                rounds,
-                activeRoundIndex: roundIndex,
-                activeMatchId: target.id,
-                roundTransition: null
-            };
-            const nextWithAudit = appendBracketAuditEvent(nextBracketState, {
-                type: 'match_queued',
-                text: `Queued ${aContestant?.name || 'Singer A'} vs ${bContestant?.name || 'Singer B'} in ${round?.name || 'Round'}.`,
-                matchId: target.id,
-                roundIndex,
-                roundName: round?.name || '',
-                slot: Number(target?.slot || 0),
-                aUid: target?.aUid || null,
-                bUid: target?.bUid || null
+            const result = await manageKaraokeBracket({
+                roomCode,
+                action: 'queue_next_match'
             });
-            await updateRoom({
-                activeMode: 'karaoke_bracket',
-                karaokeBracket: nextWithAudit,
-                gameData: nextWithAudit
-            });
-            toast(`Queued ${aContestant?.name || 'Singer'} vs ${bContestant?.name || 'Singer'}.`);
+            toast(result?.requiresSingerSongPick
+                ? 'Match queued. Singers can pick songs for this round.'
+                : 'Match queued and songs added.'
+            );
         } catch (error) {
             hostLogger.error('Queue next bracket match failed', error);
-            toast('Could not queue next match.');
+            toast(error?.message || 'Could not queue next match.');
         } finally {
             setBracketBusy(false);
         }
@@ -15226,7 +14952,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await setBracketMatchWinner(matchId, winnerUid, {
             reason: 'crowd_vote',
             source: 'crowd',
-            votes
+            votes,
+            useCrowdVotes: true
         });
     };
 
@@ -15260,120 +14987,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const setBracketMatchWinner = async (matchId, winnerUid, options = {}) => {
         const bracket = room?.karaokeBracket;
-        if (!bracket?.rounds?.length || !matchId || !winnerUid) return;
+        if (!bracket?.rounds?.length || !matchId || (!winnerUid && !options?.useCrowdVotes)) return;
         if (bracketBusy && !options?.allowWhileBusy) return;
         setBracketBusy(true);
         try {
             const resolutionType = String(options?.reason || 'host_manual');
-            const resolutionSource = String(options?.source || 'host');
-            const rounds = Array.isArray(bracket.rounds) ? [...bracket.rounds] : [];
-            let foundRoundIndex = -1;
-            let foundMatchIndex = -1;
-            rounds.some((round, rIdx) => {
-                const idx = (round.matches || []).findIndex((match) => match.id === matchId);
-                if (idx >= 0) {
-                    foundRoundIndex = rIdx;
-                    foundMatchIndex = idx;
-                    return true;
-                }
-                return false;
-            });
-            if (foundRoundIndex < 0 || foundMatchIndex < 0) {
-                toast('Match not found.');
-                return;
-            }
-            const round = rounds[foundRoundIndex];
-            const match = round.matches[foundMatchIndex];
-            if (![match.aUid, match.bUid].includes(winnerUid)) {
-                toast('Winner must be one of the two singers in this match.');
-                return;
-            }
-            const resolvedAt = nowMs();
-            const loserUid = options?.loserUid || (winnerUid === match?.aUid ? match?.bUid : match?.aUid);
-            const aContestant = bracket?.contestantsByUid?.[match?.aUid] || null;
-            const bContestant = bracket?.contestantsByUid?.[match?.bUid] || null;
-            const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || 'Winner';
-            const loserName = bracket?.contestantsByUid?.[loserUid]?.name || 'Singer';
-            const voteSummary = options?.votes || getBracketMatchCrowdVotes({
-                users,
+            const result = await resolveKaraokeBracketMatch({
+                roomCode,
                 bracketId: bracket?.id || '',
-                match
+                matchId,
+                winnerUid: winnerUid || '',
+                loserUid: options?.loserUid || '',
+                reason: resolutionType,
+                source: String(options?.source || 'host'),
+                useCrowdVotes: options?.useCrowdVotes === true
             });
-            const matches = [...round.matches];
-            matches[foundMatchIndex] = {
-                ...match,
-                winnerUid,
-                completedAt: resolvedAt,
-                resolutionType
-            };
-            rounds[foundRoundIndex] = { ...round, matches };
-            let nextBracket = advanceBracketState({
-                ...bracket,
-                rounds,
-                activeRoundIndex: foundRoundIndex
-            });
-            nextBracket = upsertBracketMatchHistoryEntry(nextBracket, {
-                matchId: match.id,
-                roundIndex: foundRoundIndex,
-                roundName: round?.name || `Round ${foundRoundIndex + 1}`,
-                slot: Number(match?.slot || foundMatchIndex + 1),
-                aUid: match?.aUid || null,
-                aName: aContestant?.name || 'Singer A',
-                aSong: match?.aSong || null,
-                bUid: match?.bUid || null,
-                bName: bContestant?.name || 'Singer B',
-                bSong: match?.bSong || null,
-                winnerUid,
-                winnerName,
-                loserUid: loserUid || null,
-                loserName: loserName || '',
-                resolutionType,
-                resolutionSource,
-                votes: {
-                    total: Number(voteSummary?.total || 0),
-                    aVotes: Number(voteSummary?.aVotes || 0),
-                    bVotes: Number(voteSummary?.bVotes || 0)
-                },
-                queuedAt: Number(match?.queuedAt || 0),
-                at: resolvedAt
-            });
-            const resolutionText = resolutionType === 'crowd_vote'
-                ? `${winnerName} won the crowd vote over ${loserName}.`
-                : resolutionType === 'forfeit_no_show_auto'
-                    ? `${winnerName} advanced by automatic no-show forfeit.`
-                    : resolutionType === 'forfeit_no_show_host'
-                        ? `${winnerName} advanced by host no-show ruling.`
-                        : `${winnerName} advanced over ${loserName}.`;
-            nextBracket = appendBracketAuditEvent(nextBracket, {
-                type: 'match_resolved',
-                text: `${resolutionText} (${round?.name || 'Round'} - Match ${match?.slot || foundMatchIndex + 1})`,
-                matchId: match.id,
-                roundIndex: foundRoundIndex,
-                roundName: round?.name || '',
-                winnerUid,
-                loserUid: loserUid || null,
-                resolutionType,
-                source: resolutionSource,
-                votes: {
-                    total: Number(voteSummary?.total || 0),
-                    aVotes: Number(voteSummary?.aVotes || 0),
-                    bVotes: Number(voteSummary?.bVotes || 0)
-                }
-            });
-            const bracketSummary = buildBracketSummary(nextBracket);
-            await updateRoom({
-                activeMode: 'karaoke_bracket',
-                karaokeBracket: nextBracket,
-                gameData: nextBracket,
-                bracketLastSummary: bracketSummary
-            });
+            const winnerName = result?.winnerName || 'Winner';
             await logActivity(roomCode, hostName || 'Host', `advanced ${winnerName} in the bracket.`, EMOJI.sparkle);
-            if (nextBracket?.status === 'complete') {
-                await logActivity(roomCode, hostName || 'Host', `crowned ${nextBracket?.championName || 'the champion'} in Sweet 16.`, EMOJI.trophy || EMOJI.star);
-                toast(`${nextBracket?.championName || 'Champion'} wins the tournament.`);
-            } else if (nextBracket?.roundTransition?.id) {
-                const fromName = nextBracket?.roundTransition?.fromRoundName || 'Round';
-                const toName = nextBracket?.roundTransition?.toRoundName || 'Next round';
+            if (result?.status === 'complete') {
+                await logActivity(roomCode, hostName || 'Host', `crowned ${result?.championName || 'the champion'} in Sweet 16.`, EMOJI.trophy || EMOJI.star);
+                toast(`${result?.championName || 'Champion'} wins the tournament.`);
+            } else if (result?.roundTransition?.id) {
+                const fromName = result?.roundTransition?.fromRoundName || 'Round';
+                const toName = result?.roundTransition?.toRoundName || 'Next round';
                 await logActivity(roomCode, hostName || 'Host', `${fromName} complete. ${toName} is ready.`, EMOJI.sparkle);
                 toast(`${fromName} complete. Queue ${toName}.`);
             } else {
@@ -15455,18 +15091,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (bracketBusy) return;
         setBracketBusy(true);
         try {
-            const payload = {
-                karaokeBracket: null,
-                gameData: null
-            };
-            if (room?.activeMode === 'karaoke_bracket') {
-                payload.activeMode = 'karaoke';
-            }
-            await updateRoom(payload);
+            await manageKaraokeBracket({
+                roomCode,
+                action: 'clear'
+            });
             toast('Bracket cleared.');
         } catch (error) {
             hostLogger.error('Clear bracket failed', error);
             toast('Could not clear bracket.');
+        } finally {
+            setBracketBusy(false);
+        }
+    };
+
+    const goLiveSweet16Bracket = async () => {
+        if (bracketBusy || !room?.karaokeBracket?.rounds?.length) return;
+        setBracketBusy(true);
+        try {
+            await manageKaraokeBracket({
+                roomCode,
+                action: 'go_live'
+            });
+            toast('Bracket launched');
+        } catch (error) {
+            hostLogger.error('Launch bracket failed', error);
+            toast('Could not launch bracket.');
         } finally {
             setBracketBusy(false);
         }
@@ -15528,12 +15177,42 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast('Added to queue');
     };
 
-    const _resolveCatalogueSinger = () => {
+    const resolveCatalogueSinger = () => {
         if (catalogueUserId) {
             const matched = users.find(u => u.id?.split('_')[1] === catalogueUserId || u.uid === catalogueUserId);
             return matched?.name || catalogueName.trim();
         }
         return catalogueName.trim();
+    };
+
+    const closeCataloguePrompt = () => {
+        if (cataloguePromptBusy) return;
+        setCataloguePendingSong(null);
+        setCatalogueUserId('');
+        setCatalogueName('');
+        setShowCataloguePrompt(false);
+    };
+
+    const confirmCatalogueQueue = async () => {
+        if (!cataloguePendingSong || cataloguePromptBusy) return;
+        const singerName = resolveCatalogueSinger() || room?.hostName || hostName || 'Host';
+        setCataloguePromptBusy(true);
+        try {
+            if (cataloguePendingSong.__yt) {
+                await queueYouTubeIndexItem(cataloguePendingSong.item, singerName);
+            } else {
+                await queueBrowseSong(cataloguePendingSong, singerName);
+            }
+            setCataloguePendingSong(null);
+            setCatalogueUserId('');
+            setCatalogueName('');
+            setShowCataloguePrompt(false);
+        } catch (error) {
+            hostLogger.error('Catalogue helper queue failed', error);
+            toast('Could not add that catalogue pick right now.');
+        } finally {
+            setCataloguePromptBusy(false);
+        }
     };
 
     const queueBrowseSongFromCatalog = (song) => {
@@ -15575,6 +15254,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const browsePanel = (
                     <div className="flex flex-col h-full min-h-0 gap-6 pr-2 custom-scrollbar touch-scroll-y">
+                        {catalogueOnly && (
+                            <div className="rounded-2xl border border-yellow-300/25 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
+                                <div className="font-black uppercase tracking-[0.24em] text-[11px] text-yellow-200">Roaming DJ helper mode</div>
+                                <div className="mt-1 text-yellow-100/80">Browse picks stay here and ask who the song is for before entering the queue.</div>
+                            </div>
+                        )}
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Browse</div>
@@ -15766,6 +15451,82 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     </button>
                                                 </div>
                                         ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {showCataloguePrompt && cataloguePendingSong && (
+                            <div className="fixed inset-0 z-[95] bg-black/78 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="w-full max-w-lg rounded-3xl border border-cyan-300/25 bg-[#080d18] shadow-2xl overflow-hidden">
+                                    <div className="p-5 border-b border-white/10 bg-gradient-to-r from-cyan-500/12 via-zinc-950 to-pink-500/12">
+                                        <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200">Assign catalogue pick</div>
+                                        <div className="mt-2 text-2xl font-black text-white">
+                                            {cataloguePendingSong.__yt ? cataloguePendingSong.item?.trackName : cataloguePendingSong.title}
+                                        </div>
+                                        <div className="text-sm text-zinc-400">
+                                            {cataloguePendingSong.__yt ? cataloguePendingSong.item?.artistName : cataloguePendingSong.artist}
+                                        </div>
+                                    </div>
+                                    <div className="p-5 space-y-4">
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-[0.22em] text-zinc-400 mb-2">Known singer</label>
+                                            <select
+                                                value={catalogueUserId}
+                                                onChange={(event) => {
+                                                    const nextUid = event.target.value;
+                                                    setCatalogueUserId(nextUid);
+                                                    if (nextUid) {
+                                                        const matched = users.find(u => u.id?.split('_')[1] === nextUid || u.uid === nextUid);
+                                                        setCatalogueName(matched?.name || '');
+                                                    }
+                                                }}
+                                                className={`${STYLES.input} bg-zinc-950 border-cyan-300/25`}
+                                                disabled={cataloguePromptBusy}
+                                            >
+                                                <option value="">Queue as roaming DJ / type a name</option>
+                                                {users.map((user) => {
+                                                    const uidValue = user.uid || user.id?.split('_')[1] || user.id || '';
+                                                    if (!uidValue) return null;
+                                                    return (
+                                                        <option key={uidValue} value={uidValue}>
+                                                            {user.name || uidValue}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-[0.22em] text-zinc-400 mb-2">Singer name</label>
+                                            <input
+                                                value={catalogueName}
+                                                onChange={(event) => {
+                                                    setCatalogueName(event.target.value);
+                                                    setCatalogueUserId('');
+                                                }}
+                                                className={`${STYLES.input} bg-zinc-950 border-cyan-300/25`}
+                                                placeholder={room?.hostName || hostName || 'Host'}
+                                                disabled={cataloguePromptBusy}
+                                            />
+                                            <div className="mt-2 text-xs text-zinc-500">Leave blank to queue under the host/helper name.</div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={closeCataloguePrompt}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4`}
+                                                disabled={cataloguePromptBusy}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={confirmCatalogueQueue}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4`}
+                                                disabled={cataloguePromptBusy}
+                                            >
+                                                {cataloguePromptBusy ? `${EMOJI.refresh} Adding...` : '+ Add to Queue'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -17735,6 +17496,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onCreateSweet16Bracket={createSweet16Bracket}
                                 onQueueNextBracketMatch={queueNextBracketMatch}
                                 onClearSweet16Bracket={clearSweet16Bracket}
+                                onGoLiveSweet16Bracket={goLiveSweet16Bracket}
                                 onSetBracketMatchWinner={setBracketMatchWinner}
                                 onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
                                 onToggleBracketCrowdVoting={toggleBracketCrowdVoting}

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { 
     db, doc, onSnapshot, setDoc, updateDoc, increment, serverTimestamp, 
     addDoc, collection, query, where, orderBy, limit, deleteDoc, arrayUnion,
-    getDoc, getDocs, runTransaction,
+    getDoc, getDocs,
     storage, storageRef, uploadBytesResumable, getDownloadURL,
     auth, ensureUserProfile, EmailAuthProvider, linkWithCredential, signInWithCredential, onAuthStateChanged,
     sendBeauRocksEmailSignInLink, isSignInWithEmailLink,
@@ -16,7 +16,16 @@ import {
     mergeAnonymousAccountData,
     joinRoomAudience,
     updateAudienceIdentity,
-    uploadAudienceRoomPhoto
+    uploadAudienceRoomPhoto,
+    submitAudienceQueueSong,
+    submitBracketRoundSong,
+    submitDoodleOkeEntry,
+    castDoodleOkeVote,
+    submitSelfieChallengeEntry,
+    castSelfieChallengeVote,
+    submitBingoTileConfirmation,
+    submitBingoMysterySpin,
+    lockBingoMysteryPick
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
 import { emoji, EMOJI } from '../../lib/emoji';
@@ -129,6 +138,18 @@ const resolveRoomUserUid = (roomUser = {}, fallbackId = '') => {
     const underscoreIndex = safeId.indexOf('_');
     if (underscoreIndex === -1) return safeId;
     return safeId.slice(underscoreIndex + 1).trim();
+};
+
+const buildSelfieChallengeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
+    const safeRoomCode = String(roomCodeValue || '').trim().toUpperCase();
+    const safePromptId = String(promptIdValue || '').trim().replace(/[\\/]/g, '_').slice(0, 120);
+    return safeRoomCode && safePromptId ? `${safeRoomCode}_${safePromptId}` : '';
+};
+
+const buildDoodleOkeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
+    const safeRoomCode = String(roomCodeValue || '').trim().toUpperCase();
+    const safePromptId = String(promptIdValue || '').trim().replace(/[\\/]/g, '_').slice(0, 120);
+    return safeRoomCode && safePromptId ? `${safeRoomCode}_${safePromptId}` : '';
 };
 
 // Helper Component for Animated Points
@@ -383,6 +404,13 @@ const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.')
     return fallback;
 };
 const ROOM_REQUEST_INTENT_HOST_PICK = 'host_pick_tight15';
+
+const buildAudienceQueueRequestId = () => {
+    const randomPart = typeof crypto !== 'undefined' && crypto?.getRandomValues
+        ? Array.from(crypto.getRandomValues(new Uint32Array(2))).map((value) => value.toString(36)).join('')
+        : Math.random().toString(36).slice(2);
+    return `${Date.now().toString(36)}_${randomPart}`.slice(0, 80);
+};
 
 const getJoinErrorMessage = (error) => {
     if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
@@ -1463,6 +1491,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
     const [selfieVotes, setSelfieVotes] = useState([]);
     const [mySelfieVote, setMySelfieVote] = useState(null);
+    const [selfieSubmittedUids, setSelfieSubmittedUids] = useState([]);
     const [guitarVictoryOpen, setGuitarVictoryOpen] = useState(false);
     const [guitarVictoryInfo, setGuitarVictoryInfo] = useState(null);
     const [strobeVictoryOpen, setStrobeVictoryOpen] = useState(false);
@@ -1475,6 +1504,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [doodleNow, setDoodleNow] = useState(Date.now());
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
+    const [doodleSubmittedUids, setDoodleSubmittedUids] = useState([]);
     const [doodleMyVote, setDoodleMyVote] = useState(null);
     const [doodleSubmitted, setDoodleSubmitted] = useState(false);
     const [doodleBrush, setDoodleBrush] = useState(6);
@@ -1857,12 +1887,14 @@ const SingerApp = ({ roomCode, uid }) => {
         if (room?.activeMode !== 'doodle_oke') {
             setDoodleSubmissions([]);
             setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
             setDoodleMyVote(null);
             setDoodleSubmitted(false);
             return;
         }
         setDoodleSubmissions([]);
         setDoodleVotes([]);
+        setDoodleSubmittedUids([]);
         setDoodleMyVote(null);
         setDoodleSubmitted(false);
     }, [room?.activeMode, room?.doodleOke?.promptId]);
@@ -1870,69 +1902,72 @@ const SingerApp = ({ roomCode, uid }) => {
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke') return;
         const participants = room?.doodleOkeConfig?.participants || [];
-        const eligible = !participants.length || participants.includes(uid);
+        const eligible = !participants.length || participants.includes(activeUid);
         if (!eligible) return;
         initDoodleCanvas();
-    }, [room?.activeMode, room?.doodleOke?.promptId, room?.doodleOkeConfig?.participants, uid]);
+    }, [room?.activeMode, room?.doodleOke?.promptId, room?.doodleOkeConfig?.participants, activeUid]);
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke') return;
         const participants = room?.doodleOkeConfig?.participants || [];
-        const eligible = !participants.length || participants.includes(uid);
+        const eligible = !participants.length || participants.includes(activeUid);
         if (!eligible) return;
         if (room?.doodleOke?.status === 'voting' && !doodleSubmitted) {
             submitDoodleDrawing();
         }
         // submitDoodleDrawing is declared later; keep deps primitive to avoid TDZ at render.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [room?.activeMode, room?.doodleOke?.status, room?.doodleOkeConfig?.participants, uid, doodleSubmitted]);
+    }, [room?.activeMode, room?.doodleOke?.status, room?.doodleOkeConfig?.participants, activeUid, doodleSubmitted]);
 
     useEffect(() => {
         if (room?.activeMode !== 'doodle_oke' || !room?.doodleOke?.promptId) return;
-        const subsQ = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', room.doodleOke.promptId),
-            orderBy('timestamp', 'desc'),
-            limit(40)
-        );
-        const votesQ = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', room.doodleOke.promptId),
-            orderBy('timestamp', 'desc'),
-            limit(80)
-        );
-        const unsubSubs = watchQuerySnapshot(
-            subsQ,
-            (snap) => {
-                setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            },
-            {
-                label: `singer:doodle_submissions:${roomCode}`,
-                onFallback: () => setDoodleSubmissions([])
-            }
-        );
-        const unsubVotes = watchQuerySnapshot(
-            votesQ,
-            (snap) => {
-                const votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                setDoodleVotes(votes);
-                setDoodleMyVote(votes.find(v => v.uid === uid) || null);
-            },
-            {
-                label: `singer:doodle_votes:${roomCode}`,
-                onFallback: () => {
-                    setDoodleVotes([]);
-                    setDoodleMyVote(null);
-                }
-            }
-        );
-        return () => {
-            unsubSubs();
-            unsubVotes();
+        const promptId = String(room.doodleOke.promptId || '').trim();
+        const projectionId = buildDoodleOkeProjectionId(roomCode, promptId);
+        if (!projectionId) {
+            setDoodleSubmissions([]);
+            setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
+            setDoodleMyVote(null);
+            return;
+        }
+        const projectionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_oke_public', projectionId);
+        const handleDoodleWatchError = (error) => {
+            console.warn('Doodle projection watch failed', error);
+            setDoodleSubmissions([]);
+            setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
+            setDoodleMyVote(null);
         };
-    }, [room?.activeMode, room?.doodleOke?.promptId, roomCode, uid]);
+        const unsubProjection = onSnapshot(
+            projectionRef,
+            (snap) => {
+                const data = snap.data() || {};
+                const submissions = Array.isArray(data?.submissions) ? data.submissions : [];
+                const submittedUids = Array.isArray(data?.submittedUids)
+                    ? data.submittedUids.filter((entry) => typeof entry === 'string' && entry.trim())
+                    : [];
+                const voteMap = data?.votesByVoterUid && typeof data.votesByVoterUid === 'object'
+                    ? data.votesByVoterUid
+                    : {};
+                const votes = Object.entries(voteMap)
+                    .map(([voterUid, targetUid]) => ({
+                        id: voterUid,
+                        voterUid,
+                        targetUid: typeof targetUid === 'string' ? targetUid : ''
+                    }))
+                    .filter((vote) => vote.targetUid);
+                setDoodleSubmissions(submissions);
+                setDoodleVotes(votes);
+                setDoodleSubmittedUids(submittedUids);
+                const mine = activeUid && typeof voteMap?.[activeUid] === 'string'
+                    ? voteMap[activeUid]
+                    : null;
+                setDoodleMyVote(mine ? { id: activeUid, voterUid: activeUid, targetUid: mine } : null);
+            },
+            handleDoodleWatchError
+        );
+        return () => { unsubProjection(); };
+    }, [room?.activeMode, room?.doodleOke?.promptId, roomCode, activeUid]);
 
     const getStormAmbientUrl = useCallback(() => {
         if (stormPhase === 'approach') return STORM_SFX.lightRain;
@@ -3317,45 +3352,51 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [postAudienceYoutubeCommand, youtubeId, room?.videoStartTimestamp, room?.videoPlaying]);
 
     const submitDoodleDrawing = useCallback(async () => {
-        if (!roomCode || !user || !room?.doodleOke?.promptId) return;
+        if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
         if (doodleSubmitted) return;
         const canvas = doodleCanvasRef.current;
         if (!canvas) return;
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         if (!dataUrl || dataUrl.length < 1000) return toast('Add a little more detail first');
         try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'), {
+            const submission = await submitDoodleOkeEntry({
                 roomCode,
                 promptId: room.doodleOke.promptId,
-                uid,
                 name: user?.name || 'Guest',
                 avatar: user?.avatar || '',
-                image: dataUrl,
-                approved: !room?.doodleOke?.requireReview,
-                timestamp: serverTimestamp()
+                image: dataUrl
             });
             setDoodleSubmitted(true);
-            toast(room?.doodleOke?.requireReview ? 'Drawing submitted for host review!' : 'Drawing submitted!');
+            setDoodleSubmittedUids((prev) => (
+                prev.includes(activeUid) ? prev : [...prev, activeUid]
+            ));
+            toast(submission?.duplicate
+                ? 'Drawing already submitted'
+                : (room?.doodleOke?.requireReview ? 'Drawing submitted for host review!' : 'Drawing submitted!'));
         } catch (e) {
             console.error(e);
             toast('Submit failed');
         }
-    }, [roomCode, user, room?.doodleOke?.promptId, room?.doodleOke?.requireReview, doodleSubmitted, uid, toast]);
+    }, [roomCode, user, room?.doodleOke?.promptId, room?.doodleOke?.requireReview, doodleSubmitted, activeUid, toast]);
 
     const submitDoodleVote = async (targetUid) => {
-        if (!roomCode || !user || !room?.doodleOke?.promptId) return;
+        if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
         if (doodleMyVote) return;
         try {
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'), {
+            const vote = await castDoodleOkeVote({
                 roomCode,
                 promptId: room.doodleOke.promptId,
-                uid,
-                name: user?.name || 'Guest',
-                avatar: user?.avatar || '',
                 targetUid,
-                timestamp: serverTimestamp()
             });
-            toast('Vote submitted!');
+            const voterUid = String(vote?.voterUid || activeUid || '').trim();
+            if (voterUid) {
+                setDoodleMyVote({ id: voterUid, voterUid, targetUid });
+                setDoodleVotes((prev) => {
+                    if (prev.some((entry) => entry.voterUid === voterUid)) return prev;
+                    return [...prev, { id: voterUid, voterUid, targetUid }];
+                });
+            }
+            toast(vote?.duplicate ? 'Vote already submitted' : 'Vote submitted!');
         } catch (e) {
             console.error(e);
             toast('Vote failed');
@@ -4151,43 +4192,55 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setSelfieSubmissions([]);
             setSelfieVotes([]);
             setMySelfieVote(null);
+            setSelfieSubmittedUids([]);
             return;
         }
-        const promptId = room.selfieChallenge.promptId;
-        const submissionsQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
-        );
-        const votesQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_votes'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
-        );
+        const promptId = String(room.selfieChallenge.promptId || '').trim();
+        const projectionId = buildSelfieChallengeProjectionId(roomCode, promptId);
+        if (!projectionId) {
+            setSelfieSubmissions([]);
+            setSelfieVotes([]);
+            setMySelfieVote(null);
+            setSelfieSubmittedUids([]);
+            return;
+        }
+        const projectionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_challenge_public', projectionId);
         const handleSelfieWatchError = (error) => {
             console.warn('Selfie challenge watch failed', error);
             setSelfieSubmissions([]);
             setSelfieVotes([]);
             setMySelfieVote(null);
+            setSelfieSubmittedUids([]);
         };
-        const unsubSubs = onSnapshot(
-            submissionsQuery,
-            (s) => {
-                setSelfieSubmissions(s.docs.map(d => ({ id: d.id, ...d.data() })));
-            },
-            handleSelfieWatchError
-        );
-        const unsubVotes = onSnapshot(
-            votesQuery,
-            (s) => {
-                const votes = s.docs.map(d => ({ id: d.id, ...d.data() }));
+        const unsubProjection = onSnapshot(
+            projectionRef,
+            (snap) => {
+                const data = snap.data() || {};
+                const submissions = Array.isArray(data?.submissions) ? data.submissions : [];
+                const submittedUids = Array.isArray(data?.submittedUids)
+                    ? data.submittedUids.filter((entry) => typeof entry === 'string' && entry.trim())
+                    : [];
+                const voteMap = data?.votesByVoterUid && typeof data.votesByVoterUid === 'object'
+                    ? data.votesByVoterUid
+                    : {};
+                const votes = Object.entries(voteMap)
+                    .map(([voterUid, targetUid]) => ({
+                        id: voterUid,
+                        voterUid,
+                        targetUid: typeof targetUid === 'string' ? targetUid : ''
+                    }))
+                    .filter((vote) => vote.targetUid);
+                setSelfieSubmissions(submissions);
                 setSelfieVotes(votes);
-                const mine = votes.find(v => v.voterUid === activeUid);
-                setMySelfieVote(mine ? mine.targetUid : null);
+                setSelfieSubmittedUids(submittedUids);
+                const mine = activeUid && typeof voteMap?.[activeUid] === 'string'
+                    ? voteMap[activeUid]
+                    : null;
+                setMySelfieVote(mine || null);
             },
             handleSelfieWatchError
         );
-        return () => { unsubSubs(); unsubVotes(); };
+        return () => { unsubProjection(); };
     }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode, activeUid]);
 
     // Sync room VIP with account status
@@ -4398,7 +4451,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // Selfie Cam / Selfie Challenge
     useEffect(() => {
         if (!user) return;
-        const isChallengeParticipant = room?.activeMode === 'selfie_challenge' && room?.selfieChallenge?.participants?.includes(uid);
+        const isChallengeParticipant = room?.activeMode === 'selfie_challenge' && room?.selfieChallenge?.participants?.includes(activeUid);
         const isVictoryCapture = guitarVictoryOpen || strobeVictoryOpen;
         const shouldUseCamera = isAudienceSelfieCam || isChallengeParticipant || isVictoryCapture;
         if (shouldUseCamera && (!cameraActive || !videoRef.current?.srcObject)) {
@@ -4410,7 +4463,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             setCameraActive(false);
         }
-    }, [isAudienceSelfieCam, room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, startCamera, uid]);
+    }, [isAudienceSelfieCam, room?.activeMode, room?.selfieChallenge?.participants, guitarVictoryOpen, strobeVictoryOpen, user, cameraActive, startCamera, activeUid]);
 
     useEffect(() => {
         const videoEl = videoRef.current;
@@ -5564,6 +5617,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return {
                     url: String(fallback.url).trim(),
                     storagePath: String(fallback.storagePath).trim(),
+                    uploadedUid: authUid,
                 };
             }
             const task = uploadBytesResumable(fileRef, blob, { contentType: 'image/jpeg' });
@@ -5592,7 +5646,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     : `${prefix}: ${String(error?.message || error)} | ${debugContext}`;
                 throw error;
             }
-            return { url, storagePath };
+            return {
+                url,
+                storagePath,
+                uploadedUid: authUid,
+            };
         };
 
         let lastErr = null;
@@ -5634,7 +5692,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         throw lastErr || new Error('Selfie upload failed');
     }, [activeUid, authReadyUid, form.name, roomCode, uid, user?.name, user?.uid, waitForJoinAuthUid]);
 
-    const captureAndUploadSelfie = useCallback(async ({ quality = 0.6, suffix = 'selfie', cropMode = 'full', uploadMode = 'direct' } = {}) => {
+    const captureAndUploadSelfie = useCallback(async ({ quality = 0.6, suffix = 'selfie', cropMode = 'full', uploadMode = 'server' } = {}) => {
         let canvas = captureSelfieCanvas({ cropMode });
         if (!canvas) {
             if (!cameraActive || !videoRef.current?.srcObject) {
@@ -5681,7 +5739,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         source = 'rules_modal',
         sourceMode = room?.activeMode || 'lobby'
     } = {}) => {
-        const submissionUid = String(auth.currentUser?.uid || authReadyUid || activeUid || uid || '').trim();
+        const submissionUid = String(photo?.uploadedUid || auth.currentUser?.uid || authReadyUid || activeUid || uid || '').trim();
         if (!submissionUid) throw new Error('Sign in required');
         if (!photo?.url || !photo?.storagePath || !roomCode) throw new Error('Missing selfie payload');
         const payload = {
@@ -5751,7 +5809,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const photo = await captureAndUploadSelfie({
                 quality: 0.5,
                 suffix: crowdSelfieMomentOptIn ? 'crowd_selfie' : 'reaction',
-                uploadMode: crowdSelfieMomentOptIn ? 'server' : 'direct',
+                uploadMode: 'server',
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
@@ -5786,7 +5844,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const photo = await captureAndUploadSelfie({
                 quality: 0.6,
                 suffix: crowdSelfieMomentOptIn ? 'crowd_selfie' : 'guitar_victory',
-                uploadMode: crowdSelfieMomentOptIn ? 'server' : 'direct',
+                uploadMode: 'server',
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
@@ -5839,7 +5897,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             const photo = await captureAndUploadSelfie({
                 quality: 0.6,
                 suffix: crowdSelfieMomentOptIn ? 'crowd_selfie' : 'strobe_victory',
-                uploadMode: crowdSelfieMomentOptIn ? 'server' : 'direct',
+                uploadMode: 'server',
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
                 roomCode,
@@ -5885,21 +5943,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const submitSelfieChallenge = async () => {
         if (!videoRef.current || !user || !room?.selfieChallenge?.promptId) return;
         try {
-            const activeUid = String(auth.currentUser?.uid || authReadyUid || uid || '').trim();
-            if (!activeUid) throw new Error('Sign in required');
             const photo = await captureAndUploadSelfie({ quality: 0.5, suffix: 'challenge' });
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), {
+            const submission = await submitSelfieChallengeEntry({
                 roomCode,
                 promptId: room.selfieChallenge.promptId,
-                uid: activeUid,
                 userName: user.name,
                 avatar: user.avatar,
                 url: photo.url,
-                storagePath: photo.storagePath,
-                approved: !room?.selfieChallenge?.requireApproval,
-                timestamp: serverTimestamp()
+                storagePath: photo.storagePath
             });
-            toast('Selfie submitted');
+            const submissionUid = String(submission?.uid || auth.currentUser?.uid || authReadyUid || activeUid || uid || '').trim();
+            if (submissionUid) {
+                setSelfieSubmittedUids((prev) => prev.includes(submissionUid) ? prev : [...prev, submissionUid]);
+            }
+            toast(submission?.duplicate ? 'Selfie already submitted' : 'Selfie submitted');
         } catch (e) {
             console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Selfie submit failed'));
@@ -6134,6 +6191,30 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
     
+    const getActiveBracketRoundSongPickContext = () => {
+        const bracket = room?.activeMode === 'karaoke_bracket'
+            ? (room?.karaokeBracket || room?.gameData || null)
+            : null;
+        if (!bracket || bracket?.songSelectionMode !== 'singer_pick_round') return null;
+        const matchId = bracket?.activeMatchId || '';
+        const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
+        const match = rounds
+            .flatMap((round) => Array.isArray(round?.matches) ? round.matches : [])
+            .find((entry) => entry?.id === matchId) || null;
+        if (!match || match?.winnerUid) return null;
+        const singerUid = activeUid || uid || '';
+        if (!singerUid || (match.aUid !== singerUid && match.bUid !== singerUid)) return null;
+        const side = match.bUid === singerUid ? 'b' : 'a';
+        const songField = side === 'b' ? 'bSong' : 'aSong';
+        if (match?.[songField]?.songTitle) return null;
+        if (match?.requiresSingerSongPick !== true && match?.songSelectionMode !== 'singer_pick_round') return null;
+        return {
+            bracketId: bracket?.id || '',
+            matchId,
+            side
+        };
+    };
+
     const submitSong = async (s, a, art, options = {}) => { 
         if(!user) return; 
         const singerUid = activeUid;
@@ -6157,17 +6238,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             if(!song) return; 
             markActive();
             await ensureAppCheckToken(false).catch(() => false);
-            const rotation = queueSettings.rotation || 'first_come';
-            const firstTimeBoost = !!queueSettings.firstTimeBoost;
-            const queuedCount = songs.filter(songItem => songBelongsToAudienceUser(songItem, singerUid, user.name) && (songItem.status === 'requested' || songItem.status === 'pending' || songItem.status === 'performing')).length;
-            const performedCount = songs.filter(songItem => songBelongsToAudienceUser(songItem, singerUid, user.name) && songItem.status === 'performed').length;
-            let priorityScore = Date.now();
-            if (rotation === 'round_robin') {
-                priorityScore += queuedCount * 60000;
-            }
-            if (firstTimeBoost && performedCount === 0) {
-                priorityScore -= 120000;
-            }
             const enforcePending = songLimitState.softReviewPending;
             const allowTrack = guestBackingAllowed || !!options.allowTrack || !!options.mediaUrl;
             const backingUrl = (options.mediaUrl || (allowTrack ? form.backingUrl : '') || '').trim();
@@ -6268,38 +6338,49 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
 
             const collabOpen = options?.collabOpen === true || (!!requestCollabOpen && options?.collabOpen !== false);
-            const createdSongDoc = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
+            const bracketRoundPick = options?.skipBracketRoundSong === true ? null : getActiveBracketRoundSongPickContext();
+            const queuePayload = {
                 roomCode,
                 songTitle: song,
-                artist: artist,
+                artist,
                 albumArtUrl: artwork || '',
                 singerName: user.name,
-                singerUid,
                 emoji: user.avatar,
-                status: requestStatus,
-                timestamp: serverTimestamp(),
-                priorityScore,
                 songId: songId || null,
                 trackId,
                 trackSource: resolvedTrackSource,
                 mediaUrl: resolvedMediaUrl,
                 appleMusicId: resolvedAppleMusicId,
-                duration: resolvedDurationSec > 0 ? resolvedDurationSec : null,
+                itunesId: resolvedAppleMusicId,
+                durationSec: resolvedDurationSec,
                 audioOnly: resolvedAudioOnly,
-                backingAudioOnly: resolvedAudioOnly,
-                playbackReady,
                 youtubeEmbeddable: requestedYoutubeEmbeddable,
                 youtubeUploadStatus: requestedYoutubeUploadStatus,
                 youtubePrivacyStatus: requestedYoutubePrivacyStatus,
                 youtubePlaybackStatus: requestedYoutubePlaybackStatus,
                 mediaResolutionStatus,
-                requestedBackingMode: roomRequestMode,
                 resolutionStatus,
                 resolutionLayer,
+                trustedCandidate: options.trustedCandidate === true || resolutionStatus === 'resolved' || mediaResolutionStatus === 'catalog_ready',
                 collabOpen,
-                collabMode: collabOpen ? 'duet_or_group' : 'solo',
-                reviewRequestedAt: requiresBackingHostReview(resolutionStatus) ? serverTimestamp() : null
-            }); 
+                clientRequestId: options.clientRequestId || buildAudienceQueueRequestId(),
+                submittedVia: bracketRoundPick ? 'karaoke_bracket_round' : (options.submittedVia || 'audience'),
+                sourceMode: bracketRoundPick ? 'karaoke_bracket' : (room?.activeMode || 'karaoke'),
+                runOfShowItemId: room?.runOfShowDirector?.liveItemId || room?.runOfShowItemId || ''
+            };
+            const queueResult = bracketRoundPick
+                ? await submitBracketRoundSong({
+                    ...queuePayload,
+                    bracketId: bracketRoundPick.bracketId,
+                    matchId: bracketRoundPick.matchId
+                })
+                : await submitAudienceQueueSong(queuePayload);
+            const createdSongId = queueResult?.songId || '';
+            const createdStatus = queueResult?.status || requestStatus;
+            const createdPlaybackReady = queueResult?.playbackReady ?? playbackReady;
+            const createdResolutionStatus = queueResult?.resolutionStatus || resolutionStatus;
+            const createdResolutionLayer = queueResult?.resolutionLayer || resolutionLayer;
+            const createdCollabOpen = queueResult?.collabOpen ?? collabOpen;
             await clearHostPickRequest({ silent: true }).catch((error) => {
                 console.warn('Singer host-pick request clear failed', error);
             });
@@ -6316,25 +6397,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setCatalogSearchOpen(false);
             setSongsTab('queue');
             setLastSongRequestFeedback({
-                requestId: createdSongDoc.id,
+                requestId: createdSongId,
                 songTitle: song,
                 artist: artist || 'Unknown',
-                status: requestStatus,
-                playbackReady,
-                resolutionStatus,
-                resolutionLayer,
-                collabOpen,
+                status: createdStatus,
+                playbackReady: createdPlaybackReady,
+                resolutionStatus: createdResolutionStatus,
+                resolutionLayer: createdResolutionLayer,
+                collabOpen: createdCollabOpen,
                 requestedAt: Date.now()
             });
             const requestStateMeta = getAudienceRequestStateMeta({
-                status: requestStatus,
-                playbackReady,
-                resolutionStatus
+                status: createdStatus,
+                playbackReady: createdPlaybackReady,
+                resolutionStatus: createdResolutionStatus
             });
             toast(
-                requiresBackingHostReview(resolutionStatus)
+                queueResult?.duplicate
+                    ? 'Already queued.'
+                    : bracketRoundPick
+                    ? 'Bracket song picked.'
+                    : requiresBackingHostReview(createdResolutionStatus)
                     ? (resolvedAppleMusicId ? 'Queued. Matching karaoke backing.' : 'Queued. Host review needed.')
-                    : isAudienceSelectedUnverifiedResolution(resolutionStatus)
+                    : isAudienceSelectedUnverifiedResolution(createdResolutionStatus)
                         ? 'Queued. Unverified backing selected.'
                         : `Queued. ${requestStateMeta.label}.`
             );
@@ -7983,20 +8068,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     if (room?.activeMode === 'doodle_oke' && room?.doodleOke && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const doodle = room.doodleOke;
         const participants = room?.doodleOkeConfig?.participants || [];
-        const eligibleToDraw = !participants.length || participants.includes(uid);
+        const eligibleToDraw = !participants.length || participants.includes(activeUid);
         const requireReview = !!doodle?.requireReview;
-        const approvedUidSet = new Set(Array.isArray(doodle?.approvedUids) ? doodle.approvedUids.filter(Boolean) : []);
         let phase = doodle.status || 'drawing';
         if (phase === 'drawing' && doodle.endsAt && doodleNow >= doodle.endsAt) phase = 'voting';
         if (phase === 'voting' && doodle.guessEndsAt && doodleNow >= doodle.guessEndsAt) phase = 'reveal';
         const drawRemaining = Math.max(0, Math.ceil((doodle.endsAt - doodleNow) / 1000));
         const voteRemaining = Math.max(0, Math.ceil((doodle.guessEndsAt - doodleNow) / 1000));
         const promptVisible = phase === 'drawing' || phase === 'reveal';
-        const visibleSubmissions = requireReview
-            ? doodleSubmissions.filter((submission) => approvedUidSet.has(submission.uid))
-            : doodleSubmissions;
-        const pendingReviewCount = Math.max(0, doodleSubmissions.length - visibleSubmissions.length);
-        const mySubmissionApproved = approvedUidSet.has(uid);
+        const visibleSubmissions = doodleSubmissions;
+        const pendingReviewCount = requireReview
+            ? Math.max(0, doodleSubmittedUids.length - visibleSubmissions.length)
+            : 0;
+        const hasSubmitted = doodleSubmitted || doodleSubmittedUids.includes(activeUid);
+        const mySubmissionApproved = visibleSubmissions.some((submission) => submission.uid === activeUid);
         const voteCounts = doodleVotes.reduce((acc, v) => {
             acc[v.targetUid] = (acc[v.targetUid] || 0) + 1;
             return acc;
@@ -8041,7 +8126,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <>
                                     <div className="flex items-center justify-between mb-3">
                                         <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Drawing Tools</div>
-                                        <div className="text-xs text-zinc-400">{doodleSubmitted ? 'Submitted' : 'Draw + Submit'}</div>
+                                        <div className="text-xs text-zinc-400">{hasSubmitted ? 'Submitted' : 'Draw + Submit'}</div>
                                     </div>
                                     <div className="flex gap-2 mb-3 flex-wrap">
                                         {['#00C4D9', '#EC4899', '#FACC15', '#FFFFFF'].map(color => (
@@ -8088,12 +8173,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button
                                         data-feature-id="singer-doodle-submit"
                                         onClick={submitDoodleDrawing}
-                                        disabled={doodleSubmitted}
-                                        className={`mt-3 w-full py-3 rounded-xl font-bold ${doodleSubmitted ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
+                                        disabled={hasSubmitted}
+                                        className={`mt-3 w-full py-3 rounded-xl font-bold ${hasSubmitted ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
                                     >
-                                        {doodleSubmitted ? 'Submitted' : 'Submit Drawing'}
+                                        {hasSubmitted ? 'Submitted' : 'Submit Drawing'}
                                     </button>
-                                    {doodleSubmitted && requireReview && !mySubmissionApproved && (
+                                    {hasSubmitted && requireReview && !mySubmissionApproved && (
                                         <div className="mt-2 text-xs text-amber-300 text-center">Awaiting host approval before your sketch appears.</div>
                                     )}
                                 </>
@@ -8155,8 +8240,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     // --- SELFIE CAM ---
     if (room?.activeMode === 'selfie_challenge' && !(isStreamlinedAudienceShell && takeoverMinimized)) {
         const challenge = room?.selfieChallenge;
-        const isParticipant = !!challenge?.participants?.includes(uid);
-        const hasSubmitted = selfieSubmissions.some(s => s.uid === uid);
+        const isParticipant = !!challenge?.participants?.includes(activeUid);
+        const hasSubmitted = selfieSubmittedUids.includes(activeUid);
         const visibleSubmissions = challenge?.requireApproval
             ? selfieSubmissions.filter(s => s.approved)
             : selfieSubmissions;
@@ -8168,14 +8253,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const castVote = async (targetUid) => {
             if (!user || !challenge?.promptId) return;
             if (mySelfieVote) return toast('Vote already submitted');
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_votes'), {
+            const vote = await castSelfieChallengeVote({
                 roomCode,
                 promptId: challenge.promptId,
-                voterUid: activeUid,
-                targetUid,
-                timestamp: serverTimestamp()
+                targetUid
             });
-            toast('Vote submitted');
+            const voterUid = String(vote?.voterUid || activeUid || '').trim();
+            if (voterUid) {
+                setMySelfieVote(targetUid);
+                setSelfieVotes((prev) => {
+                    if (prev.some((entry) => entry.voterUid === voterUid)) return prev;
+                    return [...prev, { id: voterUid, voterUid, targetUid }];
+                });
+            }
+            toast(vote?.duplicate ? 'Vote already submitted' : 'Vote submitted');
         };
 
         return (
@@ -8446,28 +8537,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         const submitMysterySpin = async ({ allowFinalized = false } = {}) => {
             if (!user || !activeUid) return false;
-            const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
-            const spinEntry = {
-                uid: activeUid,
-                name: user.name,
-                avatar: user.avatar,
-                value: Math.floor(Math.random() * 1000) + 1,
-                at: serverTimestamp()
-            };
-            const accepted = await runTransaction(db, async (tx) => {
-                const snap = await tx.get(roomRef);
-                if (!snap.exists()) return false;
-                const roomData = snap.data() || {};
-                const rngState = roomData?.bingoMysteryRng || {};
-                const isOpen = !!rngState?.active || (allowFinalized && !!rngState?.finalized);
-                if (!isOpen) return false;
-                if (rngState?.results?.[activeUid]) return false;
-                tx.update(roomRef, { [`bingoMysteryRng.results.${activeUid}`]: spinEntry });
-                return true;
+            const result = await submitBingoMysterySpin({
+                roomCode,
+                allowFinalized
             });
-            if (!accepted) return false;
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`), { lastActiveAt: serverTimestamp() });
-            return true;
+            return !!result?.ok;
         };
 
         // PASS THE USER OBJECT HERE
@@ -8508,125 +8582,48 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     setPendingBingoSuggest(null);
                     return;
                 }
-                const userRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${activeUid}`);
                 const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
                 if (isMysteryBingo) {
-                    if (!isMysteryParticipant) {
-                        toast('You are spectating this mystery round.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    const latestSnap = await getDoc(roomRef);
-                    if (!latestSnap.exists()) {
-                        toast('Room unavailable.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    const latestRoom = latestSnap.data() || {};
-                    const latestParticipantMode = latestRoom?.gameParticipantMode === 'selected' ? 'selected' : 'all';
-                    const latestParticipants = latestParticipantMode === 'selected' && Array.isArray(latestRoom?.gameParticipants)
-                        ? latestRoom.gameParticipants
-                        : [];
-                    if (latestParticipantMode === 'selected' && !latestParticipants.includes(uid)) {
-                        toast('You are spectating this mystery round.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    const latestPickerUid = latestRoom?.bingoPickerUid || null;
-                    const latestTurnIndex = Math.max(0, Number(latestRoom?.bingoTurnIndex || 0));
-                    const latestTurnLocked = Number(latestRoom?.bingoTurnPick?.turnIndex ?? -1) === latestTurnIndex;
-                    if (latestPickerUid && latestPickerUid !== uid) {
-                        toast('Waiting for the picker.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    if (latestTurnLocked && latestRoom?.bingoTurnPick?.pickerUid === uid) {
-                        toast('You already locked a pick this turn. Perform to pass the turn.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    if (latestRoom?.bingoRevealed?.[idx]) {
-                        toast('That tile is already revealed.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    const tile = latestRoom?.bingoData?.[idx];
-                    if (!tile) {
-                        toast('Tile missing.');
-                        setPendingBingoSuggest(null);
-                        return;
-                    }
-                    const songTitle = tile.content?.title || tile.text || 'Mystery Song';
-                    const artist = tile.content?.artist || 'Unknown';
-                    const art = tile.content?.art || '';
-                    await submitSong(songTitle, artist, art, { itunesId: tile.content?.itunesId || '' });
-                    await updateDoc(roomRef, {
-                        [`bingoRevealed.${idx}`]: true,
-                        [`bingoSuggestions.${idx}.count`]: increment(1),
-                        [`bingoSuggestions.${idx}.lastNote`]: note || '',
-                        [`bingoSuggestions.${idx}.lastAt`]: serverTimestamp(),
-                        highlightedTile: idx,
-                        bingoFocus: { index: idx, pickerUid: uid, at: serverTimestamp() },
-                        bingoTurnPick: { pickerUid: uid, turnIndex: latestTurnIndex, index: idx, at: serverTimestamp() }
+                    const result = await lockBingoMysteryPick({
+                        roomCode,
+                        tileIndex: idx,
+                        note
+                    });
+                    const song = result?.song || {};
+                    await submitSong(song.title || 'Mystery Song', song.artist || 'Unknown', song.art || '', {
+                        itunesId: song.itunesId || '',
+                        submittedVia: 'bingo_mystery'
                     });
                     setTimeout(() => updateDoc(roomRef, { highlightedTile: null }).catch(() => {}), 1000);
                     toast('Mystery pick locked.');
                     setPendingBingoSuggest(null);
                     return;
                 }
-                const result = await runTransaction(db, async (tx) => {
-                    const roomSnap = await tx.get(roomRef);
-                    const userSnap = await tx.get(userRef);
-                    if (!roomSnap.exists()) {
-                        throw new Error('ROOM_MISSING');
-                    }
-                    const latestRoom = roomSnap.data() || {};
-                    if (latestRoom?.activeMode !== 'bingo' || latestRoom?.bingoMode === 'mystery') {
-                        throw new Error('MODE_CHANGED');
-                    }
-                    if (latestRoom?.bingoRevealed?.[idx]) {
-                        throw new Error('ALREADY_REVEALED');
-                    }
-                    const latestSessionId = String(latestRoom?.bingoSessionId || bingoSessionId || 'default');
-                    const userData = userSnap.exists() ? userSnap.data() || {} : {};
-                    const existingVotes = userData?.bingoVotesBySession?.[latestSessionId] || {};
-                    if (existingVotes?.[idx]) {
-                        throw new Error('ALREADY_VOTED');
-                    }
-                    const participantMode = latestRoom?.gameParticipantMode === 'selected' ? 'selected' : 'all';
-                    const participantList = participantMode === 'selected' && Array.isArray(latestRoom?.gameParticipants)
-                        ? latestRoom.gameParticipants
-                        : [];
-                    const eligibleVoters = participantMode === 'selected' && participantList.length
-                        ? allUsers.filter((entry) => participantList.includes(entry.uid))
-                        : allUsers;
-                    const voterCount = Math.max(1, eligibleVoters.length || 1);
-                    const currentCount = Number(latestRoom?.bingoSuggestions?.[idx]?.count || 0);
-                    const nextCount = currentCount + 1;
-                    const thresholdPct = typeof latestRoom?.bingoAutoApprovePct === 'number' ? latestRoom.bingoAutoApprovePct : 50;
-                    const thresholdVotes = Math.max(1, Math.ceil((voterCount * thresholdPct) / 100));
-                    const autoApprove = latestRoom?.bingoVotingMode === 'host+votes' && nextCount >= thresholdVotes;
-
-                    tx.set(userRef, { [`bingoVotesBySession.${latestSessionId}.${idx}`]: true }, { merge: true });
-                    tx.update(roomRef, {
-                        [`bingoSuggestions.${idx}.count`]: nextCount,
-                        [`bingoSuggestions.${idx}.lastNote`]: note || '',
-                        [`bingoSuggestions.${idx}.lastAt`]: serverTimestamp(),
-                        highlightedTile: idx,
-                        ...(autoApprove ? { [`bingoRevealed.${idx}`]: true } : {})
-                    });
-                    return { autoApprove };
+                const result = await submitBingoTileConfirmation({
+                    roomCode,
+                    tileIndex: idx,
+                    note
                 });
                 setTimeout(() => updateDoc(roomRef, { highlightedTile: null }).catch(() => {}), 1000);
-                toast(result?.autoApprove ? 'Auto-approved!' : 'Suggested!');
+                toast(result?.duplicate ? 'Already confirmed.' : result?.autoApprove ? 'Confirmed by the room!' : 'Observation sent.');
             } catch (e) {
                 console.error(e);
-                if (String(e?.message || '').includes('ALREADY_VOTED')) {
-                    toast('You already voted on that tile');
-                } else if (String(e?.message || '').includes('ALREADY_REVEALED')) {
+                const message = String(e?.message || '');
+                const code = String(e?.code || '');
+                if (code.includes('already-exists') || message.includes('already locked')) {
+                    toast('You already locked a pick this turn.');
+                } else if (message.includes('already revealed')) {
                     toast('That tile is already revealed.');
+                } else if (message.includes('spectating')) {
+                    toast('You are spectating this round.');
+                } else if (message.includes('Waiting for the picker')) {
+                    toast('Waiting for the picker.');
+                } else if (message.includes('no longer accepting') || message.includes('not active')) {
+                    toast('That bingo round just closed.');
+                } else if (message.includes('already confirmed')) {
+                    toast('Already confirmed.');
                 } else {
-                    toast('Suggest failed');
+                    toast('Could not send that bingo update.');
                 }
             } finally {
                 setPendingBingoSuggest(null);

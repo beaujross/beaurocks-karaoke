@@ -48,9 +48,6 @@ const useModerationInboxState = ({
     const selfiePromptId = selfie?.promptId || '';
     const doodleRequireReview = !!doodle?.requireReview;
     const selfieRequireApproval = !!selfie?.requireApproval;
-    const approvedUids = useMemo(() => (
-        Array.isArray(doodle?.approvedUids) ? doodle.approvedUids.filter(Boolean) : []
-    ), [doodle?.approvedUids]);
 
     useEffect(() => {
         if (!roomCode || !doodlePromptId) {
@@ -141,7 +138,6 @@ const useModerationInboxState = ({
     const snapshot = useMemo(() => buildModerationQueueSnapshot({
         doodleRequireReview,
         selfieRequireApproval,
-        approvedUids,
         doodleSubmissions,
         selfieSubmissions,
         crowdSelfieSubmissions,
@@ -150,7 +146,6 @@ const useModerationInboxState = ({
     }), [
         doodleRequireReview,
         selfieRequireApproval,
-        approvedUids,
         doodleSubmissions,
         selfieSubmissions,
         crowdSelfieSubmissions,
@@ -169,22 +164,20 @@ const useModerationInboxState = ({
 
     const approveDoodleUid = useCallback(async (uid = '') => {
         const normalizedUid = String(uid || '').trim();
-        if (!normalizedUid || typeof updateRoom !== 'function') return;
-        const activeDoodle = room?.doodleOke;
-        if (!activeDoodle) return;
+        const submission = doodleSubmissions.find((entry) => String(entry?.uid || '').trim() === normalizedUid) || null;
+        if (!roomCode || !submission?.id || typeof callFunction !== 'function') return;
         setBusyAction('doodle-approve');
         try {
-            const nextApproved = Array.from(new Set([
-                ...(Array.isArray(activeDoodle.approvedUids) ? activeDoodle.approvedUids : []),
-                normalizedUid
-            ]));
-            await updateRoom({
-                doodleOke: {
-                    ...activeDoodle,
-                    approvedUids: nextApproved,
-                    updatedAt: nowMs()
-                }
+            await callFunction('setDoodleSubmissionApproval', {
+                roomCode,
+                submissionId: submission.id,
+                approved: true
             });
+            setDoodleSubmissions((prev) => prev.map((entry) => (
+                String(entry?.id || '').trim() === submission.id
+                    ? { ...entry, approved: true, moderatedAt: nowMs() }
+                    : entry
+            )));
             safeToast('Sketch approved for TV');
         } catch (error) {
             moderationLogger.error('Could not approve doodle submission', error);
@@ -192,7 +185,7 @@ const useModerationInboxState = ({
         } finally {
             setBusyAction('');
         }
-    }, [room?.doodleOke, updateRoom, safeToast]);
+    }, [roomCode, doodleSubmissions, callFunction, safeToast]);
 
     const approveSelfieSubmission = useCallback(async (submission = {}) => {
         const submissionId = String(submission?.id || '').trim();

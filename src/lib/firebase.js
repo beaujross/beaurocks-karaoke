@@ -649,6 +649,90 @@ const uploadAudienceRoomPhoto = async (payload = {}) => {
   return data || null;
 };
 
+const submitAudienceQueueSong = async (payload = {}) => {
+  await requireAppCheckToken("submitAudienceQueueSong");
+  const data = await callFunction("submitAudienceQueueSong", payload || {});
+  return data || null;
+};
+
+const castKaraokeBracketVote = async (payload = {}) => {
+  await requireAppCheckToken("castKaraokeBracketVote");
+  const data = await callFunction("castKaraokeBracketVote", payload || {});
+  return data || null;
+};
+
+const manageKaraokeBracket = async (payload = {}) => {
+  await requireAppCheckToken("manageKaraokeBracket");
+  const data = await callFunction("manageKaraokeBracket", payload || {});
+  return data || null;
+};
+
+const submitBracketRoundSong = async (payload = {}) => {
+  await requireAppCheckToken("submitBracketRoundSong");
+  const data = await callFunction("submitBracketRoundSong", payload || {});
+  return data || null;
+};
+
+const resolveKaraokeBracketMatch = async (payload = {}) => {
+  await requireAppCheckToken("resolveKaraokeBracketMatch");
+  const data = await callFunction("resolveKaraokeBracketMatch", payload || {});
+  return data || null;
+};
+
+const submitSelfieChallengeEntry = async (payload = {}) => {
+  await requireAppCheckToken("submitSelfieChallenge");
+  const data = await callFunction("submitSelfieChallenge", payload || {});
+  return data || null;
+};
+
+const castSelfieChallengeVote = async (payload = {}) => {
+  await requireAppCheckToken("castSelfieChallengeVote");
+  const data = await callFunction("castSelfieChallengeVote", payload || {});
+  return data || null;
+};
+
+const submitDoodleOkeEntry = async (payload = {}) => {
+  await requireAppCheckToken("submitDoodleOkeEntry");
+  const data = await callFunction("submitDoodleOkeEntry", payload || {});
+  return data || null;
+};
+
+const castDoodleOkeVote = async (payload = {}) => {
+  await requireAppCheckToken("castDoodleOkeVote");
+  const data = await callFunction("castDoodleOkeVote", payload || {});
+  return data || null;
+};
+
+const castPromptVote = async (payload = {}) => {
+  await requireAppCheckToken("castPromptVote");
+  const data = await callFunction("castPromptVote", payload || {});
+  return data || null;
+};
+
+const finalizePromptVoteRound = async (payload = {}) => {
+  await requireAppCheckToken("finalizePromptVoteRound");
+  const data = await callFunction("finalizePromptVoteRound", payload || {});
+  return data || null;
+};
+
+const submitBingoTileConfirmation = async (payload = {}) => {
+  await requireAppCheckToken("submitBingoTileConfirmation");
+  const data = await callFunction("submitBingoTileConfirmation", payload || {});
+  return data || null;
+};
+
+const submitBingoMysterySpin = async (payload = {}) => {
+  await requireAppCheckToken("submitBingoMysterySpin");
+  const data = await callFunction("submitBingoMysterySpin", payload || {});
+  return data || null;
+};
+
+const lockBingoMysteryPick = async (payload = {}) => {
+  await requireAppCheckToken("lockBingoMysteryPick");
+  const data = await callFunction("lockBingoMysteryPick", payload || {});
+  return data || null;
+};
+
 const mergeAnonymousAccountData = async (payload = {}) => {
   await requireAppCheckToken("mergeAnonymousAccountData");
   const data = await callFunction("mergeAnonymousAccountData", payload || {});
@@ -1075,6 +1159,20 @@ export {
   joinRoomAudience,
   updateAudienceIdentity,
   uploadAudienceRoomPhoto,
+  submitAudienceQueueSong,
+  castKaraokeBracketVote,
+  manageKaraokeBracket,
+  submitBracketRoundSong,
+  resolveKaraokeBracketMatch,
+  submitSelfieChallengeEntry,
+  castSelfieChallengeVote,
+  submitDoodleOkeEntry,
+  castDoodleOkeVote,
+  castPromptVote,
+  finalizePromptVoteRound,
+  submitBingoTileConfirmation,
+  submitBingoMysterySpin,
+  lockBingoMysteryPick,
   mergeAnonymousAccountData,
   claimAudienceEventGrant,
   redeemPromoCode,

@@ -10,10 +10,9 @@ test("moderationInbox.test", () => {
     const snapshot = buildModerationQueueSnapshot({
         doodleRequireReview: true,
         selfieRequireApproval: true,
-        approvedUids: ['approved-uid'],
         doodleSubmissions: [
-            { id: 'd1', uid: 'approved-uid', timestamp: 1000, name: 'Approved Doodle' },
-            { id: 'd2', uid: 'pending-uid', timestamp: 3000, name: 'Pending Doodle' }
+            { id: 'd1', uid: 'approved-uid', approved: true, timestamp: 1000, name: 'Approved Doodle' },
+            { id: 'd2', uid: 'pending-uid', approved: false, timestamp: 3000, name: 'Pending Doodle' }
         ],
         selfieSubmissions: [
             { id: 's1', approved: true, timestamp: 2000, userName: 'Approved Selfie' },

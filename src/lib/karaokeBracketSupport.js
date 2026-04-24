@@ -3,6 +3,16 @@ import { resolveRoomUserUid } from './gameLaunchSupport.js';
 export const BRACKET_SIGNUP_DEFAULT_DURATION_MIN = 15;
 export const BRACKET_SIGNUP_DEFAULT_READY_COUNT = 5;
 export const BRACKET_SIGNUP_MIN_READY_COUNT = 2;
+export const BRACKET_SONG_SELECTION_MODES = {
+    tight15Random: 'tight15_random',
+    singerPickRound: 'singer_pick_round'
+};
+
+export const normalizeBracketSongSelectionMode = (value = '') => (
+    String(value || '').trim() === BRACKET_SONG_SELECTION_MODES.singerPickRound
+        ? BRACKET_SONG_SELECTION_MODES.singerPickRound
+        : BRACKET_SONG_SELECTION_MODES.tight15Random
+);
 
 const clampInt = (value, min, max, fallback) => {
     const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -37,7 +47,8 @@ export const buildBracketSignupState = (signup = {}, nowMs = Date.now()) => {
         countdownStartedAt,
         deadlineMs,
         durationMin,
-        readySongMin
+        readySongMin,
+        songSelectionMode: normalizeBracketSongSelectionMode(signup?.songSelectionMode)
     };
 };
 
@@ -55,6 +66,7 @@ export const isBracketSignupOpen = (bracket = null) => {
 
 export const buildBracketSignupRoster = ({ roomUsers = [], room = {}, signup = null } = {}) => {
     const readySongMin = signup?.readySongMin || BRACKET_SIGNUP_DEFAULT_READY_COUNT;
+    const singerPickRound = normalizeBracketSongSelectionMode(signup?.songSelectionMode) === BRACKET_SONG_SELECTION_MODES.singerPickRound;
     const hostUid = String(room?.hostUid || '').trim();
     const hostName = normalizeName(room?.hostName || '');
     return (Array.isArray(roomUsers) ? roomUsers : [])
@@ -67,7 +79,8 @@ export const buildBracketSignupRoster = ({ roomUsers = [], room = {}, signup = n
                 name,
                 avatar: entry?.avatar || '',
                 tight15Count,
-                ready: tight15Count >= readySongMin,
+                ready: singerPickRound || tight15Count >= readySongMin,
+                songSelectionMode: signup?.songSelectionMode || BRACKET_SONG_SELECTION_MODES.tight15Random,
                 roomUser: entry
             };
         })

@@ -5765,6 +5765,1099 @@ const ensureRoomHostAccess = async ({
   return { roomRef, roomData, roomCode: safeRoomCode };
 };
 
+const normalizeSelfieChallengePromptId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "_")
+    .slice(0, 120);
+
+const normalizeDoodlePromptId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "_")
+    .slice(0, 120);
+
+const normalizePromptVoteQuestionId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "_")
+    .slice(0, 160);
+
+const normalizePromptVoteType = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return token === "vote_wyr" ? "vote_wyr" : "vote_trivia";
+};
+
+const buildPromptVoteProjectionId = (roomCode = "", questionId = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeQuestionId = normalizePromptVoteQuestionId(questionId);
+  if (!safeRoomCode || !safeQuestionId) return "";
+  return `${safeRoomCode}_${safeQuestionId}`;
+};
+
+const buildPromptVoteDocId = ({ roomCode = "", questionId = "", voterUid = "" }) => {
+  const projectionId = buildPromptVoteProjectionId(roomCode, questionId);
+  const safeUid = normalizeUidToken(voterUid);
+  if (!projectionId || !safeUid) return "";
+  return `vote_${projectionId}_${safeUid}`;
+};
+
+const getPromptVoteProjectionRef = ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  questionId = "",
+}) => {
+  const projectionId = buildPromptVoteProjectionId(roomCode, questionId);
+  if (!projectionId) return null;
+  return rootRef.collection("prompt_vote_public").doc(projectionId);
+};
+
+const buildDoodleProjectionId = (roomCode = "", promptId = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safePromptId = normalizeDoodlePromptId(promptId);
+  if (!safeRoomCode || !safePromptId) return "";
+  return `${safeRoomCode}_${safePromptId}`;
+};
+
+const buildDoodleSubmissionId = ({ roomCode = "", promptId = "", uid = "" }) => {
+  const projectionId = buildDoodleProjectionId(roomCode, promptId);
+  const safeUid = normalizeUidToken(uid);
+  if (!projectionId || !safeUid) return "";
+  return `${projectionId}_${safeUid}`;
+};
+
+const buildDoodleVoteId = ({ roomCode = "", promptId = "", voterUid = "" }) => {
+  const projectionId = buildDoodleProjectionId(roomCode, promptId);
+  const safeUid = normalizeUidToken(voterUid);
+  if (!projectionId || !safeUid) return "";
+  return `vote_${projectionId}_${safeUid}`;
+};
+
+const getDoodleProjectionRef = ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  promptId = "",
+}) => {
+  const projectionId = buildDoodleProjectionId(roomCode, promptId);
+  if (!projectionId) return null;
+  return rootRef.collection("doodle_oke_public").doc(projectionId);
+};
+
+const buildSelfieChallengeProjectionId = (roomCode = "", promptId = "") => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safePromptId = normalizeSelfieChallengePromptId(promptId);
+  if (!safeRoomCode || !safePromptId) return "";
+  return `${safeRoomCode}_${safePromptId}`;
+};
+
+const buildSelfieChallengeSubmissionId = ({ roomCode = "", promptId = "", uid = "" }) => {
+  const projectionId = buildSelfieChallengeProjectionId(roomCode, promptId);
+  const safeUid = normalizeUidToken(uid);
+  if (!projectionId || !safeUid) return "";
+  return `${projectionId}_${safeUid}`;
+};
+
+const buildSelfieChallengeVoteId = ({ roomCode = "", promptId = "", voterUid = "" }) => {
+  const projectionId = buildSelfieChallengeProjectionId(roomCode, promptId);
+  const safeUid = normalizeUidToken(voterUid);
+  if (!projectionId || !safeUid) return "";
+  return `vote_${projectionId}_${safeUid}`;
+};
+
+const getSelfieChallengeProjectionRef = ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  promptId = "",
+}) => {
+  const projectionId = buildSelfieChallengeProjectionId(roomCode, promptId);
+  if (!projectionId) return null;
+  return rootRef.collection("selfie_challenge_public").doc(projectionId);
+};
+
+const timestampToMillis = (value = null) => {
+  if (!value) return 0;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sanitizeSelfieDisplayName = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 80) || "Guest";
+
+const sanitizeSelfieAvatar = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 32);
+
+const sanitizeDoodleDisplayName = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 80) || "Guest";
+
+const sanitizeDoodleAvatar = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 32);
+
+const sanitizeDoodleImage = (value = "", fieldName = "image") => {
+  const safeValue = String(value || "").trim();
+  ensureString(safeValue, fieldName);
+  if (!safeValue.startsWith("data:image/")) {
+    throw new HttpsError("invalid-argument", `${fieldName} must be an image data URL.`);
+  }
+  if (safeValue.length > 1500000) {
+    throw new HttpsError("invalid-argument", `${fieldName} is too large.`);
+  }
+  return safeValue;
+};
+
+const sanitizePromptVoteValue = (voteType = "vote_trivia", value = null) => {
+  if (voteType === "vote_wyr") {
+    const token = String(value || "").trim().toUpperCase();
+    if (token !== "A" && token !== "B") {
+      throw new HttpsError("invalid-argument", "WYR votes must be A or B.");
+    }
+    return token;
+  }
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 3) {
+    throw new HttpsError("invalid-argument", "Trivia votes must be an option index from 0 to 3.");
+  }
+  return parsed;
+};
+
+const sanitizeBingoTileIndex = (value = null) => {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 99) {
+    throw new HttpsError("invalid-argument", "A valid bingo tile index is required.");
+  }
+  return parsed;
+};
+
+const sanitizeBingoNote = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 20);
+
+const getRoomUserRef = ({ rootRef = getRootRef(), roomCode = "", uid = "" }) =>
+  rootRef.collection("room_users").doc(`${normalizeRoomCode(roomCode)}_${normalizeUidToken(uid)}`);
+
+const getBingoParticipantState = (roomData = {}, uid = "") => {
+  const participantMode = roomData?.gameParticipantMode === "selected" ? "selected" : "all";
+  const participants = participantMode === "selected" && Array.isArray(roomData?.gameParticipants)
+    ? roomData.gameParticipants.map((entry) => normalizeUidToken(entry)).filter(Boolean)
+    : [];
+  return {
+    participantMode,
+    participants,
+    isParticipant: participantMode !== "selected" || participants.includes(normalizeUidToken(uid)),
+  };
+};
+
+const getBingoEligibleVoterCount = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  roomData = {},
+}) => {
+  const participantState = getBingoParticipantState(roomData);
+  if (participantState.participantMode === "selected" && participantState.participants.length) {
+    return participantState.participants.length;
+  }
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  if (!safeRoomCode) return 1;
+  const roomUsersSnap = await rootRef.collection("room_users")
+    .where("roomCode", "==", safeRoomCode)
+    .get();
+  return Math.max(1, roomUsersSnap.size || 1);
+};
+
+const normalizeQueueRequestId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+
+const sanitizeQueueText = (value = "", fallback = "", max = 180) => {
+  const safe = String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, max);
+  return safe || fallback;
+};
+
+const sanitizeQueueUrl = (value = "", max = 2048) =>
+  String(value || "")
+    .trim()
+    .slice(0, max);
+
+const sanitizeQueueSourceToken = (value = "", fallback = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 80) || fallback;
+
+const normalizeQueueResolutionStatus = (value = "") => {
+  const token = sanitizeQueueSourceToken(value);
+  return [
+    "resolved",
+    "review_required",
+    "unverified",
+    "needs_backing",
+    "pending_youtube_match",
+    "catalog_ready",
+  ].includes(token) ? token : "";
+};
+
+const queueResolutionRequiresReview = (value = "") =>
+  ["review_required", "needs_backing", "pending_youtube_match"].includes(
+    normalizeQueueResolutionStatus(value)
+  );
+
+const songBelongsToQueueUser = (song = {}, uid = "", name = "") => {
+  const safeUid = normalizeUidToken(uid);
+  const safeName = sanitizeQueueText(name, "", 100);
+  return (
+    (safeUid && normalizeUidToken(song?.singerUid || "") === safeUid)
+    || (safeName && String(song?.singerName || "").trim() === safeName)
+  );
+};
+
+const getQueueLimitState = ({
+  queueSettings = {},
+  songs = [],
+  uid = "",
+  name = "",
+  now = nowMs(),
+} = {}) => {
+  const limitMode = sanitizeQueueSourceToken(queueSettings?.limitMode || "none", "none");
+  const limitCount = Math.max(0, Math.floor(Number(queueSettings?.limitCount || 0) || 0));
+  const mySongs = songs.filter((song) => songBelongsToQueueUser(song, uid, name));
+  const myRecentSongs = mySongs.filter((song) => {
+    const ts = timestampToMillis(song?.timestamp);
+    return ts && now - ts < 60 * 60 * 1000;
+  });
+  const isLimited = limitMode !== "none" && limitCount > 0;
+  const perNightExceeded = limitMode === "per_night" && mySongs.length >= limitCount;
+  const perHourExceeded = limitMode === "per_hour" && myRecentSongs.length >= limitCount;
+  return {
+    hardBlocked: isLimited && (perNightExceeded || perHourExceeded),
+    softReviewPending: limitMode === "soft" && mySongs.length >= limitCount,
+  };
+};
+
+const deriveServerQueueRequestState = ({
+  roomData = {},
+  payload = {},
+  hasPlayableBacking = false,
+  hasBacking = false,
+  hasAppleMusic = false,
+  softReviewPending = false,
+} = {}) => {
+  const requestMode = normalizeHostRoomRequestMode(
+    roomData?.requestMode,
+    roomData?.allowSingerTrackSelect === true
+  );
+  const audienceBackingMode = deriveHostAudienceBackingMode({
+    audienceBackingMode: roomData?.audienceBackingMode,
+    requestMode,
+    allowSingerTrackSelect: roomData?.allowSingerTrackSelect === true,
+  });
+  const unknownBackingPolicy = deriveHostUnknownBackingPolicy({
+    audienceBackingMode,
+    unknownBackingPolicy: roomData?.unknownBackingPolicy,
+    requestMode,
+    allowSingerTrackSelect: roomData?.allowSingerTrackSelect === true,
+  });
+
+  const explicitResolutionStatus = normalizeQueueResolutionStatus(payload?.resolutionStatus);
+  const trustedCandidate = payload?.trustedCandidate === true
+    || ["catalog_ready", "resolved"].includes(explicitResolutionStatus);
+
+  if (requestMode === ROOM_REQUEST_MODES.playableOnly && !hasPlayableBacking) {
+    throw new HttpsError(
+      "failed-precondition",
+      "This room only accepts requests with approved playable backing."
+    );
+  }
+  if (hasBacking
+    && audienceBackingMode === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusApprovedBackings
+    && !trustedCandidate) {
+    throw new HttpsError(
+      "permission-denied",
+      "This room only allows approved backing versions."
+    );
+  }
+
+  let resolutionStatus = explicitResolutionStatus;
+  if (!resolutionStatus) {
+    if (hasPlayableBacking) {
+      resolutionStatus = trustedCandidate ? "resolved" : "unverified";
+    } else if (hasAppleMusic) {
+      resolutionStatus = "review_required";
+    } else {
+      resolutionStatus = "review_required";
+    }
+  }
+
+  let mediaResolutionStatus = sanitizeQueueSourceToken(payload?.mediaResolutionStatus || "");
+  if (!mediaResolutionStatus) {
+    if (hasPlayableBacking) mediaResolutionStatus = trustedCandidate ? "catalog_ready" : "audience_selected";
+    else mediaResolutionStatus = hasAppleMusic ? "pending_youtube_match" : "needs_backing";
+  }
+
+  if (hasBacking
+    && !trustedCandidate
+    && unknownBackingPolicy === ROOM_UNKNOWN_BACKING_POLICIES.requireReview) {
+    resolutionStatus = "review_required";
+  }
+  if (hasBacking
+    && !trustedCandidate
+    && unknownBackingPolicy === ROOM_UNKNOWN_BACKING_POLICIES.autoQueueUnverified
+    && !queueResolutionRequiresReview(resolutionStatus)) {
+    resolutionStatus = "unverified";
+  }
+
+  const requiresReview = !!roomData?.bouncerMode
+    || !!softReviewPending
+    || queueResolutionRequiresReview(resolutionStatus);
+
+  return {
+    requestedBackingMode: requestMode,
+    resolutionStatus,
+    resolutionLayer: sanitizeQueueText(payload?.resolutionLayer || "", "server_queue", 120),
+    mediaResolutionStatus,
+    status: requiresReview ? "pending" : "requested",
+    reviewRequired: requiresReview,
+  };
+};
+
+const sanitizeBracketId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "_")
+    .slice(0, 160);
+
+const sanitizeBracketMatchId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[\\/]/g, "_")
+    .slice(0, 120);
+
+const BRACKET_MIN_READY_COUNT = 2;
+const BRACKET_MAX_SIZE = 16;
+
+const normalizeBracketSongSelectionMode = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return token === "singer_pick_round" ? "singer_pick_round" : "tight15_random";
+};
+
+const buildBracketSignupStateServer = (signup = {}, now = nowMs()) => {
+  const openedAt = clampNumber(signup?.openedAt || now, 0, 4102444800000, now);
+  const durationMin = clampNumber(signup?.durationMin || 15, 1, 60, 15);
+  const readySongMin = clampNumber(signup?.readySongMin || 5, 1, 15, 5);
+  const countdownStartedAt = clampNumber(signup?.countdownStartedAt || openedAt, 0, 4102444800000, openedAt);
+  return {
+    status: "open",
+    openedAt,
+    countdownStartedAt,
+    deadlineMs: clampNumber(signup?.deadlineMs || countdownStartedAt + (durationMin * 60 * 1000), 0, 4102444800000, countdownStartedAt + (durationMin * 60 * 1000)),
+    durationMin,
+    readySongMin,
+    songSelectionMode: normalizeBracketSongSelectionMode(signup?.songSelectionMode || "tight15_random"),
+  };
+};
+
+const getBracketRoundName = (size = 2) => {
+  if (size >= 16) return "Round of 16";
+  if (size === 8) return "Quarterfinals";
+  if (size === 4) return "Semifinals";
+  return "Final";
+};
+
+const pickBracketTight15Song = (contestant = {}) => {
+  const list = Array.isArray(contestant?.tight15) ? contestant.tight15 : [];
+  if (!list.length) return null;
+  const pick = list[Math.floor(Math.random() * list.length)];
+  if (!pick || typeof pick !== "object") return null;
+  return {
+    songTitle: sanitizeQueueText(pick.songTitle || pick.title || "", "Song", 180),
+    artist: sanitizeQueueText(pick.artist || "", "Unknown", 180),
+    albumArtUrl: sanitizeQueueUrl(pick.albumArtUrl || pick.artworkUrl || pick.art || "", 2048),
+    itunesId: sanitizeQueueText(pick.itunesId || pick.appleMusicId || "", "", 160),
+    mediaUrl: sanitizeQueueUrl(pick.mediaUrl || "", 2048),
+  };
+};
+
+const buildBracketRoundServer = ({
+  contestantUids = [],
+  contestantsByUid = {},
+  roundIndex = 0,
+  songSelectionMode = "tight15_random",
+}) => {
+  const safeUids = contestantUids.map((uid) => normalizeUidToken(uid)).filter(Boolean);
+  const selectionMode = normalizeBracketSongSelectionMode(songSelectionMode);
+  const matches = [];
+  for (let i = 0; i < safeUids.length; i += 2) {
+    const aUid = safeUids[i] || null;
+    const bUid = safeUids[i + 1] || null;
+    matches.push({
+      id: `m_${roundIndex + 1}_${Math.floor(i / 2) + 1}`,
+      slot: Math.floor(i / 2) + 1,
+      aUid,
+      bUid,
+      aSong: selectionMode === "tight15_random" && aUid ? pickBracketTight15Song(contestantsByUid[aUid]) : null,
+      bSong: selectionMode === "tight15_random" && bUid ? pickBracketTight15Song(contestantsByUid[bUid]) : null,
+      songSelectionMode: selectionMode,
+      winnerUid: bUid ? null : aUid,
+      queuedAt: null,
+      completedAt: bUid ? null : nowMs(),
+    });
+  }
+  return {
+    id: `round_${roundIndex + 1}`,
+    index: roundIndex,
+    name: getBracketRoundName(safeUids.length),
+    matches,
+  };
+};
+
+const findBracketMatch = (bracket = {}, matchId = "") => {
+  const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
+  for (let roundIndex = 0; roundIndex < rounds.length; roundIndex += 1) {
+    const round = rounds[roundIndex] || {};
+    const matches = Array.isArray(round.matches) ? round.matches : [];
+    const matchIndex = matches.findIndex((match) => match?.id === matchId);
+    if (matchIndex >= 0) {
+      return { roundIndex, matchIndex, round, match: matches[matchIndex] };
+    }
+  }
+  return null;
+};
+
+const getBracketVoteSummary = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  bracketId = "",
+  match = null,
+}) => {
+  const summary = { total: 0, aVotes: 0, bVotes: 0 };
+  if (!roomCode || !bracketId || !match?.id) return summary;
+  const snap = await rootRef.collection("room_users")
+    .where("roomCode", "==", roomCode)
+    .get();
+  snap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const voterUid = normalizeUidToken(data.uid || docSnap.id.split("_").slice(1).join("_"));
+    if (!voterUid || voterUid === match.aUid || voterUid === match.bUid) return;
+    const vote = data.bracketVote || {};
+    if (vote.bracketId !== bracketId || vote.matchId !== match.id) return;
+    if (vote.targetUid === match.aUid) {
+      summary.aVotes += 1;
+      summary.total += 1;
+    } else if (vote.targetUid === match.bUid) {
+      summary.bVotes += 1;
+      summary.total += 1;
+    }
+  });
+  return summary;
+};
+
+const appendBracketAuditEventServer = (bracket = {}, event = {}) => {
+  const trail = Array.isArray(bracket?.auditTrail) ? bracket.auditTrail : [];
+  const normalized = {
+    id: event.id || `audit_${nowMs()}_${Math.random().toString(36).slice(2, 7)}`,
+    at: Number(event.at || nowMs()),
+    type: String(event.type || "event").slice(0, 80),
+    text: String(event.text || "").slice(0, 500),
+    ...event,
+  };
+  return {
+    ...bracket,
+    auditTrail: [...trail.slice(-79), normalized],
+  };
+};
+
+const upsertBracketMatchHistoryEntryServer = (bracket = {}, entry = {}) => {
+  if (!entry?.matchId) return bracket;
+  const history = Array.isArray(bracket?.matchHistory) ? bracket.matchHistory : [];
+  const nextEntry = { ...entry };
+  const existingIndex = history.findIndex((item) => item?.matchId === entry.matchId);
+  const nextHistory = existingIndex >= 0
+    ? history.map((item, idx) => (idx === existingIndex ? { ...item, ...nextEntry } : item))
+    : [...history, nextEntry];
+  return {
+    ...bracket,
+    matchHistory: nextHistory,
+    summaryVersion: 1,
+  };
+};
+
+const advanceBracketStateServer = (bracket = {}) => {
+  const rounds = Array.isArray(bracket?.rounds) ? bracket.rounds : [];
+  const activeRoundIndex = Math.max(0, Number(bracket?.activeRoundIndex || 0));
+  const currentRound = rounds[activeRoundIndex];
+  if (!currentRound) return bracket;
+  const matches = Array.isArray(currentRound.matches) ? currentRound.matches : [];
+  if (!matches.length || !matches.every((match) => !!match?.winnerUid)) return bracket;
+  const winners = matches.map((match) => normalizeUidToken(match.winnerUid)).filter(Boolean);
+  if (winners.length <= 1) {
+    const completedAt = nowMs();
+    const championUid = winners[0] || null;
+    const champion = championUid ? bracket?.contestantsByUid?.[championUid] : null;
+    return {
+      ...bracket,
+      status: "complete",
+      championUid,
+      championName: champion?.name || "",
+      activeMatchId: null,
+      roundTransition: null,
+      championCelebration: {
+        id: `champion_${championUid || "winner"}_${completedAt}`,
+        at: completedAt,
+        championUid,
+        championName: champion?.name || "",
+      },
+    };
+  }
+  const completedAt = nowMs();
+  const nextRound = buildBracketRoundServer({
+    contestantUids: winners,
+    contestantsByUid: bracket?.contestantsByUid || {},
+    roundIndex: rounds.length,
+    songSelectionMode: bracket?.songSelectionMode || "tight15_random",
+  });
+  return {
+    ...bracket,
+    status: "in_progress",
+    activeRoundIndex: rounds.length,
+    activeMatchId: null,
+    rounds: [...rounds, nextRound],
+    roundTransition: {
+      id: `transition_${currentRound.id || activeRoundIndex}_${nextRound.id}_${completedAt}`,
+      at: completedAt,
+      completedRoundIndex: activeRoundIndex,
+      fromRoundName: currentRound?.name || `Round ${activeRoundIndex + 1}`,
+      toRoundName: nextRound?.name || `Round ${rounds.length + 1}`,
+    },
+  };
+};
+
+const buildBracketSummaryServer = (bracket = {}) => {
+  const championUid = normalizeUidToken(bracket?.championUid || "");
+  const champion = championUid ? bracket?.contestantsByUid?.[championUid] : null;
+  return {
+    id: bracket?.id || "",
+    style: bracket?.style || "sweet16",
+    format: bracket?.format || "single_elimination",
+    size: Number(bracket?.size || 0),
+    status: bracket?.status || "setup",
+    championUid,
+    championName: bracket?.championName || champion?.name || "",
+    completedAt: Number(bracket?.championCelebration?.at || 0),
+    matchHistory: Array.isArray(bracket?.matchHistory) ? bracket.matchHistory : [],
+    auditTrail: Array.isArray(bracket?.auditTrail) ? bracket.auditTrail : [],
+    summaryVersion: 1,
+  };
+};
+
+const getBracketRoomUserUidServer = (docSnap = null, data = {}) =>
+  normalizeUidToken(data?.uid || docSnap?.id?.split("_").slice(1).join("_") || "");
+
+const sanitizeBracketContestantServer = ({ uid = "", data = {} } = {}) => {
+  const safeUid = normalizeUidToken(uid);
+  if (!safeUid) return null;
+  const tight15Source = Array.isArray(data?.tight15)
+    ? data.tight15
+    : (Array.isArray(data?.tight15Temp) ? data.tight15Temp : []);
+  const tight15 = tight15Source
+    .map((entry) => pickBracketTight15Song({ tight15: [entry] }))
+    .filter(Boolean)
+    .slice(0, 15);
+  return {
+    uid: safeUid,
+    name: sanitizeQueueText(data?.name || "Singer", "Singer", 100),
+    avatar: sanitizeQueueText(data?.avatar || "", "", 40),
+    tight15,
+  };
+};
+
+const filterBracketCandidateDocs = ({ docs = [], roomData = {} } = {}) => {
+  const hostUid = normalizeUidToken(roomData?.hostUid || "");
+  const hostName = String(roomData?.hostName || "").trim().toLowerCase();
+  return (Array.isArray(docs) ? docs : [])
+    .map((docSnap) => {
+      const data = docSnap.data() || {};
+      const uid = getBracketRoomUserUidServer(docSnap, data);
+      return sanitizeBracketContestantServer({ uid, data });
+    })
+    .filter(Boolean)
+    .filter((entry) => !hostUid || entry.uid !== hostUid)
+    .filter((entry) => !hostName || String(entry.name || "").trim().toLowerCase() !== hostName);
+};
+
+const queueBracketSongDocServer = ({ tx, rootRef = getRootRef(), roomCode = "", bracket = {}, match = {}, contestant = null, side = "a" }) => {
+  const uid = normalizeUidToken(contestant?.uid || "");
+  const song = side === "b" ? match?.bSong : match?.aSong;
+  if (!tx || !uid || !song?.songTitle) return null;
+  const queueRef = rootRef.collection("karaoke_songs").doc(`bracket_${roomCode}_${bracket?.id || "active"}_${match?.id || "match"}_${uid}`);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+  const songId = sanitizeQueueText(song.songId || buildSongKey(song.songTitle, song.artist || "Unknown"), "", 240)
+    || buildSongKey(song.songTitle, song.artist || "Unknown");
+  tx.set(queueRef, {
+    roomCode,
+    songId,
+    songTitle: sanitizeQueueText(song.songTitle, "Song", 180),
+    artist: sanitizeQueueText(song.artist || "", "Unknown", 180),
+    singerName: sanitizeQueueText(contestant?.name || "Singer", "Singer", 100),
+    singerUid: uid,
+    emoji: sanitizeQueueText(contestant?.avatar || "", "", 40),
+    mediaUrl: sanitizeQueueUrl(song.mediaUrl || ""),
+    albumArtUrl: sanitizeQueueUrl(song.albumArtUrl || song.artworkUrl || ""),
+    status: "requested",
+    timestamp: serverNow,
+    priorityScore: nowMs(),
+    source: "sweet16_match",
+    submittedVia: "karaoke_bracket",
+    sourceMode: "karaoke_bracket",
+    bracketId: bracket?.id || "",
+    bracketMatchId: match?.id || "",
+    bracketSongSide: side,
+    createdAt: serverNow,
+  }, { merge: true });
+  return queueRef.id;
+};
+
+const buildBracketRoundSongPayloadServer = ({
+  requestData = {},
+  roomData = {},
+  callerUid = "",
+  roomUserData = {},
+  bracket = {},
+  match = {},
+  side = "a",
+}) => {
+  const songTitle = sanitizeQueueText(requestData?.songTitle || requestData?.title || "", "", 180);
+  const artist = sanitizeQueueText(requestData?.artist || "", "Unknown", 180);
+  if (!songTitle) {
+    throw new HttpsError("invalid-argument", "Song title is required.");
+  }
+  const mediaUrl = sanitizeQueueUrl(requestData?.mediaUrl || "");
+  const trackSource = sanitizeQueueSourceToken(requestData?.trackSource || (mediaUrl ? "youtube" : ""), mediaUrl ? "youtube" : "");
+  if (mediaUrl && trackSource === "youtube" && !extractYouTubeId(mediaUrl)) {
+    throw new HttpsError("invalid-argument", "A valid YouTube backing URL is required.");
+  }
+  const appleMusicId = sanitizeQueueText(requestData?.appleMusicId || requestData?.itunesId || "", "", 160);
+  const youtubeId = extractYouTubeId(mediaUrl);
+  const hasPlayableBacking = !!youtubeId;
+  const hasBacking = !!mediaUrl;
+  const hasAppleMusic = !!appleMusicId;
+  const queueState = deriveServerQueueRequestState({
+    roomData,
+    payload: requestData || {},
+    hasPlayableBacking,
+    hasBacking,
+    hasAppleMusic,
+    softReviewPending: false,
+  });
+  const songId = sanitizeQueueText(requestData?.songId || buildSongKey(songTitle, artist), "", 240)
+    || buildSongKey(songTitle, artist);
+  const resolvedTrackSource = trackSource || (appleMusicId ? "apple_music" : null);
+  const audioOnly = requestData?.audioOnly === true || resolvedTrackSource === "apple_music";
+  const durationSec = Math.max(0, Math.round(Number(requestData?.durationSec || requestData?.duration || 0) || 0));
+  return {
+    roomCode: normalizeRoomCode(requestData?.roomCode || ""),
+    songId,
+    songTitle,
+    artist,
+    albumArtUrl: sanitizeQueueUrl(requestData?.albumArtUrl || requestData?.artworkUrl || ""),
+    singerName: sanitizeQueueText(roomUserData?.name || requestData?.singerName || "", "Guest", 100),
+    singerUid: callerUid,
+    emoji: sanitizeQueueText(roomUserData?.avatar || requestData?.emoji || "", "", 40),
+    status: queueState.status,
+    priorityScore: nowMs(),
+    trackId: sanitizeQueueText(requestData?.trackId || "", "", 220) || null,
+    trackSource: resolvedTrackSource,
+    mediaUrl,
+    appleMusicId,
+    duration: durationSec > 0 ? durationSec : null,
+    audioOnly,
+    backingAudioOnly: audioOnly,
+    playbackReady: hasPlayableBacking,
+    youtubeEmbeddable: requestData?.youtubeEmbeddable === true
+      ? true
+      : requestData?.youtubeEmbeddable === false
+        ? false
+        : null,
+    youtubeUploadStatus: sanitizeQueueSourceToken(requestData?.youtubeUploadStatus || ""),
+    youtubePrivacyStatus: sanitizeQueueSourceToken(requestData?.youtubePrivacyStatus || ""),
+    youtubePlaybackStatus: sanitizeQueueText(requestData?.youtubePlaybackStatus || "", "", 80),
+    mediaResolutionStatus: queueState.mediaResolutionStatus,
+    requestedBackingMode: queueState.requestedBackingMode,
+    resolutionStatus: queueState.resolutionStatus,
+    resolutionLayer: sanitizeQueueText(queueState.resolutionLayer || "bracket_round_song", "bracket_round_song", 120),
+    reviewRequired: !!queueState.reviewRequired,
+    submittedByUid: callerUid,
+    submittedVia: "karaoke_bracket_round",
+    sourceMode: "karaoke_bracket",
+    source: "karaoke_bracket_round",
+    bracketId: bracket?.id || "",
+    bracketMatchId: match?.id || "",
+    bracketSongSide: side,
+    runOfShowItemId: sanitizeQueueText(
+      requestData?.runOfShowItemId
+        || roomData?.runOfShowDirector?.liveItemId
+        || roomData?.runOfShowDirector?.currentItemId
+        || roomData?.runOfShowItemId
+        || "",
+      "",
+      160
+    ) || null,
+  };
+};
+
+const getPromptVoteQuestionState = ({
+  roomData = {},
+  voteType = "vote_trivia",
+  nowMsValue = nowMs(),
+}) => {
+  const safeVoteType = normalizePromptVoteType(voteType);
+  const roomField = safeVoteType === "vote_wyr" ? "wyrData" : "triviaQuestion";
+  const liveMode = safeVoteType === "vote_wyr" ? "wyr" : "trivia_pop";
+  const revealMode = safeVoteType === "vote_wyr" ? "wyr_reveal" : "trivia_reveal";
+  const rawQuestion = roomData?.[roomField];
+  const questionData = rawQuestion && typeof rawQuestion === "object" ? rawQuestion : {};
+  const activeQuestionId = normalizePromptVoteQuestionId(questionData.id || "");
+  const activeMode = String(roomData?.activeMode || "").trim().toLowerCase();
+  const statusRaw = String(
+    questionData.status || (safeVoteType === "vote_wyr" ? "live" : "asking")
+  ).trim().toLowerCase();
+  const autoReveal = questionData.autoReveal !== false;
+  const startedAtMs = timestampToMillis(questionData.startedAt);
+  const durationSec = Math.max(0, Number(questionData.durationSec || 0));
+  const revealAtMs = timestampToMillis(questionData.revealAt)
+    || (startedAtMs && durationSec ? startedAtMs + (durationSec * 1000) : 0);
+  const timerReveal = autoReveal && revealAtMs > 0 && nowMsValue >= revealAtMs;
+  const isReveal = activeMode === revealMode || statusRaw === "reveal" || timerReveal;
+
+  return {
+    safeVoteType,
+    roomField,
+    liveMode,
+    revealMode,
+    questionData,
+    activeQuestionId,
+    activeMode,
+    revealAtMs,
+    rewarded: !!questionData.rewarded,
+    status: isReveal ? "reveal" : "live",
+  };
+};
+
+const sanitizeSelfieUrl = (value = "", fieldName = "url") => {
+  const safeValue = String(value || "").trim();
+  ensureString(safeValue, fieldName);
+  return safeValue.slice(0, 2048);
+};
+
+const sanitizeOptionalStoragePath = (value = "") =>
+  String(value || "")
+    .trim()
+    .slice(0, 512);
+
+const buildPublicSelfieSubmissionRecord = (docSnap) => {
+  const data = docSnap.data() || {};
+  return {
+    id: docSnap.id,
+    uid: normalizeUidToken(data.uid || ""),
+    userName: sanitizeSelfieDisplayName(data.userName || "Guest"),
+    avatar: sanitizeSelfieAvatar(data.avatar || ""),
+    url: String(data.url || "").trim().slice(0, 2048),
+    approved: !!data.approved,
+    timestamp: timestampToMillis(data.timestamp),
+  };
+};
+
+const buildPublicDoodleSubmissionRecord = (docSnap) => {
+  const data = docSnap.data() || {};
+  return {
+    id: docSnap.id,
+    uid: normalizeUidToken(data.uid || ""),
+    name: sanitizeDoodleDisplayName(data.name || "Guest"),
+    avatar: sanitizeDoodleAvatar(data.avatar || ""),
+    image: String(data.image || "").trim(),
+    approved: !!data.approved,
+    timestamp: timestampToMillis(data.timestamp),
+  };
+};
+
+const getEffectiveDoodleStatus = (doodle = {}, nowMsValue = nowMs()) => {
+  const baseStatus = String(doodle?.status || "drawing").trim().toLowerCase() || "drawing";
+  const endsAtMs = Number(doodle?.endsAt || 0);
+  const guessEndsAtMs = Number(doodle?.guessEndsAt || 0);
+  if (baseStatus === "drawing" && endsAtMs > 0 && nowMsValue >= endsAtMs) return "voting";
+  if (baseStatus === "voting" && guessEndsAtMs > 0 && nowMsValue >= guessEndsAtMs) return "reveal";
+  return baseStatus;
+};
+
+const syncDoodleOkePublicProjection = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  promptId = "",
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safePromptId = normalizeDoodlePromptId(promptId);
+  if (!safeRoomCode || !safePromptId) {
+    throw new HttpsError("invalid-argument", "roomCode and promptId are required.");
+  }
+
+  const projectionRef = getDoodleProjectionRef({
+    rootRef,
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+  });
+  if (!projectionRef) {
+    throw new HttpsError("invalid-argument", "Projection reference could not be created.");
+  }
+
+  const submissionsQuery = rootRef.collection("doodle_submissions")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+  const votesQuery = rootRef.collection("doodle_votes")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+
+  const [roomSnap, submissionsSnap, votesSnap] = await Promise.all([
+    roomRef.get(),
+    submissionsQuery.get(),
+    votesQuery.get(),
+  ]);
+
+  const roomData = roomSnap.exists ? (roomSnap.data() || {}) : {};
+  const activePromptId = normalizeDoodlePromptId(roomData?.doodleOke?.promptId || "");
+  const requireReview = activePromptId === safePromptId
+    ? !!roomData?.doodleOke?.requireReview
+    : true;
+
+  const allSubmissions = submissionsSnap.docs
+    .map((docSnap) => buildPublicDoodleSubmissionRecord(docSnap))
+    .filter((submission) => submission.uid && submission.image)
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const visibleSubmissions = requireReview
+    ? allSubmissions.filter((submission) => submission.approved)
+    : allSubmissions;
+
+  const votesByVoterUid = {};
+  votesSnap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const voterUid = normalizeUidToken(data.uid || data.voterUid || "");
+    const targetUid = normalizeUidToken(data.targetUid || "");
+    if (!voterUid || !targetUid) return;
+    votesByVoterUid[voterUid] = targetUid;
+  });
+
+  const submittedUids = Array.from(new Set(
+    allSubmissions
+      .map((submission) => submission.uid)
+      .filter(Boolean)
+  ));
+
+  await projectionRef.set({
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+    requireReview,
+    submittedUids,
+    submissions: visibleSubmissions,
+    votesByVoterUid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+    requireReview,
+    submissionCount: allSubmissions.length,
+    visibleSubmissionCount: visibleSubmissions.length,
+    voteCount: Object.keys(votesByVoterUid).length,
+  };
+};
+
+const syncPromptVotePublicProjection = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  questionId = "",
+  voteType = "vote_trivia",
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeQuestionId = normalizePromptVoteQuestionId(questionId);
+  const safeVoteType = normalizePromptVoteType(voteType);
+  if (!safeRoomCode || !safeQuestionId) {
+    throw new HttpsError("invalid-argument", "roomCode and questionId are required.");
+  }
+
+  const projectionRef = getPromptVoteProjectionRef({
+    rootRef,
+    roomCode: safeRoomCode,
+    questionId: safeQuestionId,
+  });
+  if (!projectionRef) {
+    throw new HttpsError("invalid-argument", "Projection reference could not be created.");
+  }
+
+  const votesQuery = rootRef.collection("prompt_votes")
+    .where("roomCode", "==", safeRoomCode)
+    .where("questionId", "==", safeQuestionId)
+    .where("voteType", "==", safeVoteType);
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+
+  const [roomSnap, votesSnap] = await Promise.all([
+    roomRef.get(),
+    votesQuery.get(),
+  ]);
+
+  const roomData = roomSnap.exists ? (roomSnap.data() || {}) : {};
+  const questionState = getPromptVoteQuestionState({
+    roomData,
+    voteType: safeVoteType,
+  });
+
+  const votes = votesSnap.docs
+    .map((docSnap) => {
+      const data = docSnap.data() || {};
+      const voterUid = normalizeUidToken(data.voterUid || data.uid || "");
+      return {
+        id: docSnap.id,
+        uid: voterUid,
+        voterUid,
+        val: data.val,
+        userName: String(data.userName || "").trim().slice(0, 80) || "Player",
+        avatar: String(data.avatar || "").trim().slice(0, 32),
+        timestamp: timestampToMillis(data.timestamp),
+      };
+    })
+    .filter((entry) => entry.voterUid)
+    .sort((a, b) => b.timestamp - a.timestamp);
+
+  const votesByVoterUid = {};
+  const counts = {};
+  votes.forEach((vote) => {
+    votesByVoterUid[vote.voterUid] = vote.val;
+    const key = String(vote.val);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  await projectionRef.set({
+    roomCode: safeRoomCode,
+    questionId: safeQuestionId,
+    voteType: safeVoteType,
+    modeKey: questionState.liveMode,
+    activeQuestionId: questionState.activeQuestionId,
+    status: questionState.status,
+    rewarded: questionState.rewarded,
+    revealAt: questionState.revealAtMs || null,
+    votesByVoterUid,
+    votes,
+    counts,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    roomCode: safeRoomCode,
+    questionId: safeQuestionId,
+    voteType: safeVoteType,
+    voteCount: votes.length,
+    status: questionState.status,
+  };
+};
+
+const syncSelfieChallengePublicProjection = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  promptId = "",
+}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safePromptId = normalizeSelfieChallengePromptId(promptId);
+  if (!safeRoomCode || !safePromptId) {
+    throw new HttpsError("invalid-argument", "roomCode and promptId are required.");
+  }
+
+  const projectionRef = getSelfieChallengeProjectionRef({
+    rootRef,
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+  });
+  if (!projectionRef) {
+    throw new HttpsError("invalid-argument", "Projection reference could not be created.");
+  }
+
+  const submissionsQuery = rootRef.collection("selfie_submissions")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+  const votesQuery = rootRef.collection("selfie_votes")
+    .where("roomCode", "==", safeRoomCode)
+    .where("promptId", "==", safePromptId);
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+
+  const [roomSnap, submissionsSnap, votesSnap] = await Promise.all([
+    roomRef.get(),
+    submissionsQuery.get(),
+    votesQuery.get(),
+  ]);
+
+  const roomData = roomSnap.exists ? (roomSnap.data() || {}) : {};
+  const activePromptId = normalizeSelfieChallengePromptId(roomData?.selfieChallenge?.promptId || "");
+  const requireApproval = activePromptId === safePromptId
+    ? !!roomData?.selfieChallenge?.requireApproval
+    : true;
+
+  const allSubmissions = submissionsSnap.docs
+    .map((docSnap) => buildPublicSelfieSubmissionRecord(docSnap))
+    .filter((submission) => submission.uid && submission.url)
+    .sort((a, b) => b.timestamp - a.timestamp);
+  const visibleSubmissions = requireApproval
+    ? allSubmissions.filter((submission) => submission.approved)
+    : allSubmissions;
+
+  const votesByVoterUid = {};
+  votesSnap.docs.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    const voterUid = normalizeUidToken(data.voterUid || "");
+    const targetUid = normalizeUidToken(data.targetUid || "");
+    if (!voterUid || !targetUid) return;
+    votesByVoterUid[voterUid] = targetUid;
+  });
+
+  const submittedUids = Array.from(new Set(
+    allSubmissions
+      .map((submission) => submission.uid)
+      .filter(Boolean)
+  ));
+
+  await projectionRef.set({
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+    requireApproval,
+    submittedUids,
+    submissions: visibleSubmissions,
+    votesByVoterUid,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    roomCode: safeRoomCode,
+    promptId: safePromptId,
+    requireApproval,
+    submissionCount: allSubmissions.length,
+    visibleSubmissionCount: visibleSubmissions.length,
+    voteCount: Object.keys(votesByVoterUid).length,
+  };
+};
+
 const normalizeAwardKeyToken = (value = "") =>
   String(value || "")
     .trim()
@@ -16554,6 +17647,7 @@ exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => 
   const db = admin.firestore();
   const rootRef = getRootRef();
   const submissionRef = rootRef.collection("selfie_submissions").doc(submissionId);
+  let projectionPromptId = "";
 
   await db.runTransaction(async (tx) => {
     const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
@@ -16572,6 +17666,7 @@ exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => 
     if (submissionRoomCode !== safeRoomCode) {
       throw new HttpsError("permission-denied", "Submission does not belong to this room.");
     }
+    projectionPromptId = normalizeSelfieChallengePromptId(submission.promptId || "");
     tx.update(submissionRef, {
       approved,
       moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -16579,7 +17674,1964 @@ exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => 
     });
   });
 
+  if (projectionPromptId) {
+    await syncSelfieChallengePublicProjection({
+      rootRef,
+      roomCode,
+      promptId: projectionPromptId,
+    });
+  }
+
   return { ok: true, approved };
+});
+
+exports.syncPromptVotePublicProjection = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "sync_prompt_vote_projection", { perMinute: 20, perHour: 200 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const questionId = normalizePromptVoteQuestionId(request.data?.questionId || "");
+  const voteType = normalizePromptVoteType(request.data?.voteType || "");
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!questionId) {
+    throw new HttpsError("invalid-argument", "questionId is required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  await db.runTransaction(async (tx) => {
+    await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can resync prompt vote rounds.",
+    });
+  });
+
+  return syncPromptVotePublicProjection({
+    rootRef,
+    roomCode,
+    questionId,
+    voteType,
+  });
+});
+
+exports.castPromptVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_prompt_vote", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "cast_prompt_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const questionId = normalizePromptVoteQuestionId(request.data?.questionId || "");
+  const voteType = normalizePromptVoteType(request.data?.voteType || "");
+  const val = sanitizePromptVoteValue(voteType, request.data?.val);
+  const userName = sanitizeSelfieDisplayName(request.data?.userName || "Player");
+  const avatar = sanitizeSelfieAvatar(request.data?.avatar || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!questionId) {
+    throw new HttpsError("invalid-argument", "questionId is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const voteId = buildPromptVoteDocId({
+    roomCode,
+    questionId,
+    voterUid: callerUid,
+  });
+  if (!voteId) {
+    throw new HttpsError("invalid-argument", "Vote id could not be created.");
+  }
+  const voteRef = rootRef.collection("prompt_votes").doc(voteId);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, voteSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(voteRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const questionState = getPromptVoteQuestionState({
+      roomData,
+      voteType,
+    });
+    if (roomData.activeMode !== questionState.liveMode || questionState.activeQuestionId !== questionId) {
+      throw new HttpsError("failed-precondition", "That prompt vote round is no longer active.");
+    }
+    if (questionState.status === "reveal") {
+      throw new HttpsError("failed-precondition", "Voting just closed.");
+    }
+
+    if (voteSnap.exists) {
+      const existingVote = voteSnap.data() || {};
+      if (String(existingVote.val) === String(val)) {
+        return {
+          ok: true,
+          duplicate: true,
+          voterUid: callerUid,
+          val,
+          voteType,
+        };
+      }
+      throw new HttpsError("already-exists", "Vote already submitted.");
+    }
+
+    tx.set(voteRef, {
+      roomCode,
+      questionId,
+      voteType,
+      uid: callerUid,
+      voterUid: callerUid,
+      val,
+      userName,
+      avatar,
+      timestamp: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      voterUid: callerUid,
+      val,
+      voteType,
+    };
+  });
+
+  await syncPromptVotePublicProjection({ rootRef, roomCode, questionId, voteType });
+  return result;
+});
+
+exports.finalizePromptVoteRound = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "finalize_prompt_vote_round", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "finalize_prompt_vote_round");
+  requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const questionId = normalizePromptVoteQuestionId(request.data?.questionId || "");
+  const voteType = normalizePromptVoteType(request.data?.voteType || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!questionId) {
+    throw new HttpsError("invalid-argument", "questionId is required.");
+  }
+
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const db = admin.firestore();
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+
+  const roomData = roomSnap.data() || {};
+  const questionState = getPromptVoteQuestionState({
+    roomData,
+    voteType,
+  });
+  if (questionState.activeQuestionId !== questionId) {
+    throw new HttpsError("failed-precondition", "That prompt vote round is no longer active.");
+  }
+  if (questionState.status !== "reveal") {
+    throw new HttpsError("failed-precondition", "Results are not ready yet.");
+  }
+
+  let winningSide = "";
+  let awardedCount = 0;
+  let awardedPoints = 0;
+  let duplicate = questionState.rewarded;
+  let voteCount = 0;
+
+  if (voteType === "vote_wyr" && !questionState.rewarded) {
+    const votesSnap = await rootRef.collection("prompt_votes")
+      .where("roomCode", "==", roomCode)
+      .where("questionId", "==", questionId)
+      .where("voteType", "==", voteType)
+      .get();
+
+    const votes = votesSnap.docs
+      .map((docSnap) => {
+        const data = docSnap.data() || {};
+        const voterUid = normalizeUidToken(data.voterUid || data.uid || "");
+        return {
+          voterUid,
+          val: String(data.val || "").trim().toUpperCase(),
+        };
+      })
+      .filter((entry) => entry.voterUid && (entry.val === "A" || entry.val === "B"));
+
+    voteCount = votes.length;
+    const votesA = votes.filter((entry) => entry.val === "A");
+    const votesB = votes.filter((entry) => entry.val === "B");
+    if (votesA.length !== votesB.length) {
+      winningSide = votesA.length > votesB.length ? "A" : "B";
+      const rewardPoints = Math.max(0, Number(questionState.questionData?.points || 50));
+      const winners = (winningSide === "A" ? votesA : votesB).map((entry) => ({
+        uid: entry.voterUid,
+        points: rewardPoints,
+      }));
+      if (rewardPoints > 0 && winners.length) {
+        const onceResult = await applyRoomAwardsOnce({
+          roomCode,
+          awardKey: `wyr_${roomCode}_${questionId}_${winningSide}`,
+          awards: winners,
+          source: "wyr",
+        });
+        duplicate = !!onceResult.duplicate;
+        awardedCount = onceResult.awardedCount || 0;
+        awardedPoints = onceResult.awardedPoints || 0;
+      }
+    }
+  } else if (voteType === "vote_trivia" && !questionState.rewarded) {
+    const votesSnap = await rootRef.collection("prompt_votes")
+      .where("roomCode", "==", roomCode)
+      .where("questionId", "==", questionId)
+      .where("voteType", "==", voteType)
+      .get();
+
+    const correctAnswer = Number(questionState.questionData?.correct ?? 0);
+    const votes = votesSnap.docs
+      .map((docSnap) => {
+        const data = docSnap.data() || {};
+        const voterUid = normalizeUidToken(data.voterUid || data.uid || "");
+        return {
+          voterUid,
+          val: Number(data.val),
+        };
+      })
+      .filter((entry) => entry.voterUid && Number.isFinite(entry.val));
+
+    voteCount = votes.length;
+    const rewardPoints = Math.max(0, Number(questionState.questionData?.points || 100));
+    const winners = votes
+      .filter((entry) => Number(entry.val) === correctAnswer)
+      .map((entry) => ({
+        uid: entry.voterUid,
+        points: rewardPoints,
+      }));
+
+    if (rewardPoints > 0 && winners.length) {
+      const onceResult = await applyRoomAwardsOnce({
+        roomCode,
+        awardKey: `trivia_${roomCode}_${questionId}_correct_${correctAnswer}`,
+        awards: winners,
+        source: "trivia",
+      });
+      duplicate = !!onceResult.duplicate;
+      awardedCount = onceResult.awardedCount || 0;
+      awardedPoints = onceResult.awardedPoints || 0;
+    }
+  }
+
+  await db.runTransaction(async (tx) => {
+    const freshRoomSnap = await tx.get(roomRef);
+    if (!freshRoomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    const freshRoomData = freshRoomSnap.data() || {};
+    const freshState = getPromptVoteQuestionState({
+      roomData: freshRoomData,
+      voteType,
+    });
+    if (freshState.activeQuestionId !== questionId) {
+      throw new HttpsError("failed-precondition", "That prompt vote round is no longer active.");
+    }
+    if (freshState.status !== "reveal") {
+      throw new HttpsError("failed-precondition", "Results are not ready yet.");
+    }
+
+    tx.set(roomRef, {
+      [freshState.roomField]: {
+        ...(freshState.questionData || {}),
+        rewarded: true,
+        rewardedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+    }, { merge: true });
+  });
+
+  const projectionResult = await syncPromptVotePublicProjection({
+    rootRef,
+    roomCode,
+    questionId,
+    voteType,
+  });
+
+  return {
+    ok: true,
+    duplicate,
+    winningSide,
+    voteCount: projectionResult.voteCount || voteCount,
+    awardedCount,
+    awardedPoints,
+    status: projectionResult.status || "reveal",
+  };
+});
+
+exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_audience_queue_song", { perMinute: 20, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "submit_audience_queue_song");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const clientRequestId = normalizeQueueRequestId(request.data?.clientRequestId || request.data?.requestId || "");
+  const songTitle = sanitizeQueueText(request.data?.songTitle || request.data?.title || "", "", 180);
+  const artist = sanitizeQueueText(request.data?.artist || "", "Unknown", 180);
+  const albumArtUrl = sanitizeQueueUrl(request.data?.albumArtUrl || request.data?.artworkUrl || "");
+  const mediaUrl = sanitizeQueueUrl(request.data?.mediaUrl || "");
+  const trackSource = sanitizeQueueSourceToken(request.data?.trackSource || (mediaUrl ? "youtube" : ""), mediaUrl ? "youtube" : "");
+  const appleMusicId = sanitizeQueueText(request.data?.appleMusicId || request.data?.itunesId || "", "", 160);
+  const trackId = sanitizeQueueText(request.data?.trackId || "", "", 220) || null;
+  const durationSec = Math.max(0, Math.round(Number(request.data?.durationSec || request.data?.duration || 0) || 0));
+  const collabOpen = request.data?.collabOpen === true;
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!clientRequestId) {
+    throw new HttpsError("invalid-argument", "clientRequestId is required.");
+  }
+  if (!songTitle) {
+    throw new HttpsError("invalid-argument", "Song title is required.");
+  }
+  if (mediaUrl && trackSource === "youtube" && !extractYouTubeId(mediaUrl)) {
+    throw new HttpsError("invalid-argument", "A valid YouTube backing URL is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const queueRef = rootRef.collection("karaoke_songs").doc(`queue_${roomCode}_${callerUid}_${clientRequestId}`);
+  const queueQuery = rootRef.collection("karaoke_songs")
+    .where("roomCode", "==", roomCode);
+
+  const result = await db.runTransaction(async (tx) => {
+    const [existingSnap, roomSnap, roomUserSnap, queueSnap] = await Promise.all([
+      tx.get(queueRef),
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(queueQuery),
+    ]);
+
+    if (existingSnap.exists) {
+      const existing = existingSnap.data() || {};
+      return {
+        ok: true,
+        duplicate: true,
+        songId: existingSnap.id,
+        status: existing.status || "requested",
+        playbackReady: !!existing.playbackReady,
+        resolutionStatus: existing.resolutionStatus || "",
+        resolutionLayer: existing.resolutionLayer || "",
+        collabOpen: !!existing.collabOpen,
+      };
+    }
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before sending a song request.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const roomUserData = roomUserSnap.data() || {};
+    const singerName = sanitizeQueueText(roomUserData.name || request.data?.singerName || "", "Guest", 100);
+    const singerAvatar = sanitizeQueueText(roomUserData.avatar || request.data?.emoji || "", "", 40);
+    const queueSongs = queueSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
+    const queuedCount = queueSongs.filter((entry) =>
+      songBelongsToQueueUser(entry, callerUid, singerName)
+      && ["requested", "pending", "performing"].includes(String(entry.status || ""))
+    ).length;
+    const performedCount = queueSongs.filter((entry) =>
+      songBelongsToQueueUser(entry, callerUid, singerName)
+      && String(entry.status || "") === "performed"
+    ).length;
+    const limitState = getQueueLimitState({
+      queueSettings: roomData?.queueSettings || {},
+      songs: queueSongs,
+      uid: callerUid,
+      name: singerName,
+    });
+    if (limitState.hardBlocked) {
+      throw new HttpsError("resource-exhausted", "You have reached the host song limit.");
+    }
+
+    const youtubeId = extractYouTubeId(mediaUrl);
+    const hasPlayableBacking = !!youtubeId;
+    const hasBacking = !!mediaUrl;
+    const hasAppleMusic = !!appleMusicId;
+    const queueState = deriveServerQueueRequestState({
+      roomData,
+      payload: request.data || {},
+      hasPlayableBacking,
+      hasBacking,
+      hasAppleMusic,
+      softReviewPending: limitState.softReviewPending,
+    });
+    const rotation = sanitizeQueueSourceToken(roomData?.queueSettings?.rotation || "round_robin", "round_robin");
+    const firstTimeBoost = roomData?.queueSettings?.firstTimeBoost !== false;
+    let priorityScore = nowMs();
+    if (rotation === "round_robin") {
+      priorityScore += queuedCount * 60000;
+    }
+    if (firstTimeBoost && performedCount === 0) {
+      priorityScore -= 120000;
+    }
+
+    const songId = sanitizeQueueText(request.data?.songId || buildSongKey(songTitle, artist), "", 240)
+      || buildSongKey(songTitle, artist);
+    const resolvedTrackSource = trackSource || (appleMusicId ? "apple_music" : null);
+    const audioOnly = request.data?.audioOnly === true || resolvedTrackSource === "apple_music";
+    const youtubeEmbeddable = request.data?.youtubeEmbeddable === true
+      ? true
+      : request.data?.youtubeEmbeddable === false
+        ? false
+        : null;
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+    const docData = {
+      roomCode,
+      songTitle,
+      artist,
+      albumArtUrl,
+      singerName,
+      singerUid: callerUid,
+      emoji: singerAvatar,
+      status: queueState.status,
+      timestamp: serverNow,
+      priorityScore,
+      songId,
+      trackId,
+      trackSource: resolvedTrackSource,
+      mediaUrl,
+      appleMusicId,
+      duration: durationSec > 0 ? durationSec : null,
+      audioOnly,
+      backingAudioOnly: audioOnly,
+      playbackReady: hasPlayableBacking,
+      youtubeEmbeddable,
+      youtubeUploadStatus: sanitizeQueueSourceToken(request.data?.youtubeUploadStatus || ""),
+      youtubePrivacyStatus: sanitizeQueueSourceToken(request.data?.youtubePrivacyStatus || ""),
+      youtubePlaybackStatus: sanitizeQueueText(request.data?.youtubePlaybackStatus || "", "", 80),
+      mediaResolutionStatus: queueState.mediaResolutionStatus,
+      requestedBackingMode: queueState.requestedBackingMode,
+      resolutionStatus: queueState.resolutionStatus,
+      resolutionLayer: queueState.resolutionLayer,
+      collabOpen,
+      collabMode: collabOpen ? "duet_or_group" : "solo",
+      reviewRequestedAt: queueState.reviewRequired ? serverNow : null,
+      queueRequestId: clientRequestId,
+      submittedByUid: callerUid,
+      submittedVia: sanitizeQueueSourceToken(request.data?.submittedVia || "audience", "audience"),
+      sourceMode: sanitizeQueueSourceToken(request.data?.sourceMode || roomData?.activeMode || "karaoke", "karaoke"),
+      runOfShowItemId: sanitizeQueueText(
+        request.data?.runOfShowItemId
+          || roomData?.runOfShowDirector?.liveItemId
+          || roomData?.runOfShowDirector?.currentItemId
+          || roomData?.runOfShowItemId
+          || "",
+        "",
+        160
+      ) || null,
+      createdAt: serverNow,
+    };
+
+    tx.create(queueRef, docData);
+    tx.set(roomUserRef, { lastActiveAt: serverNow }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      songId: queueRef.id,
+      status: docData.status,
+      playbackReady: docData.playbackReady,
+      resolutionStatus: docData.resolutionStatus,
+      resolutionLayer: docData.resolutionLayer,
+      collabOpen: docData.collabOpen,
+    };
+  });
+
+  return result;
+});
+
+exports.manageKaraokeBracket = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "manage_karaoke_bracket", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "manage_karaoke_bracket");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const action = sanitizeQueueSourceToken(request.data?.action || "", "");
+  if (!roomCode || !action) {
+    throw new HttpsError("invalid-argument", "roomCode and action are required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const { roomRef, roomData } = await ensureRoomHostAccess({
+    callerUid,
+    roomCode,
+    deniedMessage: "Only room hosts can manage brackets.",
+  });
+
+  if (action === "clear") {
+    const payload = {
+      karaokeBracket: null,
+      gameData: null,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (roomData?.activeMode === "karaoke_bracket") payload.activeMode = "karaoke";
+    await roomRef.set(payload, { merge: true });
+    return { ok: true, action, status: "cleared" };
+  }
+
+  if (action === "open_signup") {
+    const existing = roomData?.karaokeBracket || {};
+    if (Array.isArray(existing?.rounds) && existing.rounds.length) {
+      throw new HttpsError("failed-precondition", "Clear the current bracket before opening signup.");
+    }
+    const openedAt = nowMs();
+    const signup = buildBracketSignupStateServer({
+      durationMin: request.data?.durationMin,
+      readySongMin: request.data?.readySongMin,
+      openedAt,
+      songSelectionMode: request.data?.songSelectionMode,
+    }, openedAt);
+    let bracket = {
+      id: existing?.id || `sweet16_${openedAt}`,
+      style: "sweet16",
+      format: "single_elimination",
+      roomCode,
+      size: 0,
+      status: "signup",
+      createdAt: Number(existing?.createdAt || openedAt),
+      contestantOrder: [],
+      contestantsByUid: {},
+      rounds: [],
+      activeRoundIndex: 0,
+      activeMatchId: null,
+      crowdVotingEnabled: existing?.crowdVotingEnabled !== false,
+      roundTransition: null,
+      championCelebration: null,
+      seedMode: "signup",
+      songSelectionMode: signup.songSelectionMode,
+      matchHistory: [],
+      auditTrail: Array.isArray(existing?.auditTrail) ? existing.auditTrail : [],
+      championUid: null,
+      championName: "",
+      signup,
+    };
+    bracket = appendBracketAuditEventServer(bracket, {
+      type: "signup_opened",
+      text: signup.songSelectionMode === "singer_pick_round"
+        ? `Bracket signup opened (${signup.durationMin}m / singers pick each round).`
+        : `Bracket signup opened (${signup.durationMin}m / ${signup.readySongMin}+ songs).`,
+      durationMin: signup.durationMin,
+      readySongMin: signup.readySongMin,
+      songSelectionMode: signup.songSelectionMode,
+      hostUid: callerUid,
+    });
+    await roomRef.set({
+      activeMode: "karaoke_bracket",
+      karaokeBracket: bracket,
+      gameData: bracket,
+      gameParticipantMode: "all",
+      gameParticipants: [],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, action, bracketId: bracket.id, status: bracket.status, songSelectionMode: bracket.songSelectionMode };
+  }
+
+  if (action === "create") {
+    const songSelectionMode = normalizeBracketSongSelectionMode(
+      request.data?.songSelectionMode
+      || roomData?.karaokeBracket?.songSelectionMode
+      || roomData?.karaokeBracket?.signup?.songSelectionMode
+      || "tight15_random"
+    );
+    const bracketSignup = roomData?.karaokeBracket?.signup
+      ? buildBracketSignupStateServer(roomData.karaokeBracket.signup, Number(roomData?.karaokeBracket?.createdAt || nowMs()))
+      : null;
+    const readySongMin = Math.max(1, Number(bracketSignup?.readySongMin || request.data?.readySongMin || 1));
+    const seedUids = Array.isArray(request.data?.seedUids)
+      ? request.data.seedUids.map((uid) => normalizeUidToken(uid)).filter(Boolean)
+      : [];
+    const seedMode = seedUids.length ? "manual" : "auto";
+    const randomize = seedMode === "manual" ? request.data?.randomize === true : true;
+    const usersSnap = await rootRef.collection("room_users")
+      .where("roomCode", "==", roomCode)
+      .get();
+    const candidates = filterBracketCandidateDocs({ docs: usersSnap.docs, roomData });
+    const eligible = candidates.filter((entry) => (
+      songSelectionMode === "singer_pick_round"
+      || entry.tight15.length >= readySongMin
+    ));
+    if (eligible.length < BRACKET_MIN_READY_COUNT) {
+      throw new HttpsError(
+        "failed-precondition",
+        songSelectionMode === "singer_pick_round"
+          ? `Need at least ${BRACKET_MIN_READY_COUNT} joined singers for this bracket.`
+          : `Need at least ${BRACKET_MIN_READY_COUNT} singers with ${readySongMin}+ Tight 15 songs.`
+      );
+    }
+    const eligibleByUid = new Map(eligible.map((entry) => [entry.uid, entry]));
+    let seededPool = eligible;
+    if (seedMode === "manual") {
+      const ordered = [];
+      const seen = new Set();
+      seedUids.forEach((uid) => {
+        if (seen.has(uid)) return;
+        seen.add(uid);
+        const entry = eligibleByUid.get(uid);
+        if (entry) ordered.push(entry);
+      });
+      if (ordered.length < BRACKET_MIN_READY_COUNT) {
+        throw new HttpsError("failed-precondition", `Need at least ${BRACKET_MIN_READY_COUNT} eligible selected singers.`);
+      }
+      seededPool = ordered;
+    }
+    const maxSupported = Math.min(BRACKET_MAX_SIZE, seededPool.length);
+    const bracketSize = 2 ** Math.floor(Math.log2(maxSupported));
+    if (bracketSize < BRACKET_MIN_READY_COUNT) {
+      throw new HttpsError("failed-precondition", "Not enough bracket-ready singers.");
+    }
+    const pool = randomize ? seededPool.sort(() => Math.random() - 0.5) : [...seededPool];
+    const seeded = pool.slice(0, bracketSize);
+    const contestantsByUid = {};
+    const contestantOrder = [];
+    seeded.forEach((entry) => {
+      contestantsByUid[entry.uid] = entry;
+      contestantOrder.push(entry.uid);
+    });
+    const firstRound = buildBracketRoundServer({
+      contestantUids: contestantOrder,
+      contestantsByUid,
+      roundIndex: 0,
+      songSelectionMode,
+    });
+    let bracket = {
+      id: `sweet16_${nowMs()}`,
+      style: "sweet16",
+      format: "single_elimination",
+      roomCode,
+      size: bracketSize,
+      status: "setup",
+      createdAt: Number(roomData?.karaokeBracket?.createdAt || nowMs()),
+      contestantOrder,
+      contestantsByUid,
+      rounds: [firstRound],
+      activeRoundIndex: 0,
+      activeMatchId: null,
+      crowdVotingEnabled: true,
+      roundTransition: null,
+      championCelebration: null,
+      seedMode,
+      songSelectionMode,
+      matchHistory: [],
+      auditTrail: [],
+      championUid: null,
+      championName: "",
+      signup: null,
+    };
+    const seededNames = contestantOrder
+      .map((uid, idx) => `${idx + 1}. ${contestantsByUid?.[uid]?.name || "Singer"}`)
+      .join(", ");
+    bracket = appendBracketAuditEventServer(bracket, {
+      type: "bracket_created",
+      text: `Bracket created (${seedMode}${randomize ? "/random" : "/ordered"}, ${songSelectionMode}).`,
+      bracketSize,
+      seedMode,
+      randomize,
+      songSelectionMode,
+      seededUids: contestantOrder,
+      seededNames,
+      hostUid: callerUid,
+    });
+    await roomRef.set({
+      activeMode: "karaoke_bracket",
+      karaokeBracket: bracket,
+      gameData: bracket,
+      gameParticipantMode: "all",
+      gameParticipants: [],
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true, action, bracketId: bracket.id, status: bracket.status, bracketSize, songSelectionMode };
+  }
+
+  if (action === "toggle_crowd_voting" || action === "go_live" || action === "queue_next_match") {
+    return db.runTransaction(async (tx) => {
+      const freshRoomSnap = await tx.get(roomRef);
+      if (!freshRoomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+      const freshRoom = freshRoomSnap.data() || {};
+      let bracket = freshRoom?.karaokeBracket || {};
+      if (!Array.isArray(bracket?.rounds) || !bracket.rounds.length) {
+        throw new HttpsError("failed-precondition", "Create a bracket first.");
+      }
+      if (action === "toggle_crowd_voting") {
+        const enabled = request.data?.enabled === true;
+        bracket = appendBracketAuditEventServer({ ...bracket, crowdVotingEnabled: enabled }, {
+          type: "crowd_voting_toggled",
+          text: enabled ? "Crowd voting enabled." : "Crowd voting paused.",
+          enabled,
+          hostUid: callerUid,
+        });
+        tx.set(roomRef, {
+          activeMode: "karaoke_bracket",
+          karaokeBracket: bracket,
+          gameData: bracket,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return { ok: true, action, enabled, bracketId: bracket.id || "" };
+      }
+      if (action === "go_live") {
+        tx.set(roomRef, {
+          activeMode: "karaoke_bracket",
+          karaokeBracket: bracket,
+          gameData: bracket,
+          gameParticipantMode: "all",
+          gameParticipants: [],
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return { ok: true, action, bracketId: bracket.id || "", status: bracket.status || "setup" };
+      }
+
+      const roundIndex = Math.max(0, Number(bracket.activeRoundIndex || 0));
+      const rounds = Array.isArray(bracket.rounds) ? bracket.rounds.map((round) => ({
+        ...round,
+        matches: Array.isArray(round.matches) ? [...round.matches] : [],
+      })) : [];
+      const round = rounds[roundIndex];
+      if (!round) throw new HttpsError("failed-precondition", "No active bracket round.");
+      const matchIndex = round.matches.findIndex((match) => !match?.queuedAt && !match?.winnerUid);
+      if (matchIndex < 0) {
+        throw new HttpsError("failed-precondition", "All matches in this round are already queued.");
+      }
+      const queuedAt = nowMs();
+      const target = { ...round.matches[matchIndex], queuedAt };
+      const aContestant = target.aUid ? bracket?.contestantsByUid?.[target.aUid] : null;
+      const bContestant = target.bUid ? bracket?.contestantsByUid?.[target.bUid] : null;
+      const queuedSongs = [];
+      const songSelectionMode = normalizeBracketSongSelectionMode(bracket?.songSelectionMode || target?.songSelectionMode || "tight15_random");
+      if (songSelectionMode === "tight15_random") {
+        const aQueued = queueBracketSongDocServer({ tx, rootRef, roomCode, bracket, match: target, contestant: aContestant, side: "a" });
+        const bQueued = queueBracketSongDocServer({ tx, rootRef, roomCode, bracket, match: target, contestant: bContestant, side: "b" });
+        if (aQueued) queuedSongs.push(aQueued);
+        if (bQueued) queuedSongs.push(bQueued);
+      }
+      target.requiresSingerSongPick = songSelectionMode === "singer_pick_round";
+      target.songSelectionMode = songSelectionMode;
+      round.matches[matchIndex] = target;
+      rounds[roundIndex] = { ...round };
+      bracket = appendBracketAuditEventServer({
+        ...bracket,
+        status: "in_progress",
+        rounds,
+        activeRoundIndex: roundIndex,
+        activeMatchId: target.id,
+        roundTransition: null,
+      }, {
+        type: "match_queued",
+        text: songSelectionMode === "singer_pick_round"
+          ? `Queued ${aContestant?.name || "Singer A"} vs ${bContestant?.name || "Singer B"} in ${round?.name || "Round"}; singers pick songs.`
+          : `Queued ${aContestant?.name || "Singer A"} vs ${bContestant?.name || "Singer B"} in ${round?.name || "Round"}.`,
+        matchId: target.id,
+        roundIndex,
+        roundName: round?.name || "",
+        slot: Number(target?.slot || 0),
+        aUid: target?.aUid || null,
+        bUid: target?.bUid || null,
+        songSelectionMode,
+        queuedSongs,
+        hostUid: callerUid,
+      });
+      tx.set(roomRef, {
+        activeMode: "karaoke_bracket",
+        karaokeBracket: bracket,
+        gameData: bracket,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return {
+        ok: true,
+        action,
+        bracketId: bracket.id || "",
+        matchId: target.id,
+        status: bracket.status || "in_progress",
+        songSelectionMode,
+        requiresSingerSongPick: !!target.requiresSingerSongPick,
+        queuedSongs,
+      };
+    });
+  }
+
+  throw new HttpsError("invalid-argument", "Unsupported bracket action.");
+});
+
+exports.submitBracketRoundSong = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_bracket_round_song", { perMinute: 20, perHour: 80 });
+  enforceAppCheckIfEnabled(request, "submit_bracket_round_song");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const bracketId = sanitizeBracketId(request.data?.bracketId || "");
+  const matchId = sanitizeBracketMatchId(request.data?.matchId || "");
+  if (!roomCode || !bracketId || !matchId) {
+    throw new HttpsError("invalid-argument", "roomCode, bracketId, and matchId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const queueRef = rootRef.collection("karaoke_songs").doc(`bracket_${roomCode}_${bracketId}_${matchId}_${callerUid}`);
+
+  return db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, queueSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(queueRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before picking a bracket song.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const bracket = roomData?.karaokeBracket || {};
+    if (roomData.activeMode !== "karaoke_bracket" || bracket?.id !== bracketId) {
+      throw new HttpsError("failed-precondition", "That bracket is no longer active.");
+    }
+    if (bracket?.status === "complete") {
+      throw new HttpsError("failed-precondition", "That bracket is already complete.");
+    }
+    if (normalizeBracketSongSelectionMode(bracket?.songSelectionMode || "") !== "singer_pick_round") {
+      throw new HttpsError("failed-precondition", "This bracket is not using singer-picked round songs.");
+    }
+    if (bracket?.activeMatchId !== matchId) {
+      throw new HttpsError("failed-precondition", "That match is no longer live.");
+    }
+    const found = findBracketMatch(bracket, matchId);
+    if (!found?.match) {
+      throw new HttpsError("not-found", "Bracket match not found.");
+    }
+    const match = found.match;
+    if (match.winnerUid) {
+      throw new HttpsError("failed-precondition", "That match is already closed.");
+    }
+    if (match.aUid !== callerUid && match.bUid !== callerUid) {
+      throw new HttpsError("permission-denied", "Only contestants in the active match can pick a bracket song.");
+    }
+    const side = match.bUid === callerUid ? "b" : "a";
+    const songField = side === "b" ? "bSong" : "aSong";
+    if (match?.[songField]?.songTitle || queueSnap.exists) {
+      const existing = queueSnap.exists ? queueSnap.data() || {} : {};
+      return {
+        ok: true,
+        duplicate: true,
+        bracketId,
+        matchId,
+        side,
+        songId: queueRef.id,
+        status: existing.status || "requested",
+        playbackReady: !!existing.playbackReady,
+        resolutionStatus: existing.resolutionStatus || "",
+        resolutionLayer: existing.resolutionLayer || "",
+      };
+    }
+
+    const roomUserData = roomUserSnap.data() || {};
+    const songPayload = buildBracketRoundSongPayloadServer({
+      requestData: { ...(request.data || {}), roomCode },
+      roomData,
+      callerUid,
+      roomUserData,
+      bracket,
+      match,
+      side,
+    });
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    const docData = {
+      ...songPayload,
+      timestamp: serverNow,
+      createdAt: serverNow,
+      queueRequestId: sanitizeQueueText(request.data?.clientRequestId || request.data?.requestId || "", "", 120) || queueRef.id,
+    };
+    const rounds = Array.isArray(bracket.rounds) ? bracket.rounds.map((round) => ({
+      ...round,
+      matches: Array.isArray(round.matches) ? [...round.matches] : [],
+    })) : [];
+    const round = rounds[found.roundIndex];
+    const nextMatch = {
+      ...match,
+      [songField]: {
+        songId: songPayload.songId,
+        songTitle: songPayload.songTitle,
+        artist: songPayload.artist,
+        albumArtUrl: songPayload.albumArtUrl,
+        mediaUrl: songPayload.mediaUrl,
+        trackId: songPayload.trackId || null,
+        trackSource: songPayload.trackSource || null,
+        appleMusicId: songPayload.appleMusicId || "",
+        queueSongId: queueRef.id,
+        pickedByUid: callerUid,
+        pickedAt: nowMs(),
+      },
+    };
+    round.matches[found.matchIndex] = nextMatch;
+    rounds[found.roundIndex] = { ...round };
+    const nextBracket = appendBracketAuditEventServer({
+      ...bracket,
+      rounds,
+    }, {
+      type: "round_song_picked",
+      text: `${songPayload.singerName || "Singer"} picked ${songPayload.songTitle} for Match ${match?.slot || found.matchIndex + 1}.`,
+      matchId,
+      roundIndex: found.roundIndex,
+      roundName: round?.name || "",
+      side,
+      uid: callerUid,
+      songTitle: songPayload.songTitle,
+    });
+
+    tx.create(queueRef, docData);
+    tx.set(roomUserRef, { lastActiveAt: serverNow }, { merge: true });
+    tx.set(roomRef, {
+      activeMode: "karaoke_bracket",
+      karaokeBracket: nextBracket,
+      gameData: nextBracket,
+      updatedAt: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      bracketId,
+      matchId,
+      side,
+      songId: queueRef.id,
+      status: docData.status,
+      playbackReady: docData.playbackReady,
+      resolutionStatus: docData.resolutionStatus,
+      resolutionLayer: docData.resolutionLayer,
+    };
+  });
+});
+
+exports.castKaraokeBracketVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_karaoke_bracket_vote", { perMinute: 30, perHour: 180 });
+  enforceAppCheckIfEnabled(request, "cast_karaoke_bracket_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const bracketId = sanitizeBracketId(request.data?.bracketId || "");
+  const matchId = sanitizeBracketMatchId(request.data?.matchId || "");
+  const targetUid = normalizeUidToken(request.data?.targetUid || "");
+
+  if (!roomCode || !bracketId || !matchId || !targetUid) {
+    throw new HttpsError("invalid-argument", "roomCode, bracketId, matchId, and targetUid are required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+
+  return db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const bracket = roomData?.karaokeBracket || {};
+    if (roomData.activeMode !== "karaoke_bracket" || bracket?.id !== bracketId) {
+      throw new HttpsError("failed-precondition", "That bracket is no longer active.");
+    }
+    if (bracket?.status === "complete") {
+      throw new HttpsError("failed-precondition", "That bracket is already complete.");
+    }
+    if (bracket?.crowdVotingEnabled === false) {
+      throw new HttpsError("failed-precondition", "Crowd voting is paused.");
+    }
+    if (bracket?.activeMatchId && bracket.activeMatchId !== matchId) {
+      throw new HttpsError("failed-precondition", "That match is no longer live.");
+    }
+
+    const found = findBracketMatch(bracket, matchId);
+    if (!found?.match) {
+      throw new HttpsError("not-found", "Bracket match not found.");
+    }
+    const match = found.match;
+    if (match.winnerUid) {
+      throw new HttpsError("failed-precondition", "That match is already closed.");
+    }
+    if (callerUid === match.aUid || callerUid === match.bUid) {
+      throw new HttpsError("permission-denied", "Contestants cannot vote in their own match.");
+    }
+    if (targetUid !== match.aUid && targetUid !== match.bUid) {
+      throw new HttpsError("invalid-argument", "Vote target must be one of the active contestants.");
+    }
+
+    const existingVote = roomUserSnap.data()?.bracketVote || {};
+    const duplicate = existingVote.bracketId === bracketId
+      && existingVote.matchId === matchId
+      && existingVote.targetUid === targetUid;
+    const changed = existingVote.bracketId === bracketId
+      && existingVote.matchId === matchId
+      && existingVote.targetUid
+      && existingVote.targetUid !== targetUid;
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+    tx.set(roomUserRef, {
+      bracketVote: {
+        bracketId,
+        matchId,
+        targetUid,
+        votedAt: serverNow,
+      },
+      lastActiveAt: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate,
+      changed: !!changed,
+      bracketId,
+      matchId,
+      targetUid,
+    };
+  });
+});
+
+exports.resolveKaraokeBracketMatch = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "resolve_karaoke_bracket_match", { perMinute: 20, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "resolve_karaoke_bracket_match");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const bracketId = sanitizeBracketId(request.data?.bracketId || "");
+  const matchId = sanitizeBracketMatchId(request.data?.matchId || "");
+  const requestedWinnerUid = normalizeUidToken(request.data?.winnerUid || "");
+  const useCrowdVotes = request.data?.useCrowdVotes === true;
+  const reason = sanitizeQueueSourceToken(request.data?.reason || (useCrowdVotes ? "crowd_vote" : "host_manual"), "host_manual");
+  const source = sanitizeQueueSourceToken(request.data?.source || (useCrowdVotes ? "crowd" : "host"), "host");
+  const requestedLoserUid = normalizeUidToken(request.data?.loserUid || "");
+
+  if (!roomCode || !matchId) {
+    throw new HttpsError("invalid-argument", "roomCode and matchId are required.");
+  }
+
+  const { roomRef, roomData } = await ensureRoomHostAccess({
+    callerUid,
+    roomCode,
+    deniedMessage: "Only room hosts can resolve bracket matches.",
+  });
+  const rootRef = getRootRef();
+  const bracket = roomData?.karaokeBracket || {};
+  if (!bracket?.rounds?.length) {
+    throw new HttpsError("failed-precondition", "Create a bracket first.");
+  }
+  if (bracketId && bracket.id !== bracketId) {
+    throw new HttpsError("failed-precondition", "That bracket is no longer active.");
+  }
+
+  const found = findBracketMatch(bracket, matchId);
+  if (!found?.match) {
+    throw new HttpsError("not-found", "Bracket match not found.");
+  }
+  if (found.match.winnerUid) {
+    return {
+      ok: true,
+      duplicate: true,
+      bracketId: bracket.id || "",
+      matchId,
+      winnerUid: found.match.winnerUid,
+      status: bracket.status || "in_progress",
+    };
+  }
+
+  const voteSummary = await getBracketVoteSummary({
+    rootRef,
+    roomCode,
+    bracketId: bracket.id || bracketId,
+    match: found.match,
+  });
+  let winnerUid = requestedWinnerUid;
+  if (useCrowdVotes) {
+    if (!voteSummary.total) {
+      throw new HttpsError("failed-precondition", "No crowd votes yet for this match.");
+    }
+    if (voteSummary.aVotes === voteSummary.bVotes) {
+      throw new HttpsError("failed-precondition", "Crowd vote is tied.");
+    }
+    winnerUid = voteSummary.aVotes > voteSummary.bVotes ? found.match.aUid : found.match.bUid;
+  }
+  if (!winnerUid || (winnerUid !== found.match.aUid && winnerUid !== found.match.bUid)) {
+    throw new HttpsError("invalid-argument", "Winner must be one of the two singers in this match.");
+  }
+
+  const resolvedAt = nowMs();
+  const rounds = Array.isArray(bracket.rounds) ? bracket.rounds.map((round) => ({
+    ...round,
+    matches: Array.isArray(round.matches) ? [...round.matches] : [],
+  })) : [];
+  const round = rounds[found.roundIndex];
+  const match = round.matches[found.matchIndex];
+  const loserUid = requestedLoserUid || (winnerUid === match?.aUid ? match?.bUid : match?.aUid);
+  const aContestant = bracket?.contestantsByUid?.[match?.aUid] || null;
+  const bContestant = bracket?.contestantsByUid?.[match?.bUid] || null;
+  const winnerName = bracket?.contestantsByUid?.[winnerUid]?.name || "Winner";
+  const loserName = bracket?.contestantsByUid?.[loserUid]?.name || "Singer";
+
+  round.matches[found.matchIndex] = {
+    ...match,
+    winnerUid,
+    completedAt: resolvedAt,
+    resolutionType: reason,
+  };
+  rounds[found.roundIndex] = { ...round };
+
+  let nextBracket = advanceBracketStateServer({
+    ...bracket,
+    rounds,
+    activeRoundIndex: found.roundIndex,
+  });
+  nextBracket = upsertBracketMatchHistoryEntryServer(nextBracket, {
+    matchId: match.id,
+    roundIndex: found.roundIndex,
+    roundName: round?.name || `Round ${found.roundIndex + 1}`,
+    slot: Number(match?.slot || found.matchIndex + 1),
+    aUid: match?.aUid || null,
+    aName: aContestant?.name || "Singer A",
+    aSong: match?.aSong || null,
+    bUid: match?.bUid || null,
+    bName: bContestant?.name || "Singer B",
+    bSong: match?.bSong || null,
+    winnerUid,
+    winnerName,
+    loserUid: loserUid || null,
+    loserName: loserName || "",
+    resolutionType: reason,
+    resolutionSource: source,
+    votes: voteSummary,
+    queuedAt: Number(match?.queuedAt || 0),
+    at: resolvedAt,
+    resolvedByUid: callerUid,
+  });
+
+  const resolutionText = reason === "crowd_vote"
+    ? `${winnerName} won the crowd vote over ${loserName}.`
+    : reason === "forfeit_no_show_auto"
+      ? `${winnerName} advanced by automatic no-show forfeit.`
+      : reason === "forfeit_no_show_host"
+        ? `${winnerName} advanced by host no-show ruling.`
+        : `${winnerName} advanced over ${loserName}.`;
+  nextBracket = appendBracketAuditEventServer(nextBracket, {
+    type: "match_resolved",
+    text: `${resolutionText} (${round?.name || "Round"} - Match ${match?.slot || found.matchIndex + 1})`,
+    matchId: match.id,
+    roundIndex: found.roundIndex,
+    roundName: round?.name || "",
+    winnerUid,
+    loserUid: loserUid || null,
+    resolutionType: reason,
+    source,
+    votes: voteSummary,
+    resolvedByUid: callerUid,
+  });
+  const bracketSummary = buildBracketSummaryServer(nextBracket);
+
+  await roomRef.set({
+    activeMode: "karaoke_bracket",
+    karaokeBracket: nextBracket,
+    gameData: nextBracket,
+    bracketLastSummary: bracketSummary,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
+  return {
+    ok: true,
+    duplicate: false,
+    bracketId: nextBracket.id || "",
+    matchId,
+    winnerUid,
+    winnerName,
+    loserUid: loserUid || "",
+    loserName,
+    status: nextBracket.status || "in_progress",
+    roundTransition: nextBracket.roundTransition || null,
+    championUid: nextBracket.championUid || "",
+    championName: nextBracket.championName || "",
+    votes: voteSummary,
+  };
+});
+
+exports.submitBingoTileConfirmation = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_bingo_tile_confirmation", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "submit_bingo_tile_confirmation");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const tileIndex = sanitizeBingoTileIndex(request.data?.tileIndex);
+  const note = sanitizeBingoNote(request.data?.note || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const initialRoomSnap = await roomRef.get();
+  if (!initialRoomSnap.exists) {
+    throw new HttpsError("not-found", "Room code not found.");
+  }
+  const eligibleVoterCount = await getBingoEligibleVoterCount({
+    rootRef,
+    roomCode,
+    roomData: initialRoomSnap.data() || {},
+  });
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before confirming bingo tiles.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    if (roomData.activeMode !== "bingo" || roomData.bingoMode === "mystery") {
+      throw new HttpsError("failed-precondition", "That bingo round is no longer accepting tile confirmations.");
+    }
+    const tiles = Array.isArray(roomData.bingoData) ? roomData.bingoData : [];
+    if (!tiles[tileIndex]) {
+      throw new HttpsError("not-found", "Bingo tile not found.");
+    }
+    const participantState = getBingoParticipantState(roomData, callerUid);
+    if (!participantState.isParticipant) {
+      throw new HttpsError("permission-denied", "You are spectating this bingo round.");
+    }
+
+    const sessionId = String(roomData?.bingoSessionId || roomData?.bingoBoardId || "default");
+    const roomUserData = roomUserSnap.data() || {};
+    const existingVotes = roomUserData?.bingoVotesBySession?.[sessionId] || {};
+    if (existingVotes?.[tileIndex]) {
+      return {
+        ok: true,
+        duplicate: true,
+        autoApprove: !!roomData?.bingoRevealed?.[tileIndex],
+        tileIndex,
+      };
+    }
+    if (roomData?.bingoRevealed?.[tileIndex]) {
+      throw new HttpsError("failed-precondition", "That tile is already revealed.");
+    }
+
+    const currentCount = Number(roomData?.bingoSuggestions?.[tileIndex]?.count || 0);
+    const nextCount = currentCount + 1;
+    const thresholdPct = typeof roomData?.bingoAutoApprovePct === "number"
+      ? roomData.bingoAutoApprovePct
+      : 50;
+    const thresholdVotes = Math.max(1, Math.ceil((eligibleVoterCount * thresholdPct) / 100));
+    const autoApprove = roomData?.bingoVotingMode === "host+votes" && nextCount >= thresholdVotes;
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+    tx.set(roomUserRef, {
+      bingoVotesBySession: {
+        [sessionId]: {
+          [String(tileIndex)]: true,
+        },
+      },
+      lastActiveAt: serverNow,
+    }, { merge: true });
+    tx.update(roomRef, {
+      [`bingoSuggestions.${tileIndex}.count`]: nextCount,
+      [`bingoSuggestions.${tileIndex}.lastNote`]: note,
+      [`bingoSuggestions.${tileIndex}.lastAt`]: serverNow,
+      highlightedTile: tileIndex,
+      ...(autoApprove ? {
+        [`bingoRevealed.${tileIndex}`]: true,
+        [`bingoSuggestions.${tileIndex}.approvedAt`]: serverNow,
+      } : {}),
+    });
+
+    return {
+      ok: true,
+      duplicate: false,
+      autoApprove,
+      tileIndex,
+      count: nextCount,
+      thresholdVotes,
+    };
+  });
+
+  return result;
+});
+
+exports.submitBingoMysterySpin = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_bingo_mystery_spin", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "submit_bingo_mystery_spin");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const allowFinalized = request.data?.allowFinalized === true;
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const spinValue = Math.floor(Math.random() * 1000) + 1;
+
+  return db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before spinning.");
+    }
+    const roomData = roomSnap.data() || {};
+    if (roomData.activeMode !== "bingo" || roomData.bingoMode !== "mystery") {
+      throw new HttpsError("failed-precondition", "Mystery bingo is not active.");
+    }
+    const participantState = getBingoParticipantState(roomData, callerUid);
+    if (!participantState.isParticipant) {
+      throw new HttpsError("permission-denied", "You are spectating this mystery round.");
+    }
+    const rngState = roomData?.bingoMysteryRng || {};
+    const isOpen = !!rngState?.active || (allowFinalized && !!rngState?.finalized);
+    if (!isOpen) {
+      throw new HttpsError("failed-precondition", "Spin is closed.");
+    }
+    if (rngState?.results?.[callerUid]) {
+      return {
+        ok: true,
+        duplicate: true,
+        value: Number(rngState.results[callerUid]?.value || 0),
+      };
+    }
+
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    const roomUserData = roomUserSnap.data() || {};
+    const spinEntry = {
+      uid: callerUid,
+      name: String(roomUserData.name || "Guest").trim().slice(0, 80) || "Guest",
+      avatar: String(roomUserData.avatar || "").trim().slice(0, 32),
+      value: spinValue,
+      at: serverNow,
+    };
+    tx.update(roomRef, {
+      [`bingoMysteryRng.results.${callerUid}`]: spinEntry,
+    });
+    tx.set(roomUserRef, { lastActiveAt: serverNow }, { merge: true });
+    return {
+      ok: true,
+      duplicate: false,
+      value: spinValue,
+    };
+  });
+});
+
+exports.lockBingoMysteryPick = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "lock_bingo_mystery_pick", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "lock_bingo_mystery_pick");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const tileIndex = sanitizeBingoTileIndex(request.data?.tileIndex);
+  const note = sanitizeBingoNote(request.data?.note || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+
+  return db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before picking.");
+    }
+    const roomData = roomSnap.data() || {};
+    if (roomData.activeMode !== "bingo" || roomData.bingoMode !== "mystery") {
+      throw new HttpsError("failed-precondition", "Mystery bingo is not active.");
+    }
+    const participantState = getBingoParticipantState(roomData, callerUid);
+    if (!participantState.isParticipant) {
+      throw new HttpsError("permission-denied", "You are spectating this mystery round.");
+    }
+    const pickerUid = normalizeUidToken(roomData?.bingoPickerUid || "");
+    if (pickerUid && pickerUid !== callerUid) {
+      throw new HttpsError("permission-denied", "Waiting for the picker.");
+    }
+    const turnIndex = Math.max(0, Number(roomData?.bingoTurnIndex || 0));
+    const turnPick = roomData?.bingoTurnPick || {};
+    if (Number(turnPick?.turnIndex ?? -1) === turnIndex && normalizeUidToken(turnPick?.pickerUid || "") === callerUid) {
+      throw new HttpsError("already-exists", "You already locked a pick this turn.");
+    }
+    if (roomData?.bingoRevealed?.[tileIndex]) {
+      throw new HttpsError("failed-precondition", "That tile is already revealed.");
+    }
+    const tiles = Array.isArray(roomData.bingoData) ? roomData.bingoData : [];
+    const tile = tiles[tileIndex] || null;
+    if (!tile) {
+      throw new HttpsError("not-found", "Bingo tile not found.");
+    }
+
+    const serverNow = admin.firestore.FieldValue.serverTimestamp();
+    const roomUserData = roomUserSnap.data() || {};
+    const pickerName = String(roomUserData.name || "Guest").trim().slice(0, 80) || "Guest";
+    tx.update(roomRef, {
+      [`bingoRevealed.${tileIndex}`]: true,
+      [`bingoSuggestions.${tileIndex}.count`]: Number(roomData?.bingoSuggestions?.[tileIndex]?.count || 0) + 1,
+      [`bingoSuggestions.${tileIndex}.lastNote`]: note,
+      [`bingoSuggestions.${tileIndex}.lastAt`]: serverNow,
+      highlightedTile: tileIndex,
+      bingoFocus: { index: tileIndex, pickerUid: callerUid, pickerName, at: serverNow },
+      bingoTurnPick: { pickerUid: callerUid, pickerName, turnIndex, index: tileIndex, at: serverNow },
+    });
+    tx.set(roomUserRef, { lastActiveAt: serverNow }, { merge: true });
+
+    return {
+      ok: true,
+      tileIndex,
+      song: {
+        title: String(tile?.content?.title || tile?.text || "Mystery Song").trim().slice(0, 200) || "Mystery Song",
+        artist: String(tile?.content?.artist || "Unknown").trim().slice(0, 200) || "Unknown",
+        art: String(tile?.content?.art || "").trim().slice(0, 2048),
+        itunesId: String(tile?.content?.itunesId || "").trim().slice(0, 160),
+      },
+    };
+  });
+});
+
+exports.syncDoodleOkePublicProjection = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "sync_doodle_projection", { perMinute: 60, perHour: 400 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeDoodlePromptId(request.data?.promptId || "");
+  if (!roomCode || !promptId) {
+    throw new HttpsError("invalid-argument", "roomCode and promptId are required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  await db.runTransaction(async (tx) => {
+    await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can sync Doodle projections.",
+    });
+  });
+
+  return syncDoodleOkePublicProjection({ rootRef, roomCode, promptId });
+});
+
+exports.setDoodleSubmissionApproval = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "doodle_approval", { perMinute: 40, perHour: 400 });
+  const callerUid = request.auth?.uid || "";
+  if (!callerUid) {
+    throw new HttpsError("unauthenticated", "Sign in required.");
+  }
+
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  ensureString(roomCode, "roomCode");
+  const submissionId = String(request.data?.submissionId || "").trim();
+  ensureString(submissionId, "submissionId");
+  const approved = !!request.data?.approved;
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const submissionRef = rootRef.collection("doodle_submissions").doc(submissionId);
+  let projectionPromptId = "";
+
+  await db.runTransaction(async (tx) => {
+    const { roomCode: safeRoomCode } = await ensureRoomHostAccess({
+      tx,
+      rootRef,
+      roomCode,
+      callerUid,
+      deniedMessage: "Only room hosts can moderate Doodle submissions.",
+    });
+    const submissionSnap = await tx.get(submissionRef);
+    if (!submissionSnap.exists) {
+      throw new HttpsError("not-found", "Doodle submission not found.");
+    }
+    const submission = submissionSnap.data() || {};
+    const submissionRoomCode = normalizeRoomCode(submission.roomCode || "");
+    if (submissionRoomCode !== safeRoomCode) {
+      throw new HttpsError("permission-denied", "Submission does not belong to this room.");
+    }
+    projectionPromptId = normalizeDoodlePromptId(submission.promptId || "");
+    tx.update(submissionRef, {
+      approved,
+      moderatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      moderatedBy: callerUid,
+    });
+  });
+
+  if (projectionPromptId) {
+    await syncDoodleOkePublicProjection({
+      rootRef,
+      roomCode,
+      promptId: projectionPromptId,
+    });
+  }
+
+  return { ok: true, approved };
+});
+
+exports.submitDoodleOkeEntry = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_doodle_oke_entry", { perMinute: 16, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "submit_doodle_oke_entry");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeDoodlePromptId(request.data?.promptId || "");
+  const name = sanitizeDoodleDisplayName(request.data?.name || "Guest");
+  const avatar = sanitizeDoodleAvatar(request.data?.avatar || "");
+  const image = sanitizeDoodleImage(request.data?.image || "", "image");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!promptId) {
+    throw new HttpsError("invalid-argument", "promptId is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const submissionId = buildDoodleSubmissionId({
+    roomCode,
+    promptId,
+    uid: callerUid,
+  });
+  if (!submissionId) {
+    throw new HttpsError("invalid-argument", "Submission id could not be created.");
+  }
+  const submissionRef = rootRef.collection("doodle_submissions").doc(submissionId);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, submissionSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(submissionRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before submitting a drawing.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const doodle = roomData.doodleOke || {};
+    const challengePromptId = normalizeDoodlePromptId(doodle.promptId || "");
+    if (roomData.activeMode !== "doodle_oke" || challengePromptId !== promptId) {
+      throw new HttpsError("failed-precondition", "That Doodle-oke round is no longer active.");
+    }
+    const participants = Array.isArray(roomData?.doodleOkeConfig?.participants)
+      ? roomData.doodleOkeConfig.participants.map((entry) => normalizeUidToken(entry)).filter(Boolean)
+      : [];
+    if (participants.length && !participants.includes(callerUid)) {
+      throw new HttpsError("permission-denied", "You are not part of this Doodle-oke round.");
+    }
+
+    const effectiveStatus = getEffectiveDoodleStatus(doodle, nowMs());
+    if (!["drawing", "voting"].includes(effectiveStatus)) {
+      throw new HttpsError("failed-precondition", "Doodle submission is closed.");
+    }
+
+    if (submissionSnap.exists) {
+      const existing = submissionSnap.data() || {};
+      return {
+        ok: true,
+        duplicate: true,
+        submissionId,
+        approved: !!existing.approved,
+        uid: callerUid,
+      };
+    }
+
+    const approved = !doodle.requireReview;
+    tx.set(submissionRef, {
+      roomCode,
+      promptId,
+      uid: callerUid,
+      name,
+      avatar,
+      image,
+      approved,
+      timestamp: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      submissionId,
+      approved,
+      uid: callerUid,
+    };
+  });
+
+  await syncDoodleOkePublicProjection({ rootRef, roomCode, promptId });
+  return result;
+});
+
+exports.castDoodleOkeVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_doodle_oke_vote", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "cast_doodle_oke_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeDoodlePromptId(request.data?.promptId || "");
+  const targetUid = normalizeUidToken(request.data?.targetUid || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!promptId) {
+    throw new HttpsError("invalid-argument", "promptId is required.");
+  }
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "targetUid is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const voteId = buildDoodleVoteId({
+    roomCode,
+    promptId,
+    voterUid: callerUid,
+  });
+  if (!voteId) {
+    throw new HttpsError("invalid-argument", "Vote id could not be created.");
+  }
+  const voteRef = rootRef.collection("doodle_votes").doc(voteId);
+  const targetSubmissionRef = rootRef.collection("doodle_submissions").doc(
+    buildDoodleSubmissionId({ roomCode, promptId, uid: targetUid })
+  );
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, voteSnap, targetSubmissionSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(voteRef),
+      tx.get(targetSubmissionRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const doodle = roomData.doodleOke || {};
+    const challengePromptId = normalizeDoodlePromptId(doodle.promptId || "");
+    if (roomData.activeMode !== "doodle_oke" || challengePromptId !== promptId) {
+      throw new HttpsError("failed-precondition", "That Doodle-oke round is no longer active.");
+    }
+    if (getEffectiveDoodleStatus(doodle, nowMs()) !== "voting") {
+      throw new HttpsError("failed-precondition", "Voting is not open.");
+    }
+    if (!targetSubmissionSnap.exists) {
+      throw new HttpsError("not-found", "Doodle submission not found.");
+    }
+
+    const targetSubmission = targetSubmissionSnap.data() || {};
+    if (normalizeRoomCode(targetSubmission.roomCode || "") !== roomCode || normalizeDoodlePromptId(targetSubmission.promptId || "") !== promptId) {
+      throw new HttpsError("permission-denied", "That drawing does not belong to this round.");
+    }
+    if (doodle.requireReview && !targetSubmission.approved) {
+      throw new HttpsError("failed-precondition", "That drawing is not eligible for voting yet.");
+    }
+
+    if (voteSnap.exists) {
+      const existingVote = voteSnap.data() || {};
+      if (normalizeUidToken(existingVote.targetUid || "") === targetUid) {
+        return {
+          ok: true,
+          duplicate: true,
+          targetUid,
+          voterUid: callerUid,
+        };
+      }
+      throw new HttpsError("already-exists", "Vote already submitted.");
+    }
+
+    tx.set(voteRef, {
+      roomCode,
+      promptId,
+      uid: callerUid,
+      voterUid: callerUid,
+      targetUid,
+      timestamp: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      targetUid,
+      voterUid: callerUid,
+    };
+  });
+
+  await syncDoodleOkePublicProjection({ rootRef, roomCode, promptId });
+  return result;
+});
+
+exports.submitSelfieChallenge = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "submit_selfie_challenge", { perMinute: 16, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "submit_selfie_challenge");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeSelfieChallengePromptId(request.data?.promptId || "");
+  const userName = sanitizeSelfieDisplayName(request.data?.userName || "Guest");
+  const avatar = sanitizeSelfieAvatar(request.data?.avatar || "");
+  const url = sanitizeSelfieUrl(request.data?.url || "", "url");
+  const storagePath = sanitizeOptionalStoragePath(request.data?.storagePath || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!promptId) {
+    throw new HttpsError("invalid-argument", "promptId is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const submissionId = buildSelfieChallengeSubmissionId({
+    roomCode,
+    promptId,
+    uid: callerUid,
+  });
+  if (!submissionId) {
+    throw new HttpsError("invalid-argument", "Submission id could not be created.");
+  }
+  const submissionRef = rootRef.collection("selfie_submissions").doc(submissionId);
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, submissionSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(submissionRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before submitting a selfie.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const challenge = roomData.selfieChallenge || {};
+    const challengePromptId = normalizeSelfieChallengePromptId(challenge.promptId || "");
+    if (roomData.activeMode !== "selfie_challenge" || challengePromptId !== promptId) {
+      throw new HttpsError("failed-precondition", "That selfie challenge is no longer active.");
+    }
+    if (String(challenge.status || "").trim().toLowerCase() !== "collecting") {
+      throw new HttpsError("failed-precondition", "Selfie collection is closed.");
+    }
+    if (!Array.isArray(challenge.participants) || !challenge.participants.includes(callerUid)) {
+      throw new HttpsError("permission-denied", "You are not part of this selfie challenge.");
+    }
+
+    if (submissionSnap.exists) {
+      const existing = submissionSnap.data() || {};
+      return {
+        ok: true,
+        duplicate: true,
+        submissionId,
+        approved: !!existing.approved,
+        uid: callerUid,
+      };
+    }
+
+    const approved = !challenge.requireApproval;
+    tx.set(submissionRef, {
+      roomCode,
+      promptId,
+      uid: callerUid,
+      userName,
+      avatar,
+      url,
+      storagePath,
+      approved,
+      timestamp: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      submissionId,
+      approved,
+      uid: callerUid,
+    };
+  });
+
+  await syncSelfieChallengePublicProjection({ rootRef, roomCode, promptId });
+  return result;
+});
+
+exports.castSelfieChallengeVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_selfie_challenge_vote", { perMinute: 20, perHour: 160 });
+  enforceAppCheckIfEnabled(request, "cast_selfie_challenge_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const promptId = normalizeSelfieChallengePromptId(request.data?.promptId || "");
+  const targetUid = normalizeUidToken(request.data?.targetUid || "");
+
+  if (!roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (!promptId) {
+    throw new HttpsError("invalid-argument", "promptId is required.");
+  }
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "targetUid is required.");
+  }
+
+  const rootRef = getRootRef();
+  const db = admin.firestore();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const voteId = buildSelfieChallengeVoteId({
+    roomCode,
+    promptId,
+    voterUid: callerUid,
+  });
+  if (!voteId) {
+    throw new HttpsError("invalid-argument", "Vote id could not be created.");
+  }
+  const voteRef = rootRef.collection("selfie_votes").doc(voteId);
+  const targetSubmissionRef = rootRef.collection("selfie_submissions").doc(
+    buildSelfieChallengeSubmissionId({ roomCode, promptId, uid: targetUid })
+  );
+  const serverNow = admin.firestore.FieldValue.serverTimestamp();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap, voteSnap, targetSubmissionSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+      tx.get(voteRef),
+      tx.get(targetSubmissionRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room code not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const challenge = roomData.selfieChallenge || {};
+    const challengePromptId = normalizeSelfieChallengePromptId(challenge.promptId || "");
+    if (roomData.activeMode !== "selfie_challenge" || challengePromptId !== promptId) {
+      throw new HttpsError("failed-precondition", "That selfie challenge is no longer active.");
+    }
+    if (String(challenge.status || "").trim().toLowerCase() !== "voting") {
+      throw new HttpsError("failed-precondition", "Voting is not open.");
+    }
+    if (!targetSubmissionSnap.exists) {
+      throw new HttpsError("not-found", "Selfie submission not found.");
+    }
+
+    const targetSubmission = targetSubmissionSnap.data() || {};
+    if (normalizeRoomCode(targetSubmission.roomCode || "") !== roomCode || normalizeSelfieChallengePromptId(targetSubmission.promptId || "") !== promptId) {
+      throw new HttpsError("permission-denied", "That selfie does not belong to this challenge.");
+    }
+    if (challenge.requireApproval && !targetSubmission.approved) {
+      throw new HttpsError("failed-precondition", "That selfie is not eligible for voting yet.");
+    }
+
+    if (voteSnap.exists) {
+      const existingVote = voteSnap.data() || {};
+      if (normalizeUidToken(existingVote.targetUid || "") === targetUid) {
+        return {
+          ok: true,
+          duplicate: true,
+          targetUid,
+          voterUid: callerUid,
+        };
+      }
+      throw new HttpsError("already-exists", "Vote already submitted.");
+    }
+
+    tx.set(voteRef, {
+      roomCode,
+      promptId,
+      voterUid: callerUid,
+      targetUid,
+      timestamp: serverNow,
+    }, { merge: true });
+
+    return {
+      ok: true,
+      duplicate: false,
+      targetUid,
+      voterUid: callerUid,
+    };
+  });
+
+  await syncSelfieChallengePublicProjection({ rootRef, roomCode, promptId });
+  return result;
 });
 
 exports.moderateCrowdSelfieSubmission = onCall({ cors: true }, async (request) => {

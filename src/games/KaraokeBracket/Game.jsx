@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { db, doc, updateDoc, serverTimestamp } from '../../lib/firebase';
-import { APP_ID } from '../../lib/assets';
+import { castKaraokeBracketVote } from '../../lib/firebase';
 import {
     BRACKET_SIGNUP_MIN_READY_COUNT,
     isBracketSignupOpen,
@@ -105,6 +104,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
 
     if (showSignup) {
         const readySongMin = signupSummary.signup?.readySongMin || 5;
+        const singerPickRound = signupSummary.signup?.songSelectionMode === 'singer_pick_round' || state?.songSelectionMode === 'singer_pick_round';
         const countdownMinutesRemaining = signupSummary.signup?.deadlineMs
             ? Math.max(0, Math.ceil((signupSummary.remainingMs || 0) / 60000))
             : 0;
@@ -117,10 +117,14 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                             <div className={metaLabelClass}>Karaoke Tournament Setup</div>
                             <div className={`${titleSize} font-bebas text-rose-300 mt-3`}>Sweet 16 Signup</div>
                             <div className={`${view === 'tv' ? 'text-2xl' : 'text-base'} text-zinc-200 mt-3 max-w-3xl mx-auto`}>
-                                Build your Tight 15 now. The host will launch the bracket once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers have {readySongMin}+ songs saved.
+                                {singerPickRound
+                                    ? `Join the room to enter. The host will launch once at least ${BRACKET_SIGNUP_MIN_READY_COUNT} singers are in, then contestants pick a song each round.`
+                                    : `Build your Tight 15 now. The host will launch the bracket once at least ${BRACKET_SIGNUP_MIN_READY_COUNT} singers have ${readySongMin}+ songs saved.`}
                             </div>
                             <div className="mt-4 inline-flex items-center rounded-full border border-cyan-300/40 bg-cyan-500/10 px-4 py-2 text-cyan-100">
-                                <span className={`${view === 'tv' ? 'text-base' : 'text-xs'} uppercase tracking-[0.22em]`}>On your phone: Songs -&gt; Tight 15</span>
+                                <span className={`${view === 'tv' ? 'text-base' : 'text-xs'} uppercase tracking-[0.22em]`}>
+                                    {singerPickRound ? 'On your phone: be ready to submit your match song' : 'On your phone: Songs -> Tight 15'}
+                                </span>
                             </div>
                         </div>
                         <div className={`grid grid-cols-1 ${view === 'tv' ? 'md:grid-cols-3' : ''} gap-4 mt-8`}>
@@ -140,7 +144,9 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                         <div className="mt-6 rounded-3xl border border-white/10 bg-black/30 p-4 md:p-6">
                             <div className="flex items-center justify-between gap-3 mb-3">
                                 <div className={subtleLabelClass}>Readiness Board</div>
-                                <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} uppercase tracking-[0.22em] text-zinc-400`}>Ready = {readySongMin}+ songs</div>
+                                <div className={`${view === 'tv' ? 'text-sm' : 'text-[11px]'} uppercase tracking-[0.22em] text-zinc-400`}>
+                                    {singerPickRound ? 'Ready = joined singer' : `Ready = ${readySongMin}+ songs`}
+                                </div>
                             </div>
                             <div className={`grid grid-cols-1 ${view === 'tv' ? 'md:grid-cols-2' : ''} gap-3`}>
                                 {rosterPreview.map((entry) => (
@@ -150,12 +156,12 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                                                 {entry.avatar ? `${entry.avatar} ` : ''}{entry.name}
                                             </div>
                                             <div className={`${view === 'tv' ? 'text-base' : 'text-xs'} text-zinc-400 mt-1`}>
-                                                {entry.tight15Count}/15 songs saved
+                                                {singerPickRound ? 'Joined room' : `${entry.tight15Count}/15 songs saved`}
                                             </div>
                                         </div>
                                         <div className={`shrink-0 rounded-full border px-3 py-1 ${entry.ready ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
                                             <span className={`${view === 'tv' ? 'text-sm' : 'text-[10px]'} uppercase tracking-[0.22em]`}>
-                                                {entry.ready ? 'Ready' : 'Build list'}
+                                                {entry.ready ? 'Ready' : (singerPickRound ? 'Join room' : 'Build list')}
                                             </span>
                                         </div>
                                     </div>
@@ -174,7 +180,7 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
                                     onClick={onOpenTight15}
                                     className="w-full rounded-2xl border border-cyan-300/40 bg-cyan-500/20 px-4 py-4 text-base font-black uppercase tracking-[0.18em] text-cyan-100"
                                 >
-                                    Open Tight 15
+                                    {singerPickRound ? 'Open Songs' : 'Open Tight 15'}
                                 </button>
                             </div>
                         )}
@@ -189,21 +195,26 @@ const KaraokeBracketGame = ({ gameState, view = 'tv', user, users = [], roomCode
         setVoteBusy(true);
         setVoteError('');
         try {
-            await updateDoc(
-                doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_users', `${roomCode}_${localUid}`),
-                {
-                    bracketVote: {
-                        bracketId: state?.id || '',
-                        matchId: activeMatch.id,
-                        targetUid,
-                        votedAt: serverTimestamp()
-                    },
-                    lastActiveAt: serverTimestamp()
-                }
-            );
+            await castKaraokeBracketVote({
+                roomCode,
+                bracketId: state?.id || '',
+                matchId: activeMatch.id,
+                targetUid
+            });
         } catch (error) {
             console.error('Bracket vote failed', error);
-            setVoteError('Could not submit vote. Please try again.');
+            const message = String(error?.message || '');
+            if (message.includes('own match')) {
+                setVoteError('Contestants cannot vote in their own match.');
+            } else if (message.includes('paused')) {
+                setVoteError('Crowd voting is paused.');
+            } else if (message.includes('closed') || message.includes('complete')) {
+                setVoteError('That match is already closed.');
+            } else if (message.includes('no longer')) {
+                setVoteError('That match is no longer live.');
+            } else {
+                setVoteError('Could not submit vote. Please try again.');
+            }
         } finally {
             setVoteBusy(false);
         }

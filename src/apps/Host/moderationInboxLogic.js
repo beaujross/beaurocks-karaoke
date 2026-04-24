@@ -11,16 +11,14 @@ const toMs = (value) => {
 export const buildModerationQueueSnapshot = ({
     doodleRequireReview = false,
     selfieRequireApproval = false,
-    approvedUids = [],
     doodleSubmissions = [],
     selfieSubmissions = [],
     crowdSelfieSubmissions = [],
     bingoSuggestions = {},
     bingoRevealed = {}
 } = {}) => {
-    const approvedUidSet = new Set(Array.isArray(approvedUids) ? approvedUids.filter(Boolean) : []);
     const pendingDoodles = doodleRequireReview
-        ? (Array.isArray(doodleSubmissions) ? doodleSubmissions : []).filter((submission) => submission?.uid && !approvedUidSet.has(submission.uid))
+        ? (Array.isArray(doodleSubmissions) ? doodleSubmissions : []).filter((submission) => submission?.uid && !submission?.approved)
         : [];
     const pendingSelfies = selfieRequireApproval
         ? (Array.isArray(selfieSubmissions) ? selfieSubmissions : []).filter((submission) => !submission?.approved)

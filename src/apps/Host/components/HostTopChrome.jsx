@@ -1103,7 +1103,7 @@ const HostTopChrome = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog`)}
+                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog&catalogue=1`)}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
                                 <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue

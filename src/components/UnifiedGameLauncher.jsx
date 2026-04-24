@@ -309,6 +309,7 @@ const UnifiedGameLauncher = ({
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
+    onGoLiveSweet16Bracket,
     onSetBracketMatchWinner,
     onSetBracketWinnerFromCrowdVotes,
     onToggleBracketCrowdVoting,
@@ -335,6 +336,7 @@ const UnifiedGameLauncher = ({
     const [bracketSeedRandomize, setBracketSeedRandomize] = useState(false);
     const [bracketSignupDurationMin, setBracketSignupDurationMin] = useState(BRACKET_SIGNUP_DEFAULT_DURATION_MIN);
     const [bracketSignupReadySongMin, setBracketSignupReadySongMin] = useState(BRACKET_SIGNUP_DEFAULT_READY_COUNT);
+    const [bracketSongSelectionMode, setBracketSongSelectionMode] = useState('tight15_random');
     const bracketCandidates = useMemo(
         () => sortedUsers.filter((entry) => !isHostCandidate(room, entry)),
         [sortedUsers, room]
@@ -565,6 +567,7 @@ const UnifiedGameLauncher = ({
         const signup = getBracketSignupState(room?.karaokeBracket);
         setBracketSignupDurationMin(signup?.durationMin || BRACKET_SIGNUP_DEFAULT_DURATION_MIN);
         setBracketSignupReadySongMin(signup?.readySongMin || BRACKET_SIGNUP_DEFAULT_READY_COUNT);
+        setBracketSongSelectionMode(signup?.songSelectionMode || room?.karaokeBracket?.songSelectionMode || 'tight15_random');
     }, [
         showGameConfig,
         selectedGameForConfig,
@@ -572,6 +575,8 @@ const UnifiedGameLauncher = ({
         room?.karaokeBracket?.status,
         room?.karaokeBracket?.signup?.durationMin,
         room?.karaokeBracket?.signup?.readySongMin,
+        room?.karaokeBracket?.signup?.songSelectionMode,
+        room?.karaokeBracket?.songSelectionMode,
         room?.karaokeBracket?.signup?.deadlineMs
     ]);
 
@@ -1647,10 +1652,13 @@ const UnifiedGameLauncher = ({
                 setBracketSignupDurationMin={setBracketSignupDurationMin}
                 bracketSignupReadySongMin={bracketSignupReadySongMin}
                 setBracketSignupReadySongMin={setBracketSignupReadySongMin}
+                bracketSongSelectionMode={bracketSongSelectionMode}
+                setBracketSongSelectionMode={setBracketSongSelectionMode}
                 onOpenSweet16BracketSignup={onOpenSweet16BracketSignup}
                 onCreateSweet16Bracket={onCreateSweet16Bracket}
                 onQueueNextBracketMatch={onQueueNextBracketMatch}
                 onClearSweet16Bracket={onClearSweet16Bracket}
+                onGoLiveSweet16Bracket={onGoLiveSweet16Bracket}
                 onSetBracketMatchWinner={onSetBracketMatchWinner}
                 onSetBracketWinnerFromCrowdVotes={onSetBracketWinnerFromCrowdVotes}
                 onToggleBracketCrowdVoting={onToggleBracketCrowdVoting}
@@ -2586,10 +2594,13 @@ const GameConfigModal = ({
     setBracketSignupDurationMin,
     bracketSignupReadySongMin = BRACKET_SIGNUP_DEFAULT_READY_COUNT,
     setBracketSignupReadySongMin,
+    bracketSongSelectionMode = 'tight15_random',
+    setBracketSongSelectionMode,
     onOpenSweet16BracketSignup,
     onCreateSweet16Bracket,
     onQueueNextBracketMatch,
     onClearSweet16Bracket,
+    onGoLiveSweet16Bracket,
     onSetBracketMatchWinner,
     onSetBracketWinnerFromCrowdVotes,
     onToggleBracketCrowdVoting,
@@ -3212,6 +3223,7 @@ const GameConfigModal = ({
         const crowdVotingEnabled = activeBracket?.crowdVotingEnabled !== false;
         const showAdvancePrompt = !!activeBracket?.roundTransition && activeBracket?.status !== 'complete' && !activeBracket?.activeMatchId;
         const launchUnlocked = signupSummary.launchUnlocked;
+        const isSingerPickRound = bracketSongSelectionMode === 'singer_pick_round' || activeBracket?.songSelectionMode === 'singer_pick_round';
         const readyRoster = signupSummary.roster.filter((entry) => entry.ready);
         const readyCount = signupSummary.readyCount;
         const totalCount = signupSummary.totalCount;
@@ -3234,7 +3246,7 @@ const GameConfigModal = ({
         return (
             <GameConfigShell
                 title="Sweet 16 Bracket"
-                subtitle="Open a signup screen, let singers fill Tight 15, then seed and advance the bracket."
+                subtitle="Open signup, seed singers, then advance a single-elimination bracket."
                 accentClass="text-rose-300"
                 onClose={onClose}
             >
@@ -3244,7 +3256,9 @@ const GameConfigModal = ({
                             <div>
                                 <div className="text-xs uppercase tracking-[0.35em] text-rose-200">Bracket Signup</div>
                                 <div className="text-sm text-zinc-300 mt-2">
-                                    Put the signup explainer on TV, send singers into <span className="font-bold text-white">Songs -&gt; Tight 15</span>, and unlock launch once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers are ready.
+                                    {isSingerPickRound
+                                        ? `Put the signup explainer on TV, then launch once at least ${BRACKET_SIGNUP_MIN_READY_COUNT} singers have joined. Singers pick their own song when their match is queued.`
+                                        : <>Put the signup explainer on TV, send singers into <span className="font-bold text-white">Songs -&gt; Tight 15</span>, and unlock launch once at least {BRACKET_SIGNUP_MIN_READY_COUNT} singers are ready.</>}
                                 </div>
                             </div>
                             {bracketSignup && (
@@ -3255,6 +3269,22 @@ const GameConfigModal = ({
                             )}
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                            <label className="rounded-xl border border-zinc-700 bg-black/25 px-3 py-3 md:col-span-2">
+                                <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Song Mode</div>
+                                <select
+                                    value={bracketSongSelectionMode}
+                                    onChange={(e) => setBracketSongSelectionMode?.(e.target.value || 'tight15_random')}
+                                    className={`${STYLES.input} mt-2 w-full`}
+                                >
+                                    <option value="tight15_random">Auto-pick from Tight 15</option>
+                                    <option value="singer_pick_round">Singers pick each round</option>
+                                </select>
+                                <div className="text-[11px] text-zinc-500 mt-2">
+                                    {isSingerPickRound
+                                        ? 'Best for casual brackets: queue the match, then each contestant submits a song normally.'
+                                        : 'Best for fast tournaments: the bracket queues random saved songs when each match starts.'}
+                                </div>
+                            </label>
                             <label className="rounded-xl border border-zinc-700 bg-black/25 px-3 py-3">
                                 <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Countdown</div>
                                 <select
@@ -3278,6 +3308,7 @@ const GameConfigModal = ({
                                         <option key={count} value={count}>{count} songs in Tight 15</option>
                                     ))}
                                 </select>
+                                {isSingerPickRound && <div className="text-[11px] text-cyan-200 mt-2">Ignored in singer-pick mode.</div>}
                             </label>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
@@ -3292,7 +3323,7 @@ const GameConfigModal = ({
                             <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
                                 <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Launch Status</div>
                                 <div className={`text-sm font-black mt-2 ${launchUnlocked ? 'text-emerald-200' : 'text-amber-200'}`}>
-                                    {launchUnlocked ? 'Ready to seed bracket' : `Waiting for ${BRACKET_SIGNUP_MIN_READY_COUNT} ready singers`}
+                                    {launchUnlocked ? 'Ready to seed bracket' : `Waiting for ${BRACKET_SIGNUP_MIN_READY_COUNT} ${isSingerPickRound ? 'joined singers' : 'ready singers'}`}
                                 </div>
                             </div>
                         </div>
@@ -3302,7 +3333,8 @@ const GameConfigModal = ({
                                 data-feature-id="host-bracket-signup-open"
                                 onClick={() => onOpenSweet16BracketSignup?.({
                                     durationMin: bracketSignupDurationMin,
-                                    readySongMin: bracketSignupReadySongMin
+                                    readySongMin: bracketSignupReadySongMin,
+                                    songSelectionMode: bracketSongSelectionMode
                                 })}
                                 disabled={bracketBusy || !onOpenSweet16BracketSignup || !!activeBracket?.rounds?.length}
                                 className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-4 py-2 text-sm ${(bracketBusy || !onOpenSweet16BracketSignup || !!activeBracket?.rounds?.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -3318,17 +3350,21 @@ const GameConfigModal = ({
                         <div className="mt-4 rounded-xl border border-zinc-700 bg-zinc-950/50 p-3">
                             <div className="flex items-center justify-between gap-2 mb-2">
                                 <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Readiness Board</div>
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Ready = {bracketSignup?.readySongMin || bracketSignupReadySongMin}+ songs</div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+                                    {isSingerPickRound ? 'Ready = joined singer' : `Ready = ${bracketSignup?.readySongMin || bracketSignupReadySongMin}+ songs`}
+                                </div>
                             </div>
                             <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
                                 {signupSummary.roster.map((entry) => (
                                     <div key={entry.uid} className="rounded-xl border border-white/10 bg-black/25 px-3 py-2 flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="text-sm font-bold text-white truncate">{entry.avatar ? `${entry.avatar} ` : ''}{entry.name}</div>
-                                            <div className="text-[11px] text-zinc-500 mt-1">{entry.tight15Count}/15 songs saved</div>
+                                            <div className="text-[11px] text-zinc-500 mt-1">
+                                                {isSingerPickRound ? 'Joined room' : `${entry.tight15Count}/15 songs saved`}
+                                            </div>
                                         </div>
                                         <div className={`shrink-0 rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.24em] ${entry.ready ? 'border-emerald-300/40 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/40 bg-amber-500/12 text-amber-100'}`}>
-                                            {entry.ready ? 'Ready' : 'Needs songs'}
+                                            {entry.ready ? 'Ready' : (isSingerPickRound ? 'Joined' : 'Needs songs')}
                                         </div>
                                     </div>
                                 ))}
@@ -3414,7 +3450,8 @@ const GameConfigModal = ({
                         <button
                             onClick={() => onCreateSweet16Bracket?.({
                                 seedUids: bracketSeedUids,
-                                randomize: !!bracketSeedRandomize
+                                randomize: !!bracketSeedRandomize,
+                                songSelectionMode: bracketSongSelectionMode
                             })}
                             data-feature-id="host-bracket-create"
                             disabled={bracketBusy || !onCreateSweet16Bracket || (!!bracketSignup && !launchUnlocked)}
@@ -3447,26 +3484,18 @@ const GameConfigModal = ({
                         </button>
                         <button
                             onClick={async () => {
-                                if (!activeBracket?.rounds?.length) return;
-                                await updateRoom({
-                                    activeMode: 'karaoke_bracket',
-                                    karaokeBracket: activeBracket,
-                                    gameData: activeBracket,
-                                    gameParticipantMode: 'all',
-                                    gameParticipants: []
-                                });
-                                toast('Bracket launched');
+                                await onGoLiveSweet16Bracket?.();
                             }}
                             data-feature-id="host-bracket-go-live"
-                            disabled={!activeBracket?.rounds?.length}
-                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${!activeBracket?.rounds?.length ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            disabled={bracketBusy || !activeBracket?.rounds?.length || !onGoLiveSweet16Bracket}
+                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-sm ${(bracketBusy || !activeBracket?.rounds?.length || !onGoLiveSweet16Bracket) ? 'opacity-60 cursor-not-allowed' : ''}`}
                         >
                             Go Live
                         </button>
                     </div>
                     {!activeBracket?.rounds?.length ? (
                         <div className="text-sm text-zinc-400 bg-black/40 border border-white/10 rounded-2xl p-4">
-                            Creates single-elimination 1v1 matches. Each match auto-picks random songs from each singer&apos;s Tight 15. {bracketSignup ? `Current ready roster: ${readyRoster.length} singers.` : ''}
+                            Creates single-elimination 1v1 matches. {isSingerPickRound ? 'Singers pick a song when their match is queued.' : 'Each match auto-picks random songs from each singer&apos;s Tight 15.'} {bracketSignup ? `Current ready roster: ${readyRoster.length} singers.` : ''}
                         </div>
                     ) : (
                         <div className="space-y-3">
@@ -3475,6 +3504,7 @@ const GameConfigModal = ({
                                 {' '}| Bracket size: <span className="text-zinc-200 font-bold">{activeBracket?.size || 0}</span>
                                 {' '}| Status: <span className="text-zinc-200 font-bold">{activeBracket?.status || 'setup'}</span>
                                 {' '}| Crowd voting: <span className={`font-bold ${crowdVotingEnabled ? 'text-cyan-200' : 'text-zinc-500'}`}>{crowdVotingEnabled ? 'ON' : 'OFF'}</span>
+                                {' '}| Song mode: <span className="text-zinc-200 font-bold">{activeBracket?.songSelectionMode === 'singer_pick_round' ? 'Singer pick' : 'Tight 15 random'}</span>
                             </div>
                             {showAdvancePrompt && (
                                 <div className="rounded-xl border border-cyan-400/40 bg-cyan-500/10 px-3 py-3 flex flex-wrap items-center justify-between gap-3">
@@ -3517,7 +3547,7 @@ const GameConfigModal = ({
                                             <div className="space-y-2 text-sm">
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === a?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                     <div className="font-bold text-white">{a?.name || 'Open Slot'}</div>
-                                                    <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || '-'} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
+                                                    <div className="text-zinc-400 truncate">{match?.aSong?.songTitle || (match?.requiresSingerSongPick ? 'Singer picks this round' : '-')} {match?.aSong?.artist ? `- ${match.aSong.artist}` : ''}</div>
                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.aVotes || 0} crowd votes</div>
                                                     {a?.uid && (
                                                         <button
@@ -3540,7 +3570,7 @@ const GameConfigModal = ({
                                                 </div>
                                                 <div className={`rounded-lg border px-2 py-2 ${winnerUid && winnerUid === b?.uid ? 'border-emerald-400/50 bg-emerald-500/10' : 'border-zinc-700 bg-black/30'}`}>
                                                     <div className="font-bold text-white">{b?.name || 'Open Slot'}</div>
-                                                    <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || '-'} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
+                                                    <div className="text-zinc-400 truncate">{match?.bSong?.songTitle || (match?.requiresSingerSongPick ? 'Singer picks this round' : '-')} {match?.bSong?.artist ? `- ${match.bSong.artist}` : ''}</div>
                                                     <div className="text-[11px] text-cyan-200 mt-1">{voteSummary.bVotes || 0} crowd votes</div>
                                                     {b?.uid && (
                                                         <button

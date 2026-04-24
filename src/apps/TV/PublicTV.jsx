@@ -79,6 +79,18 @@ import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudien
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
 
+const buildSelfieChallengeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
+    const safeRoomCode = String(roomCodeValue || '').trim().toUpperCase();
+    const safePromptId = String(promptIdValue || '').trim().replace(/[\\/]/g, '_').slice(0, 120);
+    return safeRoomCode && safePromptId ? `${safeRoomCode}_${safePromptId}` : '';
+};
+
+const buildDoodleOkeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
+    const safeRoomCode = String(roomCodeValue || '').trim().toUpperCase();
+    const safePromptId = String(promptIdValue || '').trim().replace(/[\\/]/g, '_').slice(0, 120);
+    return safeRoomCode && safePromptId ? `${safeRoomCode}_${safePromptId}` : '';
+};
+
 const isTvVisibleChatMessage = (message) => {
     if (!message) return false;
     if (message.toHost || message.toUid) return false;
@@ -1805,6 +1817,7 @@ const PublicTV = ({ roomCode }) => {
     const [doodleNow, setDoodleNow] = useState(nowMs());
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
     const [doodleVotes, setDoodleVotes] = useState([]);
+    const [doodleSubmittedUids, setDoodleSubmittedUids] = useState([]);
     const [roomUsers, setRoomUsers] = useState([]);
     const [stormPhase, setStormPhase] = useState('off');
     const [stormLayerMeters, setStormLayerMeters] = useState(() => makeStormLayerMeters());
@@ -2104,15 +2117,7 @@ const PublicTV = ({ roomCode }) => {
         return true;
     }, []);
     const doodleRequireReview = !!room?.doodleOke?.requireReview;
-    const approvedDoodleUids = useMemo(
-        () => (Array.isArray(room?.doodleOke?.approvedUids) ? room.doodleOke.approvedUids : []),
-        [room?.doodleOke?.approvedUids]
-    );
-    const doodleVisibleSubmissions = useMemo(() => {
-        if (!doodleRequireReview) return doodleSubmissions;
-        const approvedSet = new Set(approvedDoodleUids.filter(Boolean));
-        return doodleSubmissions.filter((submission) => approvedSet.has(submission.uid));
-    }, [doodleRequireReview, approvedDoodleUids, doodleSubmissions]);
+    const doodleVisibleSubmissions = doodleSubmissions;
     const doodleRecentSubmissionIds = useMemo(() => {
         const cutoff = nowMs() - DOODLE_RECENT_BADGE_MS;
         return new Set(
@@ -2121,7 +2126,9 @@ const PublicTV = ({ roomCode }) => {
                 .map((submission) => submission.id)
         );
     }, [doodleVisibleSubmissions]);
-    const doodlePendingReviewCount = Math.max(0, doodleSubmissions.length - doodleVisibleSubmissions.length);
+    const doodlePendingReviewCount = doodleRequireReview
+        ? Math.max(0, doodleSubmittedUids.length - doodleVisibleSubmissions.length)
+        : 0;
     const bingoRngResults = useMemo(() => {
         const results = room?.bingoMysteryRng?.results || {};
         const list = Object.values(results).map(r => {
@@ -2273,46 +2280,42 @@ const PublicTV = ({ roomCode }) => {
         if (room?.activeMode !== 'doodle_oke' || !room?.doodleOke?.promptId) {
             setDoodleSubmissions([]);
             setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
             return;
         }
-        const subsQ = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', room.doodleOke.promptId),
-            orderBy('timestamp', 'desc'),
-            limit(20)
-        );
-        const votesQ = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', room.doodleOke.promptId),
-            orderBy('timestamp', 'desc'),
-            limit(120)
-        );
-        const unsubSubs = watchQuerySnapshot(
-            subsQ,
-            (snap) => {
-                setDoodleSubmissions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            },
-            {
-                label: `tv:doodle_submissions:${roomCode}`,
-                onFallback: () => setDoodleSubmissions([])
-            }
-        );
-        const unsubVotes = watchQuerySnapshot(
-            votesQ,
-            (snap) => {
-                setDoodleVotes(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-            },
-            {
-                label: `tv:doodle_votes:${roomCode}`,
-                onFallback: () => setDoodleVotes([])
-            }
-        );
-        return () => {
-            unsubSubs();
-            unsubVotes();
-        };
+        const promptId = String(room.doodleOke.promptId || '').trim();
+        const projectionId = buildDoodleOkeProjectionId(roomCode, promptId);
+        if (!projectionId) {
+            setDoodleSubmissions([]);
+            setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
+            return;
+        }
+        const projectionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_oke_public', projectionId);
+        return onSnapshot(projectionRef, (snap) => {
+            const data = snap.data() || {};
+            const submissions = Array.isArray(data?.submissions) ? data.submissions : [];
+            const submittedUids = Array.isArray(data?.submittedUids)
+                ? data.submittedUids.filter((entry) => typeof entry === 'string' && entry.trim())
+                : [];
+            const voteMap = data?.votesByVoterUid && typeof data.votesByVoterUid === 'object'
+                ? data.votesByVoterUid
+                : {};
+            const votes = Object.entries(voteMap)
+                .map(([voterUid, targetUid]) => ({
+                    id: voterUid,
+                    voterUid,
+                    targetUid: typeof targetUid === 'string' ? targetUid : ''
+                }))
+                .filter((vote) => vote.targetUid);
+            setDoodleSubmissions(submissions);
+            setDoodleVotes(votes);
+            setDoodleSubmittedUids(submittedUids);
+        }, () => {
+            setDoodleSubmissions([]);
+            setDoodleVotes([]);
+            setDoodleSubmittedUids([]);
+        });
     }, [room?.activeMode, room?.doodleOke?.promptId, roomCode]);
 
     useEffect(() => {
@@ -3355,24 +3358,33 @@ const PublicTV = ({ roomCode }) => {
             setSelfieVotes([]);
             return;
         }
-        const promptId = room.selfieChallenge.promptId;
-        const submissionsQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
-        );
-        const votesQuery = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_votes'),
-            where('roomCode', '==', roomCode),
-            where('promptId', '==', promptId)
-        );
-        const unsubSubs = onSnapshot(submissionsQuery, s => {
-            setSelfieSubmissions(s.docs.map(d => ({ id: d.id, ...d.data() })));
+        const promptId = String(room.selfieChallenge.promptId || '').trim();
+        const projectionId = buildSelfieChallengeProjectionId(roomCode, promptId);
+        if (!projectionId) {
+            setSelfieSubmissions([]);
+            setSelfieVotes([]);
+            return;
+        }
+        const projectionRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_challenge_public', projectionId);
+        return onSnapshot(projectionRef, (snap) => {
+            const data = snap.data() || {};
+            const submissions = Array.isArray(data?.submissions) ? data.submissions : [];
+            const voteMap = data?.votesByVoterUid && typeof data.votesByVoterUid === 'object'
+                ? data.votesByVoterUid
+                : {};
+            const votes = Object.entries(voteMap)
+                .map(([voterUid, targetUid]) => ({
+                    id: voterUid,
+                    voterUid,
+                    targetUid: typeof targetUid === 'string' ? targetUid : ''
+                }))
+                .filter((vote) => vote.targetUid);
+            setSelfieSubmissions(submissions);
+            setSelfieVotes(votes);
+        }, () => {
+            setSelfieSubmissions([]);
+            setSelfieVotes([]);
         });
-        const unsubVotes = onSnapshot(votesQuery, s => {
-            setSelfieVotes(s.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        return () => { unsubSubs(); unsubVotes(); };
     }, [room?.activeMode, room?.selfieChallenge?.promptId, roomCode]);
     useEffect(() => {
         const promptId = String(room?.selfieChallenge?.promptId || '').trim();

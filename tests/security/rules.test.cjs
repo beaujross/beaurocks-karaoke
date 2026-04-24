@@ -640,9 +640,31 @@ async function run() {
       await assertSucceeds(db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).delete());
     }],
 
-    ["firestore: audience user can create own karaoke song request", async () => {
+    ["firestore: audience user cannot mutate bracket vote directly", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).set({
+          roomCode: ROOM_CODE,
+          uid: GUEST_UID,
+          name: "Guest",
+          avatar: "smile",
+        });
+      });
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
-      await assertSucceeds(
+      await assertFails(
+        db.doc(roomUserPath(ROOM_CODE, GUEST_UID)).update({
+          bracketVote: {
+            bracketId: "bracket_1",
+            matchId: "m_1_1",
+            targetUid: OTHER_UID,
+          },
+        })
+      );
+    }],
+
+    ["firestore: audience user cannot create raw karaoke song request", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
         db.doc(karaokeSongPath("song_self")).set({
           roomCode: ROOM_CODE,
           songTitle: "Will",
@@ -653,6 +675,20 @@ async function run() {
           resolutionStatus: "review_required",
           resolutionLayer: "manual_review",
           collabOpen: true,
+        })
+      );
+    }],
+
+    ["firestore: host can create karaoke song request", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(karaokeSongPath("song_host")).set({
+          roomCode: ROOM_CODE,
+          songTitle: "Will",
+          artist: "Joyner Lucas",
+          singerName: "Guest",
+          singerUid: GUEST_UID,
+          status: "requested",
         })
       );
     }],
@@ -823,6 +859,20 @@ async function run() {
       );
     }],
 
+    ["firestore: audience user cannot mutate bingo rng directly", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(roomPath()).update({
+          bingoMysteryRng: {
+            active: true,
+            results: {
+              [GUEST_UID]: { uid: GUEST_UID, value: 999 },
+            },
+          },
+        })
+      );
+    }],
+
     ["firestore: reaction vote val rejects invalid string", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(
@@ -837,6 +887,39 @@ async function run() {
           isVote: true,
         })
       );
+    }],
+
+    ["firestore: audience user cannot create raw prompt vote docs", async () => {
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/prompt_votes/prompt_vote_1`).set({
+          roomCode: ROOM_CODE,
+          questionId: "trivia_1",
+          voteType: "vote_trivia",
+          voterUid: GUEST_UID,
+          uid: GUEST_UID,
+          val: 2,
+          userName: "Guest",
+          avatar: "ðŸ˜€",
+        })
+      );
+    }],
+
+    ["firestore: audience user can read prompt vote projection", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`${ROOT}/prompt_vote_public/${ROOM_CODE}_trivia_1`).set({
+          roomCode: ROOM_CODE,
+          questionId: "trivia_1",
+          voteType: "vote_trivia",
+          votesByVoterUid: {
+            [GUEST_UID]: 2,
+          },
+          votes: [],
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(db.doc(`${ROOT}/prompt_vote_public/${ROOM_CODE}_trivia_1`).get());
     }],
 
     ["firestore: audience user can create selfie photo reaction", async () => {

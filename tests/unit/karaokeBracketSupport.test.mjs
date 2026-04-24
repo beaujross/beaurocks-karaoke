@@ -4,6 +4,7 @@ import {
   BRACKET_SIGNUP_DEFAULT_DURATION_MIN,
   BRACKET_SIGNUP_DEFAULT_READY_COUNT,
   BRACKET_SIGNUP_MIN_READY_COUNT,
+  BRACKET_SONG_SELECTION_MODES,
   buildBracketSignupRoster,
   buildBracketSignupState,
   getBracketSignupState,
@@ -35,7 +36,8 @@ test("karaokeBracketSupport.test", () => {
     countdownStartedAt: 1000,
     deadlineMs: 721000,
     durationMin: 12,
-    readySongMin: 3
+    readySongMin: 3,
+    songSelectionMode: BRACKET_SONG_SELECTION_MODES.tight15Random
   });
 
   const bracket = {
@@ -81,4 +83,18 @@ test("karaokeBracketSupport.test", () => {
   assert.equal(summary.totalCount, 3);
   assert.equal(summary.launchUnlocked, true);
   assert.equal(summary.remainingMs, 717000);
+
+  const singerPickSignup = buildBracketSignupState({
+    openedAt: 1000,
+    songSelectionMode: BRACKET_SONG_SELECTION_MODES.singerPickRound
+  }, 1000);
+  const singerPickRoster = buildBracketSignupRoster({ roomUsers, room, signup: singerPickSignup });
+  assert.deepEqual(
+    singerPickRoster.map((entry) => [entry.uid, entry.tight15Count, entry.ready]),
+    [
+      ["u-4", 4, true],
+      ["u-2", 3, true],
+      ["u-3", 1, true]
+    ]
+  );
 });

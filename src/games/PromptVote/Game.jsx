@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { db, collection, addDoc, serverTimestamp, query, where, getDocs, callFunction } from '../../lib/firebase';
+import {
+    db,
+    doc,
+    onSnapshot,
+    castPromptVote,
+    finalizePromptVoteRound,
+} from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 
 const DEFAULT_EMOJI = String.fromCodePoint(0x1f600);
@@ -13,25 +19,22 @@ const getTimestampMs = (value) => {
     return 0;
 };
 
-const dedupeVotes = (entries = []) => {
-    const latestByVoter = new Map();
-    entries.forEach((entry, index) => {
-        if (!entry?.isVote) return;
-        const key = entry?.uid
-            ? `uid:${entry.uid}`
-            : `guest:${entry.userName || 'Player'}:${entry.avatar || DEFAULT_EMOJI}`;
-        const ts = getTimestampMs(entry.timestamp);
-        const current = latestByVoter.get(key);
-        if (!current || ts >= current._ts) {
-            latestByVoter.set(key, { ...entry, _ts: ts, _idx: index });
-        }
-    });
-    return Array.from(latestByVoter.values()).map((entry) => {
-        const clean = { ...entry };
-        delete clean._ts;
-        delete clean._idx;
-        return clean;
-    });
+const normalizePromptVoteQuestionId = (value = '') =>
+    String(value || '')
+        .trim()
+        .replace(/[\\/]/g, '_')
+        .slice(0, 160);
+
+const buildPromptVoteProjectionId = (roomCode = '', questionId = '') => {
+    const safeRoomCode = String(roomCode || '').trim().toUpperCase();
+    const safeQuestionId = normalizePromptVoteQuestionId(questionId);
+    if (!safeRoomCode || !safeQuestionId) return '';
+    return `${safeRoomCode}_${safeQuestionId}`;
+};
+
+const asObject = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    return value;
 };
 
 const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => {
@@ -48,6 +51,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
     const [hasVoted, setHasVoted] = useState(false);
     const [myVote, setMyVote] = useState(null);
     const [votes, setVotes] = useState([]);
+    const [votesByVoterUid, setVotesByVoterUid] = useState({});
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
     const [voteError, setVoteError] = useState('');
     const [nowMs, setNowMs] = useState(Date.now());
@@ -69,76 +73,58 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         return () => clearInterval(timer);
     }, [isTimerDriven, isReveal, questionId]);
 
-    // 3. Reset and rehydrate local vote state when the question changes
+    // 3. Reset local vote state when the question changes
     useEffect(() => {
         setHasVoted(false);
         setMyVote(null);
+        setVotes([]);
+        setVotesByVoterUid({});
         setIsSubmittingVote(false);
         setVoteError('');
-        if (!isPlayer || !roomCode || !questionId || !user?.uid) return;
-        let cancelled = false;
-        const loadMyVote = async () => {
-            try {
-                const voteQuery = query(
-                    collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
-                    where('roomCode', '==', roomCode),
-                    where('questionId', '==', questionId)
-                );
-                const snap = await getDocs(voteQuery);
-                if (cancelled) return;
-                const mine = dedupeVotes(snap.docs.map((d) => d.data()))
-                    .filter((entry) => entry?.uid === user.uid && entry?.type === voteType);
-                if (!mine.length) return;
-                const latest = [...mine].sort((a, b) => getTimestampMs(b.timestamp) - getTimestampMs(a.timestamp))[0];
-                setHasVoted(true);
-                setMyVote(latest?.val ?? null);
-            } catch {
-                // Non-fatal: player can still vote normally.
-            }
-        };
-        loadMyVote();
-        return () => {
-            cancelled = true;
-        };
-    }, [isPlayer, roomCode, questionId, user?.uid, voteType]);
+    }, [questionId]);
 
-    // 3. Listen for Votes (TV Only)
+    // 4. Subscribe to the projection doc for this prompt round
     useEffect(() => {
-        if (isPlayer) return; // Players don't need to fetch everyone's votes constantly
         if (!roomCode || !questionId) {
             setVotes([]);
+            setVotesByVoterUid({});
             return;
         }
 
-        const q = query(
-            collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
-            where('roomCode', '==', roomCode),
-            where('questionId', '==', questionId)
-        );
-        let cancelled = false;
+        const projectionId = buildPromptVoteProjectionId(roomCode, questionId);
+        if (!projectionId) {
+            setVotes([]);
+            setVotesByVoterUid({});
+            return;
+        }
 
-        // Poll for votes (real-time listener could be too heavy for 100+ users, polling is safer here)
-        const loadVotes = async () => {
-            try {
-                const snap = await getDocs(q);
-                if (cancelled) return;
-                const allVotes = dedupeVotes(snap.docs.map((d) => d.data()));
-                const filtered = allVotes.filter((entry) => entry?.type === voteType);
-                setVotes(filtered);
-            } catch {
-                if (!cancelled) setVotes([]);
+        return onSnapshot(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'prompt_vote_public', projectionId),
+            (snap) => {
+                if (!snap.exists()) {
+                    setVotes([]);
+                    setVotesByVoterUid({});
+                    return;
+                }
+                const data = snap.data() || {};
+                setVotes(Array.isArray(data.votes) ? data.votes : []);
+                setVotesByVoterUid(asObject(data.votesByVoterUid));
+            },
+            () => {
+                setVotes([]);
+                setVotesByVoterUid({});
             }
-        };
+        );
+    }, [roomCode, questionId]);
 
-        const interval = setInterval(loadVotes, 1500);
-        loadVotes(); // Initial fetch
-        return () => {
-            cancelled = true;
-            clearInterval(interval);
-        };
-    }, [isPlayer, roomCode, questionId, voteType]);
+    useEffect(() => {
+        if (!isPlayer || !user?.uid) return;
+        if (!Object.prototype.hasOwnProperty.call(votesByVoterUid, user.uid)) return;
+        setHasVoted(true);
+        setMyVote(votesByVoterUid[user.uid]);
+    }, [isPlayer, user?.uid, votesByVoterUid]);
 
-    // 4. Cast Vote (Player Only)
+    // 5. Cast Vote (Player Only)
     const castVote = async (val) => {
         if (!isPlayer || !roomCode || !questionId || isReveal) return;
         if (hasVoted || isSubmittingVote) return;
@@ -150,49 +136,40 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const uid = user?.uid || null;
 
         try {
-            const voteQuery = query(
-                collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'),
-                where('roomCode', '==', roomCode),
-                where('questionId', '==', questionId)
-            );
-            const existingSnap = await getDocs(voteQuery);
-            const existing = dedupeVotes(existingSnap.docs.map((d) => d.data()))
-                .filter((entry) => entry?.type === voteType)
-                .filter((entry) => {
-                    if (uid) return entry?.uid === uid;
-                    return (entry?.userName || 'Player') === userName && (entry?.avatar || DEFAULT_EMOJI) === userAvatar;
-                });
-
-            if (existing.length) {
-                const latest = [...existing].sort((a, b) => getTimestampMs(b.timestamp) - getTimestampMs(a.timestamp))[0];
-                setHasVoted(true);
-                setMyVote(latest?.val ?? val);
-                return;
-            }
-
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+            const result = await castPromptVote({
                 roomCode,
-                type: voteType,
-                val,
                 questionId,
+                voteType,
+                val,
                 userName,
                 avatar: userAvatar,
                 uid,
-                isVote: true,
-                timestamp: serverTimestamp()
             });
+            if (result?.duplicate || result?.ok) {
+                setHasVoted(true);
+                setMyVote(result?.val ?? val);
+            }
             setHasVoted(true);
             setMyVote(val);
         } catch (error) {
             console.error('Vote submit failed', error);
-            setVoteError('Could not submit vote. Please try again.');
+            const errorCode = String(error?.code || '');
+            if (errorCode.includes('failed-precondition')) {
+                setVoteError(error?.message || 'Voting just closed.');
+            } else if (errorCode.includes('already-exists')) {
+                setVoteError('Your vote is already locked for this round.');
+            } else if (errorCode.includes('permission-denied')) {
+                setVoteError('Rejoin the room and try again.');
+            } else {
+                setVoteError('Could not submit vote. Please try again.');
+            }
         } finally {
             setIsSubmittingVote(false);
         }
     };
 
     const totalVotes = votes.length;
-    const rewardedWyrQuestionIdsRef = useRef(new Set());
+    const finalizedPromptVoteQuestionIdsRef = useRef(new Set());
     const wyrVoteSummary = useMemo(() => {
         if (!isWyr) {
             return {
@@ -230,28 +207,23 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
     }, [gameState?.points, isWyr, votes]);
 
     useEffect(() => {
-        rewardedWyrQuestionIdsRef.current = new Set();
+        finalizedPromptVoteQuestionIdsRef.current = new Set();
     }, [roomCode]);
 
     useEffect(() => {
-        if (isPlayer || !isWyr || !isReveal) return;
+        if (isPlayer || (!isTrivia && !isWyr) || !isReveal) return;
         const safeQuestionId = String(questionId || '').trim();
-        if (!roomCode || !safeQuestionId || !wyrVoteSummary.winningSide || !wyrVoteSummary.rewardPoints) return;
-        if (!wyrVoteSummary.winners.length) return;
-        if (rewardedWyrQuestionIdsRef.current.has(safeQuestionId)) return;
-        rewardedWyrQuestionIdsRef.current.add(safeQuestionId);
-        void callFunction('awardRoomPoints', {
+        if (!roomCode || !safeQuestionId) return;
+        if (finalizedPromptVoteQuestionIdsRef.current.has(safeQuestionId)) return;
+        finalizedPromptVoteQuestionIdsRef.current.add(safeQuestionId);
+        void finalizePromptVoteRound({
             roomCode,
-            awardKey: `wyr_${roomCode}_${safeQuestionId}_${wyrVoteSummary.winningSide}`,
-            source: 'wyr',
-            awards: wyrVoteSummary.winners.map((entry) => ({
-                uid: entry.uid,
-                points: wyrVoteSummary.rewardPoints
-            }))
+            questionId: safeQuestionId,
+            voteType,
         }).catch(() => {
-            rewardedWyrQuestionIdsRef.current.delete(safeQuestionId);
+            finalizedPromptVoteQuestionIdsRef.current.delete(safeQuestionId);
         });
-    }, [isPlayer, isReveal, isWyr, questionId, roomCode, wyrVoteSummary]);
+    }, [isPlayer, isReveal, isTrivia, isWyr, questionId, roomCode, voteType]);
 
     // --- RENDER ---
 
