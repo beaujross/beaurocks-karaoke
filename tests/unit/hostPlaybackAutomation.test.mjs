@@ -118,6 +118,48 @@ test('getAutoEndSchedule ignores stale room playback metadata from a previous pe
     expect(schedule).toBeNull();
 });
 
+test('getAutoEndSchedule defers auto-end when authoritative player heartbeat is still fresh past the estimate', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'live_youtube_song',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        performanceSessionSourceType: 'youtube',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 186000,
+        now: 187000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'live_youtube_song:1000:heartbeat_watch:186',
+        delayMs: 14000
+    });
+});
+
+test('getAutoEndSchedule also defers auto-end for authoritative Apple playback heartbeats', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'live_apple_song',
+        activeMode: 'karaoke',
+        appleMusicId: 'apple_track_55',
+        appleStatus: 'playing',
+        appleStartedAt: 1000,
+        appleDurationSec: 180,
+        performanceSessionSourceType: 'apple_music',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 186000,
+        now: 187000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'live_apple_song:1000:heartbeat_watch:186',
+        delayMs: 14000
+    });
+});
+
 test('getAutoEndSchedule does not auto-end paused media from the persisted clock', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
@@ -129,6 +171,23 @@ test('getAutoEndSchedule does not auto-end paused media from the persisted clock
         pausedAt: 5000,
         currentDurationSec: 240,
         now: 250000
+    });
+
+    expect(schedule).toBeNull();
+});
+
+test('getAutoEndSchedule yields once the active performance session already ended', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'ended_song',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        performanceSessionState: 'ended',
+        performanceSessionEndedAtMs: 90000,
+        now: 91000
     });
 
     expect(schedule).toBeNull();

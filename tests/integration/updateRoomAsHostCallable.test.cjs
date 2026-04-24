@@ -415,6 +415,20 @@ async function run() {
               groupMs: 30000,
             },
           },
+          deadAirFiller: {
+            enabled: true,
+            mode: "auto_fill",
+            source: "browse_catalog_known_good",
+            delaySec: 10,
+            songs: [
+              {
+                title: "Sweet Caroline",
+                artist: "Neil Diamond",
+                browseSongKey: "sweet caroline__neil diamond",
+                hasApprovedBacking: true,
+              },
+            ],
+          },
           advancedOverrides: {},
           lastAppliedAt: { __hostOp: "serverTimestamp" },
           lastSuggestedAction: "start_next",
@@ -429,6 +443,12 @@ async function run() {
       assert.equal(mission.party.karaokeFirst, true);
       assert.equal(mission.party.minSingingSharePct, 70);
       assert.equal(mission.party.maxBreakDurationSec, 20);
+      assert.equal(mission.deadAirFiller.enabled, true);
+      assert.equal(mission.deadAirFiller.mode, "auto_fill");
+      assert.equal(mission.deadAirFiller.source, "browse_catalog_known_good");
+      assert.equal(mission.deadAirFiller.delaySec, 10);
+      assert.equal(mission.deadAirFiller.songs[0].title, "Sweet Caroline");
+      assert.equal(mission.deadAirFiller.songs[0].hasApprovedBacking, true);
       assert.equal(mission.lastSuggestedAction, "start_next");
       assert.ok(mission.lastAppliedAt && typeof mission.lastAppliedAt.toMillis === "function");
     }],

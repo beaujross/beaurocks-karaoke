@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { test } from 'vitest';
 
 const primaryPicksPath = 'src/apps/Host/components/setup/MissionSetupPrimaryPicks.jsx';
+const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx';
+const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
+const readinessPath = 'src/apps/Host/components/HostRoomReadinessPanel.jsx';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
 
@@ -29,6 +32,79 @@ test('mission setup keeps preset selection compact and applies full preset packa
     nightSetupFlowSource,
     /audienceShellVariant: String\(basePayload\.audienceShellVariant \|\| selectedPresetSettings\.audienceShellVariant/,
     'Night setup should persist the preset audience shell variant',
+  );
+  assert.match(
+    nightSetupFlowSource,
+    /deadAirFiller/,
+    'Night setup should persist the generated dead-air filler plan with mission control',
+  );
+});
+
+test('mission setup exposes an autopilot plan instead of a third stacked assist step', () => {
+  const primaryPicksSource = readFileSync(primaryPicksPath, 'utf8');
+  const autopilotPreviewSource = readFileSync(autopilotPreviewPath, 'utf8');
+  const footerSource = readFileSync(footerPath, 'utf8');
+
+  assert.match(
+    autopilotPreviewSource,
+    /Tonight&apos;s Autopilot/,
+    'Guided setup should lead with the generated autopilot plan',
+  );
+  assert.match(
+    autopilotPreviewSource,
+    /Dead-Air Picks/,
+    'Guided setup should preview known-good dead-air filler songs',
+  );
+  assert.match(
+    autopilotPreviewSource,
+    /Autopilot First/,
+    'Guided setup should expose the autopilot automation level',
+  );
+  assert.doesNotMatch(
+    primaryPicksSource,
+    /Pick how hands-on you want to be/,
+    'The old assist step should not remain as another stacked setup card',
+  );
+  assert.match(
+    footerSource,
+    /Start Room/,
+    'Setup footer should use a single plain-language launch action',
+  );
+  assert.match(
+    footerSource,
+    /Open TV \+ Copy Link/,
+    'Setup footer should keep launch links as a secondary action',
+  );
+});
+
+test('host panel presents readiness and one launch action before deeper setup', () => {
+  const readinessSource = readFileSync(readinessPath, 'utf8');
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+
+  assert.match(
+    readinessSource,
+    /Room Readiness/,
+    'Host panel should expose room readiness as the main setup model',
+  );
+  assert.match(
+    readinessSource,
+    /Launch Room/,
+    'Readiness surface should provide one launch action',
+  );
+  assert.match(
+    hostAppSource,
+    /<HostRoomReadinessPanel/,
+    'Host app should render the readiness surface above the live queue',
+  );
+  assert.match(
+    hostAppSource,
+    /await launchNightSetupPackage\(\)/,
+    'Readiness launch should reuse the atomic TV, setup, and join-link flow',
+  );
+  assert.match(
+    hostAppSource,
+    /openNightSetupWizard\(room\?\.hostNightPreset \|\| hostNightPreset \|\| 'casual'\)/,
+    'Night Setup entry should open the simplified setup modal instead of routing hosts into admin settings',
   );
 });
 

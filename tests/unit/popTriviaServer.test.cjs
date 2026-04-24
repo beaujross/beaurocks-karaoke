@@ -5,9 +5,11 @@ const {
   buildFallbackPopTriviaSeedRows,
   buildPopTriviaSongContext,
   getPopTriviaRowQualityScore,
+  getTimestampMs,
   normalizePopTriviaQuestions,
   normalizePopTriviaSeedRows,
   normalizePopTriviaSongCache,
+  sanitizePopTriviaCacheKey,
   selectPopTriviaSeedRows,
   shouldAttemptPopTriviaGeneration,
 } = require("../../functions/lib/popTrivia");
@@ -96,6 +98,14 @@ test("popTriviaServer.test", async () => {
   }, context);
   assert.equal(strongScore > weakScore, true);
 
+  assert.equal(
+    sanitizePopTriviaCacheKey("  Take On Me / A-ha (Live @ 1985)!  "),
+    "take_on_me_a-ha_live_1985"
+  );
+  assert.equal(getTimestampMs({ toMillis: () => 9876 }), 9876);
+  assert.equal(getTimestampMs({ seconds: 12 }), 12000);
+  assert.equal(getTimestampMs(null), 0);
+
   const sparseSelectedRows = selectPopTriviaSeedRows({
     song: {
       songTitle: "Mystery YouTube Cut",
@@ -140,6 +150,53 @@ test("popTriviaServer.test", async () => {
   );
   assert.equal(sparseSelectedRows[0].q.includes("Mystery YouTube Cut"), true);
   assert.equal(sparseSelectedRows.length, 4);
+
+  const groundedSelectedRows = selectPopTriviaSeedRows({
+    song: {
+      songTitle: "Take On Me",
+      artist: "A-ha",
+      album: "Hunting High and Low",
+      year: 1985,
+      genre: "Synth-pop",
+    },
+    aiRows: [
+      {
+        q: 'In "Take On Me", which moment tells the room the chorus is about to explode?',
+        correct: "The melody vaults upward",
+        w1: "The lights go dark",
+        w2: "The beat disappears",
+        w3: "The singer stops moving",
+        category: "hook_recognition",
+      },
+      {
+        q: 'For "Take On Me", what keeps the first verse comfortable before the high hook arrives?',
+        correct: "Stay loose on the lower lines",
+        w1: "Push every note full volume",
+        w2: "Rush ahead of the groove",
+        w3: "Flatten the melody",
+        category: "performance",
+      },
+      {
+        q: 'In "Take On Me", what gives the crowd the clearest entry into the big sing-along?',
+        correct: "A repeatable chorus line",
+        w1: "A hidden backing vocal",
+        w2: "An abrupt fade-out",
+        w3: "A spoken bridge",
+        category: "singalong",
+      },
+    ],
+    fallbackRows,
+    limit: 3,
+  });
+  assert.equal(groundedSelectedRows.length, 3);
+  assert.equal(
+    groundedSelectedRows.every((row) => row.q.includes("Take On Me")),
+    true
+  );
+  assert.equal(
+    groundedSelectedRows.some((row) => row.source === "fallback"),
+    false
+  );
 
   const cache = normalizePopTriviaSongCache({
     "take_on_me_a-ha": {
@@ -189,6 +246,50 @@ test("popTriviaServer.test", async () => {
       songTitle: "Take On Me",
     }, { now }).reason,
     "song_status_ineligible"
+  );
+  assert.equal(
+    shouldAttemptPopTriviaGeneration({
+      id: "song-1",
+      status: "performing",
+      title: "Alias Title",
+    }, { now }).ok,
+    true
+  );
+  assert.equal(
+    shouldAttemptPopTriviaGeneration({
+      id: "song-1",
+      status: "performing",
+      popTriviaStatus: "ready",
+      songTitle: "Take On Me",
+    }, { now }).reason,
+    "already_ready"
+  );
+  assert.equal(
+    shouldAttemptPopTriviaGeneration({
+      id: "song-1",
+      status: "performing",
+      songTitle: "",
+    }, { now }).reason,
+    "missing_title"
+  );
+  assert.equal(
+    shouldAttemptPopTriviaGeneration({
+      id: "song-1",
+      status: "performing",
+      songTitle: "Take On Me",
+      popTrivia: [{ id: "q1" }],
+    }, { now }).reason,
+    "already_ready"
+  );
+  assert.equal(
+    shouldAttemptPopTriviaGeneration({
+      id: "song-1",
+      status: "performing",
+      songTitle: "Take On Me",
+      popTriviaStatus: "failed",
+      popTriviaGeneratedAt: { seconds: Math.floor((now - 1000) / 1000) },
+    }, { now }).reason,
+    "failed_recent"
   );
 
   const functionsSource = readFileSync("functions/index.js", "utf8");

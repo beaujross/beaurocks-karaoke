@@ -70,28 +70,33 @@ test("HostApp keeps Auto DJ queue advance independent from TV display mode chang
 
   assert.match(
     source,
-    /getAutoDjQueueAdvanceIntent\(\{/,
-    "Auto DJ should derive queue advance from one explicit intent helper",
+    /getRoomFlowSnapshot\(\{/,
+    "HostApp should derive room automation ownership from one explicit orchestrator helper",
   );
   assert.match(
     source,
     /activeMode: room\?\.activeMode,/,
-    "Auto DJ intent should consider the room mode before staging the next song",
+    "Room-flow orchestration should consider the room mode before staging the next song",
   );
   assert.match(
     source,
-    /runOfShowEnabled: room\?\.runOfShowEnabled,/,
-    "Auto DJ intent should not race the run of show executor",
+    /runOfShowLiveItem,|runOfShowStagedItem,|runOfShowNextItem,/,
+    "Room-flow orchestration should not race the run of show executor",
   );
   assert.match(
     source,
-    /programMode: room\?\.programMode,/,
-    "Auto DJ intent should use program mode instead of TV display state",
+    /const intent = flow\.autoDjIntent;/,
+    "Auto DJ should stage queue advances from the orchestrator intent instead of duplicating logic",
+  );
+  assert.match(
+    source,
+    /flow\.autoPartyIntent\.shouldStart\) \{\s*autoDjKickoffRef\.current = '';/,
+    "Auto DJ should yield while the orchestrator arms a between-singer bridge",
   );
   assert.match(
     source,
     /isQueueEntryPlayable/,
-    "Auto DJ should still use backing-track readiness when choosing the next queue item",
+    "Room-flow orchestration should still use backing-track readiness when choosing the next queue item",
   );
   assert.doesNotMatch(
     source,

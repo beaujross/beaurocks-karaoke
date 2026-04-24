@@ -87,6 +87,26 @@ test("Auto DJ queue advance intent reports why it cannot start", () => {
         getAutoDjQueueAdvanceIntent({
             autoDjEnabled: true,
             activeMode: 'karaoke',
+            readyCheckActive: true,
+            songs: [playableSong]
+        }).reason,
+        'ready_check_active'
+    );
+
+    assert.equal(
+        getAutoDjQueueAdvanceIntent({
+            autoDjEnabled: true,
+            activeMode: 'karaoke',
+            autoMomentLive: true,
+            songs: [playableSong]
+        }).reason,
+        'auto_moment_live'
+    );
+
+    assert.equal(
+        getAutoDjQueueAdvanceIntent({
+            autoDjEnabled: true,
+            activeMode: 'karaoke',
             runOfShowEnabled: true,
             programMode: 'run_of_show',
             songs: [playableSong]
