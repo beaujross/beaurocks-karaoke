@@ -3,6 +3,7 @@
 Purpose:
 - Run deterministic golden-path QA as a release gate.
 - Run exploratory Agent-mode QA to discover non-obvious breakage.
+- Keep live production probes separate from deterministic release gating.
 
 Current production assumption:
 - Remote hands-off QA requires a registered `QA_APP_CHECK_DEBUG_TOKEN` because production callables are App Check protected.
@@ -63,6 +64,24 @@ npm run qa:golden:host-room-hands-off
 ```
 
 Use the legacy command only when you explicitly want the direct runner surface. For release gating, prefer `npm run qa:release:core-night`.
+
+## Marketing QA split
+
+Use deterministic build-backed marketing QA for release confidence:
+
+```powershell
+npm run qa:release:marketing
+```
+
+Use live production marketing QA as an ops monitor:
+
+```powershell
+npm run ops:qa:marketing:prod
+```
+
+Operational rule:
+- `qa:release:*` commands should stay deterministic and artifact-backed.
+- `ops:*:prod` commands are live-environment probes and may fail because of production health, throttling, or data drift.
 
 ### QA Host Account Recovery
 

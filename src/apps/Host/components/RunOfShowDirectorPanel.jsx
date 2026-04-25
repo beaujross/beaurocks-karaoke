@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callFunction } from '../../../lib/firebase';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants';
 import {
@@ -12,6 +12,7 @@ import {
     RUN_OF_SHOW_PERFORMER_MODES,
     RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES,
     createRunOfShowItem,
+    previewRunOfShowCsvImport,
     getRunOfShowConveyorPhase,
     getRunOfShowConveyorSnapshot,
     getRunOfShowHudActionKey,
@@ -48,7 +49,7 @@ const ITEM_TYPE_OPTIONS = RUN_OF_SHOW_ITEM_TYPES
     .filter((type) => type !== 'trivia_break')
     .map((type) => ({ value: type, label: getRunOfShowItemLabel(type) }));
 const PERFORMER_MODE_OPTIONS = [
-    { value: RUN_OF_SHOW_PERFORMER_MODES.assigned, label: 'Named Slot' },
+    { value: RUN_OF_SHOW_PERFORMER_MODES.assigned, label: 'Assigned Performance' },
     { value: RUN_OF_SHOW_PERFORMER_MODES.openSubmission, label: 'Open Submission' }
 ];
 const ROLE_LABELS = Object.freeze({
@@ -122,11 +123,11 @@ const POLICY_PRESETS = Object.freeze([
     }
 ]);
 const EVENT_FORMAT_OPTIONS = Object.freeze([
-    { value: 'karaoke_heavy', label: 'Karaoke-Heavy', description: 'Mostly singer slots with short transitions.' },
+    { value: 'karaoke_heavy', label: 'Karaoke-Heavy', description: 'Mostly performances with short transitions.' },
     { value: 'mixed_variety', label: 'Mixed Variety', description: 'Karaoke plus audience breaks and announcements.' },
     { value: 'competition', label: 'Competition', description: 'Structured performance rounds with judging beats.' },
     { value: 'fundraiser', label: 'Fundraiser', description: 'More sponsor and donation moments between songs.' },
-    { value: 'corporate_private', label: 'Corporate / Private', description: 'Shorter slots and more host-led moments.' },
+    { value: 'corporate_private', label: 'Corporate / Private', description: 'Shorter performances and more host-led moments.' },
     { value: 'blank_custom', label: 'Blank Custom', description: 'Start with your own custom block mix.' }
 ]);
 const PACING_OPTIONS = Object.freeze([
@@ -1115,18 +1116,18 @@ const getEditablePerformerMode = (performerMode = '') => (
         : RUN_OF_SHOW_PERFORMER_MODES.assigned
 );
 const getPerformerModeLabel = (performerMode = '') => (
-    PERFORMER_MODE_OPTIONS.find((option) => option.value === getEditablePerformerMode(performerMode))?.label || 'Named Slot'
+    PERFORMER_MODE_OPTIONS.find((option) => option.value === getEditablePerformerMode(performerMode))?.label || 'Assigned Performance'
 );
 const getPerformerFieldLabel = (performerMode = '') => (
     performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? 'Performer Display Name' : 'Performer Display Name'
 );
 const getPerformerFieldPlaceholder = (performerMode = '') => {
     if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Approved singer fills this in';
-    return 'Singer name or placeholder, like Singer TBD';
+    return 'Performer name or label, like Performance TBD';
 };
 const getPerformerModeHint = (performerMode = '') => {
-    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Leave this open and approve a singer into the slot later.';
-    return 'Use one display name here. It can be the real singer or a placeholder like Singer TBD until you bind a live attendee.';
+    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Leave this open and approve a performer into the performance later.';
+    return 'Use one display name here. It can be the real performer or a label like Performance TBD until you bind a live attendee.';
 };
 
 const getPerformanceIdentityFields = (item = {}) => ([
@@ -1694,7 +1695,7 @@ const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) =
                 </div>
             </div>
             <div className="mt-3 text-xs text-zinc-400">
-                Open the full editor when this scene needs public-TV treatment, soundtrack, room behavior, or slot policy changes.
+                Open the full editor when this scene needs public-TV treatment, soundtrack, room behavior, or performance policy changes.
             </div>
         </div>
     );
@@ -1905,7 +1906,7 @@ const IssueJumpRail = ({ issues = [], onJump }) => {
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                     <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/80">Issue Rail</div>
-                    <div className="mt-1 text-xs text-zinc-300">Jump straight to the first slot that still needs attention.</div>
+                    <div className="mt-1 text-xs text-zinc-300">Jump straight to the first item that still needs attention.</div>
                 </div>
                 <div className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-amber-100">
                     {activeIssues.reduce((sum, entry) => sum + Number(entry.count || 0), 0)} open
@@ -2516,7 +2517,7 @@ const TimelineStudio = ({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Core Scene Blocks</div>
-                        <div className="mt-1 text-sm text-zinc-300">Start with the normal rhythm of the night: singer slots, host beats, breaks, and closers.</div>
+                        <div className="mt-1 text-sm text-zinc-300">Start with the normal rhythm of the night: performances, host beats, moments, and closers.</div>
                     </div>
                     <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{QUICK_ADD_SCENE_OPTIONS.length} primary blocks</div>
                 </div>
@@ -2652,7 +2653,7 @@ const TimelineStudio = ({
                 </div>
             ) : (
                 <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-400">
-                    No scenes yet. Add a performance slot, build from a generated draft, or start with an intro clip.
+                    No scenes yet. Add a performance, build from a generated draft, or start with an intro clip.
                 </div>
             )}
         </article>
@@ -2741,7 +2742,7 @@ const QuickDraftPanel = ({
                     <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{formatLabel}</span>
                         <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.durationMin || 0} min</span>
-                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.performanceCount || 0} singer slots</span>
+                        <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.performanceCount || 0} performances</span>
                         <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{automationLabel}</span>
                         <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.applyMode === 'append' ? 'Append mode' : 'Replace mode'}</span>
                     </div>
@@ -2844,7 +2845,7 @@ const QuickDraftModal = ({
                         <div className="mt-2 flex flex-wrap gap-2">
                             <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">{formatLabel}</span>
                             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.durationMin || 0} min</span>
-                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.performanceCount || 0} singer slots</span>
+                            <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{generatorConfig.performanceCount || 0} performances</span>
                             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">{automationLabel}</span>
                         </div>
                     </div>
@@ -3324,7 +3325,7 @@ const ShowMapCard = ({
                                 <div data-performance-setup-for={item.id} className="mt-3 rounded-[20px] border border-cyan-300/16 bg-black/25 p-3">
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Inline Slot Setup</div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Inline Performance Setup</div>
                                             <div className="mt-1 text-sm text-zinc-300">Start with song search and backing here, then add the performer display name if you already know it.</div>
                                         </div>
                                         <div className="flex flex-wrap gap-2">
@@ -3466,7 +3467,7 @@ const ShowMapCard = ({
                                                     </div>
                                                 ) : (
                                                     <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-400">
-                                                        Start with song title and artist, then choose the backing without leaving this slot.
+                                                        Start with song title and artist, then choose the backing without leaving this performance.
                                                     </div>
                                                 )}
                                             </div>
@@ -3560,6 +3561,7 @@ export default function RunOfShowDirectorPanel({
     compactViewport = false,
     onSetProgramMode,
     onAddItem,
+    onImportCsv,
     onDuplicateItem,
     onDeleteItem,
     onMoveItem,
@@ -3675,8 +3677,45 @@ export default function RunOfShowDirectorPanel({
     const [liveWaitAtLeastSec, setLiveWaitAtLeastSec] = useState(30);
     const [liveAdjustmentNowMs, setLiveAdjustmentNowMs] = useState(() => Date.now());
     const [planningControlsOpen, setPlanningControlsOpen] = useState(items.length === 0);
+    const [csvImportOpen, setCsvImportOpen] = useState(false);
+    const [csvImportText, setCsvImportText] = useState('');
+    const [csvImportFilename, setCsvImportFilename] = useState('');
+    const [csvImportBusy, setCsvImportBusy] = useState(false);
     const [coHostToolsOpen, setCoHostToolsOpen] = useState(false);
     const [templateToolsOpen, setTemplateToolsOpen] = useState(false);
+    const csvImportInputRef = useRef(null);
+    const csvImportPreview = useMemo(
+        () => previewRunOfShowCsvImport(csvImportText),
+        [csvImportText]
+    );
+    const handleCsvImportFileSelected = useCallback(async (event) => {
+        const file = event?.target?.files?.[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            setCsvImportFilename(file.name || 'show-sheet.csv');
+            setCsvImportText(text);
+            setCsvImportOpen(true);
+        } catch (error) {
+            console.warn('runOfShow csv import read failed', error);
+        } finally {
+            if (event?.target) {
+                event.target.value = '';
+            }
+        }
+    }, []);
+    const handleApplyCsvImport = useCallback(async (mode = 'append') => {
+        if (typeof onImportCsv !== 'function' || !csvImportPreview.items.length) return;
+        setCsvImportBusy(true);
+        try {
+            await onImportCsv(csvImportText, { mode });
+            setCsvImportOpen(false);
+            setCsvImportText('');
+            setCsvImportFilename('');
+        } finally {
+            setCsvImportBusy(false);
+        }
+    }, [csvImportPreview.items.length, csvImportText, onImportCsv]);
     const STARTER_TEMPLATE_OPTIONS = Object.freeze([
         {
             id: 'aahf_kickoff',
@@ -4175,8 +4214,8 @@ export default function RunOfShowDirectorPanel({
                 badge: `${group.submissions.length} pending`,
                 title: item.title || getRunOfShowItemLabel(item.type),
                 summary: group.submissions.length === 1
-                    ? 'One singer submission is waiting for review before this slot can move.'
-                    : `${group.submissions.length} singer submissions are waiting for review before this slot can move.`,
+                    ? 'One submission is waiting for review before this performance can move.'
+                    : `${group.submissions.length} submissions are waiting for review before this performance can move.`,
                 detail: readinessById[group.itemId]?.summary || '',
                 tone: 'critical',
                 actionLabel: 'Review submissions',
@@ -4347,7 +4386,7 @@ export default function RunOfShowDirectorPanel({
         }
         return {
             eyebrow: 'Scene repair',
-            title: focusedBuildItem.type === 'performance' ? 'Finish this performance slot' : 'Finish this scene',
+            title: focusedBuildItem.type === 'performance' ? 'Finish this performance' : 'Finish this scene',
             detail: 'Stay on this one block, make the needed fix, then jump back into the full builder only if you need broader edits.',
             toneClass: 'border-cyan-300/18 bg-cyan-500/10 text-cyan-50',
             chipClass: 'border-cyan-300/25 bg-black/25 text-cyan-100'
@@ -4630,7 +4669,7 @@ export default function RunOfShowDirectorPanel({
         if (!safeOperatorCapabilities.canEditFlow || slotFillBusy) return;
         const fillableItems = performanceItems.filter((item) => isUnassignedPerformanceItem(item));
         if (!fillableItems.length) {
-            setSlotAssignmentNotice('No unassigned performance slots to fill.');
+            setSlotAssignmentNotice('No unassigned performances to fill.');
             return;
         }
         setSlotFillBusy(true);
@@ -4690,8 +4729,8 @@ export default function RunOfShowDirectorPanel({
         }
         setSlotAssignmentNotice(
             filledCount > 0
-                ? `Filled ${filledCount} unassigned slot${filledCount === 1 ? '' : 's'}. ${remainingEmptyCount} still unassigned.`
-                : 'No unassigned slots could be filled from approved submissions or the live queue.'
+                ? `Filled ${filledCount} unassigned performance${filledCount === 1 ? '' : 's'}. ${remainingEmptyCount} still unassigned.`
+                : 'No unassigned performances could be filled from approved submissions or the live queue.'
         );
         if (filledCount > 0 && slotAssignmentFilter === 'empty') {
             setSlotAssignmentFilter(remainingEmptyCount > 0 ? 'empty' : 'needs_review');
@@ -5620,8 +5659,8 @@ export default function RunOfShowDirectorPanel({
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="max-w-3xl">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Slot Assignment</div>
-                                <div className="mt-1 text-sm text-zinc-200">Fill obvious performance slots before launch, then review only the exceptions.</div>
-                                <div className="mt-2 text-xs text-zinc-400">Approved slot submissions fill first. After that, empty slots pull from the live queue in order. Existing assignments stay untouched.</div>
+                                <div className="mt-1 text-sm text-zinc-200">Fill obvious performances before launch, then review only the exceptions.</div>
+                                <div className="mt-2 text-xs text-zinc-400">Approved submissions fill first. After that, empty performances pull from the live queue in order. Existing assignments stay untouched.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <ControlButton
@@ -5684,7 +5723,7 @@ export default function RunOfShowDirectorPanel({
                                 );
                             }) : (
                                 <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-4 text-sm text-zinc-400">
-                                    No performance slots match this filter.
+                                    No performances match this filter.
                                 </div>
                             )}
                         </div>
@@ -5757,7 +5796,7 @@ export default function RunOfShowDirectorPanel({
 
                     <UtilityDrawer
                         eyebrow="Co-Hosts"
-                        title="People who keep the next slots ready"
+                        title="People who keep the next performances ready"
                         summary="Assign support operators without taking focus away from the actual timeline."
                         open={coHostToolsOpen}
                         onToggle={() => setCoHostToolsOpen((prev) => !prev)}
@@ -5842,10 +5881,109 @@ export default function RunOfShowDirectorPanel({
                             <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                                 {items.length} scene{items.length === 1 ? '' : 's'}
                             </span>
+                            <ControlButton
+                                disabled={!safeOperatorCapabilities.canEditFlow}
+                                onClick={() => setCsvImportOpen((prev) => !prev)}
+                            >
+                                {csvImportOpen ? 'Hide CSV Import' : 'Import CSV'}
+                            </ControlButton>
                             <ControlButton onClick={() => setBuildSequenceOpen((prev) => !prev)}>
                                 {buildSequenceOpen ? 'Hide Sequence Tools' : 'Open Sequence Tools'}
                             </ControlButton>
                         </div>
+                    </div>
+                    <input
+                        ref={csvImportInputRef}
+                        type="file"
+                        accept=".csv,text/csv"
+                        className="hidden"
+                        onChange={handleCsvImportFileSelected}
+                    />
+                    <div className="mt-4">
+                        <UtilityDrawer
+                            eyebrow="Show Sheet"
+                            title="Import CSV"
+                            summary="Paste or upload a CSV show sheet, preview the parsed rows, then append it to the conveyor or replace the current draft."
+                            open={csvImportOpen}
+                            onToggle={() => setCsvImportOpen((prev) => !prev)}
+                            badge={csvImportPreview.items.length ? `${csvImportPreview.items.length} parsed` : 'CSV'}
+                        >
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap gap-2">
+                                    <ControlButton
+                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                        onClick={() => csvImportInputRef.current?.click()}
+                                    >
+                                        Upload CSV
+                                    </ControlButton>
+                                    {csvImportFilename ? (
+                                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                            {csvImportFilename}
+                                        </span>
+                                    ) : null}
+                                </div>
+                                <textarea
+                                    value={csvImportText}
+                                    onChange={(event) => setCsvImportText(event.target.value)}
+                                    placeholder={'order,type,title,performer_name,song_title,artist_name,youtube_url,planned_duration_sec,notes,required,visibility,group,fallback_allowed\n1,scene,Doors Open Visual,,,,https://youtube.com/watch?v=abc123xyz89,45,Opening visual,true,public,intro,true\n2,performance,Opening Number,Sarah,Valerie,Amy Winehouse,https://youtube.com/watch?v=def456xyz89,240,Tech check opener,true,public,set_1,true'}
+                                    className={`${textInputClass} min-h-[180px] font-mono text-xs leading-6`}
+                                />
+                                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                    <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">Performance / Moment / Scene</span>
+                                    <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">Blocked rows stay in the plan</span>
+                                    <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1">CSV only for May 1 prep</span>
+                                </div>
+                                {csvImportPreview.errors.length ? (
+                                    <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-3 text-sm text-amber-50">
+                                        {csvImportPreview.errors[0]}
+                                    </div>
+                                ) : null}
+                                {csvImportPreview.items.length ? (
+                                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                                        <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                            <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{csvImportPreview.items.length} item{csvImportPreview.items.length === 1 ? '' : 's'}</span>
+                                            <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2.5 py-1 text-amber-100">{csvImportPreview.blockedCount} blocked</span>
+                                            {csvImportPreview.skippedCount > 0 ? (
+                                                <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1">{csvImportPreview.skippedCount} skipped</span>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-3 space-y-2">
+                                            {csvImportPreview.rows.slice(0, 6).map((row) => (
+                                                <div key={`csv_import_row_${row.rowNumber}_${row.sortOrder}`} className={`rounded-xl border px-3 py-2 ${row.item?.status === 'blocked' ? 'border-amber-300/18 bg-amber-500/8' : 'border-white/10 bg-black/25'}`}>
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Row {row.rowNumber}</div>
+                                                        <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${row.item?.status === 'blocked' ? 'border-amber-300/25 bg-amber-500/10 text-amber-100' : 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'}`}>
+                                                            {row.item?.status === 'blocked' ? 'Blocked' : 'Ready'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-1 text-sm font-semibold text-white">{row.title}</div>
+                                                    <div className="mt-1 text-xs text-zinc-400">{getRunOfShowItemLabel(row.itemType || 'announcement')} - {row.issue}</div>
+                                                </div>
+                                            ))}
+                                            {csvImportPreview.rows.length > 6 ? (
+                                                <div className="text-xs text-zinc-500">Showing the first 6 rows. Import to apply the full sheet.</div>
+                                            ) : null}
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <ControlButton
+                                                tone="primary"
+                                                disabled={csvImportBusy || !safeOperatorCapabilities.canEditFlow || !csvImportPreview.items.length}
+                                                onClick={() => handleApplyCsvImport('append')}
+                                            >
+                                                Append To Show
+                                            </ControlButton>
+                                            <ControlButton
+                                                tone="warning"
+                                                disabled={csvImportBusy || !safeOperatorCapabilities.canEditFlow || !csvImportPreview.items.length}
+                                                onClick={() => handleApplyCsvImport('replace')}
+                                            >
+                                                Replace Show
+                                            </ControlButton>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        </UtilityDrawer>
                     </div>
                     {buildSequenceOpen ? (
                         <div className="mt-4 space-y-3">
@@ -5881,7 +6019,7 @@ export default function RunOfShowDirectorPanel({
                                 onDropItem={handleStoryboardDrop}
                             />
                             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                <div className="text-sm text-zinc-300">Scene map is available when you need a denser overview of slot readiness.</div>
+                                <div className="text-sm text-zinc-300">Scene map is available when you need a denser overview of show readiness.</div>
                                 <ControlButton onClick={() => setBuildMapOpen((prev) => !prev)}>
                                     {buildMapOpen ? 'Hide Scene Map' : 'Show Scene Map'}
                                 </ControlButton>
@@ -6169,10 +6307,10 @@ export default function RunOfShowDirectorPanel({
                         note={
                             onDeckItem
                                 ? pendingApprovals.some((entry) => entry.itemId === onDeckItem.id)
-                                    ? 'Needs singer approval before it can slot in.'
+                                    ? 'Needs approval before it can run next.'
                                     : readinessById[onDeckItem.id]?.blockers?.length
                                         ? getRunOfShowBlockedActionLabel(readinessById[onDeckItem.id], onDeckItem, safePolicy)
-                                        : 'Clear to slot into the live lane next.'
+                                        : 'Clear to run in the live lane next.'
                                 : ''
                         }
                         badge={
@@ -6484,7 +6622,7 @@ export default function RunOfShowDirectorPanel({
                             ? {
                                 label: 'Ready to run',
                                 tone: 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100',
-                                detail: 'This slot has a playable track lined up.'
+                                detail: 'This performance has a playable track lined up.'
                             }
                             : hasSelectedBacking
                                 ? {
@@ -6532,7 +6670,7 @@ export default function RunOfShowDirectorPanel({
                                 detail: slotNeedsApprovals
                                     ? `${pendingCount} waiting`
                                     : performerReady
-                                        ? (item.assignedPerformerName || 'Named slot')
+                                        ? (item.assignedPerformerName || 'Assigned performance')
                                         : 'Choose one'
                             },
                             {
@@ -6559,7 +6697,7 @@ export default function RunOfShowDirectorPanel({
                         const performancePrepPrimaryAction = item.type === 'performance' ? (
                             slotNeedsApprovals
                                 ? {
-                                    label: 'Review Singer Picks',
+                                    label: 'Review Submissions',
                                     tone: 'warning',
                                     onClick: () => openSection(item.id, 'pending_submissions')
                                 }
@@ -6853,14 +6991,14 @@ export default function RunOfShowDirectorPanel({
                                                 <div data-performance-setup-for={item.id} className="rounded-2xl bg-black/15 p-4 space-y-4">
                                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                                     <div>
-                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{repairModeActive ? 'Performance Repair' : 'Quick Performance Setup'}</div>
+                                                        <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{repairModeActive ? 'Performance Repair' : 'Performance Setup'}</div>
                                                         <div className="mt-1 text-sm text-zinc-300">
                                                             {repairModeActive
-                                                                ? 'Finish this slot and get back to the live show.'
-                                                                : 'Set the singer, lock the song, and confirm one playable track for this slot.'}
+                                                                ? 'Fix this performance and get back to the live show.'
+                                                                : 'Set the performer, lock the song, and confirm one playable track for this performance.'}
                                                         </div>
                                                         {!repairModeActive ? (
-                                                            <div className="mt-2 text-xs text-zinc-400">Use queue assignment for requests you already have, or type song + artist to auto-find a karaoke backing without leaving this slot.</div>
+                                                            <div className="mt-2 text-xs text-zinc-400">Use queue assignment for requests you already have, or type song + artist to auto-find a karaoke backing without leaving this performance.</div>
                                                         ) : null}
                                                     </div>
                                                     <div className="flex flex-wrap gap-2">
@@ -6878,11 +7016,11 @@ export default function RunOfShowDirectorPanel({
                                                 <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-4">
                                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Slot Setup</div>
-                                                            <div className="mt-1 text-sm text-zinc-200">Set the singer and song here. Track picks and edge-case rules stay below.</div>
+                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Performance Setup</div>
+                                                            <div className="mt-1 text-sm text-zinc-200">Set the performer and song here. Track picks and edge-case rules stay below.</div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
-                                                            <span className={`rounded-full border px-2 py-1 ${performerReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{performerReady ? 'Singer ready' : 'Singer needed'}</span>
+                                                            <span className={`rounded-full border px-2 py-1 ${performerReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{performerReady ? 'Performer ready' : 'Performer needed'}</span>
                                                             <span className={`rounded-full border px-2 py-1 ${(songReady && artistReady) ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{songReady && artistReady ? 'Song ready' : 'Song needed'}</span>
                                                         </div>
                                                     </div>
@@ -6964,22 +7102,22 @@ export default function RunOfShowDirectorPanel({
                                                                 Find Karaoke Backing
                                                             </ControlButton>
                                                             <ControlButton onClick={() => setExclusivePrepStep(item.id, performerReady ? (songReady && artistReady ? 'track' : 'song') : 'singer')}>
-                                                                {performerReady ? (songReady && artistReady ? 'Open Track Setup' : 'Open Song Setup') : 'Open Singer Setup'}
+                                                                {performerReady ? (songReady && artistReady ? 'Open Track Setup' : 'Open Song Setup') : 'Open Performer Setup'}
                                                             </ControlButton>
                                                         </div>
                                                     </div>
                                                     <div className="mt-3 text-xs text-cyan-100/72">
-                                                        This is the main setup path for the slot. Use queue matches below when you want to pull in a live request, and open advanced settings only for unusual cases.
+                                                        This is the main setup path for the performance. Use queue matches below when you want to pull in a live request, and open advanced settings only for unusual cases.
                                                     </div>
                                                 </div>
                                                 <div className={`rounded-2xl border px-4 py-4 ${performancePrepPrimaryAction ? 'border-cyan-300/18 bg-cyan-500/8' : 'border-emerald-300/18 bg-emerald-500/8'}`}>
                                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Slot Prep</div>
+                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Performance Prep</div>
                                                             <div className="mt-1 text-sm text-zinc-200">
                                                                 {performancePrepPrimaryAction
                                                                     ? `Next up: ${performancePrepPrimaryAction.label}.`
-                                                                    : 'Singer, song, and track are ready for this slot.'}
+                                                                    : 'Performer, song, and track are ready for this performance.'}
                                                             </div>
                                                             <div className="mt-2 text-xs text-zinc-400">
                                                                 {`${performancePrepSteps.filter((step) => step.done).length} of ${performancePrepSteps.length} prep steps locked in. Use the stepper below to stay on one setup task at a time.`}
@@ -7003,8 +7141,8 @@ export default function RunOfShowDirectorPanel({
                                                                 <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prep Inbox</div>
                                                                 <div className="mt-1 text-sm text-zinc-300">
                                                                     {prepInboxMode === 'submissions'
-                                                                        ? 'Start here. Review the best singer picks for this slot before you worry about anything else.'
-                                                                        : 'These are the best live queue matches for this slot. Use one and the slot prep flow will carry you forward.'}
+                                                                        ? 'Start here. Review the best submissions for this performance before you worry about anything else.'
+                                                                        : 'These are the best live queue matches for this performance. Use one and the performance setup flow will carry you forward.'}
                                                                 </div>
                                                             </div>
                                                             <ControlButton
@@ -7014,7 +7152,7 @@ export default function RunOfShowDirectorPanel({
                                                                     else toggleSection(item.id, 'queue_options', true);
                                                                 }}
                                                             >
-                                                                {prepInboxMode === 'submissions' ? 'Open All Singer Picks' : 'Open Queue Options'}
+                                                                {prepInboxMode === 'submissions' ? 'Open All Submissions' : 'Open Queue Options'}
                                                             </ControlButton>
                                                         </div>
                                                         <div className="mt-3 grid gap-2">
@@ -7061,7 +7199,7 @@ export default function RunOfShowDirectorPanel({
                                                         {
                                                             key: 'singer',
                                                             title: 'Singer',
-                                                            detail: slotNeedsApprovals ? `${pendingCount} waiting` : (performerReady ? (item.assignedPerformerName || 'Named slot') : 'Choose one'),
+                                                            detail: slotNeedsApprovals ? `${pendingCount} waiting` : (performerReady ? (item.assignedPerformerName || 'Assigned performance') : 'Choose one'),
                                                             done: !slotNeedsApprovals && performerReady,
                                                         },
                                                         {
@@ -7102,8 +7240,8 @@ export default function RunOfShowDirectorPanel({
                                                                 label="Singer Setup"
                                                                 title={performerReady ? 'Singer assigned' : 'Choose singer'}
                                                                 summary={item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
-                                                                    ? 'Confirm who should own this slot.'
-                                                                    : 'Assign or adjust who will sing this slot.'}
+                                                                    ? 'Confirm who should own this performance.'
+                                                                    : 'Assign or adjust who will perform this song.'}
                                                                 open={singerSetupOpen}
                                                                 onToggle={() => toggleExclusivePrepStep(item.id, 'singer')}
                                                                 badge={performerReady ? 'Ready' : 'Needs singer'}
@@ -7209,7 +7347,7 @@ export default function RunOfShowDirectorPanel({
                                                                 </ControlButton>
                                                             </div>
                                                             <div className="rounded-2xl bg-black/10 px-3 py-2 text-xs text-zinc-400">
-                                                                Song and artist drive the YouTube karaoke search. Pick a playable result and this slot is much closer to ready.
+                                                                Song and artist drive the YouTube karaoke search. Pick a playable result and this performance is much closer to ready.
                                                             </div>
                                                                 </div>
                                                             </CollapsiblePanel>
@@ -7237,7 +7375,7 @@ export default function RunOfShowDirectorPanel({
                                                             <div className="flex flex-wrap items-start justify-between gap-3">
                                                                 <div>
                                                                     <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Live queue matches</div>
-                                                                    <div className="mt-1 text-sm text-zinc-300">Assign a queued request straight into this performance slot without leaving the builder.</div>
+                                                                    <div className="mt-1 text-sm text-zinc-300">Assign a queued request straight into this performance without leaving the builder.</div>
                                                                 </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="text-xs text-zinc-500">{queueCandidatesForItem.length} queue match{queueCandidatesForItem.length === 1 ? '' : 'es'}</div>
@@ -7282,9 +7420,9 @@ export default function RunOfShowDirectorPanel({
                                                         </CollapsiblePanel>
                                                     ) : null}
                                                     <CollapsiblePanel
-                                                        label="Advanced Slot Settings"
+                                                        label="Advanced Performance Settings"
                                                         title="Policy, admin, and scene settings"
-                                                        summary="Open this only when the normal slot setup path is not enough."
+                                                        summary="Open this only when the normal performance setup path is not enough."
                                                         open={advancedSlotControlsOpen}
                                                         onToggle={() => toggleSection(item.id, 'advanced_slot_controls')}
                                                         badge="Advanced"
@@ -7294,7 +7432,7 @@ export default function RunOfShowDirectorPanel({
                                                     {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
                                                         <CollapsiblePanel
                                                             label="Submission Settings"
-                                                            title="Rules for this open slot"
+                                                            title="Rules for this open submission"
                                                             summary="Only adjust these when this performance needs stricter intake rules."
                                                             open={isSectionOpen(item.id, 'submission_rules')}
                                                             onToggle={() => toggleSection(item.id, 'submission_rules')}
@@ -7332,7 +7470,7 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track Setup</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Choose the working track for this slot. Open details only if the main path is not enough.</div>
+                                                            <div className="mt-1 text-sm text-zinc-300">Choose the working track for this performance. Open details only if the main path is not enough.</div>
                                                         </div>
                                                         {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading...</span> : null}
                                                     </div>
@@ -7380,7 +7518,7 @@ export default function RunOfShowDirectorPanel({
                                                             {suggestedOptions.length ? (
                                                                 <CollapsiblePanel
                                                                     label="Track Picks"
-                                                                    title={hasSelectedBacking ? 'Swap to another track' : 'Top picks for this slot'}
+                                                                    title={hasSelectedBacking ? 'Swap to another track' : 'Top picks for this performance'}
                                                                     summary="Open this when you want other likely matches."
                                                                     open={trackPicksOpen}
                                                                     onToggle={() => toggleSection(item.id, 'track_picks', !hasSelectedBacking || !playbackReady || mediaPicker.itemId === item.id || slotNeedsBacking || repairModeActive)}
@@ -7515,7 +7653,7 @@ export default function RunOfShowDirectorPanel({
                                                             ) : (
                                                                 <div className="rounded-xl bg-black/10 px-3 py-3 text-sm text-zinc-400">
                                                                     {pickerSourceType === 'user_submitted'
-                                                                        ? 'No approved submissions match yet. Approve a slot submission first, then you can reuse it here.'
+                                                                        ? 'No approved submissions match yet. Approve a submission first, then you can reuse it here.'
                                                                         : pickerSourceType === 'local_file'
                                                                             ? 'No local assets matched this query.'
                                                                             : pickerSourceType === 'youtube'
@@ -7529,7 +7667,7 @@ export default function RunOfShowDirectorPanel({
                                                                 <div><FieldLabel>Display Label</FieldLabel><input value={item.backingPlan?.label || ''} onChange={(e) => updateBackingPlan({ label: e.target.value })} disabled={!safeOperatorCapabilities.canCurateMedia} className={textInputClass} placeholder="What the host should see during the show" /></div>
                                                                 <div className="rounded-xl bg-black/10 px-3 py-3 text-sm text-zinc-300">
                                                                     {sourceType === 'youtube'
-                                                                        ? 'YouTube is the normal run-of-show lane. If the host picked it and it plays, the slot can run.'
+                                                                        ? 'YouTube is the normal run-of-show lane. If the host picked it and it plays, the performance can run.'
                                                                         : sourceType === 'user_submitted'
                                                                             ? 'Submitted backing still needs explicit approval before automation will trust it.'
                                                                             : 'Use track details only for exceptions, imports, or fallback media.'}
@@ -7563,7 +7701,7 @@ export default function RunOfShowDirectorPanel({
 
                                                 {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
                                                         <CollapsiblePanel
-                                                            label="Singer Picks"
+                                                            label="Submissions"
                                                             title="More singer submissions"
                                                             summary="Use this when you need more than the top singer picks shown in the prep inbox."
                                                         open={pendingSubmissionsOpen}
@@ -7572,7 +7710,7 @@ export default function RunOfShowDirectorPanel({
                                                         tone="amber"
                                                         compact
                                                     >
-                                                        {itemSubmissions.length === 0 ? <div className="text-sm text-zinc-400">No submissions for this slot yet.</div> : itemSubmissions.map((submission) => (
+                                                        {itemSubmissions.length === 0 ? <div className="text-sm text-zinc-400">No submissions for this performance yet.</div> : itemSubmissions.map((submission) => (
                                                             <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/30 px-3 py-2">
                                                                 <div>
                                                                     <div className="text-sm font-bold text-white">{submission.songTitle || 'Untitled Song'}</div>
@@ -7814,7 +7952,7 @@ export default function RunOfShowDirectorPanel({
                                             >
                                                 {item.type === 'trivia_break' ? (
                                                     <div className="rounded-2xl border border-amber-300/18 bg-amber-500/8 px-3 py-3 text-sm text-amber-100/90">
-                                                        <span className="font-semibold text-white">Legacy scene type:</span> Pop Trivia now runs as a live in-song host toggle, not a planned run-of-show slot. Keep this only if you still need the old break behavior.
+                                                        <span className="font-semibold text-white">Legacy scene type:</span> Pop Trivia now runs as a live in-song host toggle, not a planned run-of-show performance or scene. Keep this only if you still need the old break behavior.
                                                     </div>
                                                 ) : null}
                                                 {item.type === 'game_break' ? (

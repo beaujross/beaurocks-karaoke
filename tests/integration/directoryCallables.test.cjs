@@ -1011,6 +1011,8 @@ async function run() {
         .filter((item) => String(item.title || "").toLowerCase().includes("aahf"));
       assert.equal(aahfItems.length, 1);
       assert.equal(aahfItems[0].id, "official_aahf_karaoke_kickoff_2026");
+      assert.equal(aahfItems[0].listingType, "room_session");
+      assert.equal(aahfItems[0].roomCode, "AAHF");
       assert.equal(aahfItems[0].startsAtMs, new Date("2026-05-01T19:00:00-07:00").getTime());
       assert.equal(aahfItems[0].endsAtMs, new Date("2026-05-02T00:00:00-07:00").getTime());
       assert.equal(aahfItems[0].imageUrl, "/images/marketing/CLEAN%201.png");

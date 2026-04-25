@@ -1,6 +1,8 @@
 import { ASSETS } from '../../lib/assets';
 import { HOST_SUBSCRIPTION_PLANS } from '../../billing/hostPlans';
 
+export const AAHF_FESTIVAL_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+
 export const DEFAULT_MARQUEE_ITEMS = Object.freeze([
     'Welcome to BROSS Karaoke - scan the QR to join!',
     'Send reactions to hype the singer and light up the stage.',
@@ -31,7 +33,7 @@ export const DEFAULT_LOGO_PRESETS = Object.freeze([
 
 export const DEFAULT_ORB_SKIN_PRESETS = Object.freeze([
     { id: 'default-orb', label: 'Default Orb', url: '' },
-    { id: 'aahf-kickoff-logo', label: 'AAHF Festival Badge', url: '/images/marketing/aahf-combined-badge-clean.png' }
+    { id: 'aahf-kickoff-logo', label: 'AAHF Festival Badge', url: AAHF_FESTIVAL_LOGO_URL }
 ]);
 
 export const HOST_ONBOARDING_STEPS = Object.freeze([

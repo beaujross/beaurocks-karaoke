@@ -189,6 +189,41 @@ async function run() {
       assert.equal(String(roomSnap.get("roomName")), "Friday House Karaoke");
     }],
 
+    ["provisionHostRoom applies preset branding overrides for festival rooms", async () => {
+      const result = await provisionHostRoom.run(
+        requestFor(HOST_UID, {
+          requestId: "launch_aahf_branding",
+          hostName: "Festival Host",
+          roomName: "AAHF Kick-Off",
+          logoUrl: "https://example.com/host-default-logo.png",
+          nightPresetId: "aahf",
+          nightPresetPayload: {
+            id: "aahf",
+            settings: {
+              audienceShellVariant: "streamlined",
+            },
+            audienceBrandTheme: {
+              appTitle: "AAHF Festival",
+              primaryColor: "#E05A44",
+              secondaryColor: "#F4C94A",
+              accentColor: "#8F2D2A",
+            },
+            brandingLogoUrl: "/images/marketing/aahf-combined-badge-clean.png",
+            brandingOrbSkinUrl: "/images/marketing/aahf-combined-badge-clean.png",
+          },
+        })
+      );
+
+      assert.equal(result.ok, true);
+      const roomSnap = await db.doc(`${ROOT}/rooms/${result.roomCode}`).get();
+      assert.equal(roomSnap.exists, true);
+      assert.equal(roomSnap.get("hostNightPreset"), "aahf");
+      assert.equal(roomSnap.get("logoUrl"), "/images/marketing/aahf-combined-badge-clean.png");
+      assert.equal(roomSnap.get("lobbyOrbSkinUrl"), "/images/marketing/aahf-combined-badge-clean.png");
+      assert.equal(roomSnap.get("audienceShellVariant"), "streamlined");
+      assert.equal(roomSnap.get("audienceBrandTheme.appTitle"), "AAHF Festival");
+    }],
+
     ["provisionHostRoom stores public event credits and secure claim config", async () => {
       const result = await provisionHostRoom.run(
         requestFor(HOST_UID, {

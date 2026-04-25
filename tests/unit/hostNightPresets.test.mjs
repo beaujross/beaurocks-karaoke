@@ -18,6 +18,8 @@ test('AAHF preset carries streamlined audience defaults', () => {
     assert.equal(config.settings.audienceFeatureAccess.features.customEmoji, 'open');
     assert.equal(config.settings.audienceFeatureAccess.features.premiumReactions, 'open');
     assert.equal(config.audienceBrandTheme.appTitle, 'AAHF Festival');
+    assert.match(String(config.brandingLogoUrl || ''), /aahf/i);
+    assert.match(String(config.brandingOrbSkinUrl || ''), /aahf/i);
 });
 
 test('custom preset normalization preserves queue and request policy fields', () => {

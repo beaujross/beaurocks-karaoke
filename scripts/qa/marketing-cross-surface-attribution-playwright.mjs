@@ -107,8 +107,13 @@ const runProfile = async ({
       await page.goto(`${baseUrl}/marketing`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
       await page.waitForTimeout(1200);
       const parsed = new URL(page.url());
+      const normalizedPath = parsed.pathname.replace(/\/+$/, "") || "/";
       assert(
-        parsed.pathname === "/host-access" || parsed.pathname === "/for-fans" || parsed.pathname === "/marketing",
+        normalizedPath === "/"
+          || normalizedPath === "/host-access"
+          || normalizedPath === "/for-hosts"
+          || normalizedPath === "/for-fans"
+          || normalizedPath === "/marketing",
         `Expected /marketing legacy path to land on a current entry surface, got ${page.url()}`,
       );
       const visibleEntry = await Promise.any([
@@ -207,7 +212,7 @@ const run = async () => {
   const args = process.argv.slice(2);
   const releaseGate = args.includes("--release-gate");
   const explicitBaseUrl = String(process.env.QA_BASE_URL || "").trim();
-  const useRemoteDefault = releaseGate;
+  const useRemoteDefault = args.includes("--remote") || toBool(process.env.QA_RELEASE_REMOTE, false);
   const timeoutMs = Math.max(25000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   const headless = !toBool(process.env.QA_HEADFUL, false);
 

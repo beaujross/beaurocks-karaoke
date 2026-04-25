@@ -63,6 +63,16 @@ Automated:
 npm run qa:marketing:cross-surface
 ```
 
+Release-gate form:
+```powershell
+npm run qa:release:marketing
+```
+
+Live production probe:
+```powershell
+npm run ops:qa:marketing:prod
+```
+
 Script validates:
 - legacy redirect convergence (`/marketing`, `?mode=marketing&page=...`) to canonical routes
 - marketing demo launch links for Audience/App, Public TV, Host Deck

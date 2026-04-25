@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ASSETS } from '../../../lib/assets';
 import { REQUEST_MODES } from '../../../lib/requestModes';
 import { AUDIENCE_FEATURE_ACCESS_LEVELS } from '../../../lib/audienceFeatureAccess.js';
@@ -7,6 +7,8 @@ import {
     normalizeHostNightPresetRecord,
 } from '../hostNightPresets';
 import EventCreditsConfigPanel from './EventCreditsConfigPanel';
+import RoomJoinPosterModal from './RoomJoinPosterModal';
+import { AAHF_FESTIVAL_LOGO_URL } from '../hostAppData';
 
 const inputClass = 'mt-2 w-full rounded-xl border border-cyan-400/20 bg-black/25 px-3 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45';
 const REQUEST_POLICY_OPTIONS = [
@@ -104,6 +106,7 @@ const HostRoomLaunchPadBrowser = ({
     const [presetEditorOpen, setPresetEditorOpen] = useState(false);
     const [presetEditorMode, setPresetEditorMode] = useState('copy');
     const [presetDraft, setPresetDraft] = useState(() => createHostNightPresetDraft(selectedLaunchPreset));
+    const [joinPosterRoom, setJoinPosterRoom] = useState(null);
     const selectedPresetIsCustom = !!selectedLaunchPreset && !selectedLaunchPreset.isBuiltIn;
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetRequestMode = String(presetDraft?.settings?.requestMode || REQUEST_MODES.canonicalOpen);
@@ -170,6 +173,29 @@ const HostRoomLaunchPadBrowser = ({
         deleteCustomHostPreset?.(selectedLaunchPreset?.id, selectedPresetBaseId);
         setPresetEditorOpen(false);
     };
+    useEffect(() => {
+        if (resolvedLaunchPresetId !== 'aahf') return;
+        if (String(launchRequestedRoomCode || '').trim()) return;
+        setLaunchRequestedRoomCode('AAHF');
+    }, [launchRequestedRoomCode, resolvedLaunchPresetId, setLaunchRequestedRoomCode]);
+    const activeJoinPosterRoom = useMemo(() => {
+        if (!joinPosterRoom || typeof joinPosterRoom !== 'object') return null;
+        const code = String(joinPosterRoom.code || '').trim().toUpperCase();
+        if (!code) return null;
+        return {
+            ...joinPosterRoom,
+            code,
+            logoUrl: String(joinPosterRoom.logoUrl || '').trim() || (
+                String(joinPosterRoom.hostNightPreset || '').trim().toLowerCase() === 'aahf'
+                    ? AAHF_FESTIVAL_LOGO_URL
+                    : ''
+            ),
+            audienceBrandTheme: joinPosterRoom.audienceBrandTheme || null,
+            audienceUrl: audienceBase
+                ? `${audienceBase}?room=${encodeURIComponent(code)}`
+                : '',
+        };
+    }, [audienceBase, joinPosterRoom]);
 
     return (
     <div className="relative z-10 w-full max-w-[1600px]">
@@ -515,6 +541,14 @@ const HostRoomLaunchPadBrowser = ({
                                                 Seed Kickoff
                                             </button>
                                         ) : null}
+                                        <button
+                                            type="button"
+                                            onClick={() => setJoinPosterRoom(selectedRoom)}
+                                            disabled={!audienceBase}
+                                            className={`rounded-full border border-cyan-300/28 bg-cyan-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100 ${!audienceBase ? 'cursor-not-allowed opacity-60' : ''}`}
+                                        >
+                                            Join Poster
+                                        </button>
                                         {selectedRoom.archived && canPermanentlyDeleteRooms ? (
                                             <button
                                                 type="button"
@@ -581,14 +615,16 @@ const HostRoomLaunchPadBrowser = ({
                                     <input
                                         value={launchRequestedRoomCode}
                                         onChange={(e) => setLaunchRequestedRoomCode(e.target.value.toUpperCase())}
-                                        placeholder="Optional"
+                                        placeholder={resolvedLaunchPresetId === 'aahf' ? 'AAHF' : 'Optional'}
                                         maxLength={10}
                                         className={`${inputClass} uppercase tracking-[0.18em]`}
                                     />
                                     <div className="mt-2 text-xs text-cyan-100/58">
                                         {hasRequestedLaunchRoomCode
                                             ? `We'll try to reserve ${requestedLaunchRoomCodeCandidate}. If another active room already has it, creation will stop so you can retry.`
-                                            : 'Leave blank to auto-assign a room code.'}
+                                            : resolvedLaunchPresetId === 'aahf'
+                                                ? 'AAHF rooms default to room code AAHF so posters and QR signage stay stable.'
+                                                : 'Leave blank to auto-assign a room code.'}
                                     </div>
                                 </label>
                             </div>
@@ -932,6 +968,16 @@ const HostRoomLaunchPadBrowser = ({
                 {hostUpdateDeploymentBanner ? <div>{hostUpdateDeploymentBanner}</div> : null}
             </div>
         </div>
+        {activeJoinPosterRoom?.audienceUrl ? (
+            <RoomJoinPosterModal
+                roomCode={activeJoinPosterRoom.code}
+                roomName={activeJoinPosterRoom.roomName || activeJoinPosterRoom.discoverTitle || activeJoinPosterRoom.code}
+                audienceUrl={activeJoinPosterRoom.audienceUrl}
+                logoUrl={activeJoinPosterRoom.logoUrl}
+                audienceBrandTheme={activeJoinPosterRoom.audienceBrandTheme}
+                onClose={() => setJoinPosterRoom(null)}
+            />
+        ) : null}
     </div>
     );
 };

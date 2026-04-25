@@ -12,12 +12,11 @@ import { getAudienceBrandThemePreset } from '../../lib/audienceBrandTheme';
 import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.js';
 import { applyEventCreditsPreset } from './hostLaunchHelpers';
 import { BUILTIN_HOST_NIGHT_PRESETS, buildHostNightPresetConfig } from './hostNightPresets';
+import { AAHF_FESTIVAL_LOGO_URL } from './hostAppData';
 
 export const AAHF_KICKOFF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 export const AAHF_KICKOFF_STARTS_AT_LOCAL = '2026-05-01T19:00';
 export const AAHF_KICKOFF_STARTS_AT_MS = Date.parse('2026-05-01T19:00:00-07:00');
-
-const AAHF_KICKOFF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
 
 export const ROOM_EVENT_PROFILE_OPTIONS = Object.freeze([
     Object.freeze({
@@ -298,8 +297,8 @@ export const buildRoomEventProfilePatch = (profileId = '', options = {}) => {
             eventProfileVersion: meta.version,
             hostNightPreset: 'aahf',
             hostNightPresetConfig: buildHostNightPresetConfig(BUILTIN_HOST_NIGHT_PRESETS.aahf),
-            logoUrl: AAHF_KICKOFF_LOGO_URL,
-            lobbyOrbSkinUrl: AAHF_KICKOFF_LOGO_URL,
+            logoUrl: AAHF_FESTIVAL_LOGO_URL,
+            lobbyOrbSkinUrl: AAHF_FESTIVAL_LOGO_URL,
             audienceShellVariant: 'streamlined',
             audienceBrandTheme: getAudienceBrandThemePreset('festival_sunburst', {
                 appTitle: 'AAHF Festival',

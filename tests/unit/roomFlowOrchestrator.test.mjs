@@ -42,7 +42,12 @@ test('roomFlowOrchestrator suppresses queue automation while run of show owns th
         lastPerformanceTs: 1000,
         queuedCount: 1,
         performingCount: 0,
-        runOfShowNextItem: { id: 'ros_next_1' },
+        runOfShowNextItem: {
+            id: 'ros_next_1',
+            type: 'announcement',
+            status: 'ready',
+            title: 'Sponsor Moment'
+        },
         fallbackDeadAirSongs: [{ title: 'Sweet Caroline', artist: 'Neil Diamond' }],
         now: 1000
     });
@@ -170,4 +175,108 @@ test('roomFlowOrchestrator arms dead-air recovery only when the room is truly em
     assert.equal(flow.owner, ROOM_FLOW_OWNERS.deadAirRecovery);
     assert.equal(flow.deadAirIntent.shouldQueue, true);
     assert.equal(flow.deadAirIntent.song.title, 'Mr. Brightside');
+});
+
+test('roomFlowOrchestrator lets the queue fill a blocked run-of-show gap when policy allows it', () => {
+    const flow = getRoomFlowSnapshot({
+        roomCode: 'ROOM5',
+        room: {
+            activeMode: 'karaoke',
+            autoDjDelaySec: 10,
+            autoDj: true,
+            runOfShowEnabled: true,
+            programMode: 'run_of_show',
+            missionControl: {
+                deadAirFiller: {
+                    enabled: true,
+                    mode: 'auto_fill',
+                    songs: [{ title: 'Sweet Caroline', artist: 'Neil Diamond' }]
+                }
+            }
+        },
+        songs: [
+            {
+                id: 'queue_ready_1',
+                status: 'requested',
+                mediaUrl: 'https://youtube.com/watch?v=next123',
+                playbackReady: true,
+                priorityScore: 1
+            }
+        ],
+        autoDjEnabled: true,
+        queuedCount: 1,
+        performingCount: 0,
+        runOfShowNextItem: {
+            id: 'ros_perf_blocked',
+            type: 'performance',
+            status: 'blocked',
+            title: 'Feature Slot',
+            songTitle: 'Valerie',
+            backingPlan: {
+                sourceType: 'youtube',
+                youtubeId: 'abc123',
+                playbackReady: true,
+                approvalStatus: 'approved',
+                resolutionStatus: 'ready'
+            }
+        },
+        runOfShowPolicy: {
+            queueDivergencePolicy: 'queue_can_fill_gaps'
+        },
+        now: 12000
+    });
+
+    assert.equal(flow.runOfShowCoverage.blocked, true);
+    assert.equal(flow.runOfShowCoverage.allowQueueFill, true);
+    assert.equal(flow.autoDjIntent.shouldStart, true);
+    assert.equal(flow.autoDjIntent.songId, 'queue_ready_1');
+    assert.equal(flow.owner, ROOM_FLOW_OWNERS.queueReady);
+});
+
+test('roomFlowOrchestrator arms dead-air recovery when run-of-show is blocked and no queue song can fill the gap', () => {
+    const flow = getRoomFlowSnapshot({
+        roomCode: 'ROOM6',
+        room: {
+            activeMode: 'karaoke',
+            autoDjDelaySec: 10,
+            runOfShowEnabled: true,
+            programMode: 'run_of_show',
+            missionControl: {
+                deadAirFiller: {
+                    enabled: true,
+                    mode: 'auto_fill',
+                    songs: [{ title: 'Mr. Brightside', artist: 'The Killers' }]
+                }
+            }
+        },
+        songs: [],
+        autoDjEnabled: true,
+        queuedCount: 0,
+        performingCount: 0,
+        fallbackDeadAirSongs: [{ title: 'Mr. Brightside', artist: 'The Killers' }],
+        runOfShowNextItem: {
+            id: 'ros_perf_blocked',
+            type: 'performance',
+            status: 'blocked',
+            title: 'Finalist 2',
+            songTitle: "Don't Stop Believin'",
+            backingPlan: {
+                sourceType: 'youtube',
+                youtubeId: 'abc123',
+                playbackReady: true,
+                approvalStatus: 'approved',
+                resolutionStatus: 'ready'
+            }
+        },
+        runOfShowPolicy: {
+            queueDivergencePolicy: 'host_override_only'
+        },
+        now: 2000
+    });
+
+    assert.equal(flow.runOfShowCoverage.blocked, true);
+    assert.equal(flow.runOfShowCoverage.allowQueueFill, false);
+    assert.equal(flow.deadAirIntent.shouldQueue, true);
+    assert.equal(flow.deadAirIntent.song.title, 'Mr. Brightside');
+    assert.equal(flow.owner, ROOM_FLOW_OWNERS.deadAirRecovery);
 });

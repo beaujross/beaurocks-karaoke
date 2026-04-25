@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ToastProvider } from './context/ToastContext';
 import { auth, onAuthStateChanged, initAuth } from './lib/firebase';
 import { ASSETS } from './lib/assets';
@@ -278,6 +278,7 @@ const App = () => {
             || getCanonicalInteractiveSurfaceRedirectUrl(window.location);
     });
     const initialRoute = getInitialRouteState();
+    const initialViewHintRef = useRef(initialRoute.view);
     const [view, setView] = useState(() => initialRoute.view);
     const [roomCode, setRoomCode] = useState(() => initialRoute.roomCode);
     const [uid, setUid] = useState(null);
@@ -299,7 +300,7 @@ const App = () => {
 
     // 1. Initialize Auth
     useEffect(() => {
-        initAuth().then((res) => {
+        initAuth({ viewHint: initialViewHintRef.current }).then((res) => {
             if (!res?.ok && res?.error) {
                 setAuthError(res.error);
             }
@@ -350,7 +351,7 @@ const App = () => {
     );
     const retryAuth = async () => {
         setAuthError(null);
-        const res = await initAuth();
+        const res = await initAuth({ viewHint: view });
         if (!res?.ok && res?.error) {
             setAuthError(res.error);
         }

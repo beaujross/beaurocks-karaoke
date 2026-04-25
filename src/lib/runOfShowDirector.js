@@ -421,12 +421,26 @@ export const getRunOfShowBlockedActionLabel = (readiness = null, item = {}, poli
     const normalizedPolicy = normalizeRunOfShowPolicy(policy || {});
     if (!readiness?.blockers?.length) return 'Ready to stage.';
     if (item?.type === 'performance') {
-        if (normalizedPolicy.noShowPolicy === 'skip_to_next') return 'Performer missing: skip this slot and advance to the next ready block.';
-        if (normalizedPolicy.noShowPolicy === 'pull_from_queue') return 'Performer missing: pull a queue-ready replacement or assign a new singer.';
+        if (normalizedPolicy.noShowPolicy === 'skip_to_next') {
+            return 'Performance blocked. Skip to the next ready performance so the room keeps moving.';
+        }
+        if (normalizedPolicy.noShowPolicy === 'pull_from_queue') {
+            return 'Performance blocked. Pull a queue-ready performance or assign a performer so the energy stays up.';
+        }
     }
-    if (normalizedPolicy.blockedActionPolicy === 'manual_override_allowed') return 'Host may override manually after reviewing the blocker.';
-    if (normalizedPolicy.blockedActionPolicy === 'skip_blocked_after_review') return 'Review the blocker, then skip this block if it still cannot run.';
-    return 'Fix the next blocker before automation can continue.';
+    if (normalizedPolicy.blockedActionPolicy === 'manual_override_allowed') {
+        return item?.type === 'performance'
+            ? 'Review the blocker, then either fix this performance or run the next ready item.'
+            : 'Review the blocker, then either fix this item or keep the room moving with the next ready performance.';
+    }
+    if (normalizedPolicy.blockedActionPolicy === 'skip_blocked_after_review') {
+        return item?.type === 'performance'
+            ? 'Review the blocker, then skip to the next ready performance if this one still cannot run.'
+            : 'Review the blocker, then skip this optional item and keep the next ready performance moving.';
+    }
+    return item?.type === 'performance'
+        ? 'Fix the next performance blocker before automation can continue.'
+        : 'Fix this item or skip it so the room keeps moving.';
 };
 
 export const getRunOfShowOperatingHint = ({ item = {}, readiness = null, policy = {} } = {}) => {
@@ -443,7 +457,9 @@ export const getRunOfShowOperatingHint = ({ item = {}, readiness = null, policy 
             : 'This scene needs host advance after its minimum live window.';
     }
     if (item?.status === 'live' && normalizedPolicy.lateBlockPolicy === 'compress') return 'If the room is running late, compress this block before moving on.';
-    if (item?.type === 'performance' && normalizedPolicy.queueDivergencePolicy === 'queue_can_fill_gaps') return 'The live queue may fill gaps if this planned slot changes.';
+    if (item?.type === 'performance' && normalizedPolicy.queueDivergencePolicy === 'queue_can_fill_gaps') {
+        return 'If this performance slips, the live queue can fill the gap and keep the energy up.';
+    }
     return normalizedPolicy.defaultAutomationMode === 'manual'
         ? 'This room defaults to manual advancement unless the host arms a block.'
         : 'This room defaults to auto-when-ready progression with host override.';
@@ -700,6 +716,332 @@ export const resequenceRunOfShowItems = (items = []) => (
         }))
 );
 
+const CSV_IMPORT_HEADER_ALIASES = Object.freeze({
+    order: 'order',
+    sequence: 'order',
+    index: 'order',
+    type: 'type',
+    subtype: 'subtype',
+    category: 'subtype',
+    title: 'title',
+    performer_name: 'performer_name',
+    performer: 'performer_name',
+    assigned_performer_name: 'performer_name',
+    song_title: 'song_title',
+    song: 'song_title',
+    artist_name: 'artist_name',
+    artist: 'artist_name',
+    youtube_url: 'media_url',
+    media_url: 'media_url',
+    url: 'media_url',
+    planned_duration_sec: 'planned_duration_sec',
+    duration_sec: 'planned_duration_sec',
+    duration: 'planned_duration_sec',
+    notes: 'notes',
+    required: 'required',
+    visibility: 'visibility',
+    group: 'group',
+    block: 'group',
+    fallback_allowed: 'fallback_allowed',
+    automation_mode: 'automation_mode'
+});
+
+const normalizeImportHeader = (value = '') => {
+    const safeValue = cleanText(value)
+        .replace(/^\uFEFF/, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return CSV_IMPORT_HEADER_ALIASES[safeValue] || safeValue;
+};
+
+const parseBooleanLike = (value, fallback = false) => {
+    const safeValue = cleanText(value).toLowerCase();
+    if (!safeValue) return fallback;
+    if (['true', '1', 'yes', 'y'].includes(safeValue)) return true;
+    if (['false', '0', 'no', 'n'].includes(safeValue)) return false;
+    return fallback;
+};
+
+const parseCsvTextToRows = (csvText = '') => {
+    const source = String(csvText || '').replace(/^\uFEFF/, '');
+    const rows = [];
+    let currentRow = [];
+    let currentValue = '';
+    let inQuotes = false;
+
+    for (let index = 0; index < source.length; index += 1) {
+        const char = source[index];
+        const nextChar = source[index + 1];
+
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                currentValue += '"';
+                index += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (!inQuotes && char === ',') {
+            currentRow.push(currentValue);
+            currentValue = '';
+            continue;
+        }
+
+        if (!inQuotes && (char === '\n' || char === '\r')) {
+            if (char === '\r' && nextChar === '\n') {
+                index += 1;
+            }
+            currentRow.push(currentValue);
+            rows.push(currentRow);
+            currentRow = [];
+            currentValue = '';
+            continue;
+        }
+
+        currentValue += char;
+    }
+
+    if (currentValue.length > 0 || currentRow.length > 0) {
+        currentRow.push(currentValue);
+        rows.push(currentRow);
+    }
+
+    return rows
+        .map((row) => row.map((entry) => String(entry ?? '')))
+        .filter((row) => row.some((entry) => cleanText(entry)));
+};
+
+const inferImportedRunOfShowType = (rawType = '', rawSubtype = '') => {
+    const safeType = cleanText(rawType).toLowerCase();
+    const safeSubtype = cleanText(rawSubtype).toLowerCase();
+    const subtype = safeSubtype || safeType;
+
+    if (ALLOWED_ITEM_TYPES.has(safeType)) return safeType;
+    if (subtype === 'trivia' || subtype === 'trivia_break') return 'trivia_break';
+    if (subtype === 'would_you_rather' || subtype === 'wyr' || subtype === 'would_you_rather_break') return 'would_you_rather_break';
+    if (subtype === 'game' || subtype === 'game_break') return 'game_break';
+    if (subtype === 'winner' || subtype === 'winner_declaration') return 'winner_declaration';
+    if (subtype === 'intermission') return 'intermission';
+    if (subtype === 'intro') return 'intro';
+    if (subtype === 'closing') return 'closing';
+    if (safeType === 'performance' || subtype === 'performance') return 'performance';
+    if (safeType === 'moment') return 'game_break';
+    if (safeType === 'scene') return 'announcement';
+    return '';
+};
+
+const inferImportedMediaSceneType = (mediaUrl = '') => {
+    const safeUrl = cleanText(mediaUrl).toLowerCase();
+    if (!safeUrl) return 'image';
+    return /\.(mp4|mov|webm|m4v)(?:$|\?)/.test(safeUrl) ? 'video' : 'image';
+};
+
+const extractImportedYouTubeId = (value = '') => {
+    const safeValue = cleanText(value);
+    if (!safeValue) return '';
+    const rawMatch = safeValue.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([A-Za-z0-9_-]{11})/i);
+    if (rawMatch?.[1]) return rawMatch[1];
+    if (/^[A-Za-z0-9_-]{11}$/.test(safeValue)) return safeValue;
+    return '';
+};
+
+const buildImportedRunOfShowItemRow = (row = {}, rowIndex = 0) => {
+    const safeRow = row && typeof row === 'object' ? row : {};
+    const parsedType = inferImportedRunOfShowType(safeRow.type, safeRow.subtype);
+    const order = clampInt(safeRow.order, 1, 9999, rowIndex + 1);
+    const performerName = readEditableTextField(safeRow, 'performer_name');
+    const songTitle = readEditableTextField(safeRow, 'song_title');
+    const artistName = readEditableTextField(safeRow, 'artist_name');
+    const mediaUrl = cleanText(safeRow.media_url);
+    const group = readEditableTextField(safeRow, 'group');
+    const providedTitle = readEditableTextField(safeRow, 'title');
+    const plannedDurationSec = clampInt(safeRow.planned_duration_sec, 0, 3600, 0);
+    const notes = [readEditableTextField(safeRow, 'notes'), group ? `Block: ${group}` : ''].filter(Boolean).join(' | ');
+    const required = parseBooleanLike(safeRow.required, true);
+    const fallbackAllowed = parseBooleanLike(safeRow.fallback_allowed, true);
+    const visibility = cleanText(safeRow.visibility).toLowerCase() === 'private' ? 'private' : 'public';
+    const automationMode = cleanText(safeRow.automation_mode).toLowerCase() === 'manual' ? 'manual' : 'auto';
+    const youtubeId = extractImportedYouTubeId(mediaUrl);
+
+    if (!parsedType) {
+        return {
+            rowNumber: rowIndex + 2,
+            sortOrder: order,
+            title: providedTitle || performerName || songTitle || `Row ${rowIndex + 1}`,
+            itemType: '',
+            blocked: true,
+            issue: 'Type must be performance, moment, scene, or a supported subtype.',
+            item: null
+        };
+    }
+
+    const overrides = {
+        title: providedTitle
+            || (parsedType === 'performance'
+                ? [performerName, songTitle].filter(Boolean).join(' - ') || 'Performance'
+                : parsedType === 'announcement' && mediaUrl
+                    ? 'Media Scene'
+                    : getRunOfShowItemLabel(parsedType)),
+        sequence: order,
+        notes,
+        visibility,
+        automationMode,
+        optionalScene: parsedType === 'performance' ? false : (!required || fallbackAllowed),
+        plannedDurationSec: plannedDurationSec || undefined
+    };
+
+    if (parsedType === 'performance') {
+        overrides.performerMode = performerName
+            ? RUN_OF_SHOW_PERFORMER_MODES.assigned
+            : RUN_OF_SHOW_PERFORMER_MODES.placeholder;
+        overrides.assignedPerformerName = performerName;
+        overrides.songTitle = songTitle;
+        overrides.artistName = artistName;
+        if (mediaUrl) {
+            overrides.plannedDurationSource = 'backing';
+            overrides.backingPlan = youtubeId
+                ? {
+                    sourceType: 'youtube',
+                    label: songTitle || overrides.title,
+                    mediaUrl,
+                    youtubeId,
+                    approvalStatus: 'approved',
+                    playbackReady: true,
+                    resolutionStatus: 'ready'
+                }
+                : {
+                    sourceType: 'manual_external',
+                    label: songTitle || overrides.title,
+                    mediaUrl,
+                    approvalStatus: 'approved',
+                    playbackReady: false,
+                    resolutionStatus: 'ready'
+                };
+        }
+    } else if (parsedType === 'announcement' || parsedType === 'intro' || parsedType === 'closing' || parsedType === 'winner_declaration') {
+        overrides.presentationPlan = mediaUrl
+            ? {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'media_scene',
+                headline: overrides.title,
+                subhead: notes,
+                accentTheme: 'cyan',
+                mediaSceneUrl: mediaUrl,
+                mediaSceneType: inferImportedMediaSceneType(mediaUrl),
+                mediaSceneFit: 'contain'
+            }
+            : {
+                publicTvTakeoverEnabled: parsedType === 'announcement' || parsedType === 'intro',
+                takeoverScene: parsedType === 'announcement' ? 'announcement' : parsedType,
+                headline: overrides.title,
+                subhead: notes,
+                accentTheme: 'cyan'
+            };
+    } else if (parsedType === 'game_break') {
+        overrides.modeLaunchPlan = {
+            modeKey: cleanText(safeRow.subtype).toLowerCase() || 'crowd_play',
+            launchConfig: {
+                question: overrides.title
+            }
+        };
+    }
+
+    let item = createRunOfShowItem(parsedType, {
+        ...overrides,
+        status: 'ready'
+    });
+    const readiness = getRunOfShowItemReadiness(item);
+    if (!readiness.ready) {
+        item = createRunOfShowItem(parsedType, {
+            ...item,
+            status: 'blocked',
+            blockedReason: parsedType === 'performance' ? 'performance_not_ready' : 'item_not_ready'
+        });
+    }
+
+    return {
+        rowNumber: rowIndex + 2,
+        sortOrder: order,
+        title: item.title,
+        itemType: item.type,
+        blocked: item.status === 'blocked',
+        issue: readiness.summary,
+        item
+    };
+};
+
+export const previewRunOfShowCsvImport = (csvText = '') => {
+    const safeText = String(csvText || '');
+    if (!cleanText(safeText)) {
+        return {
+            headers: [],
+            rows: [],
+            items: [],
+            errors: [],
+            blockedCount: 0,
+            skippedCount: 0
+        };
+    }
+
+    const parsedRows = parseCsvTextToRows(safeText);
+    if (!parsedRows.length) {
+        return {
+            headers: [],
+            rows: [],
+            items: [],
+            errors: ['No CSV rows were found.'],
+            blockedCount: 0,
+            skippedCount: 0
+        };
+    }
+
+    const headers = parsedRows[0].map((entry) => normalizeImportHeader(entry));
+    const dataRows = parsedRows.slice(1);
+    const recognizedHeaderCount = headers.filter((header) => Object.values(CSV_IMPORT_HEADER_ALIASES).includes(header)).length;
+    if (!recognizedHeaderCount) {
+        return {
+            headers,
+            rows: [],
+            items: [],
+            errors: ['CSV headers were not recognized. Include at least type, title, or order columns.'],
+            blockedCount: 0,
+            skippedCount: dataRows.length
+        };
+    }
+
+    const rowResults = dataRows
+        .map((cells) => Object.fromEntries(headers.map((header, index) => [header, String(cells[index] ?? '')])))
+        .filter((row) => Object.values(row).some((entry) => cleanText(entry)))
+        .map((row, index) => buildImportedRunOfShowItemRow(row, index))
+        .sort((left, right) => left.sortOrder - right.sortOrder || left.rowNumber - right.rowNumber);
+
+    const items = resequenceRunOfShowItems(rowResults.map((entry) => entry.item).filter(Boolean));
+    let itemIndex = 0;
+    const rows = rowResults.map((entry) => {
+        if (!entry.item) return entry;
+        const nextItem = items[itemIndex] || entry.item;
+        itemIndex += 1;
+        return {
+            ...entry,
+            item: nextItem,
+            itemType: nextItem.type
+        };
+    });
+    return {
+        headers,
+        rows,
+        items,
+        errors: rows.filter((entry) => !entry.item).map((entry) => `Row ${entry.rowNumber}: ${entry.issue}`),
+        blockedCount: rows.filter((entry) => entry.item?.status === 'blocked').length,
+        skippedCount: Math.max(0, dataRows.length - rowResults.length)
+    };
+};
+
+export const buildRunOfShowItemsFromCsvImport = (csvText = '') => previewRunOfShowCsvImport(csvText);
+
 const buildRunOfShowConveyorSnapshotFromItems = (items = []) => {
     const activeItems = (Array.isArray(items) ? items : []).filter((item) => !['complete', 'skipped'].includes(item.status));
     const liveItem = activeItems.find((item) => item.status === 'live') || null;
@@ -923,9 +1265,9 @@ export const getRunOfShowReleaseWindowTally = (releaseWindow = {}, roles = {}) =
         summary: !totalVotes
             ? 'No votes yet'
             : leadingChoice === 'slot_scene'
-                ? `${slotSceneCount}-${keepQueueMovingCount} favor slotting the scene`
+                ? `${slotSceneCount}-${keepQueueMovingCount} favor running the scene next`
                 : leadingChoice === 'keep_queue_moving'
-                    ? `${keepQueueMovingCount}-${slotSceneCount} favor keeping the queue moving`
+                    ? `${keepQueueMovingCount}-${slotSceneCount} favor keeping performances moving`
                     : `${slotSceneCount}-${keepQueueMovingCount} split room`
     };
 };
@@ -933,7 +1275,7 @@ export const getRunOfShowReleaseWindowTally = (releaseWindow = {}, roles = {}) =
 export const getRunOfShowReleaseWindowPrompt = (item = null) => {
     const safeItem = item && typeof item === 'object' ? item : null;
     const label = cleanText(safeItem?.title) || getRunOfShowItemLabel(safeItem?.type || '');
-    return label ? `Should "${label}" slot in next?` : 'Should this scene slot in next?';
+    return label ? `Should "${label}" run next?` : 'Should this scene run next?';
 };
 
 export const hasRunOfShowBackingIdentity = (backingPlan = {}) => {
@@ -1037,7 +1379,7 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
             if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission && pendingSubmissionCount > 0) {
                 pushBlocker('performer_submission_pending', `Approve one of the ${pendingSubmissionCount} pending submissions or assign a performer manually.`);
             } else if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) {
-                pushBlocker('performer_open_slot', 'This slot is still waiting for an approved singer submission or manual assignment.');
+                pushBlocker('performer_open_slot', 'This performance is still waiting for an approved submission or manual assignment.');
             } else {
                 pushBlocker('performer_missing', 'Assign a performer before this block can auto-run.');
             }
@@ -1068,7 +1410,7 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
         }
 
         if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission && pendingSubmissionCount > 0 && performerReady) {
-            pushAdvisory('submission_pool_available', `${pendingSubmissionCount} pending submissions are still waiting in this slot's queue.`);
+            pushAdvisory('submission_pool_available', `${pendingSubmissionCount} pending submissions are still waiting in this performance's queue.`);
         }
     } else if (safeType === 'trivia_break' || safeType === 'would_you_rather_break' || safeType === 'game_break') {
         if (!cleanText(item?.modeLaunchPlan?.modeKey)) {
@@ -1321,4 +1663,14 @@ export const getRunOfShowItemLabel = (type = '') => {
     if (!safeType) return 'Run Of Show';
     if (safeType === 'winner_declaration') return 'Declare Winner';
     return safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+export const getRunOfShowItemCategoryLabel = (type = '') => {
+    const safeType = cleanText(type).toLowerCase();
+    if (safeType === 'performance') return 'Performance';
+    if (['trivia_break', 'game_break', 'would_you_rather_break'].includes(safeType)) return 'Moment';
+    if (['intro', 'announcement', 'winner_declaration', 'intermission', 'buffer', 'closing'].includes(safeType)) {
+        return 'Scene';
+    }
+    return 'Item';
 };

@@ -55,6 +55,10 @@ test("discoverListingTypes.test builds listing action hrefs", () => {
     "/join/AB12"
   );
   assert.equal(
+    buildListingActionHref({ listingType: "room_session", roomCode: "aahf", sourceType: "official_registry", id: "official_aahf_karaoke_kickoff_2026" }),
+    "/join/AAHF"
+  );
+  assert.equal(
     buildListingActionHref({ listingType: "event", routePage: "event", id: "evt-1" }),
     "/events/evt-1"
   );

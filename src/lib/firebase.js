@@ -948,8 +948,17 @@ const waitForInitialAuthState = async (timeoutMs = 4000) => {
 };
 
 // Helper for Auth
-const initAuth = async (customToken) => {
+const initAuth = async (customTokenOrOptions) => {
   try {
+    const initOptions = (
+      customTokenOrOptions
+      && typeof customTokenOrOptions === "object"
+      && !Array.isArray(customTokenOrOptions)
+    )
+      ? customTokenOrOptions
+      : { customToken: customTokenOrOptions };
+    const customToken = initOptions?.customToken;
+
     const preferredPersistence = resolveAuthPersistenceMode();
     try {
       await setPersistence(auth, preferredPersistence);
@@ -974,7 +983,12 @@ const initAuth = async (customToken) => {
       return { ok: true, qaBootstrap: true };
     }
 
-    if (!shouldBootstrapAnonymousAuth({ customToken, currentUser: auth.currentUser })) {
+    if (!shouldBootstrapAnonymousAuth({
+      customToken,
+      currentUser: auth.currentUser,
+      viewHint: initOptions?.viewHint,
+      locationLike: initOptions?.locationLike,
+    })) {
       return {
         ok: true,
         reusedExistingSession: true,

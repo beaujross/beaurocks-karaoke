@@ -12,6 +12,7 @@ import {
 import { applyMarketingSeo } from "./seo";
 import { directoryActions } from "./api/directoryApi";
 import { useDirectorySession } from "./hooks/useDirectorySession";
+import { normalizeComparableMarketingUrl } from "./marketingCanonicalization";
 import { formatDateTime, MARKETING_BRAND_NEON_URL } from "./pages/shared";
 import { buildSurfaceUrl, inferSurfaceFromHostname } from "../../lib/surfaceDomains";
 import { getMarketingNavModel } from "./iaModel";
@@ -361,9 +362,9 @@ const MarketingSite = () => {
     const parsed = normalizeRouteInput(parseMarketingRouteFromLocation(window.location));
     const canonicalUrl = `${buildMarketingUrl(parsed)}${window.location.hash || ""}`;
     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash || ""}`;
-    if (currentUrl !== canonicalUrl) {
-      window.location.replace(canonicalUrl);
-    }
+    if (normalizeComparableMarketingUrl(currentUrl) === normalizeComparableMarketingUrl(canonicalUrl)) return;
+    window.history.replaceState({}, "", canonicalUrl);
+    setRoute(parsed);
   }, []);
 
   useEffect(() => {

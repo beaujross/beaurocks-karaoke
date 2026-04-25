@@ -8,7 +8,10 @@ import {
 } from './partyOrchestrator.js';
 import {
     RUN_OF_SHOW_PROGRAM_MODES,
-    normalizeRunOfShowProgramMode
+    normalizeRunOfShowProgramMode,
+    normalizeRunOfShowPolicy,
+    getRunOfShowItemReadiness,
+    getRunOfShowBlockedActionLabel
 } from '../../lib/runOfShowDirector.js';
 
 const APPLAUSE_PHASES = new Set(['applause_countdown', 'applause', 'applause_result']);
@@ -28,6 +31,7 @@ const defaultIsQueueEntryPlayable = (song = {}, { appleMusicEnabled = true } = {
 export const ROOM_FLOW_OWNERS = Object.freeze({
     missingRoom: 'missing_room',
     runOfShow: 'run_of_show',
+    runOfShowBlocked: 'run_of_show_blocked',
     performance: 'performance_live',
     applause: 'applause_flow',
     readyCheck: 'ready_check_live',
@@ -38,6 +42,78 @@ export const ROOM_FLOW_OWNERS = Object.freeze({
     queueReady: 'queue_ready',
     idle: 'idle_waiting'
 });
+
+const getRunOfShowCoverageState = ({
+    runOfShowActive = false,
+    runOfShowLiveItem = null,
+    runOfShowStagedItem = null,
+    runOfShowNextItem = null,
+    runOfShowPolicy = {},
+    runOfShowPendingCountsById = {},
+} = {}) => {
+    const normalizedPolicy = normalizeRunOfShowPolicy(runOfShowPolicy || {});
+    if (!runOfShowActive) {
+        return {
+            active: false,
+            shouldHoldRoom: false,
+            blocked: false,
+            allowQueueFill: false,
+            detail: '',
+            candidateItem: null,
+        };
+    }
+    if (runOfShowLiveItem?.id) {
+        return {
+            active: true,
+            shouldHoldRoom: true,
+            blocked: false,
+            allowQueueFill: false,
+            detail: '',
+            candidateItem: runOfShowLiveItem,
+        };
+    }
+
+    const candidateItem = runOfShowStagedItem || runOfShowNextItem || null;
+    if (!candidateItem?.id) {
+        return {
+            active: true,
+            shouldHoldRoom: false,
+            blocked: true,
+            allowQueueFill: false,
+            detail: 'Run of Show is active, but there is no next planned item ready to take the room.',
+            candidateItem: null,
+        };
+    }
+
+    const pendingSubmissionCount = Math.max(
+        0,
+        Number(runOfShowPendingCountsById?.[candidateItem.id] || 0) || 0
+    );
+    const readiness = getRunOfShowItemReadiness(candidateItem, { pendingSubmissionCount });
+    const status = normalizeKey(candidateItem?.status || '');
+    const blocked = status === 'blocked' || readiness?.ready !== true;
+
+    if (!blocked) {
+        return {
+            active: true,
+            shouldHoldRoom: true,
+            blocked: false,
+            allowQueueFill: false,
+            detail: '',
+            candidateItem,
+        };
+    }
+
+    return {
+        active: true,
+        shouldHoldRoom: false,
+        blocked: true,
+        allowQueueFill: normalizedPolicy.queueDivergencePolicy === 'queue_can_fill_gaps',
+        detail: getRunOfShowBlockedActionLabel(readiness, candidateItem, normalizedPolicy),
+        candidateItem,
+        readiness,
+    };
+};
 
 export const getRoomFlowSnapshot = ({
     roomCode = '',
@@ -54,6 +130,8 @@ export const getRoomFlowSnapshot = ({
     runOfShowLiveItem = null,
     runOfShowStagedItem = null,
     runOfShowNextItem = null,
+    runOfShowPolicy = {},
+    runOfShowPendingCountsById = {},
     autoDjDelaySec = 10,
     now = Date.now(),
     isQueueEntryPlayable = defaultIsQueueEntryPlayable
@@ -85,13 +163,21 @@ export const getRoomFlowSnapshot = ({
         .sort((a, b) => (a.priorityScore || 0) - (b.priorityScore || 0));
     const nextQueuedSong = queuedPlayableSongs[0] || null;
     const nextQueuedSongIsDeadAir = isDeadAirAutoFillQueueItem(nextQueuedSong);
+    const runOfShowCoverage = getRunOfShowCoverageState({
+        runOfShowActive,
+        runOfShowLiveItem,
+        runOfShowStagedItem,
+        runOfShowNextItem,
+        runOfShowPolicy,
+        runOfShowPendingCountsById,
+    });
 
     const autoDjIntent = getAutoDjQueueAdvanceIntent({
         autoDjEnabled,
         activeMode: room?.activeMode,
         readyCheckActive,
         autoMomentLive,
-        runOfShowEnabled: runOfShowActive,
+        runOfShowEnabled: runOfShowCoverage.shouldHoldRoom || (runOfShowActive && !runOfShowCoverage.blocked),
         programMode: normalizedProgramMode,
         songs: list,
         appleMusicEnabled,
@@ -156,7 +242,7 @@ export const getRoomFlowSnapshot = ({
         autoDjEnabled,
         queuedCount: effectiveQueuedCount,
         performingCount: effectivePerformingCount,
-        runOfShowEnabled: runOfShowActive,
+        runOfShowEnabled: runOfShowCoverage.shouldHoldRoom || (runOfShowActive && !runOfShowCoverage.blocked),
         programMode: normalizedProgramMode,
         activeMode: room?.activeMode,
         sourceSongs: room?.missionControl?.deadAirFiller?.songs,
@@ -170,7 +256,7 @@ export const getRoomFlowSnapshot = ({
     let owner = ROOM_FLOW_OWNERS.idle;
     if (!safeRoomCode) {
         owner = ROOM_FLOW_OWNERS.missingRoom;
-    } else if (runOfShowActive && (runOfShowLiveItem || runOfShowStagedItem || runOfShowNextItem)) {
+    } else if (runOfShowCoverage.shouldHoldRoom) {
         owner = ROOM_FLOW_OWNERS.runOfShow;
     } else if (effectivePerformingCount > 0) {
         owner = ROOM_FLOW_OWNERS.performance;
@@ -186,8 +272,10 @@ export const getRoomFlowSnapshot = ({
         owner = ROOM_FLOW_OWNERS.betweenSingers;
     } else if (deadAirIntent.shouldQueue) {
         owner = ROOM_FLOW_OWNERS.deadAirRecovery;
-    } else if (nextQueuedSong?.id) {
+    } else if (nextQueuedSong?.id && (autoDjIntent.shouldStart || autoDjIntent.reason === 'waiting_delay')) {
         owner = ROOM_FLOW_OWNERS.queueReady;
+    } else if (runOfShowCoverage.blocked) {
+        owner = ROOM_FLOW_OWNERS.runOfShowBlocked;
     }
 
     return {
@@ -203,6 +291,7 @@ export const getRoomFlowSnapshot = ({
         queuedPlayableSongs,
         queuedCount: effectiveQueuedCount,
         performingCount: effectivePerformingCount,
+        runOfShowCoverage,
         autoDjIntent,
         autoPartyIntent,
         deadAirIntent

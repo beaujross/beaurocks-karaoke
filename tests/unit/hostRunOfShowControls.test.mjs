@@ -52,6 +52,9 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(source, /const closeRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
   assert.match(source, /onOpenReleaseWindow=\{openRunOfShowReleaseWindow\}/);
   assert.match(source, /onCloseReleaseWindow=\{closeRunOfShowReleaseWindow\}/);
+  assert.match(source, /const importRunOfShowCsv = useCallback\(async \(csvText = '', options = \{\}\) => \{/);
+  assert.match(source, /buildRunOfShowItemsFromCsvImport\(csvText\)/);
+  assert.match(source, /onImportCsv=\{importRunOfShowCsv\}/);
   assert.match(directorPanelSource, /Release Window/);
   assert.match(directorPanelSource, /Crowd Signal/);
   assert.match(directorPanelSource, /Co-Host Vote/);
@@ -202,16 +205,17 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(directorPanelSource, /launchConfig: buildSpotlightLaunchConfig\(safeModeId, option\),/);
   assert.match(directorPanelSource, /requiresAudienceTakeover: safeModeId !== 'applause_countdown'/);
   assert.match(queueHudSource, /const getItemExecutionMeta = \(item = \{\}\) => \{/);
-  assert.match(queueHudSource, /lane: 'Game'/);
+  assert.match(queueHudSource, /getRunOfShowItemCategoryLabel/);
   assert.match(queueHudSource, /launchLabel: modeKey \? `Launches \$\{modeKey\.replaceAll\('_', ' '\)\}` : 'Interactive launch'/);
   assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
   assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
-  assert.match(queueHudSource, /Scene Slot Actions/);
+  assert.match(queueHudSource, /Item Actions/);
   assert.match(queueHudSource, /Move Earlier/);
   assert.match(queueHudSource, /Move Later/);
   assert.match(queueHudSource, /Fix Issue/);
   assert.match(queueHudSource, /Preview/);
   assert.match(queueHudSource, /Edit/);
+  assert.match(queueHudSource, /keep the room moving/);
 });
 
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {

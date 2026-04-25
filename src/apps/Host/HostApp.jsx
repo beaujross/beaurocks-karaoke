@@ -164,6 +164,7 @@ import {
     createDefaultRunOfShowRoles,
     createDefaultRunOfShowTemplateMeta,
     createRunOfShowItem,
+    buildRunOfShowItemsFromCsvImport,
     getNextRunOfShowItem,
     getRunOfShowItemLabel,
     getRunOfShowAutomationPauseState,
@@ -6068,6 +6069,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return persistRunOfShowDirector(nextDirector);
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const importRunOfShowCsv = useCallback(async (csvText = '', options = {}) => {
+        const importResult = buildRunOfShowItemsFromCsvImport(csvText);
+        if (!importResult.items.length) {
+            toast(importResult.errors?.[0] || 'No show rows were imported.');
+            return null;
+        }
+        const mode = String(options?.mode || 'append').trim().toLowerCase() === 'replace' ? 'replace' : 'append';
+        const director = getCurrentRunOfShowDirector();
+        const baseItems = mode === 'replace' ? [] : (Array.isArray(director.items) ? director.items : []);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            items: resequenceRunOfShowItems([
+                ...baseItems,
+                ...importResult.items
+            ])
+        });
+        const persistedDirector = await persistRunOfShowDirector(nextDirector);
+        const blockedCount = Number(importResult.blockedCount || 0);
+        const skippedCount = Number(importResult.skippedCount || 0);
+        toast(
+            `${mode === 'replace' ? 'Replaced the show with' : 'Imported'} ${importResult.items.length} item${importResult.items.length === 1 ? '' : 's'}`
+            + `${blockedCount > 0 ? `, ${blockedCount} blocked` : ''}`
+            + `${skippedCount > 0 ? `, ${skippedCount} skipped` : ''}.`
+        );
+        return {
+            ...importResult,
+            runOfShowDirector: persistedDirector
+        };
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
     const buildScenePresetRunOfShowOverrides = useCallback((preset = {}) => {
         const mediaUrl = String(preset?.mediaUrl || '').trim();
         const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
@@ -8044,6 +8074,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowLiveItem,
             runOfShowStagedItem,
             runOfShowNextItem,
+            runOfShowPolicy,
+            runOfShowPendingCountsById,
             autoDjDelaySec: activeRoom?.autoDjDelaySec,
             now: nowMs(),
             isQueueEntryPlayable
@@ -8065,7 +8097,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowStagedItem, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowStagedItem, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -8087,6 +8119,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowLiveItem,
             runOfShowStagedItem,
             runOfShowNextItem,
+            runOfShowPolicy,
+            runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
             now: nowMs(),
             isQueueEntryPlayable
@@ -8168,6 +8202,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         performingCount,
         runOfShowLiveItem,
         runOfShowNextItem,
+        runOfShowPendingCountsById,
+        runOfShowPolicy,
         runOfShowStagedItem,
         startNextFromQueue
     ]);
@@ -9829,6 +9865,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowLiveItem,
             runOfShowStagedItem,
             runOfShowNextItem,
+            runOfShowPolicy,
+            runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
             now: nowMs(),
             isQueueEntryPlayable
@@ -9880,6 +9918,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         performingCount,
         runOfShowLiveItem,
         runOfShowNextItem,
+        runOfShowPendingCountsById,
+        runOfShowPolicy,
         runOfShowStagedItem,
         songs,
         startAutoCrowdMoment,
@@ -12466,6 +12506,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowLiveItem,
             runOfShowStagedItem,
             runOfShowNextItem,
+            runOfShowPolicy,
+            runOfShowPendingCountsById,
             autoDjDelaySec: room?.autoDjDelaySec,
             now: nowMs(),
             isQueueEntryPlayable
@@ -12476,7 +12518,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             autoDjEnabled,
             queuedCount,
             performingCount,
-            runOfShowEnabled: flow.runOfShowActive,
+            runOfShowEnabled: flow.runOfShowCoverage?.shouldHoldRoom === true,
             programMode: flow.normalizedProgramMode,
             activeMode: room?.activeMode,
             sourceSongs: room?.missionControl?.deadAirFiller?.songs,
@@ -12537,6 +12579,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         roomCode,
         runOfShowLiveItem,
         runOfShowNextItem,
+        runOfShowPendingCountsById,
+        runOfShowPolicy,
         runOfShowStagedItem,
         songs
     ]);
@@ -15375,6 +15419,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onSetEnabled={setRunOfShowEnabledState}
                                     onSetProgramMode={setRunOfShowProgramModeState}
                                     onAddItem={addRunOfShowItem}
+                                    onImportCsv={importRunOfShowCsv}
                                     onDuplicateItem={duplicateRunOfShowItem}
                                     onDeleteItem={deleteRunOfShowItem}
                                     onMoveItem={moveRunOfShowItem}

@@ -3,6 +3,7 @@ import {
     getRunOfShowHudActionKey,
     getRunOfShowHudState,
     getRunOfShowHudToneClass,
+    getRunOfShowItemCategoryLabel,
     getRunOfShowItemLabel,
     normalizeRunOfShowDirector
 } from '../../../lib/runOfShowDirector';
@@ -45,7 +46,7 @@ const formatItemSummary = (item = {}) => {
     if (type === 'performance') {
         return [item?.assignedPerformerName || '', item?.songTitle || '', item?.artistName || '']
             .filter(Boolean)
-            .join(' | ') || 'Slot prep still open';
+            .join(' | ') || 'Performance setup still open';
     }
     if (type === 'announcement' || type === 'intro' || type === 'closing') {
         return String(item?.presentationPlan?.headline || item?.notes || '').trim() || 'Show cue';
@@ -61,16 +62,16 @@ const getItemExecutionMeta = (item = {}) => {
     const modeKey = String(item?.modeLaunchPlan?.modeKey || item?.roomMomentPlan?.activeMode || '').trim().toLowerCase();
     if (type === 'performance') {
         return {
-            lane: 'Stage',
+            lane: getRunOfShowItemCategoryLabel(type),
             icon: 'fa-microphone-lines',
-            launchLabel: 'Singer performance',
-            nowLabel: 'On Stage',
-            nextLabel: 'Up Next'
+            launchLabel: 'Performance',
+            nowLabel: 'Live',
+            nextLabel: 'Next'
         };
     }
     if (type === 'trivia_break' || type === 'would_you_rather_break' || type === 'game_break') {
         return {
-            lane: 'Game',
+            lane: getRunOfShowItemCategoryLabel(type),
             icon: modeKey === 'bingo'
                 ? 'fa-table-cells-large'
                 : modeKey === 'team_pong'
@@ -79,12 +80,12 @@ const getItemExecutionMeta = (item = {}) => {
                         ? 'fa-camera-retro'
                         : 'fa-dice',
             launchLabel: modeKey ? `Launches ${modeKey.replaceAll('_', ' ')}` : 'Interactive launch',
-            nowLabel: 'Live Game',
-            nextLabel: 'Next Game'
+            nowLabel: 'Live',
+            nextLabel: 'Next'
         };
     }
     return {
-        lane: 'Event',
+        lane: getRunOfShowItemCategoryLabel(type),
         icon: type === 'announcement'
             ? 'fa-bullhorn'
             : type === 'winner_declaration'
@@ -92,9 +93,9 @@ const getItemExecutionMeta = (item = {}) => {
                 : type === 'intermission'
                     ? 'fa-martini-glass-citrus'
                     : 'fa-layer-group',
-        launchLabel: item?.presentationPlan?.publicTvTakeoverEnabled ? 'TV event card' : 'Host event card',
-        nowLabel: 'Live Event',
-        nextLabel: 'Next Event'
+        launchLabel: item?.presentationPlan?.publicTvTakeoverEnabled ? 'TV takeover' : 'Host scene',
+        nowLabel: 'Live',
+        nextLabel: 'Next'
     };
 };
 
@@ -302,7 +303,7 @@ export default function RunOfShowQueueHud({
                 ) : null}
             </div>
             <div className="mt-1 text-sm font-black text-white">{item?.title || fallbackSummary}</div>
-            <div className="mt-1 text-xs text-zinc-300">{item?.summary || (item?.id ? 'Tap for slot actions.' : 'No slot queued right now.')}</div>
+            <div className="mt-1 text-xs text-zinc-300">{item?.summary || (item?.id ? 'Tap for item actions.' : 'Nothing is queued here yet.')}</div>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                 {item?.badgeLabel ? <span>{item.badgeLabel}</span> : null}
                 {item?.durationLabel ? <span>{item.durationLabel}</span> : null}
@@ -335,7 +336,7 @@ export default function RunOfShowQueueHud({
                     <div className="mt-2 text-sm text-zinc-300">{hudState.detail}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                         <span>Total show {formatTotalDuration(actualTotalDurationSec)}</span>
-                        <span>{hudItems.length} slot{hudItems.length === 1 ? '' : 's'}</span>
+                        <span>{hudItems.length} item{hudItems.length === 1 ? '' : 's'}</span>
                         {enabled ? <span>Live queue owns execution</span> : <span>Ready for launch</span>}
                     </div>
                 </div>
@@ -431,12 +432,12 @@ export default function RunOfShowQueueHud({
                 {renderSlotCard(
                     nowItem,
                     nowItem?.nowLabel || 'Now',
-                    enabled ? 'No live slot yet' : 'Show not started',
+                    enabled ? 'Nothing is live yet' : 'Show not started',
                 )}
                 {renderSlotCard(
                     nextVisibleItem,
                     nextVisibleItem?.nextLabel || 'Next',
-                    'No next slot queued',
+                    'Nothing is queued next yet',
                 )}
             </div>
 
@@ -444,7 +445,7 @@ export default function RunOfShowQueueHud({
                 <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-black/25 px-3 py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">Scene Slot Actions</div>
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">Item Actions</div>
                             <div className="mt-1 text-sm font-black text-white">{previewItem.title}</div>
                             <div className="mt-1 text-xs text-zinc-300">{previewItem.summary}</div>
                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
@@ -526,6 +527,11 @@ export default function RunOfShowQueueHud({
                     {previewIssue?.summary ? (
                         <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/8 px-3 py-2 text-xs text-amber-50">
                             {previewIssue.summary}
+                        </div>
+                    ) : null}
+                    {previewIssue ? (
+                        <div className="mt-2 text-xs text-zinc-400">
+                            Fix it now, or skip it and let the next ready performance keep the room moving.
                         </div>
                     ) : null}
                 </div>

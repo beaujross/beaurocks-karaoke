@@ -1,5 +1,6 @@
 import { REQUEST_MODES } from '../../lib/requestModes';
 import { getAudienceBrandThemePreset } from '../../lib/audienceBrandTheme';
+import { AAHF_FESTIVAL_LOGO_URL } from './hostAppData';
 import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
     normalizeAudienceFeatureAccess,
@@ -290,6 +291,8 @@ export const BUILTIN_HOST_NIGHT_PRESETS = Object.freeze({
         label: 'AAHF',
         description: 'Festival-focused defaults with a streamlined audience shell and tighter host control.',
         isBuiltIn: true,
+        brandingLogoUrl: AAHF_FESTIVAL_LOGO_URL,
+        brandingOrbSkinUrl: AAHF_FESTIVAL_LOGO_URL,
         searchSources: Object.freeze({ local: false, youtube: true, itunes: true }),
         settings: Object.freeze({
             autoDj: false,
@@ -357,6 +360,8 @@ export const normalizeHostNightPresetRecord = (input = {}, fallbackPreset = BUIL
         description: normalizeDescription(input?.description, seed?.description || ''),
         basePresetId: normalizePresetId(input?.basePresetId, seed?.id || 'casual') || 'casual',
         isBuiltIn: !!builtInPreset,
+        brandingLogoUrl: String(input?.brandingLogoUrl || seed?.brandingLogoUrl || '').trim() || '',
+        brandingOrbSkinUrl: String(input?.brandingOrbSkinUrl || seed?.brandingOrbSkinUrl || '').trim() || '',
         searchSources: normalizeSearchSources(input?.searchSources || {}, seed?.searchSources || {}),
         settings: normalizePresetSettings(input?.settings || {}, seed?.settings || {}),
         autoStartApplePlaylist: input?.autoStartApplePlaylist !== undefined
@@ -397,6 +402,8 @@ export const buildHostNightPresetConfig = (presetInput = BUILTIN_HOST_NIGHT_PRES
         searchSources: normalizeSearchSources(preset.searchSources || {}, preset.searchSources || {}),
         settings: normalizePresetSettings(preset.settings || {}, preset.settings || {}),
         audienceBrandTheme: buildAudienceThemeFromPreset(preset),
+        brandingLogoUrl: String(preset?.brandingLogoUrl || '').trim() || null,
+        brandingOrbSkinUrl: String(preset?.brandingOrbSkinUrl || '').trim() || null,
         autoStartApplePlaylist: !!preset.autoStartApplePlaylist,
         updatedAtMs: Math.max(0, Number(preset.updatedAtMs || Date.now()) || Date.now()),
     };

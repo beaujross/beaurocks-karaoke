@@ -701,6 +701,8 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
   }),
   aahf: Object.freeze({
     hostNightPreset: "aahf",
+    logoUrl: "/images/marketing/aahf-combined-badge-clean.png",
+    lobbyOrbSkinUrl: "/images/marketing/aahf-combined-badge-clean.png",
     autoDj: false,
     autoBgMusic: false,
     autoPlayMedia: true,
@@ -1710,7 +1712,7 @@ const buildProvisionedRoomData = ({
     roomName: resolvedRoomName || `${resolvedHostName} Room`,
     orgId: orgId || null,
     orgName: resolvedOrgName,
-    logoUrl: resolvedLogoUrl || null,
+    logoUrl: presetConfigOverrides.logoUrl || presetOverrides.logoUrl || resolvedLogoUrl || null,
   };
 };
 const shouldSyncHostRoomDiscovery = (listingInput = {}) => {
@@ -2436,6 +2438,8 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
     description: typeof input.description === "string" ? input.description.trim().slice(0, 240) : "",
     basePresetId: normalizeProvisionPresetId(input.basePresetId || input.id || "casual") || "casual",
     isBuiltIn: input.isBuiltIn === true,
+    brandingLogoUrl: typeof input.brandingLogoUrl === "string" ? input.brandingLogoUrl.trim().slice(0, 2048) : "",
+    brandingOrbSkinUrl: typeof input.brandingOrbSkinUrl === "string" ? input.brandingOrbSkinUrl.trim().slice(0, 2048) : "",
     searchSources: {
       local: input?.searchSources?.local !== false,
       youtube: input?.searchSources?.youtube !== false,
@@ -2550,6 +2554,12 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
   };
   if (presetConfig.audienceBrandTheme) {
     overrides.audienceBrandTheme = presetConfig.audienceBrandTheme;
+  }
+  if (typeof presetConfig.brandingLogoUrl === "string" && presetConfig.brandingLogoUrl.trim()) {
+    overrides.logoUrl = presetConfig.brandingLogoUrl.trim().slice(0, 2048);
+  }
+  if (typeof presetConfig.brandingOrbSkinUrl === "string" && presetConfig.brandingOrbSkinUrl.trim()) {
+    overrides.lobbyOrbSkinUrl = presetConfig.brandingOrbSkinUrl.trim().slice(0, 2048);
   }
   return overrides;
 };

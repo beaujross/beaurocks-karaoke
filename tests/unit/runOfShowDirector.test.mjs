@@ -6,6 +6,7 @@ import {
   RUN_OF_SHOW_PROGRAM_MODES,
   RUN_OF_SHOW_PERFORMER_MODES,
   buildRunOfShowQueueDocId,
+  buildRunOfShowItemsFromCsvImport,
   getRunOfShowConveyorPhase,
   getRunOfShowConveyorSnapshot,
   getRunOfShowReleaseWindowTally,
@@ -14,6 +15,7 @@ import {
   getRunOfShowAdvanceMode,
   getRunOfShowHostAdvanceMinSec,
   getRunOfShowHudState,
+  getRunOfShowItemCategoryLabel,
   createRunOfShowItem,
   createDefaultRunOfShowDirector,
   getRunOfShowOperatorRole,
@@ -185,7 +187,7 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
       keepQueueMovingCount: 0,
       totalVotes: 1,
       leadingChoice: "slot_scene",
-      summary: "1-0 favor slotting the scene"
+      summary: "1-0 favor running the scene next"
     }
   );
 });
@@ -212,6 +214,12 @@ test("runOfShowDirector preserves legacy placeholder slots while keeping open su
     getRunOfShowOpenSubmissionItems(director).map((item) => item.id),
     [submissionItem.id],
   );
+});
+
+test("runOfShowDirector exposes stable host-facing item categories", () => {
+  assert.equal(getRunOfShowItemCategoryLabel("performance"), "Performance");
+  assert.equal(getRunOfShowItemCategoryLabel("would_you_rather_break"), "Moment");
+  assert.equal(getRunOfShowItemCategoryLabel("announcement"), "Scene");
 });
 
 test("runOfShowDirector preserves in-progress spacing for editable text fields", () => {
@@ -351,8 +359,8 @@ test("runOfShowDirector operating hints reflect blocked policy decisions", () =>
   });
   const readiness = getRunOfShowItemReadiness(item, { pendingSubmissionCount: 0 });
 
-  assert.match(getRunOfShowBlockedActionLabel(readiness, item, policy), /pull a queue-ready replacement/i);
-  assert.match(getRunOfShowOperatingHint({ item, readiness, policy }), /pull a queue-ready replacement/i);
+  assert.match(getRunOfShowBlockedActionLabel(readiness, item, policy), /pull a queue-ready performance/i);
+  assert.match(getRunOfShowOperatingHint({ item, readiness, policy }), /energy stays up/i);
 });
 
 test("runOfShowDirector derives auto-pause state when the next performance is waiting on a singer", () => {
@@ -398,7 +406,7 @@ test("runOfShowDirector derives auto-pause state when the next performance is wa
       policy,
       pendingSubmissionCount: 0,
     }).detail,
-    /pull a queue-ready replacement/i,
+    /pull a queue-ready performance/i,
   );
 });
 
@@ -624,4 +632,44 @@ test("runOfShowDirector preserves media-scene takeover fields for custom TV mome
   assert.equal(normalizedItem.presentationPlan.mediaSceneUrl, "https://cdn.example.com/flyer.png");
   assert.equal(normalizedItem.presentationPlan.mediaSceneType, "image");
   assert.equal(normalizedItem.presentationPlan.mediaSceneFit, "contain");
+});
+
+test("runOfShowDirector imports csv show sheets into performance, moment, and scene items", () => {
+  const csv = [
+    "order,type,title,performer_name,song_title,artist_name,youtube_url,planned_duration_sec,notes,required,visibility,group,fallback_allowed",
+    "1,scene,Doors Open Visual,,,,https://youtube.com/watch?v=abc123xyz89,45,Opening visual,true,public,intro,true",
+    "2,performance,Opening Number,Sarah,Valerie,Amy Winehouse,https://youtube.com/watch?v=def456xyz89,240,Tech check opener,true,public,set_1,true",
+    "3,moment,Quick Crowd Pulse,,,,,30,Short room pulse,false,public,set_1,true",
+  ].join("\n");
+
+  const result = buildRunOfShowItemsFromCsvImport(csv);
+
+  assert.equal(result.items.length, 3);
+  assert.equal(result.blockedCount, 0);
+  assert.equal(result.items[0].type, "announcement");
+  assert.equal(result.items[0].presentationPlan.takeoverScene, "media_scene");
+  assert.equal(result.items[1].type, "performance");
+  assert.equal(result.items[1].status, "ready");
+  assert.equal(result.items[1].backingPlan.youtubeId, "def456xyz89");
+  assert.equal(result.items[2].type, "game_break");
+  assert.equal(result.items[2].modeLaunchPlan.modeKey, "crowd_play");
+  assert.equal(result.items[2].status, "ready");
+});
+
+test("runOfShowDirector keeps incomplete imported rows as blocked instead of dropping them", () => {
+  const csv = [
+    "order,type,title,performer_name,song_title,artist_name,youtube_url,planned_duration_sec,notes",
+    "1,performance,Feature Guest,,,Journey,,240,Missing performer and song",
+    "2,scene,Sponsor Card,,,,,20,No media but still usable",
+  ].join("\n");
+
+  const result = buildRunOfShowItemsFromCsvImport(csv);
+
+  assert.equal(result.items.length, 2);
+  assert.equal(result.blockedCount, 1);
+  assert.equal(result.items[0].type, "performance");
+  assert.equal(result.items[0].status, "blocked");
+  assert.match(result.rows[0].issue, /Assign a performer|Pick the song title/i);
+  assert.equal(result.items[1].type, "announcement");
+  assert.equal(result.items[1].status, "ready");
 });

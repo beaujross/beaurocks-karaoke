@@ -85,6 +85,22 @@ These are useful, but they do not outrank the core-night gate:
   - unauthenticated `https://host.beaurocks.app/?mode=host...` redirects to `/host-access`
   - authenticated user can enter host control surface and see create-room UI
 
+Deterministic marketing release gate:
+
+```powershell
+npm run qa:release:marketing
+```
+
+Live production marketing monitor:
+
+```powershell
+npm run ops:qa:marketing:prod
+```
+
+Rule:
+- `qa:release:marketing` validates the build artifact against local `dist`.
+- `ops:qa:marketing:prod` probes the live environment and should be treated as an ops signal, not a deploy artifact gate.
+
 ## Surface-Specific Release Gate
 
 If a release touches Host, Audience, Show, Credits & Funds, or media/backing resolution paths, also smoke these flows:
