@@ -146,6 +146,10 @@ export default function RunOfShowQueueHud({
     preflightReport = null,
     onOpenShowWorkspace,
     onOpenIssue,
+    onFocusItem,
+    onPreviewItem,
+    onMoveItem,
+    onSkipItem,
     onStartShow,
     onAdvance,
     onRewind,
@@ -156,6 +160,7 @@ export default function RunOfShowQueueHud({
 }) {
     const [moreOpen, setMoreOpen] = React.useState(false);
     const [laterOpen, setLaterOpen] = React.useState(true);
+    const [previewItemId, setPreviewItemId] = React.useState('');
     const normalizedDirector = React.useMemo(
         () => normalizeRunOfShowDirector(director || {}),
         [director]
@@ -185,6 +190,15 @@ export default function RunOfShowQueueHud({
     const automationPaused = normalizedDirector?.automationPaused === true;
     const topCriticalItem = safeReport?.criticalItems?.[0] || null;
     const topRiskyItem = safeReport?.riskyItems?.[0] || null;
+    const issueMap = (() => {
+        const map = new Map();
+        [...(safeReport?.criticalItems || []), ...(safeReport?.riskyItems || [])].forEach((entry) => {
+            const itemId = String(entry?.itemId || '').trim();
+            if (!itemId || map.has(itemId)) return;
+            map.set(itemId, entry);
+        });
+        return map;
+    })();
     const hudState = getRunOfShowHudState({
         hasPlan,
         runEnabled: enabled,
@@ -262,8 +276,46 @@ export default function RunOfShowQueueHud({
     const nowIndex = nowItem ? hudItems.findIndex((item) => item.id === nowItem.id) : fallbackNowIndex;
     const nextVisibleItem = hudItems.find((item) => item.isNext) || hudItems[nowIndex >= 0 ? nowIndex + 1 : 1] || null;
     const laterItems = hudItems.filter((item) => item.id !== nowItem?.id && item.id !== nextVisibleItem?.id).slice(0, 5);
+    const previewItem = hudItems.find((item) => item.id === previewItemId) || null;
+    const previewIssue = previewItem ? issueMap.get(previewItem.id) || null : null;
+    const previewCanSkip = !!previewItem && !previewItem.isComplete;
     const actualTotalDurationSec = (Array.isArray(normalizedDirector.items) ? normalizedDirector.items : [])
         .reduce((sum, item) => sum + getItemDurationSec(item), 0);
+    const handlePreviewToggle = (itemId = '') => {
+        const safeItemId = String(itemId || '').trim();
+        if (!safeItemId) return;
+        setPreviewItemId((current) => (current === safeItemId ? '' : safeItemId));
+    };
+    const renderSlotCard = (item = null, fallbackLabel = '', fallbackSummary = '') => (
+        <button
+            type="button"
+            onClick={() => item?.id && handlePreviewToggle(item.id)}
+            disabled={!item?.id}
+            className={`rounded-2xl border px-3 py-3 text-left transition ${item?.toneClass || 'border-white/10 bg-black/20 text-zinc-200'} ${item?.id ? 'hover:border-cyan-300/28' : 'cursor-default opacity-90'}`}
+        >
+            <div className="flex items-center justify-between gap-2">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{fallbackLabel}</div>
+                {item?.typeLabel ? (
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
+                        <i className={`fa-solid ${item.icon || 'fa-layer-group'} mr-1`}></i>{item.typeLabel}
+                    </span>
+                ) : null}
+            </div>
+            <div className="mt-1 text-sm font-black text-white">{item?.title || fallbackSummary}</div>
+            <div className="mt-1 text-xs text-zinc-300">{item?.summary || (item?.id ? 'Tap for slot actions.' : 'No slot queued right now.')}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                {item?.badgeLabel ? <span>{item.badgeLabel}</span> : null}
+                {item?.durationLabel ? <span>{item.durationLabel}</span> : null}
+                {item?.launchLabel ? <span>{item.launchLabel}</span> : null}
+                {item?.id && previewItemId === item.id ? (
+                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-cyan-100">Actions Open</span>
+                ) : null}
+                {item?.id && issueMap.has(item.id) ? (
+                    <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-0.5 text-amber-100">Needs Attention</span>
+                ) : null}
+            </div>
+        </button>
+    );
 
     return (
         <div className="mb-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
@@ -376,50 +428,119 @@ export default function RunOfShowQueueHud({
             ) : null}
 
             <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                <div className={`rounded-2xl border px-3 py-3 ${nowItem?.toneClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{nowItem?.nowLabel || 'Now'}</div>
-                        {nowItem?.typeLabel ? (
-                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
-                                <i className={`fa-solid ${nowItem.icon || 'fa-layer-group'} mr-1`}></i>{nowItem.typeLabel}
-                            </span>
-                        ) : null}
-                    </div>
-                    <div className="mt-1 text-sm font-black text-white">{nowItem?.title || (enabled ? 'No live slot yet' : 'Show not started')}</div>
-                    <div className="mt-1 text-xs text-zinc-300">{nowItem?.summary || (enabled ? 'Use the primary action to keep the next move obvious.' : 'Go live check owns the last launch fixes.')}</div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                        {nowItem?.badgeLabel ? <span>{nowItem.badgeLabel}</span> : null}
-                        {nowItem?.durationLabel ? <span>{nowItem.durationLabel}</span> : null}
-                        {nowItem?.launchLabel ? <span>{nowItem.launchLabel}</span> : null}
-                    </div>
-                </div>
-                <div className={`rounded-2xl border px-3 py-3 ${nextVisibleItem?.toneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-400">{nextVisibleItem?.nextLabel || 'Next'}</div>
-                        {nextVisibleItem?.typeLabel ? (
-                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-white/85">
-                                <i className={`fa-solid ${nextVisibleItem.icon || 'fa-layer-group'} mr-1`}></i>{nextVisibleItem.typeLabel}
-                            </span>
-                        ) : null}
-                    </div>
-                    <div className="mt-1 text-sm font-black text-white">{nextVisibleItem?.title || 'No next slot queued'}</div>
-                    <div className="mt-1 text-xs text-zinc-300">{nextVisibleItem?.summary || 'Queue can keep feeding the show once the next slot is ready.'}</div>
-                    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                        {nextVisibleItem?.badgeLabel ? <span>{nextVisibleItem.badgeLabel}</span> : null}
-                        {nextVisibleItem?.durationLabel ? <span>{nextVisibleItem.durationLabel}</span> : null}
-                        {nextVisibleItem?.launchLabel ? <span>{nextVisibleItem.launchLabel}</span> : null}
-                    </div>
-                </div>
+                {renderSlotCard(
+                    nowItem,
+                    nowItem?.nowLabel || 'Now',
+                    enabled ? 'No live slot yet' : 'Show not started',
+                )}
+                {renderSlotCard(
+                    nextVisibleItem,
+                    nextVisibleItem?.nextLabel || 'Next',
+                    'No next slot queued',
+                )}
             </div>
+
+            {previewItem ? (
+                <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-black/25 px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200/80">Scene Slot Actions</div>
+                            <div className="mt-1 text-sm font-black text-white">{previewItem.title}</div>
+                            <div className="mt-1 text-xs text-zinc-300">{previewItem.summary}</div>
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                <span>{previewItem.typeLabel}</span>
+                                <span>{previewItem.durationLabel}</span>
+                                <span>{previewItem.launchLabel}</span>
+                                {previewIssue ? (
+                                    <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-0.5 text-amber-100">
+                                        {previewIssue.count || 1} issue{Number(previewIssue.count || 1) === 1 ? '' : 's'}
+                                    </span>
+                                ) : null}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setPreviewItemId('')}
+                            className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                        >
+                            Close
+                        </button>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        {typeof onPreviewItem === 'function' ? (
+                            <button
+                                type="button"
+                                onClick={() => onPreviewItem(previewItem.id)}
+                                className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                            >
+                                Preview
+                            </button>
+                        ) : null}
+                        {typeof onFocusItem === 'function' ? (
+                            <button
+                                type="button"
+                                onClick={() => onFocusItem(previewItem.id)}
+                                className={`${styles?.btnStd} ${styles?.btnHighlight} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                            >
+                                Edit
+                            </button>
+                        ) : null}
+                        {previewIssue && typeof onOpenIssue === 'function' ? (
+                            <button
+                                type="button"
+                                onClick={() => onOpenIssue({ itemId: previewItem.id })}
+                                className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                            >
+                                Fix Issue
+                            </button>
+                        ) : null}
+                        {typeof onMoveItem === 'function' ? (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => onMoveItem(previewItem.id, -1)}
+                                    className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                                >
+                                    Move Earlier
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onMoveItem(previewItem.id, 1)}
+                                    className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
+                                >
+                                    Move Later
+                                </button>
+                            </>
+                        ) : null}
+                        {typeof onSkipItem === 'function' ? (
+                            <button
+                                type="button"
+                                disabled={!previewCanSkip}
+                                onClick={() => onSkipItem(previewItem.id, { manualAdvance: true })}
+                                className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] disabled:opacity-40`}
+                            >
+                                Skip
+                            </button>
+                        ) : null}
+                    </div>
+                    {previewIssue?.summary ? (
+                        <div className="mt-3 rounded-xl border border-amber-300/20 bg-amber-500/8 px-3 py-2 text-xs text-amber-50">
+                            {previewIssue.summary}
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
 
             {laterOpen && laterItems.length ? (
                 <div className="mt-3">
                     <div className="mb-2 text-[10px] uppercase tracking-[0.22em] text-zinc-500">Later</div>
                     <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar">
                         {laterItems.map((item) => (
-                            <div
+                            <button
+                                type="button"
+                                onClick={() => handlePreviewToggle(item.id)}
                                 key={item.id}
-                                className={`min-w-[168px] max-w-[220px] shrink-0 rounded-xl border px-3 py-2 ${item.toneClass}`}
+                                className={`min-w-[168px] max-w-[220px] shrink-0 rounded-xl border px-3 py-2 text-left transition hover:border-cyan-300/28 ${item.toneClass}`}
                             >
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="rounded-full border border-white/10 bg-black/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em]">
@@ -432,7 +553,7 @@ export default function RunOfShowQueueHud({
                                 </div>
                                 <div className="mt-1 truncate text-[12px] font-black text-white">{item.title}</div>
                                 <div className="mt-1 line-clamp-2 text-[11px] text-zinc-300">{item.summary}</div>
-                            </div>
+                            </button>
                         ))}
                     </div>
                 </div>

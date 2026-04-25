@@ -15302,6 +15302,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading live queue..." />}>
                         <HostQueueTab
                             {...queueTabProps}
+                            onFocusRunOfShowItem={(itemId) => {
+                                const safeItemId = String(itemId || '').trim();
+                                if (!safeItemId) return;
+                                setTab('run_of_show');
+                                setRunOfShowFocusRequest({
+                                    itemId: safeItemId,
+                                    token: Date.now(),
+                                });
+                            }}
+                            onPreviewRunOfShowItem={previewRunOfShowItem}
+                            onMoveRunOfShowItem={moveRunOfShowItem}
+                            onSkipRunOfShowItem={skipRunOfShowItem}
                             runtimeVisible={tab === 'stage'}
                             styles={STYLES}
                             emoji={EMOJI}

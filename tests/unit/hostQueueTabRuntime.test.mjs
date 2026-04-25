@@ -172,3 +172,32 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
   assert.match(markup, /TV Moments/);
 });
+
+test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    runOfShowEnabled: true,
+    runOfShowDirector: {
+      items: [
+        {
+          id: 'ros-1',
+          type: 'announcement',
+          title: 'Sponsor Beat',
+          status: 'ready',
+          sequence: 1,
+          plannedDurationSec: 30,
+        },
+      ],
+    },
+    runOfShowPreflightReport: {
+      criticalCount: 1,
+      riskyCount: 2,
+      criticalItems: [{ itemId: 'ros-1', summary: 'Missing media.' }],
+      riskyItems: [{ itemId: 'ros-1', summary: 'Needs copy review.' }],
+    },
+  });
+
+  assert.match(markup, /Run Of Show/);
+  assert.match(markup, />3</);
+});

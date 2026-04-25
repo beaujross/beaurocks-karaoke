@@ -62,8 +62,18 @@ test("HostApp restores queue tools after stop and previews the audience app", ()
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(queueTabSource, /const handleStopRunOfShowAndRestoreQueueTools = useCallback\(async \(\) => \{/);
+  assert.match(queueTabSource, /const runOfShowNeedsAttentionCount = Math\.max\(/);
+  assert.match(queueTabSource, /onFocusItem=\{onFocusRunOfShowItem\}/);
+  assert.match(queueTabSource, /onPreviewItem=\{onPreviewRunOfShowItem\}/);
+  assert.match(queueTabSource, /onMoveItem=\{onMoveRunOfShowItem\}/);
+  assert.match(queueTabSource, /onSkipItem=\{onSkipRunOfShowItem\}/);
+  assert.match(queueTabSource, /runOfShowNeedsAttentionCount > 0 \? \(/);
   assert.match(queueTabSource, /setShowAddForm\(true\);/);
   assert.match(queueTabSource, /setShowQueueList\(true\);/);
+  assert.match(hostSource, /onFocusRunOfShowItem=\{\(itemId\) => \{/);
+  assert.match(hostSource, /onPreviewRunOfShowItem=\{previewRunOfShowItem\}/);
+  assert.match(hostSource, /onMoveRunOfShowItem=\{moveRunOfShowItem\}/);
+  assert.match(hostSource, /onSkipRunOfShowItem=\{skipRunOfShowItem\}/);
   assert.match(hostSource, /normalizeAudiencePreviewMode/);
   assert.match(hostSource, /audienceLaunchUrl=\{activeRoomLaunchUrls\.audienceUrl\}/);
   assert.match(hostSource, /title="Audience app live preview"/);
@@ -194,6 +204,14 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /const getItemExecutionMeta = \(item = \{\}\) => \{/);
   assert.match(queueHudSource, /lane: 'Game'/);
   assert.match(queueHudSource, /launchLabel: modeKey \? `Launches \$\{modeKey\.replaceAll\('_', ' '\)\}` : 'Interactive launch'/);
+  assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
+  assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
+  assert.match(queueHudSource, /Scene Slot Actions/);
+  assert.match(queueHudSource, /Move Earlier/);
+  assert.match(queueHudSource, /Move Later/);
+  assert.match(queueHudSource, /Fix Issue/);
+  assert.match(queueHudSource, /Preview/);
+  assert.match(queueHudSource, /Edit/);
 });
 
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {

@@ -36,16 +36,24 @@ test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance
   assert.match(source, /Conveyor status/);
   assert.match(source, /Crowd Pulse/);
   assert.match(source, /Show Conveyor/);
+  assert.match(source, /Conveyor Actions/);
+  assert.match(source, /Open Issues/);
   assert.match(source, /Flighted/);
   assert.match(source, /Nothing is flighted yet\./);
   assert.match(source, /No scene is on deck yet\./);
+  assert.doesNotMatch(source, /<div className="mr-2 text-\[10px\] uppercase tracking-\[0\.16em\] text-amber-100\/75">Open issues<\/div>/);
 });
 
 test('run-of-show performance builder uses one primary slot setup path', () => {
+  assert.match(source, /const getEditablePerformerMode = \(performerMode = ''\) => \(/);
+  assert.match(source, /const getPerformerModeLabel = \(performerMode = ''\) => \(/);
   assert.match(source, /Slot Setup/);
   assert.match(source, /Open Track Setup/);
   assert.match(source, /Advanced Slot Settings/);
+  assert.match(source, /Named Slot/);
+  assert.match(source, /Singer name or placeholder, like Singer TBD/);
   assert.doesNotMatch(source, /Fast Assign/);
   assert.doesNotMatch(source, /Quick editor/);
   assert.doesNotMatch(source, /More Slot Controls/);
+  assert.doesNotMatch(source, /Placeholder mode is on\./);
 });

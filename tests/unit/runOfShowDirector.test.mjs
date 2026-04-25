@@ -190,6 +190,30 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
   );
 });
 
+test("runOfShowDirector preserves legacy placeholder slots while keeping open submissions distinct", () => {
+  const placeholderItem = createRunOfShowItem("performance", {
+    title: "TBD Feature",
+    performerMode: RUN_OF_SHOW_PERFORMER_MODES.placeholder,
+    assignedPerformerName: "Singer TBD",
+  });
+  const submissionItem = createRunOfShowItem("performance", {
+    title: "Open Mic Pick",
+    performerMode: RUN_OF_SHOW_PERFORMER_MODES.openSubmission,
+  });
+
+  const director = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    items: [placeholderItem, submissionItem],
+  }));
+
+  assert.equal(director.items[0].performerMode, RUN_OF_SHOW_PERFORMER_MODES.placeholder);
+  assert.equal(director.items[0].assignedPerformerName, "Singer TBD");
+  assert.equal(director.items[1].performerMode, RUN_OF_SHOW_PERFORMER_MODES.openSubmission);
+  assert.deepEqual(
+    getRunOfShowOpenSubmissionItems(director).map((item) => item.id),
+    [submissionItem.id],
+  );
+});
+
 test("runOfShowDirector preserves in-progress spacing for editable text fields", () => {
   const director = createDefaultRunOfShowDirector({
     items: [

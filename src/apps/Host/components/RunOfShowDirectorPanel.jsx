@@ -48,8 +48,7 @@ const ITEM_TYPE_OPTIONS = RUN_OF_SHOW_ITEM_TYPES
     .filter((type) => type !== 'trivia_break')
     .map((type) => ({ value: type, label: getRunOfShowItemLabel(type) }));
 const PERFORMER_MODE_OPTIONS = [
-    { value: RUN_OF_SHOW_PERFORMER_MODES.assigned, label: 'Assigned' },
-    { value: RUN_OF_SHOW_PERFORMER_MODES.placeholder, label: 'Placeholder' },
+    { value: RUN_OF_SHOW_PERFORMER_MODES.assigned, label: 'Named Slot' },
     { value: RUN_OF_SHOW_PERFORMER_MODES.openSubmission, label: 'Open Submission' }
 ];
 const ROLE_LABELS = Object.freeze({
@@ -1110,18 +1109,24 @@ const getEffectiveSuggestionSourceType = (sourceType = '') => {
     if (safe === 'canonical_default' || safe === 'manual_external' || !safe) return 'youtube';
     return safe;
 };
+const getEditablePerformerMode = (performerMode = '') => (
+    performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
+        ? RUN_OF_SHOW_PERFORMER_MODES.openSubmission
+        : RUN_OF_SHOW_PERFORMER_MODES.assigned
+);
+const getPerformerModeLabel = (performerMode = '') => (
+    PERFORMER_MODE_OPTIONS.find((option) => option.value === getEditablePerformerMode(performerMode))?.label || 'Named Slot'
+);
 const getPerformerFieldLabel = (performerMode = '') => (
     performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? 'Performer Display Name' : 'Performer Display Name'
 );
 const getPerformerFieldPlaceholder = (performerMode = '') => {
     if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Approved singer fills this in';
-    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.placeholder) return 'Singer TBD, VIP Guest, Auction Winner';
-    return 'Singer name for the room';
+    return 'Singer name or placeholder, like Singer TBD';
 };
 const getPerformerModeHint = (performerMode = '') => {
     if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission) return 'Leave this open and approve a singer into the slot later.';
-    if (performerMode === RUN_OF_SHOW_PERFORMER_MODES.placeholder) return 'Use one placeholder name now, then bind a real attendee when the lobby fills.';
-    return 'Lock this slot to a specific attendee or type the stage name directly.';
+    return 'Use one display name here. It can be the real singer or a placeholder like Singer TBD until you bind a live attendee.';
 };
 
 const getPerformanceIdentityFields = (item = {}) => ([
@@ -2167,7 +2172,7 @@ const CompactTimelineOverview = ({
             {selectedTimelineItem ? (
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-cyan-300/18 bg-cyan-500/6 px-3 py-2.5">
                     <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Timeline Actions</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/80">Conveyor Actions</div>
                         <div className="mt-1 truncate text-sm font-black text-white">{selectedTimelineItem.title || getRunOfShowItemLabel(selectedTimelineItem.type)}</div>
                         <div className="text-xs text-zinc-400">Drag the strip to resequence fast, or use these buttons when you need a precise nudge.</div>
                     </div>
@@ -3336,7 +3341,7 @@ const ShowMapCard = ({
                                                 type="button"
                                                 disabled={!canEditFlow}
                                                 onClick={() => onUpdateItem?.(item.id, { performerMode: option.value })}
-                                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${item.performerMode === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
+                                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${getEditablePerformerMode(item.performerMode) === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}
                                             >
                                                 {option.label}
                                             </button>
@@ -5157,6 +5162,21 @@ export default function RunOfShowDirectorPanel({
                             <div className="mt-1 text-xs uppercase tracking-[0.16em] text-zinc-500">
                                 {compactBoardSummary || 'No scenes yet'}
                             </div>
+                            {totalOpenIssues ? (
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] uppercase tracking-[0.16em] text-amber-100/75">Open Issues</span>
+                                    {issueJumpTargets.filter((entry) => Number(entry?.count || 0) > 0).map((issue) => (
+                                        <button
+                                            key={`header-issue-${issue.key}`}
+                                            type="button"
+                                            onClick={() => jumpToIssue(issue)}
+                                            className="rounded-full border border-amber-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-50 transition hover:border-amber-200/45 hover:bg-amber-500/12"
+                                        >
+                                            {issue.count} {issue.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : null}
                         </div>
                         <div className="flex flex-wrap gap-2 sm:justify-end">
                             <button
@@ -5473,23 +5493,6 @@ export default function RunOfShowDirectorPanel({
                                 ) : null}
                                 <div className="mt-2 text-xs text-zinc-500">
                                     Drag the strip above to reorder fast when a singer no-shows or the room energy shifts.
-                                </div>
-                            </div>
-                        ) : null}
-                        {totalOpenIssues ? (
-                            <div className="rounded-[20px] border border-amber-300/16 bg-[linear-gradient(135deg,rgba(41,26,12,0.72),rgba(19,20,34,0.9))] px-3 py-2.5">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <div className="mr-2 text-[10px] uppercase tracking-[0.16em] text-amber-100/75">Open issues</div>
-                                    {issueJumpTargets.filter((entry) => Number(entry?.count || 0) > 0).map((issue) => (
-                                        <button
-                                            key={issue.key}
-                                            type="button"
-                                            onClick={() => jumpToIssue(issue)}
-                                            className="rounded-full border border-amber-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-50 transition hover:border-amber-200/45 hover:bg-amber-500/12"
-                                        >
-                                            {issue.count} {issue.label}
-                                        </button>
-                                    ))}
                                 </div>
                             </div>
                         ) : null}
@@ -6529,7 +6532,7 @@ export default function RunOfShowDirectorPanel({
                                 detail: slotNeedsApprovals
                                     ? `${pendingCount} waiting`
                                     : performerReady
-                                        ? (item.assignedPerformerName || 'Assigned')
+                                        ? (item.assignedPerformerName || 'Named slot')
                                         : 'Choose one'
                             },
                             {
@@ -6869,7 +6872,7 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                 <div className="flex flex-wrap gap-2">
                                                     {PERFORMER_MODE_OPTIONS.map((option) => (
-                                                        <button key={option.value} type="button" disabled={!safeOperatorCapabilities.canEditFlow} onClick={() => onUpdateItem?.(item.id, { performerMode: option.value })} className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${item.performerMode === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}>{option.label}</button>
+                                                        <button key={option.value} type="button" disabled={!safeOperatorCapabilities.canEditFlow} onClick={() => onUpdateItem?.(item.id, { performerMode: option.value })} className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${getEditablePerformerMode(item.performerMode) === option.value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/30 text-zinc-300'}`}>{option.label}</button>
                                                     ))}
                                                 </div>
                                                 <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-4">
@@ -7058,7 +7061,7 @@ export default function RunOfShowDirectorPanel({
                                                         {
                                                             key: 'singer',
                                                             title: 'Singer',
-                                                            detail: slotNeedsApprovals ? `${pendingCount} waiting` : (performerReady ? (item.assignedPerformerName || 'Assigned') : 'Choose one'),
+                                                            detail: slotNeedsApprovals ? `${pendingCount} waiting` : (performerReady ? (item.assignedPerformerName || 'Named slot') : 'Choose one'),
                                                             done: !slotNeedsApprovals && performerReady,
                                                         },
                                                         {
@@ -7093,11 +7096,6 @@ export default function RunOfShowDirectorPanel({
                                                         );
                                                     })}
                                                 </div>
-                                                {item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.placeholder ? (
-                                                    <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100/92">
-                                                        <span className="font-semibold text-white">Placeholder mode is on.</span> Keep this slot loose with a label like <span className="font-semibold text-white">Singer TBD</span>, then bind the real singer from the live lobby or queue later.
-                                                    </div>
-                                                ) : null}
                                                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                                                         <div data-run-of-show-prep-section={`${item.id}:singer`}>
                                                             <CollapsiblePanel
@@ -7219,7 +7217,7 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                     {!repairModeActive ? (
                                                         <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
-                                                            <span className={`rounded-full border px-2 py-1 ${sourceTone(sourceMeta.tone, false)}`}>{PERFORMER_MODE_OPTIONS.find((option) => option.value === item.performerMode)?.label || 'Placeholder'}</span>
+                                                            <span className={`rounded-full border px-2 py-1 ${sourceTone(sourceMeta.tone, false)}`}>{getPerformerModeLabel(item.performerMode)}</span>
                                                             <span className={`rounded-full border px-2 py-1 ${item.backingPlan?.playbackReady === true ? 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{item.backingPlan?.playbackReady === true ? 'Playback ready' : 'Needs media'}</span>
                                                             <span className={`rounded-full border px-2 py-1 ${pendingCount ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}>{pendingCount} pending approvals</span>
                                                         </div>
