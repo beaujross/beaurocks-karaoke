@@ -202,6 +202,15 @@ test("Host queue review presents Apple sing-along and YouTube backing as primary
   assert.match(source, /canUseAppleSingAlong \|\| sourceLabel\.includes\('apple'\) \|\| sourceLabel\.includes\('itunes'\)/);
 });
 
+test("Scene image uploads stay on the callable host upload path", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
+  assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
+});
+
 test("Host queue review candidate cards stay inside narrow panels", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
@@ -254,10 +263,11 @@ test("HostApp auto-dismisses the post-performance backing prompt if the host ign
   assert.match(source, /Closes automatically after a few seconds\./);
 });
 
-test("HostApp routes small image scene uploads through the host callable before direct storage", () => {
+test("HostApp routes scene images through the host callable without a direct-storage fallback", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /const canUseCallableUpload = mediaType === 'image' && Number\(file\.size \|\| 0\) <= 8 \* 1024 \* 1024;/);
-  assert.match(source, /hostLogger\.warn\('Scene preset callable upload failed; trying direct storage upload', callableError\);/);
-  assert.match(source, /\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);[\s\S]*\(\{ storagePath, mediaUrl \} = await directUpload\(\)\);/);
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
+  assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });

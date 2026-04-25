@@ -6521,8 +6521,6 @@ export default function RunOfShowDirectorPanel({
                         const advancedSlotControlsOpen = isSectionOpen(item.id, 'advanced_slot_controls', false);
                         const trackNeedsAdvancedSourceSetup = sourceType === 'manual_external' || sourceType === 'canonical_default';
                         const trackAdvancedOpen = backingAdvancedOpen || trackNeedsAdvancedSourceSetup || mediaPicker.itemId === item.id;
-                        const quickPickerOpen = mediaPicker.itemId === item.id;
-                        const quickSuggestedOptions = quickPickerOpen ? pickerResults.slice(0, 4) : suggestedOptions.slice(0, 3);
                         const performancePrepSteps = item.type === 'performance' ? [
                             {
                                 key: 'performer',
@@ -6877,8 +6875,8 @@ export default function RunOfShowDirectorPanel({
                                                 <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/8 px-4 py-4">
                                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Fast Assign</div>
-                                                            <div className="mt-1 text-sm text-zinc-200">Set the singer and song here without dropping into the lower editor cards.</div>
+                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Slot Setup</div>
+                                                            <div className="mt-1 text-sm text-zinc-200">Set the singer and song here. Track picks and edge-case rules stay below.</div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                                                             <span className={`rounded-full border px-2 py-1 ${performerReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{performerReady ? 'Singer ready' : 'Singer needed'}</span>
@@ -6963,138 +6961,12 @@ export default function RunOfShowDirectorPanel({
                                                                 Find Karaoke Backing
                                                             </ControlButton>
                                                             <ControlButton onClick={() => setExclusivePrepStep(item.id, performerReady ? (songReady && artistReady ? 'track' : 'song') : 'singer')}>
-                                                                Open Focused Editor
+                                                                {performerReady ? (songReady && artistReady ? 'Open Track Setup' : 'Open Song Setup') : 'Open Singer Setup'}
                                                             </ControlButton>
                                                         </div>
                                                     </div>
                                                     <div className="mt-3 text-xs text-cyan-100/72">
-                                                        Common slot assignment lives here. Open the lower cards when you need queue review, extra track picks, or advanced overrides.
-                                                    </div>
-                                                </div>
-                                                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-                                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                                        <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Quick editor</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Edit the slot and search backing without dropping into the lower panels.</div>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {bestQueueCandidate && typeof onAssignQueueSongToItem === 'function' ? (
-                                                                <ControlButton
-                                                                    tone="primary"
-                                                                    disabled={!safeOperatorCapabilities.canEditFlow}
-                                                                    onClick={() => handleAssignQueueSong(bestQueueCandidate, item)}
-                                                                >
-                                                                    Use best queue match
-                                                                </ControlButton>
-                                                            ) : null}
-                                                            <ControlButton
-                                                                tone="primary"
-                                                                disabled={!safeOperatorCapabilities.canCurateMedia || !buildMediaQuery(item)}
-                                                                onClick={() => loadSuggestedBacking(item)}
-                                                            >
-                                                                {quickPickerOpen ? 'Refresh Backing' : 'Find Karaoke Backing'}
-                                                            </ControlButton>
-                                                            <ControlButton
-                                                                disabled={!safeOperatorCapabilities.canCurateMedia}
-                                                                onClick={() => toggleMediaPicker(item)}
-                                                            >
-                                                                {quickPickerOpen ? 'Hide Search' : `Browse ${sourceMeta.label}`}
-                                                            </ControlButton>
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                                                        <div className="space-y-3">
-                                                            <div>
-                                                                <FieldLabel>{getPerformerFieldLabel(item.performerMode)}</FieldLabel>
-                                                                <div className="mt-1">
-                                                                    <input
-                                                                        value={item.assignedPerformerName || ''}
-                                                                        onChange={(e) => onUpdateItem?.(item.id, { assignedPerformerName: e.target.value })}
-                                                                        disabled={!safeOperatorCapabilities.canEditFlow}
-                                                                        className={textInputClass}
-                                                                        placeholder={getPerformerFieldPlaceholder(item.performerMode)}
-                                                                    />
-                                                                </div>
-                                                            </div>
-                                                            {item.performerMode !== RUN_OF_SHOW_PERFORMER_MODES.openSubmission ? (
-                                                                <div>
-                                                                    <FieldLabel>Bind Live Lobby Performer</FieldLabel>
-                                                                    <div className="mt-1">
-                                                                        <SelectControl
-                                                                            value={item.assignedPerformerUid || ''}
-                                                                            onChange={(e) => {
-                                                                                const candidate = roomUserCandidates.find((entry) => entry.uid === e.target.value);
-                                                                                if (candidate) assignLobbyPerformer(item, candidate);
-                                                                                else clearLobbyPerformer(item);
-                                                                            }}
-                                                                            disabled={!safeOperatorCapabilities.canEditFlow || roomUserCandidates.length === 0}
-                                                                        >
-                                                                            <option value="">{roomUserCandidates.length ? 'Choose from live lobby' : 'No lobby performers yet'}</option>
-                                                                            {roomUserCandidates.map((candidate) => (
-                                                                                <option key={candidate.uid} value={candidate.uid}>
-                                                                                    {candidate.label}{candidate.meta ? ` - ${candidate.meta}` : ''}
-                                                                                </option>
-                                                                            ))}
-                                                                        </SelectControl>
-                                                                    </div>
-                                                                </div>
-                                                            ) : null}
-                                                        </div>
-                                                        <div className="space-y-3">
-                                                            <div className="grid gap-3 md:grid-cols-2">
-                                                                <div>
-                                                                    <FieldLabel>Song Title</FieldLabel>
-                                                                    <div className="mt-1">
-                                                                        <input value={item.songTitle || ''} onChange={(e) => onUpdateItem?.(item.id, { songTitle: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} placeholder="Song title" />
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <FieldLabel>Artist</FieldLabel>
-                                                                    <div className="mt-1">
-                                                                        <input value={item.artistName || ''} onChange={(e) => onUpdateItem?.(item.id, { artistName: e.target.value })} disabled={!safeOperatorCapabilities.canEditFlow} className={textInputClass} placeholder="Artist" />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.14em]">
-                                                                <span className={`rounded-full border px-2 py-1 ${performerReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{performerReady ? 'Singer ready' : 'Singer needed'}</span>
-                                                                <span className={`rounded-full border px-2 py-1 ${(songReady && artistReady) ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{songReady && artistReady ? 'Song ready' : 'Song needed'}</span>
-                                                                <span className={`rounded-full border px-2 py-1 ${trackSetupState.tone}`}>{trackSetupState.label}</span>
-                                                            </div>
-                                                            {(quickPickerOpen || quickSuggestedOptions.length > 0) ? (
-                                                                <div className="rounded-xl border border-cyan-300/16 bg-cyan-500/6 p-3">
-                                                                    {quickPickerOpen ? (
-                                                                        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                                                                            <input
-                                                                                aria-label="Search run of show media"
-                                                                                value={mediaPicker.query}
-                                                                                onChange={(e) => setMediaPicker((prev) => ({ ...prev, query: e.target.value }))}
-                                                                                className={textInputClass}
-                                                                                placeholder={buildMediaQuery(item) || 'Search media'}
-                                                                            />
-                                                                            <ControlButton onClick={() => setMediaPicker((prev) => ({ ...prev, query: buildMediaQuery(item) }))}>Use Song Query</ControlButton>
-                                                                        </div>
-                                                                    ) : null}
-                                                                    {mediaPicker.error && quickPickerOpen ? <div className="mt-3 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-100">{mediaPicker.error}</div> : null}
-                                                                    {mediaPicker.loading && quickPickerOpen ? <div className="mt-3 text-sm text-cyan-100/80">Loading {sourceMeta.title} results...</div> : null}
-                                                                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                                                                        {quickSuggestedOptions.map((option) => (
-                                                                            <MediaPickerOption
-                                                                                key={`${item.id}:quick:${option.id}`}
-                                                                                option={quickPickerOpen ? option : { ...option, statusLabel: option.statusLabel || 'Suggested', statusTone: option.statusTone || option.tone || 'zinc' }}
-                                                                                onSelect={() => applyMediaSelection(item, option)}
-                                                                            />
-                                                                        ))}
-                                                                    </div>
-                                                                    {!quickSuggestedOptions.length ? (
-                                                                        <div className="mt-3 rounded-xl bg-black/10 px-3 py-3 text-sm text-zinc-400">
-                                                                            {quickPickerOpen
-                                                                                ? 'No backing matches yet. Try tightening the song title or artist.'
-                                                                                : 'Add song title and artist to surface the fastest backing picks here.'}
-                                                                        </div>
-                                                                    ) : null}
-                                                                </div>
-                                                            ) : null}
-                                                        </div>
+                                                        This is the main setup path for the slot. Use queue matches below when you want to pull in a live request, and open advanced settings only for unusual cases.
                                                     </div>
                                                 </div>
                                                 <div className={`rounded-2xl border px-4 py-4 ${performancePrepPrimaryAction ? 'border-cyan-300/18 bg-cyan-500/8' : 'border-emerald-300/18 bg-emerald-500/8'}`}>
@@ -7412,9 +7284,9 @@ export default function RunOfShowDirectorPanel({
                                                         </CollapsiblePanel>
                                                     ) : null}
                                                     <CollapsiblePanel
-                                                        label="More Slot Controls"
+                                                        label="Advanced Slot Settings"
                                                         title="Policy, admin, and scene settings"
-                                                        summary="Open this only when you need deeper slot rules or editor controls."
+                                                        summary="Open this only when the normal slot setup path is not enough."
                                                         open={advancedSlotControlsOpen}
                                                         onToggle={() => toggleSection(item.id, 'advanced_slot_controls')}
                                                         badge="Advanced"

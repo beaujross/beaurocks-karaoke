@@ -40,3 +40,12 @@ test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance
   assert.match(source, /Nothing is flighted yet\./);
   assert.match(source, /No scene is on deck yet\./);
 });
+
+test('run-of-show performance builder uses one primary slot setup path', () => {
+  assert.match(source, /Slot Setup/);
+  assert.match(source, /Open Track Setup/);
+  assert.match(source, /Advanced Slot Settings/);
+  assert.doesNotMatch(source, /Fast Assign/);
+  assert.doesNotMatch(source, /Quick editor/);
+  assert.doesNotMatch(source, /More Slot Controls/);
+});

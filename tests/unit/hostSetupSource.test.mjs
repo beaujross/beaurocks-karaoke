@@ -92,9 +92,34 @@ test('host panel presents readiness and one launch action before deeper setup', 
     'Readiness surface should provide one launch action',
   );
   assert.match(
+    readinessSource,
+    /collapsed = false/,
+    'Readiness surface should support a collapsed state',
+  );
+  assert.match(
+    readinessSource,
+    /Hide/,
+    'Expanded readiness surface should be closeable',
+  );
+  assert.match(
+    readinessSource,
+    /Show/,
+    'Collapsed readiness surface should be restorable',
+  );
+  assert.match(
     hostAppSource,
     /<HostRoomReadinessPanel/,
     'Host app should render the readiness surface above the live queue',
+  );
+  assert.match(
+    hostAppSource,
+    /collapsed=\{roomReadinessCollapsed\}/,
+    'Host app should pass the room readiness collapse state into the surface',
+  );
+  assert.match(
+    hostAppSource,
+    /onToggleCollapsed=\{\(\) => setRoomReadinessCollapsed\(\(value\) => !value\)\}/,
+    'Host app should allow the readiness surface to toggle open and closed',
   );
   assert.match(
     hostAppSource,
@@ -105,6 +130,11 @@ test('host panel presents readiness and one launch action before deeper setup', 
     hostAppSource,
     /openNightSetupWizard\(room\?\.hostNightPreset \|\| hostNightPreset \|\| 'casual'\)/,
     'Night Setup entry should open the simplified setup modal instead of routing hosts into admin settings',
+  );
+  assert.match(
+    hostAppSource,
+    /bross_host_room_readiness_collapsed/,
+    'Host app should persist the readiness collapse preference',
   );
 });
 

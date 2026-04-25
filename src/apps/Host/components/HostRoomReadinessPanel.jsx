@@ -48,6 +48,8 @@ const HostRoomReadinessPanel = ({
     onOpenSetup,
     onOpenShowPlan,
     onConnectAppleMusic,
+    collapsed = false,
+    onToggleCollapsed,
 }) => {
     const hasRoom = !!String(roomCode || '').trim();
     const readinessItems = [
@@ -116,6 +118,48 @@ const HostRoomReadinessPanel = ({
         : waitingCount > 0
             ? 'Room is ready to launch.'
             : 'Room is live-ready.';
+    const compactSummary = blockedCount > 0
+        ? `${blockedCount} blocker${blockedCount === 1 ? '' : 's'}`
+        : waitingCount > 0
+            ? `${waitingCount} ready step${waitingCount === 1 ? '' : 's'}`
+            : 'Ready to launch';
+
+    if (collapsed) {
+        return (
+            <section className="mb-4 rounded-2xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(8,13,24,0.88),rgba(15,23,42,0.86))] px-3 py-2.5 shadow-[0_14px_42px_rgba(0,0,0,0.24)]" aria-label="Room readiness">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">Room Readiness</div>
+                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
+                                {compactSummary}
+                            </span>
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-300">
+                            {roomName ? `${roomName} · ${String(roomCode || '').toUpperCase() || 'No room code yet'}` : (String(roomCode || '').toUpperCase() || 'No room code yet')}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={onToggleCollapsed}
+                            className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
+                        >
+                            Show
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onLaunchRoom}
+                            disabled={!hasRoom || launchBusy}
+                            className={`rounded-full border px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] ${hasRoom && !launchBusy ? 'border-cyan-300/45 bg-cyan-500/16 text-cyan-50 hover:border-cyan-200/55' : 'border-white/10 bg-white/5 text-zinc-400 opacity-60'}`}
+                        >
+                            {launchBusy ? 'Launching...' : 'Launch Room'}
+                        </button>
+                    </div>
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="mb-4 rounded-3xl border border-cyan-300/20 bg-[linear-gradient(135deg,rgba(8,13,24,0.94),rgba(15,23,42,0.92))] p-3 shadow-[0_18px_54px_rgba(0,0,0,0.28)] sm:p-4" aria-label="Room readiness">
@@ -128,6 +172,13 @@ const HostRoomReadinessPanel = ({
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={onToggleCollapsed}
+                        className="rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
+                    >
+                        Hide
+                    </button>
                     <button
                         type="button"
                         onClick={onOpenSetup}

@@ -6422,37 +6422,38 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         : 'grid grid-cols-[minmax(280px,0.9fr)_minmax(360px,1fr)_minmax(360px,1fr)] gap-5'
             } overflow-hidden`}>
             {/* LEFT CONTROLS */}
-            <div className={`w-full ${
+            <div className={`w-full flex flex-col ${
                 isMobileLayout
                     ? 'order-2 min-h-0 max-h-[38vh] pr-1.5'
                     : isTightLayout
                         ? 'order-2 min-h-0 pr-1'
                         : 'min-h-0 pr-1'
-            } overflow-y-auto custom-scrollbar`}>
-                <div className={`${STYLES.panel} overflow-hidden`}>
-                    <HostLiveOpsPanel
-                        current={current}
-                        nextQueueSong={nextQueueSong}
-                        nextQueueText={queueSurface.stageSummary.nextQueueText}
-                        queueCount={queueSurface.stageSummary.queueCount}
-                        readyQueueCount={queueSurface.counts.ready}
-                        assignedQueueCount={queueSurface.counts.assigned}
-                        needsAttentionCount={queueSurface.counts.needsAttention}
-                        currentSourcePlaying={currentSourcePlaying}
-                        runOfShowEnabled={runOfShowEnabled}
-                        runOfShowLiveItem={runOfShowLiveItem}
-                        runOfShowFlightedItem={runOfShowStagedItem}
-                        runOfShowOnDeckItem={runOfShowNextItem}
-                        crowdPulse={crowdPulse}
-                        onTogglePlay={togglePlay}
-                        onEndPerformance={handleEndPerformance}
-                        onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
-                        onEditCurrent={startEdit}
-                        onProgressStageToNext={progressStageToNext}
-                        onOpenRunOfShow={onOpenRunOfShow}
-                        styles={STYLES}
-                    />
-                    <section className="px-4 py-4 border-b border-white/10">
+            }`}>
+                <div className={`${STYLES.panel} h-full min-h-0 flex flex-col overflow-hidden`}>
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                        <HostLiveOpsPanel
+                            current={current}
+                            nextQueueSong={nextQueueSong}
+                            nextQueueText={queueSurface.stageSummary.nextQueueText}
+                            queueCount={queueSurface.stageSummary.queueCount}
+                            readyQueueCount={queueSurface.counts.ready}
+                            assignedQueueCount={queueSurface.counts.assigned}
+                            needsAttentionCount={queueSurface.counts.needsAttention}
+                            currentSourcePlaying={currentSourcePlaying}
+                            runOfShowEnabled={runOfShowEnabled}
+                            runOfShowLiveItem={runOfShowLiveItem}
+                            runOfShowFlightedItem={runOfShowStagedItem}
+                            runOfShowOnDeckItem={runOfShowNextItem}
+                            crowdPulse={crowdPulse}
+                            onTogglePlay={togglePlay}
+                            onEndPerformance={handleEndPerformance}
+                            onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
+                            onEditCurrent={startEdit}
+                            onProgressStageToNext={progressStageToNext}
+                            onOpenRunOfShow={onOpenRunOfShow}
+                            styles={STYLES}
+                        />
+                        <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
                             label="Stage"
                             open={stagePanelOpen}
@@ -6505,9 +6506,9 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 emoji={EMOJI}
                             />
                         )}
-                    </section>
-                    {!essentialsMode && showLegacyLiveEffects && (
-                        <section className="px-4 py-4 border-b border-white/10">
+                        </section>
+                        {!essentialsMode && showLegacyLiveEffects && (
+                            <section className="px-4 py-4 border-b border-white/10">
                             <SectionHeader
                                 label="Soundboard"
                                 open={soundboardOpen}
@@ -6527,15 +6528,15 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 playSfxSafe={playSfxSafe}
                                 smallWaveform={SmallWaveform}
                             />
-                        </section>
-                    )}
+                            </section>
+                        )}
 
-                    {!essentialsMode && (
-                        <>
-                            <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
-                                Audience Controls
-                            </div>
-                            <section className="px-4 py-4 border-b border-white/10">
+                        {!essentialsMode && (
+                            <>
+                                <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
+                                    Audience Controls
+                                </div>
+                                <section className="px-4 py-4 border-b border-white/10">
                                 <SectionHeader
                                     label="Chat"
                                     open={chatOpen}
@@ -6575,11 +6576,10 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                     setChatDraft={setChatDraft}
                                     sendHostChat={sendHostChat}
                                 />
-                            </section>
-
-                        </>
-                    )}
-
+                                </section>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -7624,6 +7624,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             if (typeof window === 'undefined') return false;
             return localStorage.getItem('bross_host_audience_preview_collapsed') === '1';
+        } catch {
+            return false;
+        }
+    });
+    const [roomReadinessCollapsed, setRoomReadinessCollapsed] = useState(() => {
+        try {
+            if (typeof window === 'undefined') return false;
+            return localStorage.getItem('bross_host_room_readiness_collapsed') === '1';
         } catch {
             return false;
         }
@@ -10819,6 +10827,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
             localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
+            localStorage.setItem('bross_host_room_readiness_collapsed', roomReadinessCollapsed ? '1' : '0');
             localStorage.setItem(
                 'bross_host_audience_preview_mode',
                 normalizeAudiencePreviewMode(audiencePreviewMode) === 'live_audience' ? 'live_audience' : 'thumbnail'
@@ -10839,6 +10848,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [
         audiencePreviewVisible,
         audiencePreviewCollapsed,
+        roomReadinessCollapsed,
         audiencePreviewMode,
         audiencePreviewSize,
         publicTvPreviewVisible,
@@ -13921,6 +13931,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Scene presets must be an image or video file.');
             return null;
         }
+        if (mediaType === 'image' && file.size && file.size > 8 * 1024 * 1024) {
+            toast('Scene images must be 8 MB or smaller.');
+            return null;
+        }
         if (file.size && file.size > 150 * 1024 * 1024) {
             toast('Scene file too large. Keep files under 150MB.');
             return null;
@@ -13965,14 +13979,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             };
             let storagePath = '';
             let mediaUrl = '';
-            const canUseCallableUpload = mediaType === 'image' && Number(file.size || 0) <= 8 * 1024 * 1024;
-            if (canUseCallableUpload) {
-                try {
-                    ({ storagePath, mediaUrl } = await callableUpload());
-                } catch (callableError) {
-                    hostLogger.warn('Scene preset callable upload failed; trying direct storage upload', callableError);
-                    ({ storagePath, mediaUrl } = await directUpload());
-                }
+            if (mediaType === 'image') {
+                ({ storagePath, mediaUrl } = await callableUpload());
             } else {
                 ({ storagePath, mediaUrl } = await directUpload());
             }
@@ -13998,7 +14006,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return { id: docRef.id, ...payload };
         } catch (error) {
             hostLogger.error('Scene preset upload failed', error);
-            toast(error?.code === 'storage/unauthorized' ? 'Could not upload scene media. Host storage access is not allowed for this room.' : 'Could not upload scene media.');
+            toast(error?.code === 'storage/unauthorized'
+                ? 'Could not upload scene media. Host storage access is not allowed for this room.'
+                : mediaType === 'image'
+                    ? 'Could not upload scene image.'
+                    : 'Could not upload scene media.'
+            );
             return null;
         } finally {
             setScenePresetUploading(false);
@@ -18140,6 +18153,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         onOpenSetup={handleStageQuickStartOpenRoomSetup}
                         onOpenShowPlan={() => handleTopChromeTabChange('run_of_show')}
                         onConnectAppleMusic={handleStageQuickStartConnectAppleMusic}
+                        collapsed={roomReadinessCollapsed}
+                        onToggleCollapsed={() => setRoomReadinessCollapsed((value) => !value)}
                     />
                 ) : null}
                 <div

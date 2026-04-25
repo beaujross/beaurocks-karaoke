@@ -19,6 +19,8 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostAppSource, /runOfShowOnDeckItem=\{runOfShowNextItem\}/);
   assert.match(hostAppSource, /crowdPulse=\{crowdPulse\}/);
   assert.match(hostAppSource, /showStageSummaryHeader=\{false\}/);
+  assert.match(hostAppSource, /h-full min-h-0 flex flex-col overflow-hidden/);
+  assert.match(hostAppSource, /flex-1 min-h-0 overflow-y-auto custom-scrollbar/);
 });
 
 test('live lane panel collapses host runtime into now next and conveyor cards', () => {
