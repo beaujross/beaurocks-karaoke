@@ -40,6 +40,14 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
           const packagePath = id.split('node_modules/')[1] || ''
+          if (packagePath.startsWith('firebase/')) {
+            const serviceName = packagePath.split('/')[1] || ''
+            if (serviceName) {
+              const sanitizedService = serviceName.replace(/[^a-z0-9_-]/gi, '-')
+              return `vendor-firebase-${sanitizedService}`
+            }
+            return 'vendor-firebase'
+          }
           const [scopeOrName, maybeName] = packagePath.split('/')
           const packageName = scopeOrName?.startsWith('@')
             ? `${scopeOrName}/${maybeName || ''}`

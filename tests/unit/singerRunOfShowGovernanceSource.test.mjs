@@ -9,8 +9,8 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /getRunOfShowOperatorRole/);
   assert.match(source, /getRunOfShowReleaseWindowTally/);
   assert.match(source, /const canSeeAudienceReleaseWindow = useMemo/);
-  assert.match(source, /const castRunOfShowReleaseVote = useCallback/);
-  assert.match(source, /runOfShowDirector\.releaseWindow\.votesByUid/);
+  assert.match(source, /const castRunOfShowReleaseVote = async/);
+  assert.match(source, /runOfShowDirector\.releaseWindow\.votesByUid\.\$\{activeUid\}/);
   assert.match(source, /Release Window/);
   assert.match(source, /Slot Scene/);
   assert.match(source, /Keep Singing/);

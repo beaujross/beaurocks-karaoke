@@ -7,6 +7,7 @@ import { test } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const hostAppPath = path.resolve(__dirname, "../../src/apps/Host/HostApp.jsx");
+const hostQueueTabPath = path.resolve(__dirname, "../../src/apps/Host/components/HostQueueTab.jsx");
 const hostTopChromePath = path.resolve(__dirname, "../../src/apps/Host/components/HostTopChrome.jsx");
 const runOfShowDirectorPanelPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowDirectorPanel.jsx");
 const runOfShowQueueHudPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowQueueHud.jsx");
@@ -57,32 +58,45 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
 });
 
 test("HostApp restores queue tools after stop and previews the audience app", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
-  assert.match(source, /const handleStopRunOfShowAndRestoreQueueTools = useCallback\(async \(\) => \{/);
-  assert.match(source, /setShowAddForm\(true\);/);
-  assert.match(source, /setShowQueueList\(true\);/);
-  assert.match(source, /normalizeAudiencePreviewMode/);
-  assert.match(source, /audienceLaunchUrl=\{activeRoomLaunchUrls\.audienceUrl\}/);
-  assert.match(source, /title="Audience app live preview"/);
-  assert.match(source, /const shouldApplyRunOfShowRemoteSync = Date\.now\(\) - runOfShowLocalEditAtRef\.current > 1500;/);
+  assert.match(queueTabSource, /const handleStopRunOfShowAndRestoreQueueTools = useCallback\(async \(\) => \{/);
+  assert.match(queueTabSource, /setShowAddForm\(true\);/);
+  assert.match(queueTabSource, /setShowQueueList\(true\);/);
+  assert.match(hostSource, /normalizeAudiencePreviewMode/);
+  assert.match(hostSource, /audienceLaunchUrl=\{activeRoomLaunchUrls\.audienceUrl\}/);
+  assert.match(hostSource, /title="Audience app live preview"/);
+  assert.match(hostSource, /const shouldApplyRunOfShowRemoteSync = Date\.now\(\) - runOfShowLocalEditAtRef\.current > 1500;/);
+});
+
+test("Host chrome routes live automation access back into the queue tab", () => {
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const chromeSource = readFileSync(hostTopChromePath, "utf8");
+
+  assert.match(chromeSource, /data-feature-id="deck-open-queue-controls"/);
+  assert.match(chromeSource, /Queue Controls/);
+  assert.doesNotMatch(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
+  assert.doesNotMatch(chromeSource, /Auto DJ Queue/);
+  assert.match(hostSource, /onOpenQueueControls=\{focusQueueLiveControls\}/);
 });
 
 test("HostApp keeps the queue runtime mounted when the host leaves the queue view", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(
-    source,
-    /data-host-queue-runtime="mounted"[\s\S]*<QueueTab \{\.\.\.queueTabProps\} runtimeVisible=\{tab === 'stage'\} \/>/,
-    "QueueTab owns host-side automation timers and should stay mounted while its UI is hidden",
+    hostSource,
+    /data-host-queue-runtime="mounted"[\s\S]*<HostQueueTab[\s\S]*runtimeVisible=\{tab === 'stage'\}/,
+    "HostQueueTab owns host-side automation timers and should stay mounted while its UI is hidden",
   );
   assert.match(
-    source,
+    hostSource,
     /className=\{tab === 'stage' \? '' : 'hidden'\}/,
     "Queue UI should be hidden, not unmounted, outside the stage tab",
   );
   assert.match(
-    source,
+    queueTabSource,
     /if \(!runtimeVisible\) return \(\) => \{\};/,
     "Hidden queue runtime should not keep the command palette keyboard shortcut active",
   );
@@ -183,7 +197,7 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
 });
 
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const source = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(source, /const associatedBackingDurationSec = getAssociatedBackingDurationSec\(current\);/);
   assert.match(source, /performanceStartedDurationSec:\s*nextDuration/);
@@ -191,7 +205,7 @@ test("Host stage auto-end duration sync updates room metadata, not only the queu
 });
 
 test("Host queue review presents Apple sing-along and YouTube backing as primary choices", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const source = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(source, /const resolveAppleSingAlongReviewRequest = useCallback/);
   assert.match(source, /source:\s*'apple'/);
@@ -212,7 +226,7 @@ test("Scene image uploads stay on the callable host upload path", () => {
 });
 
 test("Host queue review candidate cards stay inside narrow panels", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const source = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(source, /min-w-0 overflow-hidden rounded-2xl border border-white\/10 bg-black\/30 p-3/);
   assert.match(source, /mt-3 grid min-w-0 gap-2 overflow-hidden/);
@@ -255,7 +269,7 @@ test("Run-of-show automation respects room auto mode and pauses for missing sing
 });
 
 test("HostApp auto-dismisses the post-performance backing prompt if the host ignores it", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const source = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(source, /const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;/);
   assert.match(source, /if \(!postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
@@ -273,19 +287,20 @@ test("HostApp routes scene images through the host callable without a direct-sto
 });
 
 test("Host scene presets can be slotted into the conveyor and live below the queue", () => {
-  const source = readFileSync(hostAppPath, "utf8");
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
-  assert.match(source, /label="TV Moments"/);
-  assert.match(source, /featureId="panel-tv-moments"/);
-  assert.match(source, /Queue Next Moment/);
-  assert.match(source, /Add To Run Of Show/);
-  assert.match(source, /onQueueScenePreset,/);
-  assert.match(source, /onAddScenePresetToRunOfShow,/);
-  assert.match(source, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
-  assert.match(source, /takeoverScene:\s*'media_scene'/);
-  assert.match(source, /mediaSceneUrl:\s*mediaUrl,/);
+  assert.match(queueTabSource, /label="TV Moments"/);
+  assert.match(queueTabSource, /featureId="panel-tv-moments"/);
+  assert.match(queueTabSource, /Queue Next Moment/);
+  assert.match(queueTabSource, /Add To Run Of Show/);
+  assert.match(hostSource, /onQueueScenePreset:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
+  assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
+  assert.match(hostSource, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
+  assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
+  assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
   assert.match(
-    source,
+    queueTabSource,
     /<QueueListPanel[\s\S]*\/>\s*<div className="rounded-2xl border border-white\/10 bg-black\/20 p-2">[\s\S]*label="TV Moments"/,
     "TV Moments should render below the queue board instead of above it",
   );

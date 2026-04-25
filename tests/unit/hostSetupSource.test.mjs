@@ -75,6 +75,46 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
     /Open TV \+ Copy Link/,
     'Setup footer should keep launch links as a secondary action',
   );
+  assert.match(
+    footerSource,
+    /Close/,
+    'Mission setup footer should offer an explicit close action',
+  );
+  assert.doesNotMatch(
+    footerSource,
+    /More Settings/,
+    'Mission setup footer should stop routing hosts into deeper settings for live tweaks',
+  );
+});
+
+test('night setup wizard can close without forcing hosts through every step', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+
+  assert.match(
+    hostAppSource,
+    /event\.key !== 'Escape' \|\| nightSetupApplying/,
+    'Night setup should close from Escape when the wizard is idle',
+  );
+  assert.match(
+    hostAppSource,
+    /window\.addEventListener\('keydown', handleKeyDown\)/,
+    'Night setup should register an Escape key listener while open',
+  );
+  assert.match(
+    hostAppSource,
+    /if \(event\.target !== event\.currentTarget \|\| nightSetupApplying\) return;/,
+    'Night setup should support clicking the backdrop to close',
+  );
+  assert.match(
+    hostAppSource,
+    /data-host-setup-skip-intro[\s\S]*>\s*Close\s*</,
+    'Classic night setup should expose a clear close button in the header',
+  );
+  assert.match(
+    hostAppSource,
+    /onClose=\{closeNightSetupWizard\}/,
+    'Mission setup footer should receive the shared close handler',
+  );
 });
 
 test('host panel presents readiness and one launch action before deeper setup', () => {
@@ -90,6 +130,16 @@ test('host panel presents readiness and one launch action before deeper setup', 
     readinessSource,
     /Launch Room/,
     'Readiness surface should provide one launch action',
+  );
+  assert.match(
+    readinessSource,
+    /Queue Controls/,
+    'Readiness surface should hand off live tweaks to queue controls instead of setup',
+  );
+  assert.doesNotMatch(
+    readinessSource,
+    /Adjust/,
+    'Readiness surface should not frame live tweaks as a generic setup action',
   );
   assert.match(
     readinessSource,
@@ -113,6 +163,21 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
+    /const focusQueueLiveControls = useCallback\(\(\) => \{/,
+    'Host app should provide a live queue-controls handoff from readiness',
+  );
+  assert.match(
+    hostAppSource,
+    /querySelector\('\[data-feature-id="queue-live-controls"\]'\)/,
+    'Readiness should target the queue live-controls anchor instead of reopening setup',
+  );
+  assert.match(
+    hostAppSource,
+    /onOpenSetup=\{focusQueueLiveControls\}/,
+    'Readiness surface should open queue controls for in-flow tweaks',
+  );
+  assert.match(
+    hostAppSource,
     /collapsed=\{roomReadinessCollapsed\}/,
     'Host app should pass the room readiness collapse state into the surface',
   );
@@ -130,6 +195,11 @@ test('host panel presents readiness and one launch action before deeper setup', 
     hostAppSource,
     /openNightSetupWizard\(room\?\.hostNightPreset \|\| hostNightPreset \|\| 'casual'\)/,
     'Night Setup entry should open the simplified setup modal instead of routing hosts into admin settings',
+  );
+  assert.match(
+    hostAppSource,
+    /openAdminWorkspace\('ops\.room_setup'\)/,
+    'Night setup should route full-admin handoff through the workspace navigation helper',
   );
   assert.match(
     hostAppSource,

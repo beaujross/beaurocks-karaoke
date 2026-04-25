@@ -30,6 +30,142 @@ const buildQueueSongLabel = (song = {}) => {
     return singerName || songTitle || 'Queue item';
 };
 
+const QueueQuickAccessPanel = ({
+    styles,
+    quickControls = null,
+}) => {
+    if (!quickControls) return null;
+
+    const queueRuleSummary = String(quickControls.queueRuleSummary || '').trim() || 'Queue rules stay live here.';
+    const autoSummary = String(quickControls.automationSummary || '').trim() || 'Automation stays close to the queue.';
+
+    const queueButtons = [
+        {
+            key: 'rotation',
+            label: 'Rotation',
+            value: quickControls.rotationLabel || 'Round Robin',
+            onClick: quickControls.onCycleQueueRotation,
+        },
+        {
+            key: 'limitMode',
+            label: 'Request Cap',
+            value: quickControls.limitLabel || 'No Limits',
+            onClick: quickControls.onCycleQueueLimitMode,
+        },
+        {
+            key: 'boost',
+            label: 'First-Time Boost',
+            value: quickControls.firstTimeBoost ? 'On' : 'Off',
+            onClick: quickControls.onToggleFirstTimeBoost,
+        },
+        quickControls.showReadyCheck
+            ? {
+                key: 'readyCheck',
+                label: 'Room Reset',
+                value: 'Ready Check',
+                onClick: quickControls.onTriggerReadyCheck,
+            }
+            : null,
+    ].filter(Boolean);
+
+    const automationButtons = [
+        {
+            key: 'autoDj',
+            label: 'Auto DJ',
+            value: quickControls.autoDj ? 'On' : 'Off',
+            onClick: quickControls.onToggleAutoDj,
+            tone: quickControls.autoDj ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100' : '',
+        },
+        {
+            key: 'autoEnd',
+            label: 'Auto End',
+            value: quickControls.autoEndOnTrackFinish ? 'On' : 'Off',
+            onClick: quickControls.onToggleAutoEnd,
+            tone: quickControls.autoEndOnTrackFinish ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100' : '',
+        },
+        {
+            key: 'autoParty',
+            label: 'Auto Party',
+            value: quickControls.autoPartyEnabled ? 'On' : 'Off',
+            onClick: quickControls.onToggleAutoParty,
+            tone: quickControls.autoPartyEnabled ? 'border-fuchsia-300/30 bg-fuchsia-500/10 text-fuchsia-100' : '',
+        },
+        {
+            key: 'popTrivia',
+            label: 'Pop Trivia',
+            value: quickControls.popTriviaEnabled ? 'On' : 'Off',
+            onClick: quickControls.onTogglePopTrivia,
+            tone: quickControls.popTriviaEnabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : '',
+        },
+    ].filter((item) => typeof item.onClick === 'function');
+
+    return (
+        <div
+            data-feature-id="queue-live-controls"
+            className="mb-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3"
+        >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">Queue Controls</div>
+                    <div className="mt-1 text-sm font-semibold text-white">Live-use settings stay in the queue tab.</div>
+                    <div className="mt-1 text-xs text-zinc-400">Use these quick controls for pacing and automation without leaving live operations.</div>
+                </div>
+                {typeof quickControls.onOpenRunOfShow === 'function' ? (
+                    <button
+                        type="button"
+                        onClick={quickControls.onOpenRunOfShow}
+                        className={`${styles.btnStd} ${styles.btnSecondary} min-h-[38px] px-3 text-[11px]`}
+                    >
+                        Open Conveyor
+                    </button>
+                ) : null}
+            </div>
+
+            <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Queue Rules</div>
+                    <div className="mt-1 text-xs text-zinc-400">{queueRuleSummary}</div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {queueButtons.map((item) => (
+                            <button
+                                key={item.key}
+                                type="button"
+                                onClick={item.onClick}
+                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[42px] justify-between px-3 text-[11px]`}
+                            >
+                                <span>{item.label}</span>
+                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                    {item.value}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Automation</div>
+                    <div className="mt-1 text-xs text-zinc-400">{autoSummary}</div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {automationButtons.map((item) => (
+                            <button
+                                key={item.key}
+                                type="button"
+                                onClick={item.onClick}
+                                className={`${styles.btnStd} ${item.tone || styles.btnNeutral} min-h-[42px] justify-between px-3 text-[11px]`}
+                            >
+                                <span>{item.label}</span>
+                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-zinc-100">
+                                    {item.value}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const QueueInspector = ({
     song = null,
     styles,
@@ -236,7 +372,8 @@ const QueueListPanel = ({
     compactViewport = false,
     runOfShowAssignableSlots = [],
     queueSurfaceCounts = null,
-    onAssignQueueSongToRunOfShowItem
+    onAssignQueueSongToRunOfShowItem,
+    quickControls = null,
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
     const counts = queueSurfaceCounts || {};
@@ -405,6 +542,10 @@ const QueueListPanel = ({
                     </div>
             ) : null
             )}
+            <QueueQuickAccessPanel
+                styles={styles}
+                quickControls={quickControls}
+            />
             <QueueInspector
                 song={selectedSong}
                 styles={styles}

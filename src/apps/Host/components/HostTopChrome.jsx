@@ -107,17 +107,11 @@ const HostTopChrome = ({
     autoBgMusic,
     setAutoBgMusic,
     autoPlayMedia,
-    setAutoPlayMedia,
     autoDj = false,
-    setAutoDj,
     autoEndOnTrackFinish = true,
-    setAutoEndOnTrackFinish,
     autoBonusEnabled = true,
-    setAutoBonusEnabled,
     autoLyricsOnQueue = false,
-    setAutoLyricsOnQueue,
     autoPartyEnabled = false,
-    onToggleAutoParty,
     toggleHowToPlay,
     marqueeEnabled = false,
     setMarqueeEnabled,
@@ -158,6 +152,7 @@ const HostTopChrome = ({
     onOpenAppleMusicSettings,
     onOpenAiSettings,
     onOpenAccessSettings,
+    onOpenQueueControls,
     onOpenHostDashboard,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
@@ -196,7 +191,6 @@ const HostTopChrome = ({
         return Math.max(min, Math.min(max, numeric));
     };
     const SmallWaveform = smallWaveform;
-    const [showAutomationMenu, setShowAutomationMenu] = React.useState(false);
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
@@ -212,7 +206,6 @@ const HostTopChrome = ({
     const [compactRunOfShowToolsOpen, setCompactRunOfShowToolsOpen] = React.useState(false);
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
-    const automationMenuRef = React.useRef(null);
     const audioMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
     const overlaysMenuRef = React.useRef(null);
@@ -313,8 +306,7 @@ const HostTopChrome = ({
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
-    const anyTopMenuOpen = showAutomationMenu
-        || audioPanelOpen
+    const anyTopMenuOpen = audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
         || showSfxQuickMenu
@@ -632,7 +624,6 @@ const HostTopChrome = ({
             }
             : null;
     const closeAllDeckMenus = React.useCallback(() => {
-        setShowAutomationMenu(false);
         setAudioPanelOpen?.(false);
         setShowTvQuickMenu(false);
         setShowOverlaysMenu(false);
@@ -844,7 +835,6 @@ const HostTopChrome = ({
         const handlePointerDown = (event) => {
             const target = event.target;
             const menuRefs = [
-                automationMenuRef,
                 audioMenuRef,
                 tvQuickMenuRef,
                 overlaysMenuRef,
@@ -973,42 +963,6 @@ const HostTopChrome = ({
         const nextProfile = profile === 'simple' || profile === 'cinema' ? profile : 'room';
         await updateRoom({ tvPresentationProfile: nextProfile });
         closeAllTopMenus();
-    };
-    const toggleAutoBg = async () => {
-        const next = !autoBgMusic;
-        setAutoBgMusic(next);
-        await updateRoom({ autoBgMusic: next });
-        if (next && !playingBg) setBgMusicState(true);
-    };
-    const toggleAutoPlay = async () => {
-        const next = !autoPlayMedia;
-        setAutoPlayMedia(next);
-        await updateRoom({ autoPlayMedia: next });
-    };
-    const toggleAutoDjMode = async () => {
-        const next = !autoDj;
-        setAutoDj?.(next);
-        await updateRoom({ autoDj: next });
-    };
-    const toggleAutoEnd = async () => {
-        const next = !autoEndOnTrackFinish;
-        setAutoEndOnTrackFinish?.(next);
-        await updateRoom({ autoEndOnTrackFinish: next });
-    };
-    const toggleAutoBonus = async () => {
-        const next = !autoBonusEnabled;
-        setAutoBonusEnabled?.(next);
-        await updateRoom({ autoBonusEnabled: next });
-    };
-    const toggleAutoLyricsQueue = async () => {
-        const next = !autoLyricsOnQueue;
-        setAutoLyricsOnQueue?.(next);
-        await updateRoom({ autoLyricsOnQueue: next });
-    };
-    const toggleAutoParty = async () => {
-        if (typeof onToggleAutoParty === 'function') {
-            await onToggleAutoParty();
-        }
     };
     const toggleOverlayScreen = async (screenId) => {
         const nextScreen = room?.activeScreen === screenId ? 'stage' : screenId;
@@ -1282,135 +1236,29 @@ const HostTopChrome = ({
             </div>
         </div>
         <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-            <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
-                <div className={quickStripItemClass} ref={automationMenuRef}>
+                <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
+                <div className={quickStripItemClass}>
                     <button
-                        data-feature-id="deck-automation-menu-toggle"
+                        data-feature-id="deck-open-queue-controls"
                         onClick={() => {
-                            const next = !showAutomationMenu;
                             closeAllTopMenus();
-                            setShowAutomationMenu(next);
+                            onOpenQueueControls?.();
                         }}
                         className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[176px] sm:min-w-[220px]'} justify-between`}
-                        title="Automation controls"
+                        title="Open queue controls"
                         style={{ touchAction: 'manipulation' }}
                     >
                         <span className="inline-flex items-center gap-2">
                             <i className="fa-solid fa-wand-magic-sparkles"></i>
-                            Auto
+                            Queue Controls
                         </span>
                         <span className="inline-flex items-center gap-2">
                             <span className="rounded-full border border-cyan-300/35 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
                                 {activeAutomationCount} on
                             </span>
-                            <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showAutomationMenu ? 'rotate-180' : ''}`}></i>
+                            <i className="fa-solid fa-arrow-down text-[10px]"></i>
                         </span>
                     </button>
-                    {showAutomationMenu && (
-                        <div className={`${quickMenuPanelClass} left-0 w-[min(430px,94vw)] p-3.5`}>
-                            <div className={quickMenuSectionTitleClass}>Automation</div>
-                            <div className={quickMenuSectionHintClass}>
-                                Queue handoff, media continuity, and room guardrails.
-                            </div>
-                            <div className="mt-2.5 grid grid-cols-1 gap-2.5">
-                                <button
-                                    onClick={toggleAutoPlay}
-                                    className={`${styles.btnStd} ${autoPlayMedia ? styles.btnHighlight : styles.btnNeutral} mt-0 w-full min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-forward-step"></i>
-                                        Auto-Play Media
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoPlayMedia ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoBg}
-                                    data-feature-id="deck-auto-bg-music-toggle"
-                                    className={`${styles.btnStd} ${autoBgMusic ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-compact-disc"></i>
-                                        Auto BG Music
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoBgMusic ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoDjMode}
-                                    data-feature-id="deck-auto-dj-queue-toggle"
-                                    className={`${styles.btnStd} ${autoDj ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title="Automatically starts the next queued singer after each performance."
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-forward-fast"></i>
-                                        Auto DJ Queue
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoDj ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoEnd}
-                                    data-feature-id="deck-auto-end-toggle"
-                                    className={`${styles.btnStd} ${autoEndOnTrackFinish ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title="Automatically close out a finished performance and advance the room flow."
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-stopwatch"></i>
-                                        Auto End on Finish
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoEndOnTrackFinish ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoBonus}
-                                    data-feature-id="deck-auto-bonus-toggle"
-                                    className={`${styles.btnStd} ${autoBonusEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title="Automatically apply the default host bonus after a performance when no manual bonus was given."
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-gift"></i>
-                                        Auto Bonus
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoBonusEnabled ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoLyricsQueue}
-                                    data-feature-id="deck-auto-lyrics-queue-toggle"
-                                    className={`${styles.btnStd} ${autoLyricsOnQueue ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title="Automatically try cached, Apple Music, and AI lyric fallback for queued tracks when lyrics are missing."
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-file-lines"></i>
-                                        Auto Lyrics
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">
-                                        {autoLyricsOnQueue ? 'On' : 'Off'}
-                                    </span>
-                                </button>
-                                <button
-                                    onClick={toggleAutoParty}
-                                    data-feature-id="deck-auto-party-toggle"
-                                    className={`${styles.btnStd} ${autoPartyEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                    title="Automatically drop short crowd moments like Ready Check or Volley between singers."
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-users-rays"></i>
-                                        Auto Party
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{autoPartyEnabled ? 'On' : 'Off'}</span>
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        await updateRoom({ bouncerMode: !room?.bouncerMode });
-                                    }}
-                                    className={`${styles.btnStd} ${room?.bouncerMode ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <i className="fa-solid fa-lock"></i>
-                                        Bouncer Mode
-                                    </span>
-                                    <span className="text-[11px] uppercase tracking-widest">{room?.bouncerMode ? 'On' : 'Off'}</span>
-                                </button>
-                            </div>
-                        </div>
-                    )}
                 </div>
                 {!runOfShowFocusMode ? (
                     <div className={quickStripItemClass} ref={audioMenuRef}>

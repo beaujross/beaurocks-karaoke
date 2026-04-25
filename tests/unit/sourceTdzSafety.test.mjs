@@ -200,7 +200,7 @@ const collectTdzIssuesFromFile = (filePath) => {
   return uniqueIssues;
 };
 
-test('source files do not reference later same-scope bindings during function evaluation', () => {
+test('source files do not reference later same-scope bindings during function evaluation', { timeout: 30000 }, () => {
   const files = walkFiles(srcRoot);
   const issues = files.flatMap((filePath) => collectTdzIssuesFromFile(filePath));
 

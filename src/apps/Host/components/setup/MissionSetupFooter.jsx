@@ -4,7 +4,7 @@ const MissionSetupFooter = ({
     styles,
     applying = false,
     summaryText = '',
-    onOpenAdmin = () => {},
+    onClose = () => {},
     onSaveDraft = () => {},
     onStartNight = () => {},
     onLaunchPackage = () => {}
@@ -16,8 +16,12 @@ const MissionSetupFooter = ({
                 <div className="max-w-[680px] truncate text-xs text-zinc-400">{summaryText}</div>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-                <button onClick={onOpenAdmin} className={`${styles.btnStd} ${styles.btnNeutral}`}>
-                    More Settings
+                <button
+                    onClick={onClose}
+                    disabled={applying}
+                    className={`${styles.btnStd} ${styles.btnNeutral} ${applying ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                    Close
                 </button>
                 <button
                     onClick={onSaveDraft}

@@ -17,6 +17,17 @@ test('queue rows stay lighter and route deeper actions into an inspector', () =>
 
 test('queue list exposes one inspector surface for queue-item operations', () => {
   assert.match(queueListPanelSource, /data-feature-id="queue-song-inspector"/);
+  assert.match(queueListPanelSource, /data-feature-id="queue-live-controls"/);
+  assert.match(queueListPanelSource, /Queue Controls/);
+  assert.match(queueListPanelSource, /Queue Rules/);
+  assert.match(queueListPanelSource, /Automation/);
+  assert.match(queueListPanelSource, /Rotation/);
+  assert.match(queueListPanelSource, /Request Cap/);
+  assert.match(queueListPanelSource, /First-Time Boost/);
+  assert.match(queueListPanelSource, /Auto DJ/);
+  assert.match(queueListPanelSource, /Auto End/);
+  assert.match(queueListPanelSource, /Auto Party/);
+  assert.match(queueListPanelSource, /Pop Trivia/);
   assert.match(queueListPanelSource, /Queue Inspector/);
   assert.match(queueListPanelSource, /Start Singer/);
   assert.match(queueListPanelSource, /Approve Request/);
