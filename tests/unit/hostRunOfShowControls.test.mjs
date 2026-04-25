@@ -271,3 +271,22 @@ test("HostApp routes scene images through the host callable without a direct-sto
   assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
+
+test("Host scene presets can be slotted into the conveyor and live below the queue", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /label="TV Moments"/);
+  assert.match(source, /featureId="panel-tv-moments"/);
+  assert.match(source, /Queue Next Moment/);
+  assert.match(source, /Add To Run Of Show/);
+  assert.match(source, /onQueueScenePreset,/);
+  assert.match(source, /onAddScenePresetToRunOfShow,/);
+  assert.match(source, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
+  assert.match(source, /takeoverScene:\s*'media_scene'/);
+  assert.match(source, /mediaSceneUrl:\s*mediaUrl,/);
+  assert.match(
+    source,
+    /<QueueListPanel[\s\S]*\/>\s*<div className="rounded-2xl border border-white\/10 bg-black\/20 p-2">[\s\S]*label="TV Moments"/,
+    "TV Moments should render below the queue board instead of above it",
+  );
+});

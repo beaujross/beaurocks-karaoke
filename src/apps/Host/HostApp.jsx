@@ -3716,7 +3716,7 @@ const PublicTvMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -3786,6 +3786,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     } = useQueueTabState({ hostName, roomCode });
     const [scenePresetTitle, setScenePresetTitle] = useState('');
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
+    const [showScenePresets, setShowScenePresets] = useState(true);
 
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
@@ -5842,8 +5843,8 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
         <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">Scene Presets</div>
-                    <div className="mt-1 text-xs text-zinc-400">Upload an image or video and launch it on Public TV without building a full Run of Show.</div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Moments</div>
+                    <div className="mt-1 text-xs text-zinc-400">Upload image or video scenes, run them now, or slot them into the show conveyor as moments.</div>
                 </div>
                 {activeMediaScene ? (
                     <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
@@ -5895,7 +5896,13 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
                             <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>
-                                Run Scene
+                                Run Now
+                            </button>
+                            <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
+                                Queue Next Moment
+                            </button>
+                            <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
+                                Add To Run Of Show
                             </button>
                             <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
                                 Delete
@@ -5912,7 +5919,6 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
     const queueListSection = (
         <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
-            {scenePresetsSection}
             <SectionHeader
                 label="Queue"
                 open={showQueueList}
@@ -6156,6 +6162,20 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 queueSurfaceCounts={queueSurface.counts}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
             />
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
+                <SectionHeader
+                    label="TV Moments"
+                    open={showScenePresets}
+                    onToggle={() => setShowScenePresets((value) => !value)}
+                    toneClass="text-sm font-black text-cyan-100 px-1"
+                    featureId="panel-tv-moments"
+                />
+                {showScenePresets ? (
+                    <div className="mt-2">
+                        {scenePresetsSection}
+                    </div>
+                ) : null}
+            </div>
         </div>
     );
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
@@ -8366,6 +8386,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const interactiveRunOfShowType = ['trivia_break', 'would_you_rather_break', 'game_break'].includes(item?.type);
         if (item?.presentationPlan?.publicTvTakeoverEnabled && !interactiveRunOfShowType) {
             const durationSec = Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10));
+            const isMediaScene = String(item?.presentationPlan?.takeoverScene || item?.type || '').trim().toLowerCase() === 'media_scene';
             roomUpdates.announcement = {
                 active: true,
                 runOfShowItemId: item.id,
@@ -8382,7 +8403,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 accentTheme: item.presentationPlan?.accentTheme || 'cyan',
                 soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, startedAtMs),
                 durationSec,
-                startedAtMs
+                startedAtMs,
+                mediaScene: isMediaScene && item?.presentationPlan?.mediaSceneUrl
+                    ? {
+                        mediaUrl: item.presentationPlan.mediaSceneUrl,
+                        mediaType: String(item?.presentationPlan?.mediaSceneType || '').trim().toLowerCase() === 'video' ? 'video' : 'image',
+                        fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain'
+                    }
+                    : null
             };
         } else {
             roomUpdates.announcement = null;
@@ -8703,6 +8731,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         accentTheme: item?.presentationPlan?.accentTheme || 'cyan',
         soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, nowMs()),
         takeoverScene: item?.presentationPlan?.takeoverScene || item?.type || 'preview',
+        mediaScene: String(item?.presentationPlan?.takeoverScene || item?.type || '').trim().toLowerCase() === 'media_scene'
+            && item?.presentationPlan?.mediaSceneUrl
+            ? {
+                mediaUrl: item.presentationPlan.mediaSceneUrl,
+                mediaType: String(item?.presentationPlan?.mediaSceneType || '').trim().toLowerCase() === 'video' ? 'video' : 'image',
+                fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain'
+            }
+            : null,
         durationSec: Math.max(6, Math.min(20, Number(item?.plannedDurationSec || 10) || 10)),
         startedAtMs: nowMs()
     }), [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
@@ -9026,6 +9062,70 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return persistRunOfShowDirector(nextDirector);
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const buildScenePresetRunOfShowOverrides = useCallback((preset = {}) => {
+        const mediaUrl = String(preset?.mediaUrl || '').trim();
+        const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+        const title = String(preset?.title || '').trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene');
+        return {
+            title,
+            notes: '',
+            status: 'ready',
+            optionalScene: true,
+            governanceMode: 'host_only',
+            releasePolicy: 'manual_release',
+            plannedDurationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'media_scene',
+                headline: title,
+                subhead: '',
+                accentTheme: 'cyan',
+                mediaSceneUrl: mediaUrl,
+                mediaSceneType: mediaType,
+                mediaSceneFit: 'contain'
+            },
+            roomMomentPlan: {
+                activeScreen: 'stage',
+                activeMode: '',
+                showHowToPlay: false,
+                lightMode: 'off'
+            }
+        };
+    }, []);
+    const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
+        const mediaUrl = String(preset?.mediaUrl || '').trim();
+        if (!mediaUrl) {
+            toast('Scene preset is missing media.');
+            return null;
+        }
+        const director = getCurrentRunOfShowDirector();
+        const nextItem = createRunOfShowItem('announcement', buildScenePresetRunOfShowOverrides(preset));
+        const items = Array.isArray(director?.items) ? [...director.items] : [];
+        const liveIndex = items.findIndex((item) => String(item?.status || '').trim().toLowerCase() === 'live');
+        const insertIndex = options?.placement === 'append'
+            ? items.length
+            : liveIndex >= 0
+                ? liveIndex + 1
+                : 0;
+        items.splice(insertIndex, 0, nextItem);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            items: resequenceRunOfShowItems(items)
+        });
+        const persistedDirector = await persistRunOfShowDirector(
+            nextDirector,
+            options?.activateShow === true
+                ? {
+                    programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                    runOfShowEnabled: true
+                }
+                : {}
+        );
+        toast(options?.placement === 'append'
+            ? 'Scene added to Run of Show.'
+            : 'Scene queued as the next conveyor moment.');
+        return persistedDirector;
+    }, [buildScenePresetRunOfShowOverrides, getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
     const duplicateRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
         const index = director.items.findIndex((item) => item.id === itemId);
@@ -17871,6 +17971,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         scenePresetUploadProgress,
         onCreateScenePreset: createScenePresetFromFile,
         onLaunchScenePreset: launchScenePreset,
+        onQueueScenePreset: (preset) => queueScenePresetAsMoment(preset, { placement: 'next', activateShow: true }),
+        onAddScenePresetToRunOfShow: (preset) => queueScenePresetAsMoment(preset, { placement: 'append' }),
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
         crowdPulse,

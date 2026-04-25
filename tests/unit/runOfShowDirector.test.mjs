@@ -578,3 +578,26 @@ test("runOfShowDirector progression decisions respect hold flags", () => {
     { allowed: false, reason: "hold_after_current" },
   );
 });
+
+test("runOfShowDirector preserves media-scene takeover fields for custom TV moments", () => {
+  const item = createRunOfShowItem("announcement", {
+    title: "Sponsor Flyer",
+    presentationPlan: {
+      publicTvTakeoverEnabled: true,
+      takeoverScene: "media_scene",
+      headline: "Sponsor Flyer",
+      mediaSceneUrl: "https://cdn.example.com/flyer.png",
+      mediaSceneType: "image",
+      mediaSceneFit: "contain",
+    },
+  });
+
+  const normalizedItem = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    items: [item],
+  })).items[0];
+
+  assert.equal(normalizedItem.presentationPlan.takeoverScene, "media_scene");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneUrl, "https://cdn.example.com/flyer.png");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneType, "image");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneFit, "contain");
+});

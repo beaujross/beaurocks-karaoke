@@ -504,6 +504,9 @@ const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     headline: readEditableTextField(overrides, 'headline'),
     subhead: readEditableTextField(overrides, 'subhead'),
     backgroundMedia: cleanText(overrides.backgroundMedia),
+    mediaSceneUrl: cleanText(overrides.mediaSceneUrl),
+    mediaSceneType: cleanText(overrides.mediaSceneType).toLowerCase() === 'video' ? 'video' : 'image',
+    mediaSceneFit: cleanText(overrides.mediaSceneFit).toLowerCase() === 'cover' ? 'cover' : 'contain',
     accentTheme: cleanText(overrides.accentTheme) || 'cyan',
     soundtrackSourceType: ALLOWED_TAKEOVER_SOUNDTRACK_SOURCES.has(cleanText(overrides.soundtrackSourceType).toLowerCase())
         ? cleanText(overrides.soundtrackSourceType).toLowerCase()
