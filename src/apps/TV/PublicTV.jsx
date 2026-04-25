@@ -8718,13 +8718,13 @@ const PublicTV = ({ roomCode }) => {
                         ) : previewGameId === 'wyr' ? (
                             <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
                                 <div className="text-sm uppercase tracking-widest text-zinc-400 mb-2">Would You Rather</div>
-                                <div className="rounded-2xl border border-fuchsia-200/30 bg-gradient-to-r from-[#1c001b]/95 via-[#2f0b36]/95 to-[#0f2b44]/95 px-5 py-4 mb-3 shadow-[0_12px_30px_rgba(0,0,0,0.45)]">
-                                    <div className="text-xs uppercase tracking-[0.22em] text-fuchsia-100/90 mb-2">Prompt</div>
+                                <div className="rounded-2xl border border-white/12 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(15,23,42,0.94))] px-5 py-4 mb-3 shadow-[0_12px_30px_rgba(0,0,0,0.45)]">
+                                    <div className="text-xs uppercase tracking-[0.22em] text-zinc-200 mb-2">Prompt</div>
                                     <div className="text-[clamp(1.1rem,2vw,1.8rem)] font-black leading-tight text-white">Pick your side before timer ends</div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 text-xl text-white">
-                                    <div className="bg-[#ec4899]/25 border border-[#ec4899]/40 rounded-xl px-4 py-6 text-center font-bold">Sing every duet</div>
-                                    <div className="bg-[#22d3ee]/20 border border-[#22d3ee]/40 rounded-xl px-4 py-6 text-center font-bold">Run the DJ booth</div>
+                                    <div className="bg-[linear-gradient(145deg,rgba(7,22,27,0.98),rgba(15,49,60,0.95))] border border-teal-300/35 rounded-xl px-4 py-6 text-center font-bold">Sing every duet</div>
+                                    <div className="bg-[linear-gradient(145deg,rgba(24,10,22,0.98),rgba(64,20,47,0.95))] border border-pink-300/35 rounded-xl px-4 py-6 text-center font-bold">Run the DJ booth</div>
                                 </div>
                             </div>
                         ) : (

@@ -33,6 +33,29 @@ test("Run of show queue and board surfaces expose clear-show controls", () => {
   assert.match(directorPanelSource, />\s*Clear Show\s*</);
 });
 
+test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+  const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
+
+  assert.match(source, /getCrowdPulseSnapshot/);
+  assert.match(source, /crowdPulse=\{crowdPulse\}/);
+  assert.match(source, /Show Conveyor/);
+  assert.match(directorPanelSource, /getRunOfShowConveyorSnapshot/);
+  assert.match(directorPanelSource, /getRunOfShowConveyorPhase/);
+  assert.match(directorPanelSource, /Crowd Pulse/);
+  assert.match(directorPanelSource, /Conveyor status/);
+  assert.match(directorPanelSource, /Show Conveyor/);
+  assert.match(directorPanelSource, /On Deck/);
+  assert.match(directorPanelSource, /Flighted/);
+  assert.match(source, /const openRunOfShowReleaseWindow = useCallback\(async \(itemId, options = \{\}\) => \{/);
+  assert.match(source, /const closeRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
+  assert.match(source, /onOpenReleaseWindow=\{openRunOfShowReleaseWindow\}/);
+  assert.match(source, /onCloseReleaseWindow=\{closeRunOfShowReleaseWindow\}/);
+  assert.match(directorPanelSource, /Release Window/);
+  assert.match(directorPanelSource, /Crowd Signal/);
+  assert.match(directorPanelSource, /Co-Host Vote/);
+});
+
 test("HostApp restores queue tools after stop and previews the audience app", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
@@ -229,4 +252,12 @@ test("HostApp auto-dismisses the post-performance backing prompt if the host ign
   assert.match(source, /if \(!postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
   assert.match(source, /setTimeout\(\(\) => \{\s*setPostPerformanceBackingPrompt\(\(currentPrompt\) => \(/);
   assert.match(source, /Closes automatically after a few seconds\./);
+});
+
+test("HostApp routes small image scene uploads through the host callable before direct storage", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const canUseCallableUpload = mediaType === 'image' && Number\(file\.size \|\| 0\) <= 8 \* 1024 \* 1024;/);
+  assert.match(source, /hostLogger\.warn\('Scene preset callable upload failed; trying direct storage upload', callableError\);/);
+  assert.match(source, /\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);[\s\S]*\(\{ storagePath, mediaUrl \} = await directUpload\(\)\);/);
 });

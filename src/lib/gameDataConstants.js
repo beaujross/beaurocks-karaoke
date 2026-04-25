@@ -63,5 +63,16 @@ export const WYR_BANK = [
     { q: "Sing every song in falsetto OR Sing every song like a death metal growl?", a: "Falsetto", b: "Death Metal" },
     { q: "Forget the lyrics to your favorite song OR Trip on stage every time you sing?", a: "Forget Lyrics", b: "Trip on Stage" },
     { q: "Have a voice like Mariah Carey but no rhythm OR Have moves like MJ but tone deaf?", a: "Voice", b: "Moves" },
-    { q: "Only be able to sing Nickelback OR Only be able to sing Baby Shark?", a: "Nickelback", b: "Baby Shark" }
+    { q: "Only be able to sing Nickelback OR Only be able to sing Baby Shark?", a: "Nickelback", b: "Baby Shark" },
+    { q: "Win every karaoke round OR Own the final encore singalong?", a: "Win Every Round", b: "Own The Encore" },
+    { q: "Do a perfect Britney-style choreo routine OR Hit every high note dead-on?", a: "Perfect Choreo", b: "Perfect Notes" },
+    { q: "Open the night with a power ballad OR Close the night with a rap verse?", a: "Open With Ballad", b: "Close With Rap" },
+    { q: "Be the best duet partner in the room OR Be the best solo closer in the room?", a: "Best Duet Partner", b: "Best Solo Closer" },
+    { q: "Sing one iconic 80s anthem OR one huge 2000s pop hit for the rest of the year?", a: "80s Anthem", b: "2000s Pop Hit" },
+    { q: "Have the crowd scream your name before you start OR sing every chorus back at you?", a: "Crowd Intro", b: "Crowd Chorus" },
+    { q: "Nail the key change OR nail the final pose?", a: "Key Change", b: "Final Pose" },
+    { q: "Take a guaranteed standing ovation OR win the loudest applause meter all night?", a: "Standing Ovation", b: "Applause Meter" },
+    { q: "Be remembered for one legendary note OR one legendary stage move?", a: "Legendary Note", b: "Legendary Move" },
+    { q: "Sing only throwback anthems tonight OR only current chart songs tonight?", a: "Throwback Anthems", b: "Current Charts" },
+    { q: "Get first pick of every song OR always get the ideal slot in the lineup?", a: "First Song Pick", b: "Best Lineup Slot" }
 ];

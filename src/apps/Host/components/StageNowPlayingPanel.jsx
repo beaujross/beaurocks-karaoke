@@ -41,6 +41,7 @@ const StageNowPlayingPanel = ({
     onEndPerformance,
     onReturnCurrentToQueue,
     progressStageToNext,
+    showStageSummaryHeader = true,
     styles,
     emoji
 }) => {
@@ -291,89 +292,91 @@ const StageNowPlayingPanel = ({
 
     return (
         <>
-        <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 mb-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Live Stage</div>
-                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
-                    {current ? 'Live' : 'Idle'}
-                </span>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                    {!!roomCode && (
-                        <div className="flex items-center gap-2 bg-black/40 border border-cyan-400/35 px-2 py-1 rounded-full">
-                            <span className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Room</span>
-                            <span className="text-sm font-bebas text-cyan-200 tracking-[0.24em]">{roomCode}</span>
-                        </div>
-                    )}
-                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
-                        <i className="fa-solid fa-users text-white/70"></i>
-                        {lobbyCount}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
-                        <i className="fa-solid fa-list text-white/70"></i>
-                        {queueCount}
-                    </div>
-                    {needsAttentionCount > 0 ? (
-                        <div className="flex items-center gap-1 text-xs font-bold text-amber-100 bg-amber-500/10 border border-amber-300/25 px-2.5 py-1 rounded-full">
-                            <i className="fa-solid fa-triangle-exclamation text-amber-200"></i>
-                            {needsAttentionCount}
-                        </div>
-                    ) : null}
-                    {readyQueueCount > 0 ? (
-                        <div className="flex items-center gap-1 text-xs font-bold text-cyan-100 bg-cyan-500/10 border border-cyan-300/25 px-2.5 py-1 rounded-full">
-                            <i className="fa-solid fa-wave-square text-cyan-200"></i>
-                            {readyQueueCount}
-                        </div>
-                    ) : null}
-                    {assignedQueueCount > 0 ? (
-                        <div className="flex items-center gap-1 text-xs font-bold text-violet-100 bg-violet-500/10 border border-violet-300/25 px-2.5 py-1 rounded-full">
-                            <i className="fa-solid fa-link text-violet-200"></i>
-                            {assignedQueueCount}
-                        </div>
-                    ) : null}
-                    <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
-                        <i className="fa-solid fa-clock text-white/70"></i>
-                        {formatWaitTime(waitTimeSec)}
-                    </div>
+        {showStageSummaryHeader ? (
+            <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3 mb-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-200">Live Stage</div>
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.15em] border ${current ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100' : 'border-zinc-600 bg-zinc-900/70 text-zinc-300'}`}>
+                        {current ? 'Live' : 'Idle'}
+                    </span>
                 </div>
-                <div className="flex items-center gap-2">
-                    {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold text-xs">{emoji.mic} APPLAUSE!</div>)}
-                    {room?.bouncerMode && (<div className="text-red-400 font-bold text-xs">{emoji.lock} LOCKED</div>)}
-                </div>
-            </div>
-            {autoDj && (
-                <div className="mt-3 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                        <div className={`text-[10px] uppercase tracking-[0.18em] ${autoDjSequenceSummary?.tone === 'danger' ? 'text-rose-200' : autoDjSequenceSummary?.tone === 'warning' ? 'text-amber-200' : autoDjSequenceSummary?.tone === 'success' ? 'text-emerald-200' : 'text-cyan-200'}`}>
-                            {autoDjSequenceSummary?.title || 'Auto DJ'}
-                        </div>
-                        <div className="text-[10px] text-zinc-300 truncate max-w-[50%]">{autoDjSequenceSummary?.detail || 'Queue runner active'}</div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-4 gap-1">
-                        {autoDjStepItems.map((step) => (
-                            <div
-                                key={step.id}
-                                className={`rounded px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-center border ${
-                                    step.status === 'complete'
-                                        ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100'
-                                        : step.status === 'active'
-                                            ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
-                                            : step.status === 'retrying'
-                                                ? 'border-amber-300/45 bg-amber-500/15 text-amber-100'
-                                                : step.status === 'error'
-                                                    ? 'border-rose-300/45 bg-rose-500/15 text-rose-100'
-                                                    : 'border-white/15 bg-black/25 text-zinc-300'
-                                }`}
-                                title={step.retries > 0 ? `${step.label} retries: ${step.retries}` : step.label}
-                            >
-                                {step.short}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {!!roomCode && (
+                            <div className="flex items-center gap-2 bg-black/40 border border-cyan-400/35 px-2 py-1 rounded-full">
+                                <span className="text-[10px] uppercase tracking-[0.25em] text-cyan-200">Room</span>
+                                <span className="text-sm font-bebas text-cyan-200 tracking-[0.24em]">{roomCode}</span>
                             </div>
-                        ))}
+                        )}
+                        <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-users text-white/70"></i>
+                            {lobbyCount}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-list text-white/70"></i>
+                            {queueCount}
+                        </div>
+                        {needsAttentionCount > 0 ? (
+                            <div className="flex items-center gap-1 text-xs font-bold text-amber-100 bg-amber-500/10 border border-amber-300/25 px-2.5 py-1 rounded-full">
+                                <i className="fa-solid fa-triangle-exclamation text-amber-200"></i>
+                                {needsAttentionCount}
+                            </div>
+                        ) : null}
+                        {readyQueueCount > 0 ? (
+                            <div className="flex items-center gap-1 text-xs font-bold text-cyan-100 bg-cyan-500/10 border border-cyan-300/25 px-2.5 py-1 rounded-full">
+                                <i className="fa-solid fa-wave-square text-cyan-200"></i>
+                                {readyQueueCount}
+                            </div>
+                        ) : null}
+                        {assignedQueueCount > 0 ? (
+                            <div className="flex items-center gap-1 text-xs font-bold text-violet-100 bg-violet-500/10 border border-violet-300/25 px-2.5 py-1 rounded-full">
+                                <i className="fa-solid fa-link text-violet-200"></i>
+                                {assignedQueueCount}
+                            </div>
+                        ) : null}
+                        <div className="flex items-center gap-1 text-xs font-bold text-white/85 bg-black/40 border border-white/10 px-2.5 py-1 rounded-full">
+                            <i className="fa-solid fa-clock text-white/70"></i>
+                            {formatWaitTime(waitTimeSec)}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold text-xs">{emoji.mic} APPLAUSE!</div>)}
+                        {room?.bouncerMode && (<div className="text-red-400 font-bold text-xs">{emoji.lock} LOCKED</div>)}
                     </div>
                 </div>
-            )}
-        </div>
+                {autoDj && (
+                    <div className="mt-3 rounded-lg border border-cyan-400/25 bg-black/35 px-2.5 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className={`text-[10px] uppercase tracking-[0.18em] ${autoDjSequenceSummary?.tone === 'danger' ? 'text-rose-200' : autoDjSequenceSummary?.tone === 'warning' ? 'text-amber-200' : autoDjSequenceSummary?.tone === 'success' ? 'text-emerald-200' : 'text-cyan-200'}`}>
+                                {autoDjSequenceSummary?.title || 'Auto DJ'}
+                            </div>
+                            <div className="text-[10px] text-zinc-300 truncate max-w-[50%]">{autoDjSequenceSummary?.detail || 'Queue runner active'}</div>
+                        </div>
+                        <div className="mt-2 grid grid-cols-4 gap-1">
+                            {autoDjStepItems.map((step) => (
+                                <div
+                                    key={step.id}
+                                    className={`rounded px-1.5 py-1 text-[9px] uppercase tracking-[0.12em] text-center border ${
+                                        step.status === 'complete'
+                                            ? 'border-emerald-300/35 bg-emerald-500/15 text-emerald-100'
+                                            : step.status === 'active'
+                                                ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100'
+                                                : step.status === 'retrying'
+                                                    ? 'border-amber-300/45 bg-amber-500/15 text-amber-100'
+                                                    : step.status === 'error'
+                                                        ? 'border-rose-300/45 bg-rose-500/15 text-rose-100'
+                                                        : 'border-white/15 bg-black/25 text-zinc-300'
+                                    }`}
+                                    title={step.retries > 0 ? `${step.label} retries: ${step.retries}` : step.label}
+                                >
+                                    {step.short}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        ) : null}
         {current ? (
             <div className="relative">
                 {current.backingAudioOnly && (

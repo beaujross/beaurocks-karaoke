@@ -1,5 +1,8 @@
 import React from 'react';
+import { deleteDoc, doc, db } from '../../../lib/firebase';
+import { APP_ID } from '../../../lib/assets';
 import QueueSongCard from './QueueSongCard';
+import { requiresBackingHostReview } from '../../../lib/requestModes';
 
 const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
     <button
@@ -20,6 +23,175 @@ const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
     </button>
 );
 
+const buildQueueSongLabel = (song = {}) => {
+    const singerName = String(song?.singerName || '').trim();
+    const songTitle = String(song?.songTitle || '').trim();
+    if (singerName && songTitle) return `${singerName} - ${songTitle}`;
+    return singerName || songTitle || 'Queue item';
+};
+
+const QueueInspector = ({
+    song = null,
+    styles,
+    onStart,
+    onApprovePending,
+    onMoveNext,
+    onHoldSinger,
+    onRestoreSinger,
+    onOpenEdit,
+    onRemove,
+    onAssignQueueSongToRunOfShowItem,
+    runOfShowAssignableSlots = [],
+}) => {
+    const [selectedSlotId, setSelectedSlotId] = React.useState('');
+
+    React.useEffect(() => {
+        if (!song?.id) {
+            setSelectedSlotId('');
+            return;
+        }
+        const fallbackSlotId = String(song?.runOfShowItemId || runOfShowAssignableSlots?.[0]?.id || '').trim();
+        setSelectedSlotId(fallbackSlotId);
+    }, [runOfShowAssignableSlots, song?.id, song?.runOfShowItemId]);
+
+    if (!song?.id) return null;
+    const songStatus = String(song?.status || '').trim().toLowerCase();
+    const isHeld = songStatus === 'held';
+    const needsTrackReview = ['requested', 'pending'].includes(songStatus) && requiresBackingHostReview(song?.resolutionStatus);
+    const isPendingApproval = songStatus === 'pending' && !needsTrackReview;
+    const isAssigned = songStatus === 'assigned';
+    const selectedSlot = runOfShowAssignableSlots.find((slot) => slot.id === selectedSlotId) || null;
+
+    return (
+        <div
+            data-feature-id="queue-song-inspector"
+            className="mb-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-violet-500/[0.08] px-3 py-3"
+        >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">Queue Inspector</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{buildQueueSongLabel(song)}</div>
+                    <div className="mt-1 text-xs text-zinc-400">
+                        {String(song?.artist || '').trim() || 'Artist not set'}{song?.duration ? ` | ${song.duration}s` : ''}
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]">
+                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{songStatus || 'queued'}</span>
+                    {song?.runOfShowItemId ? (
+                        <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Linked To Show</span>
+                    ) : null}
+                </div>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {isHeld ? (
+                    <button
+                        type="button"
+                        onClick={() => onRestoreSinger?.(song.id)}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                    >
+                        Restore Singer
+                    </button>
+                ) : needsTrackReview ? (
+                    <button
+                        type="button"
+                        onClick={() => onOpenEdit?.(song)}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                    >
+                        Pick Backing
+                    </button>
+                ) : isPendingApproval ? (
+                    <button
+                        type="button"
+                        onClick={() => onApprovePending?.(song.id)}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                    >
+                        Approve Request
+                    </button>
+                ) : isAssigned ? (
+                    <button
+                        type="button"
+                        onClick={() => onOpenEdit?.(song)}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                    >
+                        Edit Linked Song
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => onStart?.(song.id)}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                    >
+                        Start Singer
+                    </button>
+                )}
+                {!isHeld && !needsTrackReview && !isPendingApproval && !isAssigned ? (
+                    <button
+                        type="button"
+                        onClick={() => onMoveNext?.(song.id)}
+                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] text-[11px]`}
+                    >
+                        Move To Next
+                    </button>
+                ) : null}
+                <button
+                    type="button"
+                    onClick={() => onOpenEdit?.(song)}
+                    className={`${styles.btnStd} ${styles.btnSecondary} min-h-[40px] text-[11px]`}
+                >
+                    Edit Details
+                </button>
+                {!isHeld && !needsTrackReview && !isPendingApproval && !isAssigned ? (
+                    <button
+                        type="button"
+                        onClick={() => onHoldSinger?.(song.id, 'not_here')}
+                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] text-[11px]`}
+                    >
+                        Hold Singer
+                    </button>
+                ) : null}
+                <button
+                    type="button"
+                    onClick={() => onRemove?.(song.id)}
+                    className={`${styles.btnStd} ${styles.btnDanger} min-h-[40px] text-[11px]`}
+                >
+                    Remove From Queue
+                </button>
+            </div>
+
+            {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
+                !isHeld && !needsTrackReview && !isPendingApproval ? (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Run Of Show Slot</div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select
+                            value={selectedSlotId}
+                            onChange={(event) => setSelectedSlotId(event.target.value)}
+                            className="min-w-[180px] rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                        >
+                            {runOfShowAssignableSlots.map((slot) => (
+                                <option key={slot.id} value={slot.id}>{slot.label}</option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            disabled={!selectedSlotId}
+                            onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
+                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] px-3 text-[11px] disabled:opacity-45`}
+                        >
+                            {song?.runOfShowItemId ? 'Reassign Slot' : 'Assign Slot'}
+                        </button>
+                    </div>
+                    {selectedSlot ? (
+                        <div className="mt-2 text-xs text-zinc-400">Selected slot: {selectedSlot.label}</div>
+                    ) : null}
+                </div>
+                ) : null
+            ) : null}
+        </div>
+    );
+};
+
 const QueueListPanel = ({
     showQueueList,
     showQueueSummaryBar = true,
@@ -35,6 +207,7 @@ const QueueListPanel = ({
     assignedQueueOpen = true,
     onToggleAssignedQueue,
     held = [],
+    reviewRequired = [],
     onApprovePending,
     onDeletePending,
     onMoveNext,
@@ -65,8 +238,27 @@ const QueueListPanel = ({
     queueSurfaceCounts = null,
     onAssignQueueSongToRunOfShowItem
 }) => {
-    if (!showQueueList) return null;
+    const [selectedSongId, setSelectedSongId] = React.useState('');
     const counts = queueSurfaceCounts || {};
+    const allSongs = React.useMemo(
+        () => [...reviewRequired, ...pending, ...queue, ...assigned, ...held],
+        [assigned, held, pending, queue, reviewRequired]
+    );
+    const selectedSong = React.useMemo(
+        () => allSongs.find((song) => song.id === selectedSongId) || queue[0] || pending[0] || assigned[0] || held[0] || null,
+        [allSongs, assigned, held, pending, queue, selectedSongId]
+    );
+
+    React.useEffect(() => {
+        if (!selectedSong?.id && selectedSongId) {
+            setSelectedSongId('');
+            return;
+        }
+        if (!selectedSongId && selectedSong?.id) {
+            setSelectedSongId(selectedSong.id);
+        }
+    }, [selectedSong?.id, selectedSongId]);
+    if (!showQueueList) return null;
     const needsAttentionCount = Number.isFinite(Number(counts.needsAttention))
         ? Number(counts.needsAttention)
         : (Number(reviewRequiredCount || 0) + Number(pending.length || 0));
@@ -129,10 +321,10 @@ const QueueListPanel = ({
             eyebrow: 'Queue needs attention',
             title: `${needsAttentionCount} request${needsAttentionCount === 1 ? '' : 's'} waiting on host action`,
             detail: reviewRequiredCount > 0 && pending.length > 0
-                ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the queue.`
+                ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the room.`
                 : reviewRequiredCount > 0
                     ? `${reviewRequiredCount} request${reviewRequiredCount === 1 ? '' : 's'} still need a host track pick.`
-                : 'Clear the approval stack so the live queue reflects what can actually go on stage.',
+                : 'Clear these first so the live lane reflects what can actually go on stage.',
             toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
             accentClass: 'text-amber-100'
         }
@@ -175,7 +367,7 @@ const QueueListPanel = ({
     return (
         <>
             {showQueueSummaryBar ? (
-                <div className={`sticky top-0 z-10 mb-3 rounded-2xl border px-3 backdrop-blur shadow-[0_10px_26px_rgba(0,0,0,0.22)] ${queueSummary.toneClass} ${compactViewport ? 'py-2.5' : 'py-3'}`}>
+                <div className={`mb-3 rounded-2xl border px-3 shadow-[0_10px_26px_rgba(0,0,0,0.18)] ${queueSummary.toneClass} ${compactViewport ? 'py-2.5' : 'py-3'}`}>
                     <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                             <div className={`text-[10px] uppercase tracking-[0.22em] ${queueSummary.accentClass}`}>{queueSummary.eyebrow}</div>
@@ -193,7 +385,7 @@ const QueueListPanel = ({
                         ) : null}
                     </div>
                     {showQueueSummaryChips ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
                             {queueSummaryChips.map((chip) => (
                                 <span key={chip.key} className={chip.className}>{chip.label}</span>
                             ))}
@@ -211,12 +403,25 @@ const QueueListPanel = ({
                             Show Queue Bar
                         </button>
                     </div>
-                ) : null
+            ) : null
             )}
+            <QueueInspector
+                song={selectedSong}
+                styles={styles}
+                onStart={(songId) => updateStatus(songId, 'performing')}
+                onApprovePending={onApprovePending}
+                onMoveNext={onMoveNext}
+                onHoldSinger={onHoldSinger}
+                onRestoreSinger={onRestoreSinger}
+                onOpenEdit={startEdit}
+                onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                runOfShowAssignableSlots={runOfShowAssignableSlots}
+            />
             {pending.length > 0 ? (
                 <div className={`mb-3 border-b border-white/10 ${compactViewport ? 'pb-1.5' : 'pb-2'}`}>
                     <QueueSectionToggle
-                        label="Needs Review"
+                        label="Awaiting Approval"
                         count={pending.length}
                         toneClass="text-orange-300"
                         open={pendingQueueOpen}
@@ -224,17 +429,37 @@ const QueueListPanel = ({
                     />
                     {pendingQueueOpen ? (
                         <>
-                        {pending.map(s => (
-                            <div key={s.id} className={`bg-orange-950/30 rounded border border-orange-500/30 mb-2 ${compactViewport ? 'p-1.5' : 'p-2'} flex justify-between items-center gap-2`}>
-                                <div className="min-w-0">
-                                    <div className={`${compactViewport ? 'text-[13px]' : 'text-sm'} font-bold truncate`}>{s.songTitle}</div>
-                                    <div className={`${compactViewport ? 'text-[11px]' : 'text-sm'} text-zinc-400 truncate`}>{s.singerName}</div>
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => onApprovePending(s.id)} className={`${styles.btnStd} ${styles.btnSuccess} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2'}`}>OK</button>
-                                    <button onClick={() => onDeletePending(s.id)} className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px]' : 'px-2'}`}>X</button>
-                                </div>
-                            </div>
+                        {pending.map((s, i) => (
+                            <QueueSongCard
+                                key={s.id}
+                                song={s}
+                                index={i}
+                                dragQueueId={dragQueueId}
+                                dragOverId={dragOverId}
+                                setDragQueueId={setDragQueueId}
+                                setDragOverId={setDragOverId}
+                                reorderQueue={reorderQueue}
+                                touchReorderEnabled={false}
+                                touchReorderMode={false}
+                                handleTouchStart={handleTouchStart}
+                                handleTouchMove={handleTouchMove}
+                                handleTouchEnd={handleTouchEnd}
+                                updateStatus={updateStatus}
+                                onApproveAudienceBacking={onApproveAudienceBacking}
+                                onAvoidAudienceBacking={onAvoidAudienceBacking}
+                                onMoveNext={onMoveNext}
+                                onRestoreSinger={onRestoreSinger}
+                                backingDecisionBusyKey={backingDecisionBusyKey}
+                                statusPill={statusPill}
+                                styles={styles}
+                                compactViewport={compactViewport}
+                                selected={selectedSong?.id === s.id}
+                                onSelect={(song) => setSelectedSongId(song?.id || '')}
+                                runOfShowAssignableSlots={runOfShowAssignableSlots}
+                                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                                onApprovePending={onApprovePending}
+                                onDeletePending={onDeletePending}
+                            />
                         ))}
                         </>
                     ) : null}
@@ -281,8 +506,12 @@ const QueueListPanel = ({
                         statusPill={statusPill}
                         styles={styles}
                         compactViewport={compactViewport}
+                        selected={selectedSong?.id === s.id}
+                        onSelect={(song) => setSelectedSongId(song?.id || '')}
                         runOfShowAssignableSlots={runOfShowAssignableSlots}
                         onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                        onApprovePending={onApprovePending}
+                        onDeletePending={onDeletePending}
                     />
                 )) : null}
             </div>
@@ -325,8 +554,12 @@ const QueueListPanel = ({
                                 statusPill={statusPill}
                                 styles={styles}
                                 compactViewport={compactViewport}
+                                selected={selectedSong?.id === s.id}
+                                onSelect={(song) => setSelectedSongId(song?.id || '')}
                                 runOfShowAssignableSlots={runOfShowAssignableSlots}
                                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                                onApprovePending={onApprovePending}
+                                onDeletePending={onDeletePending}
                             />
                         ))}
                         </>
@@ -370,8 +603,12 @@ const QueueListPanel = ({
                             statusPill={statusPill}
                             styles={styles}
                             compactViewport={compactViewport}
+                            selected={selectedSong?.id === s.id}
+                            onSelect={(song) => setSelectedSongId(song?.id || '')}
                             runOfShowAssignableSlots={runOfShowAssignableSlots}
                             onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                            onApprovePending={onApprovePending}
+                            onDeletePending={onDeletePending}
                         />
                     ))}
                 </div>

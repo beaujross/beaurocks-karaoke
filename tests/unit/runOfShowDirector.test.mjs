@@ -6,6 +6,9 @@ import {
   RUN_OF_SHOW_PROGRAM_MODES,
   RUN_OF_SHOW_PERFORMER_MODES,
   buildRunOfShowQueueDocId,
+  getRunOfShowConveyorPhase,
+  getRunOfShowConveyorSnapshot,
+  getRunOfShowReleaseWindowTally,
   getRunOfShowAutomationPauseState,
   getRunOfShowBlockedActionLabel,
   getRunOfShowAdvanceMode,
@@ -104,6 +107,87 @@ test("runOfShowDirector updates item state and blocks unapproved user-submitted 
   assert.equal(nextItem.status, "ready");
   assert.equal(isRunOfShowItemReady(nextItem), true);
   assert.equal(buildRunOfShowQueueDocId("br12", nextItem.id).startsWith("ros_BR12_"), true);
+});
+
+test("runOfShowDirector derives conveyor phases without changing stored statuses", () => {
+  const draftItem = createRunOfShowItem("announcement", {
+    title: "Doors",
+    status: "draft",
+  });
+  const readyItem = createRunOfShowItem("announcement", {
+    title: "Sponsor beat",
+    status: "ready",
+  });
+  const stagedItem = createRunOfShowItem("performance", {
+    title: "Feature singer",
+    status: "staged",
+  });
+  const liveItem = createRunOfShowItem("announcement", {
+    title: "Live host beat",
+    status: "live",
+  });
+  const blockedItem = createRunOfShowItem("performance", {
+    title: "Needs backing",
+    status: "blocked",
+  });
+
+  const director = createDefaultRunOfShowDirector({
+    items: [liveItem, stagedItem, readyItem, draftItem, blockedItem],
+  });
+
+  const snapshot = getRunOfShowConveyorSnapshot(director);
+  assert.equal(snapshot.liveItem?.id, liveItem.id);
+  assert.equal(snapshot.flightedItem?.id, stagedItem.id);
+  assert.equal(snapshot.onDeckItem?.id, readyItem.id);
+  assert.deepEqual(snapshot.laterItems.map((item) => item.id), [draftItem.id, blockedItem.id]);
+
+  assert.equal(getRunOfShowConveyorPhase(director, liveItem), "live");
+  assert.equal(getRunOfShowConveyorPhase(director, stagedItem), "flighted");
+  assert.equal(getRunOfShowConveyorPhase(director, readyItem), "on_deck");
+  assert.equal(getRunOfShowConveyorPhase(director, draftItem), "planned");
+  assert.equal(getRunOfShowConveyorPhase(director, blockedItem), "blocked");
+  assert.equal(normalizeRunOfShowDirector(director).items.find((item) => item.id === readyItem.id)?.beltPhase, "on_deck");
+  assert.equal(normalizeRunOfShowDirector(director).items.find((item) => item.id === stagedItem.id)?.beltPhase, "flighted");
+});
+
+test("runOfShowDirector normalizes release-window governance defaults", () => {
+  const optionalItem = createRunOfShowItem("would_you_rather_break", {
+    title: "Crowd pick"
+  });
+  const director = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    items: [optionalItem],
+    releaseWindow: {
+      active: true,
+      itemId: optionalItem.id,
+      governanceMode: "cohost_vote",
+      votesByUid: {
+        co_1: "slot_scene",
+        stranger: "keep_queue_moving"
+      }
+    }
+  }));
+
+  assert.equal(director.items[0].governanceMode, "crowd_signal");
+  assert.equal(director.items[0].releasePolicy, "suggest_then_host_confirm");
+  assert.equal(director.releaseWindow.active, true);
+  assert.equal(director.releaseWindow.governanceMode, "cohost_vote");
+  assert.deepEqual(
+    director.releaseWindow.votesByUid,
+    {
+      co_1: "slot_scene",
+      stranger: "keep_queue_moving"
+    }
+  );
+  assert.deepEqual(
+    getRunOfShowReleaseWindowTally(director.releaseWindow, { coHosts: ["co_1"] }),
+    {
+      slotSceneCount: 1,
+      keepQueueMovingCount: 0,
+      totalVotes: 1,
+      leadingChoice: "slot_scene",
+      summary: "1-0 favor slotting the scene"
+    }
+  );
 });
 
 test("runOfShowDirector preserves in-progress spacing for editable text fields", () => {
@@ -355,6 +439,64 @@ test("runOfShowDirector gives winner declaration blocks host-controlled defaults
   assert.equal(item.hostAdvanceMinSec, 20);
   assert.equal(item.requireHostAdvance, true);
   assert.equal(isRunOfShowItemReady(item), true);
+});
+
+test("runOfShowDirector seeds trivia and WYR breaks from the built-in question banks", () => {
+  const triviaItem = createRunOfShowItem("trivia_break", {
+    modeLaunchPlan: {
+      modeKey: "trivia_pop",
+    },
+  }, 123456);
+  const wyrItem = createRunOfShowItem("would_you_rather_break", {
+    modeLaunchPlan: {
+      modeKey: "wyr",
+    },
+  }, 123456);
+
+  assert.match(triviaItem.modeLaunchPlan.launchConfig.question, /\?/);
+  assert.equal(Array.isArray(triviaItem.modeLaunchPlan.launchConfig.options), true);
+  assert.equal(triviaItem.modeLaunchPlan.launchConfig.options.length, 4);
+  assert.equal(triviaItem.modeLaunchPlan.launchConfig.contentSource, "builtin_bank");
+  assert.equal(getRunOfShowItemReadiness(triviaItem).ready, true);
+
+  assert.match(wyrItem.modeLaunchPlan.launchConfig.question, /\?/);
+  assert.equal(Array.isArray(wyrItem.modeLaunchPlan.launchConfig.options), true);
+  assert.equal(wyrItem.modeLaunchPlan.launchConfig.options.length, 2);
+  assert.equal(wyrItem.modeLaunchPlan.launchConfig.contentSource, "builtin_bank");
+  assert.equal(getRunOfShowItemReadiness(wyrItem).ready, true);
+});
+
+test("runOfShowDirector upgrades old placeholder interactive breaks but blocks partial custom prompts", () => {
+  const placeholderTriviaItem = createRunOfShowItem("trivia_break", {
+    modeLaunchPlan: {
+      modeKey: "trivia_pop",
+      launchConfig: {
+        question: "Quick room trivia check-in",
+        optionsCsv: "Option A, Option B, Option C"
+      },
+    },
+  }, 123456);
+  const partialCustomTriviaItem = createRunOfShowItem("trivia_break", {
+    modeLaunchPlan: {
+      modeKey: "trivia_pop",
+      launchConfig: {
+        question: "Name the host's favorite encore song?",
+      },
+    },
+  });
+
+  assert.notEqual(
+    placeholderTriviaItem.modeLaunchPlan.launchConfig.question,
+    "Quick room trivia check-in",
+  );
+  assert.equal(placeholderTriviaItem.modeLaunchPlan.launchConfig.options.length, 4);
+
+  const readiness = getRunOfShowItemReadiness(partialCustomTriviaItem);
+  assert.equal(readiness.ready, false);
+  assert.deepEqual(
+    readiness.blockers.map((entry) => entry.key),
+    ["options_missing"],
+  );
 });
 
 test("runOfShowDirector progression decisions respect host minimum live windows", () => {

@@ -122,6 +122,20 @@ test('host app declares Apple playback refs before assigning the sync callback',
   );
 });
 
+test('host app declares room state before Apple playback effects depend on it', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const roomStateIndex = hostAppSource.indexOf('const [room, setRoom] = useState(null);');
+  const appleSyncResetEffectIndex = hostAppSource.indexOf("applePlaybackSyncKeyRef.current = '';");
+
+  assert.notEqual(roomStateIndex, -1, 'Host app should declare room state in the main host component');
+  assert.notEqual(appleSyncResetEffectIndex, -1, 'Host app should keep the Apple playback sync reset effect');
+  assert.equal(
+    roomStateIndex < appleSyncResetEffectIndex,
+    true,
+    'Room state must be declared before Apple playback effects reference it in dependency arrays',
+  );
+});
+
 test('room settings avoids duplicate-looking event and base preset choices', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
 

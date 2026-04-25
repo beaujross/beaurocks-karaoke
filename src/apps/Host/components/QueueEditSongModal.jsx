@@ -38,27 +38,46 @@ const QueueEditSongModal = ({
             : lyricsStatus === 'pending'
                 ? 'Lyrics resolving'
                 : 'No lyrics loaded';
+    const drawerTitle = String(editForm.title || song?.songTitle || '').trim() || 'Queue item';
+    const drawerSinger = String(editForm.singer || song?.singerName || '').trim() || 'Singer not set';
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 md:p-6 backdrop-blur-sm">
-            <div className={`${styles.panel} w-full max-w-5xl border-white/20 overflow-hidden`}>
-                <div className="px-5 py-4 border-b border-white/10 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="fixed inset-0 z-[160] bg-black/70 backdrop-blur-sm">
+            <button
+                type="button"
+                aria-label="Close queue editor"
+                className="absolute inset-0 h-full w-full cursor-default"
+                onClick={onCancel}
+            />
+            <div
+                data-feature-id="queue-edit-drawer"
+                className="absolute inset-y-0 right-0 flex h-full w-full max-w-[min(100vw,52rem)]"
+            >
+                <div className={`${styles.panel} ml-auto flex h-full w-full flex-col overflow-hidden rounded-none border-l border-white/20 border-r-0 border-y-0`}>
+                <div className="px-5 py-4 border-b border-white/10 flex flex-col gap-3 bg-black/20">
                     <div>
-                        <div className={styles.header}>EDIT SONG METADATA</div>
-                        <div className="mt-1 text-sm text-zinc-400">
-                            Update playback, lyrics, and queue metadata without leaving the stage deck.
-                        </div>
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Queue Inspector</div>
+                        <div className="mt-1 text-xl font-semibold text-white">{drawerTitle}</div>
+                        <div className="mt-1 text-sm text-zinc-400">{drawerSinger}</div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.14em]">
-                        <span className={`rounded-full border px-3 py-1 ${statusToneClass}`}>{statusLabel}</span>
-                        <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-100">
-                            {playbackLabel}
-                        </span>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.14em]">
+                            <span className={`rounded-full border px-3 py-1 ${statusToneClass}`}>{statusLabel}</span>
+                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 text-cyan-100">
+                                {playbackLabel}
+                            </span>
+                        </div>
+                        <button onClick={onCancel} className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[11px]`}>
+                            Close
+                        </button>
+                    </div>
+                    <div className="text-sm text-zinc-400">
+                        Update playback, lyrics, and queue metadata without leaving the stage deck.
                     </div>
                 </div>
 
-                <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-5 space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <input
                             value={editForm.title}
                             onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
@@ -85,7 +104,7 @@ const QueueEditSongModal = ({
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                         <section className="rounded-2xl border border-white/10 bg-black/25 p-4 space-y-3">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
@@ -161,7 +180,7 @@ const QueueEditSongModal = ({
                             <textarea
                                 value={editForm.lyrics}
                                 onChange={(e) => setEditForm({ ...editForm, lyrics: e.target.value })}
-                                className={`${styles.input} h-56 font-mono host-lyrics-input`}
+                                className={`${styles.input} min-h-[18rem] font-mono host-lyrics-input`}
                                 placeholder="Paste custom lyrics here if the default lyrics are missing or wrong..."
                             />
                         </section>
@@ -215,6 +234,7 @@ const QueueEditSongModal = ({
                 <div className="flex gap-2 justify-end px-5 py-4 border-t border-white/10 bg-black/20">
                     <button onClick={onCancel} className={`${styles.btnStd} ${styles.btnNeutral}`}>Cancel</button>
                     <button onClick={onSave} className={`${styles.btnStd} ${styles.btnPrimary} px-8`}>Save changes</button>
+                </div>
                 </div>
             </div>
         </div>

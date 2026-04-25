@@ -98,6 +98,10 @@ import {
 } from '../../lib/crowdObjectiveModes';
 import { buildSurfaceUrl } from '../../lib/surfaceDomains';
 import {
+    getRunOfShowOperatorRole,
+    getRunOfShowReleaseWindowTally
+} from '../../lib/runOfShowDirector';
+import {
     getVolleyOrbMobileMainLine,
     getVolleyOrbBaseAction,
     getVolleyOrbUltimate,
@@ -1042,6 +1046,33 @@ const SingerApp = ({ roomCode, uid }) => {
             routeUid: uid
         }),
         [authReadyUid, uid]
+    );
+    const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
+        uid: activeUid || user?.uid || '',
+        hostUid: room?.hostUid || '',
+        hostUids: room?.hostUids || [],
+        roles: room?.runOfShowRoles || {}
+    }), [activeUid, room?.hostUid, room?.hostUids, room?.runOfShowRoles, user?.uid]);
+    const audienceReleaseWindow = useMemo(() => {
+        const value = room?.runOfShowDirector?.releaseWindow;
+        if (!value || typeof value !== 'object' || value.active !== true) return null;
+        return value;
+    }, [room?.runOfShowDirector?.releaseWindow]);
+    const releaseWindowTally = useMemo(
+        () => getRunOfShowReleaseWindowTally(audienceReleaseWindow || {}, room?.runOfShowRoles || {}),
+        [audienceReleaseWindow, room?.runOfShowRoles]
+    );
+    const canSeeAudienceReleaseWindow = useMemo(() => {
+        if (!audienceReleaseWindow?.active) return false;
+        const governanceMode = String(audienceReleaseWindow.governanceMode || '').trim().toLowerCase();
+        if (governanceMode === 'cohost_vote') {
+            return runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
+        }
+        return governanceMode === 'crowd_signal' || governanceMode === 'crowd_vote';
+    }, [audienceReleaseWindow?.active, audienceReleaseWindow?.governanceMode, runOfShowOperatorRole]);
+    const myReleaseWindowVote = useMemo(
+        () => String(audienceReleaseWindow?.votesByUid?.[activeUid] || '').trim().toLowerCase(),
+        [activeUid, audienceReleaseWindow?.votesByUid]
     );
     const waitForJoinAuthUid = useCallback(async (timeoutMs = 2500) => {
         const currentUid = String(auth.currentUser?.uid || '').trim();
@@ -10667,6 +10698,20 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (tab === 'home') setStageHomePanelExpanded(false);
         setStagePanelCollapsedForTab(true, tab);
     };
+    const castRunOfShowReleaseVote = async (choice = 'slot_scene') => {
+        const safeChoice = String(choice || '').trim().toLowerCase();
+        if (!roomCode || !activeUid || !audienceReleaseWindow?.active) return;
+        if (!['slot_scene', 'keep_queue_moving'].includes(safeChoice)) return;
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
+                [`runOfShowDirector.releaseWindow.votesByUid.${activeUid}`]: safeChoice
+            });
+            toast(safeChoice === 'slot_scene' ? 'You voted to slot the scene.' : 'You voted to keep the queue moving.');
+        } catch (error) {
+            console.warn('Run of show release vote failed', error);
+            toast('Could not submit that vote right now.');
+        }
+    };
 
     if(!user && !isMarketingDemoFixture) return joinScreen;
 
@@ -10738,6 +10783,48 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                   </div>
                   </div>
               </div>
+
+            {canSeeAudienceReleaseWindow && (
+                <div className="absolute inset-x-3 top-[104px] z-[92] pointer-events-auto md:inset-x-5">
+                    <div className="rounded-[1.6rem] border border-white/12 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(14,19,31,0.92))] px-4 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Release Window</div>
+                                <div className="mt-1 text-sm font-bold text-white">
+                                    {String(audienceReleaseWindow?.prompt || 'Should this scene slot in next?').trim()}
+                                </div>
+                                <div className="mt-1 text-xs text-zinc-400">
+                                    {String(audienceReleaseWindow?.itemTitle || 'Optional scene').trim()} | {String(audienceReleaseWindow?.governanceMode || 'crowd_signal').replaceAll('_', ' ')}
+                                </div>
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200">
+                                {releaseWindowTally.totalVotes || 0} votes
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => castRunOfShowReleaseVote('slot_scene')}
+                                className={`rounded-2xl border px-3 py-3 text-left ${myReleaseWindowVote === 'slot_scene' ? 'border-cyan-300/45 bg-cyan-500/14 text-cyan-50' : 'border-white/10 bg-black/20 text-white'}`}
+                            >
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Slot Scene</div>
+                                <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.slotSceneCount}</div>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => castRunOfShowReleaseVote('keep_queue_moving')}
+                                className={`rounded-2xl border px-3 py-3 text-left ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
+                            >
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-pink-200">Keep Singing</div>
+                                <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.keepQueueMovingCount}</div>
+                            </button>
+                        </div>
+                        <div className="mt-3 text-xs text-zinc-400">
+                            {releaseWindowTally.summary}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Local Reactions Layer */}
             <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden">{localReactions.map(r => (<div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.left}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div></div>))}</div>

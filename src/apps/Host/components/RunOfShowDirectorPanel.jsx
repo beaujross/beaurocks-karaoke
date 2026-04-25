@@ -12,6 +12,8 @@ import {
     RUN_OF_SHOW_PERFORMER_MODES,
     RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES,
     createRunOfShowItem,
+    getRunOfShowConveyorPhase,
+    getRunOfShowConveyorSnapshot,
     getRunOfShowHudActionKey,
     getRunOfShowHudState,
     getRunOfShowHudToneClass,
@@ -23,6 +25,8 @@ import {
     getRunOfShowItemLabel,
     getRunOfShowLiveItem,
     getRunOfShowOperatingHint,
+    getRunOfShowReleaseWindowPrompt,
+    getRunOfShowReleaseWindowTally,
     getRunOfShowStagedItem,
     hasRunOfShowTakeoverSoundtrackIdentity,
     isRunOfShowItemReady
@@ -592,7 +596,7 @@ const TIMELINE_LANE_META = Object.freeze({
     audience: { label: 'Audience Beats', detail: 'Trivia, games, buffers, breaks', tone: 'emerald' },
 });
 
-const textInputClass = 'w-full rounded-xl border border-cyan-300/24 bg-zinc-950/88 px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 outline-none shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-300/20 disabled:opacity-60';
+const textInputClass = 'w-full rounded-xl border border-cyan-300/24 bg-zinc-950/88 px-3 py-2.5 text-sm text-white caret-white placeholder:text-zinc-500 outline-none shadow-[inset_0_0_0_1px_rgba(34,211,238,0.04)] transition focus:border-cyan-300/55 focus:ring-2 focus:ring-cyan-300/20 disabled:opacity-60 [color-scheme:dark] [&:-webkit-autofill]:[-webkit-text-fill-color:#fff] [&:-webkit-autofill]:shadow-[inset_0_0_0px_1000px_rgba(9,9,11,0.96)] [&:-webkit-autofill:hover]:[-webkit-text-fill-color:#fff] [&:-webkit-autofill:hover]:shadow-[inset_0_0_0px_1000px_rgba(9,9,11,0.96)] [&:-webkit-autofill:focus]:[-webkit-text-fill-color:#fff] [&:-webkit-autofill:focus]:shadow-[inset_0_0_0px_1000px_rgba(9,9,11,0.96)]';
 const selectInputClass = `${textInputClass} appearance-none pr-10`;
 const surfaceClass = 'rounded-[28px] border border-white/10 bg-black/25';
 const _miniSurfaceClass = 'rounded-2xl border border-white/10 bg-black/20';
@@ -792,6 +796,19 @@ const statusTone = (status = '') => {
     if (key === 'complete') return 'border-zinc-300/20 bg-zinc-500/12 text-zinc-100';
     if (key === 'skipped') return 'border-zinc-300/20 bg-zinc-500/8 text-zinc-300';
     return 'border-white/10 bg-white/5 text-zinc-200';
+};
+
+const getConveyorPhaseLabel = (phase = '', fallback = '') => {
+    const safePhase = String(phase || '').trim().toLowerCase();
+    if (safePhase === 'live') return 'Live';
+    if (safePhase === 'flighted') return 'Flighted';
+    if (safePhase === 'on_deck') return 'On deck';
+    if (safePhase === 'warming') return 'Warming';
+    if (safePhase === 'blocked') return 'Blocked';
+    if (safePhase === 'completed') return 'Complete';
+    if (safePhase === 'skipped') return 'Skipped';
+    if (safePhase === 'planned') return 'Planned';
+    return fallback || 'Planned';
 };
 
 const sourceTone = (tone = 'zinc', active = false) => {
@@ -1004,11 +1021,7 @@ const buildGeneratedRunOfShowItems = (config = {}) => {
                 title: getRunOfShowItemLabel(interactiveType),
                 plannedDurationSec: interactiveType === 'announcement' ? 45 : 75,
                 modeLaunchPlan: interactiveType === 'announcement' ? undefined : {
-                    modeKey: interactiveType === 'trivia_break' ? 'trivia_pop' : interactiveType === 'would_you_rather_break' ? 'wyr' : 'crowd_play',
-                    launchConfig: {
-                        question: interactiveType === 'trivia_break' ? 'Quick room trivia check-in' : 'Crowd interaction moment',
-                        optionsCsv: 'Option A, Option B, Option C'
-                    }
+                    modeKey: interactiveType === 'trivia_break' ? 'trivia_pop' : interactiveType === 'would_you_rather_break' ? 'wyr' : 'crowd_play'
                 }
             }));
         }
@@ -2065,7 +2078,14 @@ const CompactTimelineOverview = ({
                             const readiness = readinessById[item.id] || null;
                             const pendingCount = Number(pendingCountsById[item.id] || 0);
                             const visual = getItemVisual(item.type);
-                            const label = item.id === liveItemId ? 'Live' : item.id === stagedItemId ? 'Staged' : item.id === nextItemId ? 'Next' : `#${segment.index + 1}`;
+                            const phase = item.id === liveItemId
+                                ? 'live'
+                                : item.id === stagedItemId
+                                    ? 'flighted'
+                                    : item.id === nextItemId
+                                        ? 'on_deck'
+                                        : '';
+                            const label = phase ? getConveyorPhaseLabel(phase) : `#${segment.index + 1}`;
                             const blocked = Array.isArray(readiness?.blockers) && readiness.blockers.length > 0;
                             const needsAttention = blocked || pendingCount > 0;
                             const isDragging = dragState?.itemId === item.id;
@@ -2201,7 +2221,7 @@ const CompactTimelineOverview = ({
     );
 };
 
-const LiveHudCard = ({ label, item, summary = '', note = '', badge = '', badgeTone = 'zinc', emptyLabel = 'Nothing queued.', onFocus }) => {
+const LiveHudCard = ({ label, item, phaseLabel = '', summary = '', note = '', badge = '', badgeTone = 'zinc', emptyLabel = 'Nothing queued.', onFocus }) => {
     const badgeToneClass = badgeTone === 'danger'
         ? 'border-amber-300/25 bg-amber-500/12 text-amber-100'
         : badgeTone === 'success'
@@ -2216,7 +2236,7 @@ const LiveHudCard = ({ label, item, summary = '', note = '', badge = '', badgeTo
             {item ? (
                 <div className="mt-3 space-y-3">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(item.status)}`}>{item.status}</span>
+                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusTone(item.status)}`}>{phaseLabel || getConveyorPhaseLabel(item.status, item.status)}</span>
                         <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">{getRunOfShowItemLabel(item.type)}</span>
                         {badge ? <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${badgeToneClass}`}>{badge}</span> : null}
                     </div>
@@ -2285,7 +2305,13 @@ const StoryboardTimeline = ({
                     const readiness = readinessById[item.id] || null;
                     const blockers = Array.isArray(readiness?.blockers) ? readiness.blockers.length : 0;
                     const pendingCount = Number(pendingCountsById[item.id] || 0);
-                    const sceneLabel = item.id === liveItemId ? 'Now' : item.id === stagedItemId ? 'Staged' : item.id === nextItemId ? 'Up next' : `Slot ${index + 1}`;
+                    const sceneLabel = item.id === liveItemId
+                        ? 'Now'
+                        : item.id === stagedItemId
+                            ? 'Flighted'
+                            : item.id === nextItemId
+                                ? 'On deck'
+                                : `Slot ${index + 1}`;
                     const action = typeof getPrimaryAction === 'function' ? getPrimaryAction(item, readiness, { pendingCount }) : null;
                     const castLine = item.type === 'performance'
                         ? formatSummaryLine(item.assignedPerformerName || 'Singer TBD', item.songTitle || 'Song TBD', item.artistName || '')
@@ -3205,7 +3231,13 @@ const ShowMapCard = ({
                     const hasIssues = blockers > 0 || pendingCount > 0;
                     const action = typeof getPrimaryAction === 'function' ? getPrimaryAction(item, readiness, { pendingCount }) : null;
                     const isFocused = expandedItemId === item.id;
-                    const railLabel = item.id === liveItemId ? 'Now' : item.id === stagedItemId ? 'Staged' : item.id === nextItemId ? 'Up next' : `Scene ${index + 1}`;
+                    const railLabel = item.id === liveItemId
+                        ? 'Now'
+                        : item.id === stagedItemId
+                            ? 'Flighted'
+                            : item.id === nextItemId
+                                ? 'On deck'
+                                : `Scene ${index + 1}`;
                     const readinessLabel = blockers ? `${blockers} blocker${blockers === 1 ? '' : 's'}` : pendingCount ? `${pendingCount} pending` : 'Ready';
                     const performanceFields = item.type === 'performance' ? getPerformanceIdentityFields(item) : [];
                     const sourceMeta = getSourceMeta(item?.backingPlan?.sourceType || 'canonical_default');
@@ -3519,6 +3551,7 @@ export default function RunOfShowDirectorPanel({
     operatorCapabilities = null,
     operatingHint = '',
     preflightReport = null,
+    crowdPulse = null,
     compactViewport = false,
     onSetProgramMode,
     onAddItem,
@@ -3536,6 +3569,8 @@ export default function RunOfShowDirectorPanel({
     onStartItem,
     onCompleteItem,
     onSkipItem,
+    onOpenReleaseWindow,
+    onCloseReleaseWindow,
     onReviewSubmission,
     onAssignQueueSongToItem,
     onUpdatePolicy,
@@ -3550,7 +3585,7 @@ export default function RunOfShowDirectorPanel({
     const automationPaused = !!director?.automationPaused;
     const currentItemId = String(director?.currentItemId || '').trim();
     const safePolicy = useMemo(() => (runOfShowPolicy || {}), [runOfShowPolicy]);
-    const safeRoles = runOfShowRoles || {};
+    const safeRoles = useMemo(() => (runOfShowRoles || {}), [runOfShowRoles]);
     const safeTemplateMeta = runOfShowTemplateMeta || {};
     const safeOperatorCapabilities = operatorCapabilities || {
         canOperate: false,
@@ -3561,14 +3596,45 @@ export default function RunOfShowDirectorPanel({
         canManageTemplates: false,
         canManageRoles: false,
     };
-    const liveItem = useMemo(() => getRunOfShowLiveItem(director || {}), [director]);
-    const stagedItem = useMemo(() => getRunOfShowStagedItem(director || {}), [director]);
-    const nextItem = useMemo(() => getNextRunOfShowItem(director || {}), [director]);
+    const crowdPulseMeta = crowdPulse && typeof crowdPulse === 'object' ? crowdPulse : null;
+    const conveyorSnapshot = useMemo(
+        () => getRunOfShowConveyorSnapshot(director || {}),
+        [director]
+    );
+    const legacyLiveItem = useMemo(() => getRunOfShowLiveItem(director || {}), [director]);
+    const legacyStagedItem = useMemo(() => getRunOfShowStagedItem(director || {}), [director]);
+    const legacyNextItem = useMemo(() => getNextRunOfShowItem(director || {}), [director]);
+    const liveItem = conveyorSnapshot.liveItem || legacyLiveItem;
+    const stagedItem = conveyorSnapshot.flightedItem || legacyStagedItem;
+    const nextItem = useMemo(() => {
+        if (conveyorSnapshot.onDeckItem) return conveyorSnapshot.onDeckItem;
+        if (legacyNextItem?.id && legacyNextItem.id !== stagedItem?.id) return legacyNextItem;
+        return null;
+    }, [conveyorSnapshot.onDeckItem, legacyNextItem, stagedItem?.id]);
+    const flightedItem = stagedItem;
+    const onDeckItem = nextItem;
+    const activeReleaseWindow = director?.releaseWindow && typeof director.releaseWindow === 'object'
+        ? director.releaseWindow
+        : null;
+    const releaseWindowItem = useMemo(
+        () => items.find((item) => item.id === String(activeReleaseWindow?.itemId || '').trim()) || null,
+        [activeReleaseWindow?.itemId, items]
+    );
+    const governanceTarget = useMemo(() => {
+        const candidate = flightedItem || onDeckItem || null;
+        if (!candidate?.id) return null;
+        if (candidate.optionalScene !== true && !['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(candidate.governanceMode || '').trim().toLowerCase())) {
+            return null;
+        }
+        return candidate;
+    }, [flightedItem, onDeckItem]);
+    const releaseWindowTally = useMemo(
+        () => getRunOfShowReleaseWindowTally(activeReleaseWindow || {}, safeRoles),
+        [activeReleaseWindow, safeRoles]
+    );
     const laterItems = useMemo(
-        () => items.filter((item) => !['complete', 'skipped'].includes(String(item?.status || '').toLowerCase()))
-            .filter((item) => item.id !== liveItem?.id && item.id !== stagedItem?.id && item.id !== nextItem?.id)
-            .slice(0, 4),
-        [items, liveItem?.id, nextItem?.id, stagedItem?.id]
+        () => (Array.isArray(conveyorSnapshot.laterItems) ? conveyorSnapshot.laterItems : []).slice(0, 4),
+        [conveyorSnapshot.laterItems]
     );
     const pendingApprovals = (Array.isArray(submissions) ? submissions : []).filter((entry) => String(entry?.submissionStatus || 'pending').toLowerCase() === 'pending');
     const pendingCountsById = useMemo(() => {
@@ -5080,7 +5146,7 @@ export default function RunOfShowDirectorPanel({
                 <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(11,17,32,0.98),rgba(17,24,39,0.96))] px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.28)] sm:px-4 sm:py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Run Of Show Board</div>
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>
                             <div className="mt-1 hidden text-sm text-white sm:block">
                                 {isRunOfShowActive
                                     ? automationPaused
@@ -5280,7 +5346,7 @@ export default function RunOfShowDirectorPanel({
                                             {liveAdjustmentTarget.title || getRunOfShowItemLabel(liveAdjustmentTarget.type)}
                                         </div>
                                         <div className="mt-1 text-xs text-zinc-400">
-                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Staged next' : 'Up next'} - {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
+                                            {liveItem?.id === liveAdjustmentTarget.id ? 'Live now' : stagedItem?.id === liveAdjustmentTarget.id ? 'Flighted next' : 'On deck'} - {formatDurationSec(liveAdjustmentDurationSec) || `${liveAdjustmentDurationSec}s`} window
                                             {liveAdjustmentRequiresHostAdvance ? ` - ${liveAdjustmentAdvanceSummary}` : ''}
                                             {liveAdjustmentSoundtrackConfigured ? ` - takeover audio ${liveAdjustmentSoundtrackActive ? 'on' : 'paused'}` : ''}
                                         </div>
@@ -5327,7 +5393,7 @@ export default function RunOfShowDirectorPanel({
                                             onClick={() => setLiveTimelineOpen((prev) => !prev)}
                                             className="rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
                                         >
-                                            {liveTimelineOpen ? 'Hide Later' : 'Show Later'}
+                                            {liveTimelineOpen ? 'Hide Conveyor' : 'Show Conveyor'}
                                         </button>
                                         {previewActiveId ? (
                                             <button
@@ -6014,17 +6080,17 @@ export default function RunOfShowDirectorPanel({
 
             {studioMode === 'run' ? (
             <div className="space-y-3">
-                <article className={`${surfaceClass} p-4`} aria-label="Run of show live HUD">
+                <article className={`${surfaceClass} p-4`} aria-label="Run of show conveyor live HUD">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Show status</div>
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Conveyor status</div>
                             <div className="mt-1 flex flex-wrap items-center gap-2">
                                 <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${liveHudToneClass}`}>
                                     {liveHudIssue.label}
                                 </span>
-                                {(liveItem?.id || stagedItem?.id || nextItem?.id) ? (
+                                {(liveItem?.id || flightedItem?.id || onDeckItem?.id) ? (
                                     <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        {liveItem?.id ? 'Now live' : stagedItem?.id ? 'Next staged' : 'Next queued'}
+                                        {liveItem?.id ? 'Live lane running' : flightedItem?.id ? 'Flighted and armed' : 'On deck'}
                                     </span>
                                 ) : null}
                             </div>
@@ -6051,10 +6117,11 @@ export default function RunOfShowDirectorPanel({
                         </div>
                     </div>
                 </article>
-                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
                     <LiveHudCard
                         label="Now"
                         item={liveItem}
+                        phaseLabel={liveItem ? getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, liveItem), 'Live') : ''}
                         summary={liveItem ? itemSummary(liveItem) : ''}
                         note={liveItem?.startsAtMs ? `Started ${formatStart(liveItem.startsAtMs)}` : ''}
                         badge={automationPaused ? 'Paused' : 'Live'}
@@ -6063,57 +6130,205 @@ export default function RunOfShowDirectorPanel({
                         onFocus={openItem}
                     />
                     <LiveHudCard
-                        label="Next"
-                        item={stagedItem || nextItem}
-                        summary={(stagedItem || nextItem) ? itemSummary(stagedItem || nextItem) : ''}
+                        label="Flighted"
+                        item={flightedItem}
+                        phaseLabel={flightedItem ? getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, flightedItem), 'Flighted') : ''}
+                        summary={flightedItem ? itemSummary(flightedItem) : ''}
                         note={
-                            (stagedItem || nextItem)
-                                ? pendingApprovals.some((entry) => entry.itemId === (stagedItem || nextItem).id)
+                            flightedItem
+                                ? pendingApprovals.some((entry) => entry.itemId === flightedItem.id)
                                     ? 'Needs singer approval before it can run.'
-                                    : readinessById[(stagedItem || nextItem).id]?.blockers?.length
-                                        ? getRunOfShowBlockedActionLabel(readinessById[(stagedItem || nextItem).id], stagedItem || nextItem, safePolicy)
-                                        : stagedItem?.id
-                                            ? 'Ready to go live.'
-                                            : 'Queued and clear.'
+                                    : readinessById[flightedItem.id]?.blockers?.length
+                                        ? getRunOfShowBlockedActionLabel(readinessById[flightedItem.id], flightedItem, safePolicy)
+                                        : 'Released from the conveyor and ready to run.'
                                 : ''
                         }
                         badge={
-                            (stagedItem || nextItem)
-                                ? stagedItem?.id
-                                    ? 'Ready'
-                                    : pendingApprovals.some((entry) => entry.itemId === (stagedItem || nextItem).id) || readinessById[(stagedItem || nextItem).id]?.blockers?.length
-                                        ? 'Check first'
-                                        : 'Queued'
+                            flightedItem
+                                ? pendingApprovals.some((entry) => entry.itemId === flightedItem.id) || readinessById[flightedItem.id]?.blockers?.length
+                                    ? 'Check first'
+                                    : 'Flighted'
                                 : ''
                         }
                         badgeTone={
-                            (stagedItem || nextItem) && (pendingApprovals.some((entry) => entry.itemId === (stagedItem || nextItem).id) || readinessById[(stagedItem || nextItem).id]?.blockers?.length)
+                            flightedItem && (pendingApprovals.some((entry) => entry.itemId === flightedItem.id) || readinessById[flightedItem.id]?.blockers?.length)
                                 ? 'danger'
                                 : 'success'
                         }
-                        emptyLabel="No next block is staged yet."
+                        emptyLabel="Nothing is flighted yet."
+                        onFocus={openItem}
+                    />
+                    <LiveHudCard
+                        label="On Deck"
+                        item={onDeckItem}
+                        phaseLabel={onDeckItem ? getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, onDeckItem), 'On deck') : ''}
+                        summary={onDeckItem ? itemSummary(onDeckItem) : ''}
+                        note={
+                            onDeckItem
+                                ? pendingApprovals.some((entry) => entry.itemId === onDeckItem.id)
+                                    ? 'Needs singer approval before it can slot in.'
+                                    : readinessById[onDeckItem.id]?.blockers?.length
+                                        ? getRunOfShowBlockedActionLabel(readinessById[onDeckItem.id], onDeckItem, safePolicy)
+                                        : 'Clear to slot into the live lane next.'
+                                : ''
+                        }
+                        badge={
+                            onDeckItem
+                                ? pendingApprovals.some((entry) => entry.itemId === onDeckItem.id) || readinessById[onDeckItem.id]?.blockers?.length
+                                    ? 'Check first'
+                                    : 'On deck'
+                                : ''
+                        }
+                        badgeTone={
+                            onDeckItem && (pendingApprovals.some((entry) => entry.itemId === onDeckItem.id) || readinessById[onDeckItem.id]?.blockers?.length)
+                                ? 'danger'
+                                : 'success'
+                        }
+                        emptyLabel="No scene is on deck yet."
                         onFocus={openItem}
                     />
                 </div>
+                {crowdPulseMeta ? (
+                    <article className={`${surfaceClass} p-4`} aria-label="Crowd pulse">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Crowd Pulse</div>
+                                <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.summary}</div>
+                            </div>
+                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                {crowdPulseMeta.label || 'Quiet room'}
+                            </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-4">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Live Phones</div>
+                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.livePhonePct || 0}%</div>
+                                <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.livePhoneCount || 0} of {crowdPulseMeta.metrics?.lobbyCount || 0} active now</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Warm Lobby</div>
+                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.warmLobbyPct || 0}%</div>
+                                <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.warmLobbyCount || 0} recently active</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Recent Actions</div>
+                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.recentAudienceActionCount || 0}</div>
+                                <div className="mt-1 text-xs text-zinc-400">Last 2 minutes from phones</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Queue Depth</div>
+                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.queueDepth || 0}</div>
+                                <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.recentRequestCount || 0} fresh requests in flow</div>
+                            </div>
+                        </div>
+                        <div className={`mt-3 rounded-2xl border px-3 py-3 ${crowdPulseMeta.panelClass || 'border-white/10 bg-black/20'}`}>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Recommendation</div>
+                            <div className="mt-1 text-sm font-semibold text-white">{crowdPulseMeta.recommendationTitle}</div>
+                            <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.recommendationDetail}</div>
+                        </div>
+                    </article>
+                ) : null}
+                {(activeReleaseWindow?.active || governanceTarget) ? (
+                    <article className={`${surfaceClass} p-4`} aria-label="Release window">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Release Window</div>
+                                <div className="mt-1 text-sm font-semibold text-white">
+                                    {activeReleaseWindow?.active
+                                        ? (activeReleaseWindow.prompt || getRunOfShowReleaseWindowPrompt(releaseWindowItem))
+                                        : `${governanceTarget?.title || getRunOfShowItemLabel(governanceTarget?.type)} can open for room feedback.`}
+                                </div>
+                                <div className="mt-1 text-sm text-zinc-300">
+                                    {activeReleaseWindow?.active
+                                        ? (releaseWindowItem?.title || activeReleaseWindow?.itemTitle || 'Optional scene')
+                                        : 'Use this when you want signal before a non-required scene lands in the live lane.'}
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {activeReleaseWindow?.active ? (
+                                    <ControlButton onClick={() => onCloseReleaseWindow?.()}>
+                                        Close Window
+                                    </ControlButton>
+                                ) : governanceTarget ? (
+                                    <ControlButton
+                                        tone="primary"
+                                        onClick={() => onOpenReleaseWindow?.(governanceTarget.id, {
+                                            governanceMode: governanceTarget.governanceMode,
+                                            releasePolicy: governanceTarget.releasePolicy
+                                        })}
+                                    >
+                                        Open Window
+                                    </ControlButton>
+                                ) : null}
+                            </div>
+                        </div>
+                        {governanceTarget ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {[
+                                    ['host_only', 'Host Only'],
+                                    ['crowd_signal', 'Crowd Signal'],
+                                    ['crowd_vote', 'Crowd Vote'],
+                                    ['cohost_vote', 'Co-Host Vote']
+                                ].map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!safeOperatorCapabilities.canEditFlow}
+                                        onClick={() => onUpdateItem?.(governanceTarget.id, { governanceMode: value })}
+                                        className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] ${String(governanceTarget.governanceMode || '').trim().toLowerCase() === value ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300'}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+                        {activeReleaseWindow?.active ? (
+                            <div className="mt-3 grid gap-2 md:grid-cols-3">
+                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Mode</div>
+                                    <div className="mt-1 text-lg font-black text-white">
+                                        {String(activeReleaseWindow.governanceMode || 'host_only').replaceAll('_', ' ')}
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Slot Scene</div>
+                                    <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.slotSceneCount}</div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Keep Queue Moving</div>
+                                    <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.keepQueueMovingCount}</div>
+                                </div>
+                            </div>
+                        ) : null}
+                        {activeReleaseWindow?.active ? (
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
+                                {releaseWindowTally.summary}
+                            </div>
+                        ) : null}
+                    </article>
+                ) : null}
                 {liveTimelineOpen ? (
-                    <article className={`${surfaceClass} p-4`} aria-label="Later run of show queue">
+                    <article className={`${surfaceClass} p-4`} aria-label="Conveyor belt">
                         <div className="flex items-center justify-between gap-3">
-                            <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Later</div>
+                            <div className="text-[10px] uppercase tracking-[0.26em] text-zinc-500">Conveyor</div>
                             <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">{laterItems.length} upcoming</div>
                         </div>
                         <div className="mt-3 grid gap-2 lg:grid-cols-2 2xl:grid-cols-4">
-                            {laterItems.length ? laterItems.map((item, index) => (
-                                <button key={item.id} type="button" onClick={() => openItem(item.id)} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-cyan-300/30">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">#{index + 1} Later</div>
-                                            <div className="text-sm font-semibold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
-                                            <div className="mt-1 truncate text-xs text-zinc-400">{itemSummary(item)}</div>
+                            {laterItems.length ? laterItems.map((item, index) => {
+                                const conveyorPhase = getConveyorPhaseLabel(getRunOfShowConveyorPhase(director || {}, item), item.status);
+                                return (
+                                    <button key={item.id} type="button" onClick={() => openItem(item.id)} className="w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-left transition hover:border-cyan-300/30">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">#{index + 1} Conveyor</div>
+                                                <div className="text-sm font-semibold text-white">{item.title || getRunOfShowItemLabel(item.type)}</div>
+                                                <div className="mt-1 truncate text-xs text-zinc-400">{itemSummary(item)}</div>
+                                            </div>
+                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{conveyorPhase}</span>
                                         </div>
-                                        <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${statusTone(item.status)}`}>{item.status}</span>
-                                    </div>
-                                </button>
-                            )) : <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400 lg:col-span-2 2xl:col-span-4">No queued later blocks yet.</div>}
+                                    </button>
+                                );
+                            }) : <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-400 lg:col-span-2 2xl:col-span-4">No later conveyor scenes yet.</div>}
                         </div>
                     </article>
                 ) : null}
@@ -6426,7 +6641,7 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                     <div className="flex flex-wrap justify-end gap-2">
                                                         <div className="rounded-full border border-cyan-300/18 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                                                            {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Staged' : item.id === nextItem?.id ? 'Up next' : 'Timeline'}
+                                                            {item.id === liveItem?.id ? 'Now' : item.id === stagedItem?.id ? 'Flighted' : item.id === nextItem?.id ? 'On deck' : 'Timeline'}
                                                         </div>
                                                         <div className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusTone(item.status)}`}>{item.status}</div>
                                                     </div>

@@ -18,3 +18,25 @@ test('run-of-show creator incorporates setup autopilot and dead-air bridge plann
   assert.match(autopilotSource, /Dead-Air Bridge/);
   assert.match(autopilotSource, /known-good browse songs/);
 });
+
+test('run-of-show editor inputs force a dark text field surface even with browser autofill', () => {
+  assert.match(source, /caret-white/);
+  assert.match(source, /\[color-scheme:dark\]/);
+  assert.match(source, /\[\&:-webkit-autofill\]:\[-webkit-text-fill-color:#fff\]/);
+  assert.match(source, /\[\&:-webkit-autofill\]:shadow-\[inset_0_0_0px_1000px_rgba\(9,9,11,0\.96\)\]/);
+});
+
+test('run-of-show generator avoids placeholder trivia and WYR copy', () => {
+  assert.doesNotMatch(source, /Quick room trivia check-in/);
+  assert.doesNotMatch(source, /Crowd interaction moment/);
+  assert.match(source, /modeKey: interactiveType === 'trivia_break' \? 'trivia_pop' : interactiveType === 'would_you_rather_break' \? 'wyr' : 'crowd_play'/);
+});
+
+test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance', () => {
+  assert.match(source, /Conveyor status/);
+  assert.match(source, /Crowd Pulse/);
+  assert.match(source, /Show Conveyor/);
+  assert.match(source, /Flighted/);
+  assert.match(source, /Nothing is flighted yet\./);
+  assert.match(source, /No scene is on deck yet\./);
+});

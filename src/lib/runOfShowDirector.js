@@ -1,3 +1,5 @@
+import { TRIVIA_BANK, WYR_BANK } from './gameDataConstants';
+
 export const RUN_OF_SHOW_PROGRAM_MODES = Object.freeze({
     standard: 'standard_karaoke',
     runOfShow: 'run_of_show'
@@ -40,6 +42,32 @@ export const RUN_OF_SHOW_ITEM_STATUSES = Object.freeze([
     'skipped',
     'blocked'
 ]);
+export const RUN_OF_SHOW_CONVEYOR_PHASES = Object.freeze([
+    'planned',
+    'warming',
+    'on_deck',
+    'flighted',
+    'live',
+    'blocked',
+    'completed',
+    'skipped'
+]);
+export const RUN_OF_SHOW_GOVERNANCE_MODES = Object.freeze([
+    'host_only',
+    'crowd_signal',
+    'crowd_vote',
+    'cohost_vote'
+]);
+export const RUN_OF_SHOW_RELEASE_POLICIES = Object.freeze([
+    'manual_release',
+    'suggest_then_host_confirm',
+    'auto_flight_winner',
+    'locked'
+]);
+export const RUN_OF_SHOW_RELEASE_WINDOW_CHOICES = Object.freeze([
+    'slot_scene',
+    'keep_queue_moving'
+]);
 
 export const RUN_OF_SHOW_AUTOMATION_MODES = Object.freeze({
     auto: 'auto',
@@ -73,6 +101,10 @@ const ALLOWED_AUTOMATION_MODES = new Set(Object.values(RUN_OF_SHOW_AUTOMATION_MO
 const ALLOWED_ADVANCE_MODES = new Set(Object.values(RUN_OF_SHOW_ADVANCE_MODES));
 const ALLOWED_PERFORMER_MODES = new Set(Object.values(RUN_OF_SHOW_PERFORMER_MODES));
 const ALLOWED_OPERATOR_ROLES = new Set(Object.values(RUN_OF_SHOW_OPERATOR_ROLES));
+const ALLOWED_CONVEYOR_PHASES = new Set(RUN_OF_SHOW_CONVEYOR_PHASES);
+const ALLOWED_GOVERNANCE_MODES = new Set(RUN_OF_SHOW_GOVERNANCE_MODES);
+const ALLOWED_RELEASE_POLICIES = new Set(RUN_OF_SHOW_RELEASE_POLICIES);
+const ALLOWED_RELEASE_WINDOW_CHOICES = new Set(RUN_OF_SHOW_RELEASE_WINDOW_CHOICES);
 const ALLOWED_LATE_POLICIES = new Set(RUN_OF_SHOW_LATE_BLOCK_POLICIES);
 const ALLOWED_NO_SHOW_POLICIES = new Set(RUN_OF_SHOW_NO_SHOW_POLICIES);
 const ALLOWED_QUEUE_DIVERGENCE_POLICIES = new Set(RUN_OF_SHOW_QUEUE_DIVERGENCE_POLICIES);
@@ -109,6 +141,146 @@ const asTimestampMs = (value, fallback = 0) => {
 const createId = (prefix = 'ros', now = Date.now()) =>
     `${prefix}_${Math.floor(Number(now || Date.now()))}_${Math.random().toString(36).slice(2, 8)}`;
 
+const normalizeInteractiveOptions = (launchConfig = {}) => {
+    if (Array.isArray(launchConfig?.options)) {
+        return launchConfig.options.map((entry) => cleanText(entry)).filter(Boolean);
+    }
+    return cleanText(launchConfig?.optionsCsv)
+        .split(',')
+        .map((entry) => cleanText(entry))
+        .filter(Boolean);
+};
+
+const normalizeTriviaBankEntry = (entry = {}, index = 0) => ({
+    id: cleanText(entry.id) || `builtin_trivia_${index}`,
+    q: cleanText(entry.q),
+    correct: cleanText(entry.correct),
+    w1: cleanText(entry.w1),
+    w2: cleanText(entry.w2),
+    w3: cleanText(entry.w3),
+    points: clampInt(entry.points, 0, 10000, 100)
+});
+
+const normalizeWyrBankEntry = (entry = {}, index = 0) => ({
+    id: cleanText(entry.id) || `builtin_wyr_${index}`,
+    q: cleanText(entry.q),
+    a: cleanText(entry.a),
+    b: cleanText(entry.b),
+    points: clampInt(entry.points, 0, 10000, 50)
+});
+
+const INTERACTIVE_PROMPT_PLACEHOLDERS = Object.freeze({
+    trivia_break: new Set(['quick room trivia check-in', 'trivia time', 'crowd interaction moment']),
+    would_you_rather_break: new Set(['crowd interaction moment', 'would you rather', 'audience vote'])
+});
+
+const isPlaceholderInteractiveOption = (value = '') => /^option(?:\s+[a-z0-9]+)?$/i.test(cleanText(value));
+
+const hasMeaningfulInteractiveQuestion = (type = '', question = '') => {
+    const safeQuestion = cleanText(question);
+    if (!safeQuestion) return false;
+    const placeholderSet = INTERACTIVE_PROMPT_PLACEHOLDERS[type] || null;
+    return !(placeholderSet && placeholderSet.has(safeQuestion.toLowerCase()));
+};
+
+const getInteractiveOptionMinimum = (type = '') => (type === 'trivia_break' ? 4 : 2);
+
+const hasMeaningfulInteractiveOptions = (type = '', options = []) => {
+    const normalizedOptions = (Array.isArray(options) ? options : [])
+        .map((entry) => cleanText(entry))
+        .filter((entry) => entry && !isPlaceholderInteractiveOption(entry));
+    return normalizedOptions.length >= getInteractiveOptionMinimum(type);
+};
+
+const hashSeedToIndex = (seed = '', length = 0) => {
+    if (!Number.isInteger(length) || length <= 0) return -1;
+    const safeSeed = cleanText(seed) || 'run_of_show';
+    let hash = 0;
+    for (let index = 0; index < safeSeed.length; index += 1) {
+        hash = ((hash * 31) + safeSeed.charCodeAt(index)) >>> 0;
+    }
+    return hash % length;
+};
+
+const getInteractiveBankEntries = (type = '') => {
+    if (type === 'trivia_break') {
+        return (Array.isArray(TRIVIA_BANK) ? TRIVIA_BANK : [])
+            .map((entry, index) => normalizeTriviaBankEntry(entry, index))
+            .filter((entry) => entry.q && entry.correct && entry.w1 && entry.w2 && entry.w3);
+    }
+    if (type === 'would_you_rather_break') {
+        return (Array.isArray(WYR_BANK) ? WYR_BANK : [])
+            .map((entry, index) => normalizeWyrBankEntry(entry, index))
+            .filter((entry) => entry.q && entry.a && entry.b);
+    }
+    return [];
+};
+
+const getInteractiveBankEntryBySeed = (type = '', seed = '') => {
+    const bank = getInteractiveBankEntries(type);
+    if (!bank.length) return null;
+    const index = hashSeedToIndex(seed || type, bank.length);
+    return index >= 0 ? bank[index] : bank[0];
+};
+
+const buildDefaultInteractiveLaunchConfig = (type = '', { seed = '', plannedDurationSec = 0 } = {}) => {
+    const bankEntry = getInteractiveBankEntryBySeed(type, seed);
+    if (!bankEntry) return {};
+    const durationSec = clampInt(plannedDurationSec, 5, 3600, 45);
+    if (type === 'trivia_break') {
+        const options = [bankEntry.correct, bankEntry.w1, bankEntry.w2, bankEntry.w3].filter(Boolean).slice(0, 4);
+        return {
+            question: bankEntry.q,
+            options,
+            optionsCsv: options.join(', '),
+            correctIndex: 0,
+            points: clampInt(bankEntry.points, 0, 10000, 100),
+            durationSec,
+            autoReveal: true,
+            bankEntryId: bankEntry.id,
+            contentSource: 'builtin_bank'
+        };
+    }
+    if (type === 'would_you_rather_break') {
+        const options = [bankEntry.a, bankEntry.b].filter(Boolean).slice(0, 2);
+        return {
+            question: bankEntry.q,
+            options,
+            optionsCsv: options.join(', '),
+            points: clampInt(bankEntry.points, 0, 10000, 50),
+            durationSec,
+            autoReveal: true,
+            bankEntryId: bankEntry.id,
+            contentSource: 'builtin_bank'
+        };
+    }
+    return {};
+};
+
+const normalizeInteractiveLaunchConfig = (type = '', launchConfig = {}, context = {}) => {
+    const rawConfig = launchConfig && typeof launchConfig === 'object' ? launchConfig : {};
+    const rawOptions = normalizeInteractiveOptions(rawConfig);
+    const shouldSeedFromBank = !hasMeaningfulInteractiveQuestion(type, rawConfig.question)
+        && !hasMeaningfulInteractiveOptions(type, rawOptions);
+    if (shouldSeedFromBank) {
+        const seededConfig = buildDefaultInteractiveLaunchConfig(type, context);
+        if (Object.keys(seededConfig).length) {
+            return {
+                ...seededConfig,
+                durationSec: clampInt(rawConfig.durationSec, 5, 3600, seededConfig.durationSec || 45),
+                points: clampInt(rawConfig.points, 0, 10000, seededConfig.points || (type === 'trivia_break' ? 100 : 50)),
+                autoReveal: rawConfig.autoReveal !== false
+            };
+        }
+    }
+    const normalizedConfig = { ...rawConfig };
+    if (rawOptions.length) {
+        normalizedConfig.options = rawOptions;
+        normalizedConfig.optionsCsv = rawOptions.join(', ');
+    }
+    return normalizedConfig;
+};
+
 export const normalizeRunOfShowProgramMode = (value = '') => (
     cleanText(value).toLowerCase() === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
         ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow
@@ -126,6 +298,52 @@ export const getRunOfShowAdvanceMode = (item = {}) => {
 export const getRunOfShowHostAdvanceMinSec = (item = {}) => {
     if (getRunOfShowAdvanceMode(item) !== RUN_OF_SHOW_ADVANCE_MODES.hostAfterMin) return 0;
     return clampInt(item?.hostAdvanceMinSec, 0, 3600, clampInt(item?.plannedDurationSec, 0, 3600, 0));
+};
+
+export const isRunOfShowOptionalScene = (item = {}) => {
+    const safeType = cleanText(item?.type).toLowerCase();
+    return ['trivia_break', 'game_break', 'would_you_rather_break', 'announcement', 'intermission', 'buffer'].includes(safeType);
+};
+
+const getDefaultGovernanceMode = (type = '') => (
+    ['trivia_break', 'game_break', 'would_you_rather_break'].includes(cleanText(type).toLowerCase())
+        ? 'crowd_signal'
+        : isRunOfShowOptionalScene({ type })
+            ? 'crowd_signal'
+            : 'host_only'
+);
+
+const getDefaultReleasePolicy = (type = '') => (
+    isRunOfShowOptionalScene({ type })
+        ? 'suggest_then_host_confirm'
+        : 'manual_release'
+);
+
+const createDefaultRunOfShowReleaseWindow = (overrides = {}) => {
+    const votesByUid = overrides?.votesByUid && typeof overrides.votesByUid === 'object' && !Array.isArray(overrides.votesByUid)
+        ? Object.fromEntries(Object.entries(overrides.votesByUid)
+            .map(([uid, choice]) => [cleanText(uid), cleanText(choice).toLowerCase()])
+            .filter(([uid, choice]) => uid && ALLOWED_RELEASE_WINDOW_CHOICES.has(choice)))
+        : {};
+    return {
+        active: overrides?.active === true,
+        itemId: cleanText(overrides?.itemId),
+        itemTitle: cleanText(overrides?.itemTitle),
+        governanceMode: ALLOWED_GOVERNANCE_MODES.has(cleanText(overrides?.governanceMode).toLowerCase())
+            ? cleanText(overrides?.governanceMode).toLowerCase()
+            : 'host_only',
+        releasePolicy: ALLOWED_RELEASE_POLICIES.has(cleanText(overrides?.releasePolicy).toLowerCase())
+            ? cleanText(overrides?.releasePolicy).toLowerCase()
+            : 'manual_release',
+        prompt: cleanText(overrides?.prompt),
+        openedAtMs: asTimestampMs(overrides?.openedAtMs, 0),
+        closesAtMs: asTimestampMs(overrides?.closesAtMs, 0),
+        votesByUid,
+        resultChoice: ALLOWED_RELEASE_WINDOW_CHOICES.has(cleanText(overrides?.resultChoice).toLowerCase())
+            ? cleanText(overrides?.resultChoice).toLowerCase()
+            : '',
+        resolvedAtMs: asTimestampMs(overrides?.resolvedAtMs, 0)
+    };
 };
 
 export const createDefaultRunOfShowPolicy = (overrides = {}) => ({
@@ -312,17 +530,20 @@ const createDefaultAudioPlan = (type = '', overrides = {}) => ({
         : 'start'
 });
 
-const createDefaultModeLaunchPlan = (type = '', overrides = {}) => {
+const createDefaultModeLaunchPlan = (type = '', overrides = {}, context = {}) => {
     const baseModeKey = type === 'trivia_break'
         ? 'trivia_pop'
         : type === 'would_you_rather_break'
             ? 'wyr'
             : cleanText(overrides.modeKey);
+    const isBankBackedInteractiveType = type === 'trivia_break' || type === 'would_you_rather_break';
     return {
         modeKey: cleanText(overrides.modeKey) || baseModeKey,
-        launchConfig: overrides.launchConfig && typeof overrides.launchConfig === 'object'
-            ? overrides.launchConfig
-            : {},
+        launchConfig: isBankBackedInteractiveType
+            ? normalizeInteractiveLaunchConfig(type, overrides.launchConfig || {}, context)
+            : (overrides.launchConfig && typeof overrides.launchConfig === 'object'
+                ? overrides.launchConfig
+                : {}),
         requiresAudienceTakeover: overrides.requiresAudienceTakeover !== false
             && (type === 'trivia_break' || type === 'would_you_rather_break' || type === 'game_break')
     };
@@ -352,6 +573,7 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
                 ? 75
                 : 45
     );
+    const itemId = cleanText(overrides.id) || createId(safeType, now);
     const inferredAdvanceOverrides = (
         safeType === 'winner_declaration'
         && !cleanText(overrides.advanceMode)
@@ -370,17 +592,43 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
                 : plannedDurationSec
         )
         : 0;
+    const normalizedStatus = ALLOWED_STATUSES.has(cleanText(overrides.status).toLowerCase())
+        ? cleanText(overrides.status).toLowerCase()
+        : 'draft';
+    const defaultBeltPhase = normalizedStatus === 'live'
+        ? 'live'
+        : normalizedStatus === 'staged'
+            ? 'flighted'
+            : normalizedStatus === 'blocked'
+                ? 'blocked'
+                : normalizedStatus === 'complete'
+                    ? 'completed'
+                    : normalizedStatus === 'skipped'
+                        ? 'skipped'
+                        : normalizedStatus === 'ready'
+                            ? 'warming'
+                            : 'planned';
+    const governanceMode = ALLOWED_GOVERNANCE_MODES.has(cleanText(overrides.governanceMode).toLowerCase())
+        ? cleanText(overrides.governanceMode).toLowerCase()
+        : getDefaultGovernanceMode(safeType);
+    const releasePolicy = ALLOWED_RELEASE_POLICIES.has(cleanText(overrides.releasePolicy).toLowerCase())
+        ? cleanText(overrides.releasePolicy).toLowerCase()
+        : getDefaultReleasePolicy(safeType);
     return {
-        id: cleanText(overrides.id) || createId(safeType, now),
+        id: itemId,
         type: safeType,
         title: readEditableTextField(overrides, 'title', safeType.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())),
         sequence: clampInt(overrides.sequence, 1, 999, 1),
         startsAtMs: asTimestampMs(overrides.startsAtMs, 0),
         plannedDurationSec,
         plannedDurationSource,
-        status: ALLOWED_STATUSES.has(cleanText(overrides.status).toLowerCase())
-            ? cleanText(overrides.status).toLowerCase()
-            : 'draft',
+        status: normalizedStatus,
+        beltPhase: ALLOWED_CONVEYOR_PHASES.has(cleanText(overrides.beltPhase).toLowerCase())
+            ? cleanText(overrides.beltPhase).toLowerCase()
+            : defaultBeltPhase,
+        optionalScene: overrides.optionalScene === true || (overrides.optionalScene !== false && isRunOfShowOptionalScene({ type: safeType })),
+        governanceMode,
+        releasePolicy,
         visibility: cleanText(overrides.visibility).toLowerCase() === 'private' ? 'private' : 'public',
         notes: readEditableTextField(overrides, 'notes'),
         automationMode: ALLOWED_AUTOMATION_MODES.has(cleanText(overrides.automationMode).toLowerCase())
@@ -412,6 +660,8 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
             : {},
         queueLinkState: cleanText(overrides.queueLinkState).toLowerCase() || 'unlinked',
         preparedQueueSongId: cleanText(overrides.preparedQueueSongId),
+        onDeckAtMs: asTimestampMs(overrides.onDeckAtMs, 0),
+        flightedAtMs: asTimestampMs(overrides.flightedAtMs, 0),
         stagedAtMs: asTimestampMs(overrides.stagedAtMs, 0),
         liveStartedAtMs: asTimestampMs(overrides.liveStartedAtMs, 0),
         completedAtMs: asTimestampMs(overrides.completedAtMs, 0),
@@ -419,7 +669,10 @@ export const createRunOfShowItem = (type = 'buffer', overrides = {}, now = Date.
         backingPlan: createDefaultBackingPlan(overrides.backingPlan || {}),
         presentationPlan: createDefaultPresentationPlan(safeType, overrides.presentationPlan || {}),
         audioPlan: createDefaultAudioPlan(safeType, overrides.audioPlan || {}),
-        modeLaunchPlan: createDefaultModeLaunchPlan(safeType, overrides.modeLaunchPlan || {}),
+        modeLaunchPlan: createDefaultModeLaunchPlan(safeType, overrides.modeLaunchPlan || {}, {
+            seed: itemId,
+            plannedDurationSec
+        }),
         roomMomentPlan: overrides.roomMomentPlan && typeof overrides.roomMomentPlan === 'object'
             ? {
                 activeScreen: cleanText(overrides.roomMomentPlan.activeScreen),
@@ -444,6 +697,60 @@ export const resequenceRunOfShowItems = (items = []) => (
         }))
 );
 
+const buildRunOfShowConveyorSnapshotFromItems = (items = []) => {
+    const activeItems = (Array.isArray(items) ? items : []).filter((item) => !['complete', 'skipped'].includes(item.status));
+    const liveItem = activeItems.find((item) => item.status === 'live') || null;
+    const flightedItem = activeItems.find((item) => item.status === 'staged') || null;
+    const queuedItems = activeItems.filter((item) => item.id !== liveItem?.id && item.id !== flightedItem?.id);
+    const onDeckItem = queuedItems[0] || null;
+    const laterItems = queuedItems.filter((item) => item.id !== onDeckItem?.id);
+    return {
+        liveItem,
+        flightedItem,
+        onDeckItem,
+        laterItems
+    };
+};
+
+export const syncRunOfShowBeltPhases = (director = {}) => {
+    const baseDirector = director && typeof director === 'object' ? director : {};
+    const items = resequenceRunOfShowItems(Array.isArray(baseDirector.items) ? baseDirector.items : []);
+    const snapshot = buildRunOfShowConveyorSnapshotFromItems(items);
+    const nextItems = items.map((item) => {
+        const status = cleanText(item.status).toLowerCase();
+        let beltPhase = 'planned';
+        if (status === 'live') {
+            beltPhase = 'live';
+        } else if (status === 'staged') {
+            beltPhase = 'flighted';
+        } else if (status === 'blocked') {
+            beltPhase = 'blocked';
+        } else if (status === 'complete') {
+            beltPhase = 'completed';
+        } else if (status === 'skipped') {
+            beltPhase = 'skipped';
+        } else if (item.id === snapshot.onDeckItem?.id) {
+            beltPhase = 'on_deck';
+        } else if (status === 'ready') {
+            beltPhase = 'warming';
+        }
+        return createRunOfShowItem(item.type || 'buffer', {
+            ...item,
+            beltPhase,
+            onDeckAtMs: beltPhase === 'on_deck'
+                ? asTimestampMs(item.onDeckAtMs, Date.now())
+                : 0,
+            flightedAtMs: beltPhase === 'flighted'
+                ? asTimestampMs(item.flightedAtMs || item.stagedAtMs, Date.now())
+                : 0
+        });
+    });
+    return {
+        ...baseDirector,
+        items: nextItems
+    };
+};
+
 export const createDefaultRunOfShowDirector = (overrides = {}) => ({
     version: 1,
     enabled: overrides.enabled === true,
@@ -458,6 +765,7 @@ export const createDefaultRunOfShowDirector = (overrides = {}) => ({
     audioSnapshot: overrides.audioSnapshot && typeof overrides.audioSnapshot === 'object'
         ? overrides.audioSnapshot
         : null,
+    releaseWindow: createDefaultRunOfShowReleaseWindow(overrides.releaseWindow || {}),
     items: resequenceRunOfShowItems(Array.isArray(overrides.items) ? overrides.items : [])
 });
 
@@ -465,7 +773,8 @@ export const normalizeRunOfShowDirector = (raw = {}, now = Date.now()) => {
     const source = raw && typeof raw === 'object' ? raw : {};
     const director = createDefaultRunOfShowDirector(source, now);
     director.items = resequenceRunOfShowItems(director.items);
-    return director;
+    director.releaseWindow = createDefaultRunOfShowReleaseWindow(director.releaseWindow || {});
+    return syncRunOfShowBeltPhases(director);
 };
 
 export const getRunOfShowProgressionDecision = ({
@@ -565,6 +874,65 @@ export const getRunOfShowStagedItem = (director = {}) =>
 export const getNextRunOfShowItem = (director = {}) =>
     normalizeRunOfShowDirector(director).items.find((item) => !['complete', 'skipped', 'live'].includes(item.status)) || null;
 
+export const getRunOfShowConveyorSnapshot = (director = {}) => {
+    const normalizedDirector = normalizeRunOfShowDirector(director);
+    return buildRunOfShowConveyorSnapshotFromItems(normalizedDirector.items);
+};
+
+export const getRunOfShowConveyorPhase = (director = {}, item = null) => {
+    const safeItem = item && typeof item === 'object'
+        ? createRunOfShowItem(item?.type || 'buffer', item)
+        : null;
+    if (!safeItem?.id) return RUN_OF_SHOW_CONVEYOR_PHASES[0];
+    const conveyor = getRunOfShowConveyorSnapshot(director);
+    const status = cleanText(safeItem.status).toLowerCase();
+    if (status === 'live') return 'live';
+    if (status === 'staged') return 'flighted';
+    if (status === 'blocked') return 'blocked';
+    if (status === 'complete') return 'completed';
+    if (status === 'skipped') return 'skipped';
+    if (safeItem.id === conveyor.onDeckItem?.id) return 'on_deck';
+    if (status === 'ready') return 'warming';
+    return 'planned';
+};
+
+export const getRunOfShowReleaseWindowTally = (releaseWindow = {}, roles = {}) => {
+    const safeWindow = createDefaultRunOfShowReleaseWindow(releaseWindow || {});
+    const normalizedRoles = normalizeRunOfShowRoles(roles || {});
+    const votes = Object.entries(safeWindow.votesByUid || {});
+    const coHostSet = new Set(normalizedRoles.coHosts || []);
+    const filteredVotes = votes.filter(([uid]) => {
+        if (!safeWindow.active) return false;
+        if (safeWindow.governanceMode === 'cohost_vote') return coHostSet.has(uid);
+        return true;
+    });
+    const slotSceneCount = filteredVotes.filter(([, choice]) => choice === 'slot_scene').length;
+    const keepQueueMovingCount = filteredVotes.filter(([, choice]) => choice === 'keep_queue_moving').length;
+    const totalVotes = slotSceneCount + keepQueueMovingCount;
+    const leadingChoice = slotSceneCount === keepQueueMovingCount
+        ? ''
+        : (slotSceneCount > keepQueueMovingCount ? 'slot_scene' : 'keep_queue_moving');
+    return {
+        slotSceneCount,
+        keepQueueMovingCount,
+        totalVotes,
+        leadingChoice,
+        summary: !totalVotes
+            ? 'No votes yet'
+            : leadingChoice === 'slot_scene'
+                ? `${slotSceneCount}-${keepQueueMovingCount} favor slotting the scene`
+                : leadingChoice === 'keep_queue_moving'
+                    ? `${keepQueueMovingCount}-${slotSceneCount} favor keeping the queue moving`
+                    : `${slotSceneCount}-${keepQueueMovingCount} split room`
+    };
+};
+
+export const getRunOfShowReleaseWindowPrompt = (item = null) => {
+    const safeItem = item && typeof item === 'object' ? item : null;
+    const label = cleanText(safeItem?.title) || getRunOfShowItemLabel(safeItem?.type || '');
+    return label ? `Should "${label}" slot in next?` : 'Should this scene slot in next?';
+};
+
 export const hasRunOfShowBackingIdentity = (backingPlan = {}) => {
     const safeSource = cleanText(backingPlan?.sourceType).toLowerCase();
     const hasMediaUrl = !!cleanText(backingPlan?.mediaUrl);
@@ -610,7 +978,12 @@ export const isRunOfShowItemReady = (item = {}) => {
         return performerReady && songReady && isApprovedAutomationSource(item?.backingPlan);
     }
     if (safeType === 'trivia_break' || safeType === 'would_you_rather_break' || safeType === 'game_break') {
-        return !!cleanText(item?.modeLaunchPlan?.modeKey);
+        const launchConfig = item?.modeLaunchPlan?.launchConfig || {};
+        const options = normalizeInteractiveOptions(launchConfig);
+        if (!cleanText(item?.modeLaunchPlan?.modeKey)) return false;
+        if (safeType === 'game_break') return true;
+        return hasMeaningfulInteractiveQuestion(safeType, launchConfig.question)
+            && hasMeaningfulInteractiveOptions(safeType, options);
     }
     if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing' || safeType === 'winner_declaration') {
         return !!cleanText(item?.title) || !!cleanText(item?.presentationPlan?.headline);
@@ -698,17 +1071,21 @@ export const getRunOfShowItemReadiness = (item = {}, options = {}) => {
         if (!cleanText(item?.modeLaunchPlan?.modeKey)) {
             pushBlocker('mode_key_missing', 'Choose which interactive mode should launch for this break.');
         }
-        if (!cleanText(item?.modeLaunchPlan?.launchConfig?.question)) {
-            pushAdvisory('prompt_missing', 'Add a prompt so the audience sees clear copy when this break starts.');
+        const launchConfig = item?.modeLaunchPlan?.launchConfig || {};
+        if ((safeType === 'trivia_break' || safeType === 'would_you_rather_break')
+            && !hasMeaningfulInteractiveQuestion(safeType, launchConfig.question)) {
+            pushBlocker(
+                'prompt_missing',
+                safeType === 'trivia_break'
+                    ? 'Pick a trivia question from the bank or write a full custom prompt before this break can run.'
+                    : 'Pick a WYR prompt from the bank or write a full custom prompt before this break can run.'
+            );
         }
-        const options = Array.isArray(item?.modeLaunchPlan?.launchConfig?.options)
-            ? item.modeLaunchPlan.launchConfig.options.filter(Boolean)
-            : String(item?.modeLaunchPlan?.launchConfig?.optionsCsv || '')
-                .split(',')
-                .map((entry) => cleanText(entry))
-                .filter(Boolean);
-        if ((safeType === 'trivia_break' || safeType === 'would_you_rather_break') && options.length < 2) {
-            pushAdvisory('options_missing', 'Add at least two answer options so the TV and audience takeover feel complete.');
+        const options = normalizeInteractiveOptions(launchConfig);
+        if (safeType === 'trivia_break' && !hasMeaningfulInteractiveOptions(safeType, options)) {
+            pushBlocker('options_missing', 'Trivia breaks need four real answer choices so Public TV and phones can launch cleanly.');
+        } else if (safeType === 'would_you_rather_break' && !hasMeaningfulInteractiveOptions(safeType, options)) {
+            pushBlocker('options_missing', 'WYR breaks need two real answer choices so the room vote is usable on TV and phone.');
         }
     } else if (safeType === 'announcement' || safeType === 'intro' || safeType === 'closing' || safeType === 'winner_declaration') {
         if (!cleanText(item?.title) && !cleanText(item?.presentationPlan?.headline)) {

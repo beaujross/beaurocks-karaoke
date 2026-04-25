@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import StageNowPlayingPanel from './components/StageNowPlayingPanel';
+import HostLiveOpsPanel from './components/HostLiveOpsPanel';
 import AddToQueueFormBody from './components/AddToQueueFormBody';
 import SoundboardControls from './components/SoundboardControls';
 import HostChatPanel from './components/HostChatPanel';
@@ -46,6 +47,7 @@ import useHostNightSetupFlow from './hooks/useHostNightSetupFlow';
 import useHostRoomManager from './hooks/useHostRoomManager';
 import useHostWorkspaceNavigation from './hooks/useHostWorkspaceNavigation';
 import useHostWorkspaceState from './hooks/useHostWorkspaceState';
+import { getCrowdPulseSnapshot } from './crowdPulse';
 import HOST_UI_FEATURE_CHECKLIST from './hostUiFeatureChecklist';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -215,6 +217,7 @@ import {
     getRunOfShowRoleCapabilities,
     getRunOfShowOperatingHint,
     getRunOfShowProgressionDecision,
+    getRunOfShowReleaseWindowPrompt,
     hasRunOfShowTakeoverSoundtrackIdentity,
     isRunOfShowItemReady,
     normalizeRunOfShowPolicy,
@@ -3713,7 +3716,7 @@ const PublicTvMiniPreview = ({
     );
 };
 
-const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onClearScenePreset, onDeleteScenePreset, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
+const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true }) => {
     const {
         stagePanelOpen,
         setStagePanelOpen,
@@ -6148,6 +6151,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                 styles={STYLES}
                 compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
                 reviewRequiredCount={reviewQueueItems.length}
+                reviewRequired={reviewRequired}
                 runOfShowAssignableSlots={runOfShowAssignableSlots}
                 queueSurfaceCounts={queueSurface.counts}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
@@ -6426,6 +6430,28 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                         : 'min-h-0 pr-1'
             } overflow-y-auto custom-scrollbar`}>
                 <div className={`${STYLES.panel} overflow-hidden`}>
+                    <HostLiveOpsPanel
+                        current={current}
+                        nextQueueSong={nextQueueSong}
+                        nextQueueText={queueSurface.stageSummary.nextQueueText}
+                        queueCount={queueSurface.stageSummary.queueCount}
+                        readyQueueCount={queueSurface.counts.ready}
+                        assignedQueueCount={queueSurface.counts.assigned}
+                        needsAttentionCount={queueSurface.counts.needsAttention}
+                        currentSourcePlaying={currentSourcePlaying}
+                        runOfShowEnabled={runOfShowEnabled}
+                        runOfShowLiveItem={runOfShowLiveItem}
+                        runOfShowFlightedItem={runOfShowStagedItem}
+                        runOfShowOnDeckItem={runOfShowNextItem}
+                        crowdPulse={crowdPulse}
+                        onTogglePlay={togglePlay}
+                        onEndPerformance={handleEndPerformance}
+                        onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
+                        onEditCurrent={startEdit}
+                        onProgressStageToNext={progressStageToNext}
+                        onOpenRunOfShow={onOpenRunOfShow}
+                        styles={STYLES}
+                    />
                     <section className="px-4 py-4 border-b border-white/10">
                         <SectionHeader
                             label="Stage"
@@ -6474,6 +6500,7 @@ const QueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', u
                                 onEndPerformance={(songId) => handleEndPerformance(songId)}
                                 onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
                                 progressStageToNext={progressStageToNext}
+                                showStageSummaryHeader={false}
                                 styles={STYLES}
                                 emoji={EMOJI}
                             />
@@ -6620,6 +6647,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return String(new URLSearchParams(window.location.search || '').get('qaHostFixture') || '').trim();
     }, []);
     const [demoFixture, setDemoFixture] = useState(() => (isMarketingDemoEmbed ? {} : null));
+    const [room, setRoom] = useState(null);
+    const [songs, setSongs] = useState([]);
+    const [users, setUsers] = useState([]);
+    const [contacts, setContacts] = useState([]);
+    const [activities, setActivities] = useState([]);
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const upsertYtIndexEntriesRef = useRef(null);
     const parseYouTubeId = useCallback((url = '') => {
@@ -7013,11 +7045,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     
     // 2. Local State
     const [view, setView] = useState('landing');
-    const [room, setRoom] = useState(null);
-    const [songs, setSongs] = useState([]);
-    const [users, setUsers] = useState([]);
-    const [contacts, setContacts] = useState([]);
-    const [activities, setActivities] = useState([]);
     const [tab, setTab] = useState('admin');
     const [autoBgMusic, setAutoBgMusic] = useState(false);
     const [autoDj, setAutoDj] = useState(false);
@@ -8176,6 +8203,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const runOfShowLiveItem = useMemo(() => getRunOfShowLiveItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowStagedItem = useMemo(() => getRunOfShowStagedItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowNextItem = useMemo(() => getNextRunOfShowItem(runOfShowDirector), [runOfShowDirector]);
+    const crowdPulse = useMemo(() => getCrowdPulseSnapshot({
+        roomUsers: users,
+        activities,
+        queueDepth: queuedCount,
+        liveSceneType: runOfShowLiveItem?.type || room?.activeMode || '',
+        runOfShowEnabled: isRunOfShowRoom,
+        now: nowMs()
+    }), [activities, isRunOfShowRoom, queuedCount, room?.activeMode, runOfShowLiveItem?.type, users]);
     const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
         uid: isMarketingDemoFixture && !uid ? (room?.hostUid || room?.hostUids?.[0] || 'fixture_host') : uid,
         hostUid: room?.hostUid || '',
@@ -8688,6 +8723,52 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const clearRunOfShowPreview = useCallback(async () => {
         await updateRoom({ tvPreviewOverlay: null });
     }, [updateRoom]);
+    const openRunOfShowReleaseWindow = useCallback(async (itemId, options = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const targetItem = director.items.find((item) => item.id === itemId) || null;
+        if (!targetItem) return director;
+        const governanceMode = ['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(options?.governanceMode || targetItem?.governanceMode || '').trim().toLowerCase())
+            ? String(options?.governanceMode || targetItem?.governanceMode || '').trim().toLowerCase()
+            : 'crowd_signal';
+        const releasePolicy = ['manual_release', 'suggest_then_host_confirm', 'auto_flight_winner', 'locked'].includes(String(options?.releasePolicy || targetItem?.releasePolicy || '').trim().toLowerCase())
+            ? String(options?.releasePolicy || targetItem?.releasePolicy || '').trim().toLowerCase()
+            : 'suggest_then_host_confirm';
+        const openedAtMs = nowMs();
+        const closesAtMs = openedAtMs + (Math.max(10, Math.min(45, Number(options?.durationSec || 20))) * 1000);
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            releaseWindow: {
+                active: true,
+                itemId,
+                itemTitle: targetItem.title || getRunOfShowItemLabel(targetItem.type),
+                governanceMode,
+                releasePolicy,
+                prompt: String(options?.prompt || getRunOfShowReleaseWindowPrompt(targetItem)).trim(),
+                openedAtMs,
+                closesAtMs,
+                votesByUid: {},
+                resultChoice: '',
+                resolvedAtMs: 0
+            }
+        });
+        trackEvent('run_of_show_release_window_opened', { roomCode, itemId, governanceMode, releasePolicy });
+        return persistRunOfShowDirector(nextDirector);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, roomCode]);
+    const closeRunOfShowReleaseWindow = useCallback(async (options = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const currentWindow = director?.releaseWindow || null;
+        if (!currentWindow?.active && !currentWindow?.itemId) return director;
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            releaseWindow: {
+                ...(currentWindow || {}),
+                active: false,
+                resultChoice: String(options?.resultChoice || currentWindow?.resultChoice || '').trim().toLowerCase(),
+                resolvedAtMs: nowMs()
+            }
+        });
+        return persistRunOfShowDirector(nextDirector);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const prepareRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const director = getCurrentRunOfShowDirector();
         const targetItem = director.items.find((item) => item.id === itemId);
@@ -8698,6 +8779,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             lastPreparedItemId: itemId,
             lastAutomationAtMs: nowMs(),
             automationStatus: ready ? 'staged' : 'blocked',
+            releaseWindow: director?.releaseWindow?.itemId === itemId
+                ? { ...(director.releaseWindow || {}), active: false, resolvedAtMs: nowMs() }
+                : (director.releaseWindow || {}),
             items: director.items.map((item) => (
                 item.id === itemId
                     ? {
@@ -8762,6 +8846,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (startedItem) {
                 await fireRunOfShowItemCueIfNeeded(startedItem, 'start');
             }
+            if (currentDirector?.releaseWindow?.active && currentDirector.releaseWindow.itemId === itemId) {
+                await closeRunOfShowReleaseWindow();
+            }
             requestRunOfShowAutomationRecheck();
             trackEvent('run_of_show_item_started', { roomCode, itemId, automated: options?.automation === true });
             return nextDirector;
@@ -8780,6 +8867,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             currentItemId: itemId,
             lastAutomationAtMs: startedAtMs,
             automationStatus: 'live',
+            releaseWindow: director?.releaseWindow?.itemId === itemId
+                ? { ...(director.releaseWindow || {}), active: false, resolvedAtMs: startedAtMs }
+                : (director.releaseWindow || {}),
             items: director.items.map((item) => (
                 item.id === itemId
                     ? { ...item, status: 'live', blockedReason: '', liveStartedAtMs: startedAtMs }
@@ -8807,7 +8897,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -8839,6 +8929,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (!options?.skip && targetItem) {
                 await fireRunOfShowItemCueIfNeeded(targetItem, 'end');
             }
+            if (currentDirector?.releaseWindow?.active && currentDirector.releaseWindow.itemId === itemId) {
+                await closeRunOfShowReleaseWindow({ resultChoice: options?.skip === true ? 'keep_queue_moving' : '' });
+            }
             requestRunOfShowAutomationRecheck();
             trackEvent(options?.skip === true ? 'run_of_show_item_skipped' : 'run_of_show_item_completed', { roomCode, itemId, automated: options?.automation === true });
             return nextDirector;
@@ -8852,6 +8945,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             lastCompletedItemId: itemId,
             lastAutomationAtMs: completedAtMs,
             automationStatus: 'idle',
+            releaseWindow: director?.releaseWindow?.itemId === itemId
+                ? { ...(director.releaseWindow || {}), active: false, resolvedAtMs: completedAtMs }
+                : (director.releaseWindow || {}),
             items: director.items.map((item) => (
                 item.id === itemId
                     ? { ...item, status: 'complete', blockedReason: '', completedAtMs }
@@ -8866,7 +8962,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
+    }, [applyRunOfShowActionResult, buildRunOfShowCompletionRoomUpdates, closeRunOfShowReleaseWindow, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, toast, updateRoom]);
     const skipRunOfShowItem = useCallback(async (itemId, options = {}) => {
         if (!isMarketingDemoFixture) {
             return completeRunOfShowItem(itemId, { ...options, skip: true });
@@ -8879,6 +8975,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ...director,
             currentItemId: director.currentItemId === itemId ? '' : director.currentItemId,
             lastAutomationAtMs: nowMs(),
+            releaseWindow: director?.releaseWindow?.itemId === itemId
+                ? { ...(director.releaseWindow || {}), active: false, resolvedAtMs: nowMs() }
+                : (director.releaseWindow || {}),
             items: director.items.map((item) => (
                 item.id === itemId
                     ? { ...item, status: 'skipped', blockedReason: '', completedAtMs: nowMs() }
@@ -13866,14 +13965,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             };
             let storagePath = '';
             let mediaUrl = '';
-            try {
-                ({ storagePath, mediaUrl } = await directUpload());
-            } catch (directError) {
-                if (mediaType !== 'image' || Number(file.size || 0) > 8 * 1024 * 1024) {
-                    throw directError;
+            const canUseCallableUpload = mediaType === 'image' && Number(file.size || 0) <= 8 * 1024 * 1024;
+            if (canUseCallableUpload) {
+                try {
+                    ({ storagePath, mediaUrl } = await callableUpload());
+                } catch (callableError) {
+                    hostLogger.warn('Scene preset callable upload failed; trying direct storage upload', callableError);
+                    ({ storagePath, mediaUrl } = await directUpload());
                 }
-                hostLogger.warn('Scene preset direct upload failed; trying host callable fallback', directError);
-                ({ storagePath, mediaUrl } = await callableUpload());
+            } else {
+                ({ storagePath, mediaUrl } = await directUpload());
             }
             const rawTitle = String(options?.title || '').trim();
             const fallbackTitle = safeName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
@@ -17759,6 +17860,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onLaunchScenePreset: launchScenePreset,
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
+        crowdPulse,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
         getYtDiagnosticsKey,
@@ -18051,8 +18153,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     <div className="flex min-h-0 flex-col gap-4">
                         <div className="hidden flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/82 px-4 py-3 sm:flex">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Workspace</div>
-                                <div className="mt-1 text-sm text-zinc-400">Build, preflight, and repair live issues. Queue stays the runtime home.</div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>
+                                <div className="mt-1 text-sm text-zinc-400">Build, preflight, and slot scenes into the live lane. Queue stays the runtime home.</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
@@ -18095,6 +18197,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     operatorCapabilities={runOfShowOperatorCapabilities}
                                     operatingHint={runOfShowOperatingHint}
                                     preflightReport={runOfShowPreflightReport}
+                                    crowdPulse={crowdPulse}
                                     compactViewport={compactHostViewport}
                                     onSetEnabled={setRunOfShowEnabledState}
                                     onSetProgramMode={setRunOfShowProgramModeState}
@@ -18114,6 +18217,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onStartItem={startRunOfShowItem}
                                     onCompleteItem={completeRunOfShowItem}
                                     onSkipItem={skipRunOfShowItem}
+                                    onOpenReleaseWindow={openRunOfShowReleaseWindow}
+                                    onCloseReleaseWindow={closeRunOfShowReleaseWindow}
                                     onReviewSubmission={reviewRunOfShowSubmission}
                                     onAssignQueueSongToItem={assignQueueSongToRunOfShowItem}
                                     onUpdatePolicy={updateRunOfShowPolicyState}
@@ -18129,7 +18234,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Run Of Show</div>
                                     <div className="mt-2 text-xl font-bold text-white">Create or reopen a room first.</div>
                                     <div className="mt-2 max-w-2xl text-zinc-400">
-                                        Show planning stays out of the launch flow until there is an active room. Once a room exists, this workspace becomes the timeline-first planning surface for slots, approvals, co-hosts, and automation.
+                                        Show planning stays out of the launch flow until there is an active room. Once a room exists, this workspace becomes the conveyor-first planning surface for slots, approvals, co-hosts, and automation.
                                     </div>
                                     <div className="mt-4 flex flex-wrap gap-2">
                                         <button type="button" onClick={() => openAdminWorkspace('ops.room_setup')} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
