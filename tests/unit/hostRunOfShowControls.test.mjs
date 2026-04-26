@@ -100,13 +100,23 @@ test("HostApp keeps the queue runtime mounted when the host leaves the queue vie
 
   assert.match(
     hostSource,
+    /data-host-main-scroll="true"[\s\S]*className=\{`relative z-0 flex flex-1 min-h-0 flex-col/,
+    "The host main shell must be a flex column so stage and show tabs can claim scrollable height",
+  );
+  assert.match(
+    hostSource,
     /data-host-queue-runtime="mounted"[\s\S]*<HostQueueTab[\s\S]*runtimeVisible=\{tab === 'stage'\}/,
     "HostQueueTab owns host-side automation timers and should stay mounted while its UI is hidden",
   );
   assert.match(
     hostSource,
-    /className=\{tab === 'stage' \? '' : 'hidden'\}/,
-    "Queue UI should be hidden, not unmounted, outside the stage tab",
+    /className=\{tab === 'stage' \? 'flex flex-1 min-h-0 flex-col' : 'hidden'\}/,
+    "Queue UI should stay mounted inside a constrained flex column so its internal panels can scroll",
+  );
+  assert.match(
+    hostSource,
+    /\{tab === 'run_of_show' && \(\s*<div className="flex flex-1 min-h-0 flex-col gap-4">/,
+    "Run of show should also claim constrained height so its board can scroll independently",
   );
   assert.match(
     queueTabSource,

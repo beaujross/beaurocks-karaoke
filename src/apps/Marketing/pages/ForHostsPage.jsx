@@ -208,8 +208,8 @@ const ForHostsPage = ({
           <div className="mk3-rebuild-kicker">For hosts</div>
           <h1>Join the BeauRocks host waitlist.</h1>
           <p>
-            Host access opens in reviewed batches. Approved hosts get the dashboard,
-            everyone else joins the line first.
+            Host access opens in reviewed batches. Apply once, then come back to the same
+            account when BeauRocks unlocks the dashboard.
           </p>
           <div className="mk3-demand-pill-row" aria-label="Host access signals">
             <span>Approved hosts only</span>
@@ -242,8 +242,8 @@ const ForHostsPage = ({
 
         <article ref={intakeFormRef} className="mk3-persona-simple-form-card">
           <div className="mk3-persona-simple-form-topline">
-            <span>Host waitlist</span>
-            <b>Reviewed access</b>
+            <span>Apply once</span>
+            <b>Same account opens the dashboard</b>
           </div>
 
           {hostApplicationStatus === "pending" && (

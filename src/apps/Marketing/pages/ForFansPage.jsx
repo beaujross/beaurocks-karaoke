@@ -149,33 +149,33 @@ const ForFansPage = ({ navigate, heroStats, pendingHostApplicationsCount = 0, on
             <div className="mk3-rebuild-action-row mk3-fans-home-hero-actions">
               <button
                 type="button"
-                className="mk3-rebuild-button is-secondary"
-                onClick={() => {
-                  trackPersonaCta("hero_host_login");
-                  onHostLogin?.();
-                }}
-              >
-                Host Login
-              </button>
-              <button
-                type="button"
                 className="mk3-rebuild-button is-primary"
-                onClick={() => {
-                  trackPersonaCta("hero_waitlist");
-                  navigate("for_hosts");
-                }}
-              >
-                Join Host Waitlist
-              </button>
-              <button
-                type="button"
-                className="mk3-rebuild-button is-link"
                 onClick={() => {
                   trackPersonaCta("hero_discover");
                   navigate("discover");
                 }}
               >
                 Explore Live Nights
+              </button>
+              <button
+                type="button"
+                className="mk3-rebuild-button is-secondary"
+                onClick={() => {
+                  trackPersonaCta("hero_join_by_code");
+                  navigate("join");
+                }}
+              >
+                Have a room code? Join
+              </button>
+              <button
+                type="button"
+                className="mk3-rebuild-button is-link"
+                onClick={() => {
+                  trackPersonaCta("hero_host_login");
+                  onHostLogin?.();
+                }}
+              >
+                Host Login
               </button>
             </div>
             <div className="mk3-fans-cinematic-pill-row" aria-label="Core signals">

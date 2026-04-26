@@ -15302,7 +15302,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex-1 min-h-0 ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
@@ -15341,7 +15341,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 <div
                     data-host-queue-runtime="mounted"
                     aria-hidden={tab !== 'stage' ? 'true' : undefined}
-                    className={tab === 'stage' ? '' : 'hidden'}
+                    className={tab === 'stage' ? 'flex flex-1 min-h-0 flex-col' : 'hidden'}
                 >
                     <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading live queue..." />}>
                         <HostQueueTab
@@ -15366,7 +15366,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     </React.Suspense>
                 </div>
                 {tab === 'run_of_show' && (
-                    <div className="flex min-h-0 flex-col gap-4">
+                    <div className="flex flex-1 min-h-0 flex-col gap-4">
                         <div className="hidden flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/82 px-4 py-3 sm:flex">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>
