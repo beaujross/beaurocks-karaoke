@@ -48,14 +48,20 @@ test('run-of-show performance builder uses one primary performance setup path', 
   assert.match(source, /const getEditablePerformerMode = \(performerMode = ''\) => \(/);
   assert.match(source, /const getPerformerModeLabel = \(performerMode = ''\) => \(/);
   assert.match(source, /Performance Setup/);
-  assert.match(source, /Open Track Setup/);
+  assert.match(source, /Setup Progress/);
+  assert.match(source, /Continue To Track/);
+  assert.match(source, /Step 1/);
+  assert.match(source, /Step 2/);
+  assert.match(source, /Step 3 - Track Setup/);
   assert.match(source, /Advanced Performance Settings/);
   assert.match(source, /Assigned Performance/);
   assert.match(source, /Performer name or label, like Performance TBD/);
+  assert.match(source, /Suggested Matches/);
   assert.doesNotMatch(source, /Fast Assign/);
   assert.doesNotMatch(source, /Quick editor/);
   assert.doesNotMatch(source, /More Slot Controls/);
   assert.doesNotMatch(source, /Placeholder mode is on\./);
+  assert.doesNotMatch(source, />Performance Prep</);
 });
 
 test('run-of-show director panel supports csv show-sheet import for rehearsal planning', () => {

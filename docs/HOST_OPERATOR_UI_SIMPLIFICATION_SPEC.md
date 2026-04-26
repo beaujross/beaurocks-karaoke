@@ -1,7 +1,30 @@
 # Host Operator UI Simplification Spec
 
-Last updated: 2026-04-24
+Last updated: 2026-04-26
 Owner: Product / Host surface
+
+## 2026-04-26 Event Hardening Notes
+
+These decisions are now part of the May 1 event posture:
+
+- `Queue` is the live operating cockpit.
+- `Show` / Run Of Show is the planner and conveyor, not a second live-control brain.
+- `Room Readiness` should not consume queue-column vertical space. It belongs in top chrome as a compact status plus launch control.
+- Avoid hidden `More -> show one extra action` patterns in the live lane. If a control matters live, it should be direct.
+- Performance-slot editing should present one ordered path:
+  - performer
+  - song
+  - track
+- Supporting inputs like submissions and queue matches should appear as `Suggested Matches`, not as competing top-level setup modes.
+- Public join flows coming from a known event should behave like direct room entry, not force users back through generic code-entry UX.
+- For the May 1 event, the persistent production room is `AAHF`. Discovery, poster QR, and `/join/AAHF` should all converge on the same audience-entry path.
+
+Not in scope before May 1:
+
+- co-host role expansion
+- new admin shells
+- broad new audio-library architecture
+- any second scheduling primitive beyond `Performance`, `Moment`, and `Scene`
 
 ## Goal
 

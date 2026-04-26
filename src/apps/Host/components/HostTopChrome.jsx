@@ -153,6 +153,12 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings,
     onOpenQueueControls,
+    roomReadinessSummary = '',
+    roomReadinessStatusLabel = 'Room',
+    roomReadinessActive = false,
+    roomReadinessNeedsAttention = false,
+    roomReadinessLaunchBusy = false,
+    onLaunchRoom,
     onOpenHostDashboard,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
@@ -203,7 +209,6 @@ const HostTopChrome = ({
             return false;
         }
     });
-    const [compactRunOfShowToolsOpen, setCompactRunOfShowToolsOpen] = React.useState(false);
     const launchMenuRef = React.useRef(null);
     const navMenuRef = React.useRef(null);
     const audioMenuRef = React.useRef(null);
@@ -594,7 +599,7 @@ const HostTopChrome = ({
     }, [compactRunOfShowCollapsed]);
     React.useEffect(() => {
         if (runOfShowFocusMode || !(runOfShowEnabled || hasRunOfShowPlan)) {
-            setCompactRunOfShowToolsOpen(false);
+            setCompactRunOfShowCollapsed(false);
         }
     }, [hasRunOfShowPlan, runOfShowEnabled, runOfShowFocusMode]);
     React.useEffect(() => {
@@ -1149,6 +1154,14 @@ const HostTopChrome = ({
                         title={appleMusicConnected ? 'Apple Music connected. Open music settings.' : 'Apple Music not linked. Open music settings.'}
                     />
                     <NavStatusLight
+                        label={roomReadinessStatusLabel}
+                        iconClass="fa-solid fa-rocket"
+                        active={roomReadinessActive}
+                        toneClass={roomReadinessActive ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
+                        onClick={onOpenQueueControls}
+                        title={roomReadinessSummary || 'Open queue controls to finish room setup.'}
+                    />
+                    <NavStatusLight
                         label="AI"
                         iconClass="fa-solid fa-robot"
                         active={aiToolsConnected}
@@ -1164,6 +1177,17 @@ const HostTopChrome = ({
                         onClick={onOpenAccessSettings}
                         title={authSessionReady ? 'Session active. Open access settings.' : 'Session not ready. Open access settings.'}
                     />
+                    {typeof onLaunchRoom === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={onLaunchRoom}
+                            disabled={roomReadinessLaunchBusy}
+                            className={`${styles.btnStd} ${roomReadinessNeedsAttention ? styles.btnNeutral : styles.btnHighlight} px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] disabled:opacity-50`}
+                            title={roomReadinessSummary || 'Launch room surfaces.'}
+                        >
+                            {roomReadinessLaunchBusy ? 'Launching...' : 'Launch'}
+                        </button>
+                    ) : null}
                 </div>
                 <button
                     onClick={() => {
@@ -2041,7 +2065,7 @@ const HostTopChrome = ({
                                 {activeMomentFeedback.label}
                             </span>
                         </div>
-                        <div className="mt-1 text-sm font-semibold text-white">{activeMomentFeedback.detail || 'Cue live'}</div>
+                        <div className="mt-1 text-sm font-semibold text-white">{activeMomentFeedback.detail || 'Sting live'}</div>
                     </div>
                 </div>
             ) : null}
@@ -2086,7 +2110,6 @@ const HostTopChrome = ({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setCompactRunOfShowToolsOpen(false);
                                         runOfShowPrimaryAction.onClick();
                                     }}
                                     disabled={runOfShowPrimaryAction.disabled}
@@ -2099,7 +2122,6 @@ const HostTopChrome = ({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setCompactRunOfShowToolsOpen(false);
                                         onOpenShowWorkspace();
                                     }}
                                     className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
@@ -2109,29 +2131,17 @@ const HostTopChrome = ({
                             )}
                             <button
                                 type="button"
-                                onClick={() => setCompactRunOfShowToolsOpen((prev) => !prev)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
-                            >
-                                {compactRunOfShowToolsOpen ? (compactRunOfShowDense ? 'Hide' : 'Less') : 'More'}
-                            </button>
-                        </div>
-                    </div>
-                    {compactRunOfShowToolsOpen ? (
-                        <div className={`mt-2 flex flex-wrap items-center gap-1.5 border-t border-white/10 ${compactRunOfShowDense ? 'pt-1.5' : 'pt-2'}`}>
-                            <button
-                                type="button"
                                 onClick={() => setCompactRunOfShowCollapsed((prev) => !prev)}
                                 className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
                             >
                                 {compactRunOfShowCollapsed
-                                    ? (compactRunOfShowDense ? 'Expand Bar' : 'Expand Timeline')
-                                    : (compactRunOfShowDense ? 'Collapse Bar' : 'Collapse Timeline')}
+                                    ? (compactRunOfShowDense ? 'Show Bar' : 'Show Timeline')
+                                    : (compactRunOfShowDense ? 'Hide Bar' : 'Hide Timeline')}
                             </button>
                             {runOfShowEnabled && typeof onRewindRunOfShow === 'function' ? (
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setCompactRunOfShowToolsOpen(false);
                                         onRewindRunOfShow();
                                     }}
                                     disabled={compactRunOfShowItems.length < 2}
@@ -2144,7 +2154,6 @@ const HostTopChrome = ({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setCompactRunOfShowToolsOpen(false);
                                         onStopRunOfShow();
                                     }}
                                     className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em] disabled:opacity-40`}
@@ -2153,7 +2162,7 @@ const HostTopChrome = ({
                                 </button>
                             ) : null}
                         </div>
-                    ) : null}
+                    </div>
                     {!compactRunOfShowCollapsed && compactRunOfShowDense ? (
                         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
                             {compactRunOfShowItems.map((item) => (

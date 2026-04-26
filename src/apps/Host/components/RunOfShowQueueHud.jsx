@@ -49,7 +49,7 @@ const formatItemSummary = (item = {}) => {
             .join(' | ') || 'Performance setup still open';
     }
     if (type === 'announcement' || type === 'intro' || type === 'closing') {
-        return String(item?.presentationPlan?.headline || item?.notes || '').trim() || 'Show cue';
+        return String(item?.presentationPlan?.headline || item?.notes || '').trim() || 'Show moment';
     }
     if (type === 'trivia_break' || type === 'game_break' || type === 'would_you_rather_break') {
         return String(item?.modeLaunchPlan?.modeKey || item?.notes || '').trim() || 'Audience moment';
@@ -159,7 +159,6 @@ export default function RunOfShowQueueHud({
     onToggleAutomationPause,
     styles,
 }) {
-    const [moreOpen, setMoreOpen] = React.useState(false);
     const [laterOpen, setLaterOpen] = React.useState(true);
     const [previewItemId, setPreviewItemId] = React.useState('');
     const normalizedDirector = React.useMemo(
@@ -345,7 +344,6 @@ export default function RunOfShowQueueHud({
                         <button
                             type="button"
                             onClick={() => {
-                                setMoreOpen(false);
                                 primaryAction.onClick?.();
                             }}
                             disabled={primaryAction.disabled}
@@ -358,7 +356,6 @@ export default function RunOfShowQueueHud({
                         <button
                             type="button"
                             onClick={() => {
-                                setMoreOpen(false);
                                 onOpenShowWorkspace();
                             }}
                             className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
@@ -366,18 +363,6 @@ export default function RunOfShowQueueHud({
                             Show Workspace
                         </button>
                     ) : null}
-                    <button
-                        type="button"
-                        onClick={() => setMoreOpen((value) => !value)}
-                        className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
-                    >
-                        {moreOpen ? 'Less' : 'More'}
-                    </button>
-                </div>
-            </div>
-
-            {moreOpen ? (
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-3">
                     <button
                         type="button"
                         onClick={() => setLaterOpen((value) => !value)}
@@ -389,7 +374,6 @@ export default function RunOfShowQueueHud({
                         <button
                             type="button"
                             onClick={() => {
-                                setMoreOpen(false);
                                 onRewind();
                             }}
                             disabled={hudItems.length < 2}
@@ -402,7 +386,6 @@ export default function RunOfShowQueueHud({
                         <button
                             type="button"
                             onClick={() => {
-                                setMoreOpen(false);
                                 onStop();
                             }}
                             className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
@@ -414,7 +397,6 @@ export default function RunOfShowQueueHud({
                         <button
                             type="button"
                             onClick={() => {
-                                setMoreOpen(false);
                                 onClear();
                             }}
                             className={`${styles?.btnStd} ${styles?.btnDanger || styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
@@ -422,11 +404,8 @@ export default function RunOfShowQueueHud({
                             Clear Show
                         </button>
                     ) : null}
-                    <div className="w-full text-[11px] leading-relaxed text-zinc-400">
-                        YouTube only lets the in-app TV/player iframe start videos that allow embedding. When a backing is marked not embeddable, the host can still use it, but playback has to open in the separate backing window instead of the synced TV embed.
-                    </div>
                 </div>
-            ) : null}
+            </div>
 
             <div className="mt-3 grid gap-2 lg:grid-cols-2">
                 {renderSlotCard(

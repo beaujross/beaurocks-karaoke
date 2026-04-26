@@ -67,8 +67,8 @@ const HostMomentsStrip = ({
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                     <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Moments</div>
-                    <div className="mt-1 text-sm font-semibold text-white">Quick room cues</div>
-                    <div className="mt-1 text-xs text-zinc-400">Use short, high-confidence cues without opening the full soundboard.</div>
+                    <div className="mt-1 text-sm font-semibold text-white">Quick room stings</div>
+                    <div className="mt-1 text-xs text-zinc-400">Use short, high-confidence stings without opening the full soundboard.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em]">
                     {lastTriggeredLabel ? (
@@ -111,7 +111,7 @@ const HostMomentsStrip = ({
                                 {busy ? (
                                     <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-300">Live</span>
                                 ) : active ? (
-                                    <span className="text-[10px] uppercase tracking-[0.16em] text-white/90">Cue live</span>
+                                    <span className="text-[10px] uppercase tracking-[0.16em] text-white/90">Sting live</span>
                                 ) : coolingDown ? (
                                     <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-400">{formatCooldownLabel(remainingMs)}</span>
                                 ) : null}

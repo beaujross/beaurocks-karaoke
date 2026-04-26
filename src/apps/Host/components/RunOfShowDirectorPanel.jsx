@@ -540,7 +540,7 @@ const TAKEOVER_STYLE_PRESETS = Object.freeze([
         id: 'reveal_hit',
         label: 'Reveal Hit',
         detail: 'Best for winner reveals, scoreboards, sponsor draws, or challenge payoffs.',
-        soundtrackHint: 'Use a suspense swell, reveal sting, or short payoff cue.',
+        soundtrackHint: 'Use a suspense swell, reveal sting, or short payoff hit.',
         icon: 'fa-wand-magic-sparkles',
         tone: 'amber',
         takeoverScene: 'leaderboard',
@@ -1673,7 +1673,7 @@ const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) =
                     </div>
                 ) : null}
                 <div>
-                    <FieldLabel>Scene Cue</FieldLabel>
+                    <FieldLabel>Scene Sting</FieldLabel>
                     <div className="mt-1">
                         <SelectControl
                             value={audioPlan?.momentCueId || ''}
@@ -1686,7 +1686,7 @@ const QuickInlineSceneEditor = ({ item = {}, onUpdateItem, disabled = false }) =
                             })}
                             disabled={disabled}
                         >
-                            <option value="">No cue</option>
+                            <option value="">No sting</option>
                             {MOMENT_CUE_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
                             ))}
@@ -1730,12 +1730,12 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
         <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Cue</div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Sting</div>
                     <div className="mt-1 text-sm text-zinc-300">Pick one short room beat for this scene, then only open more options when timing or manual triggering needs to change.</div>
                 </div>
                 <div className="flex items-center gap-2">
                     <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${activeCue?.chipClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                        {cueId ? cueSummaryLabel(audioPlan) : 'No cue'}
+                        {cueId ? cueSummaryLabel(audioPlan) : 'No sting'}
                     </span>
                     <button
                         type="button"
@@ -1746,19 +1746,19 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                         disabled={disabled || !cueId}
                         className={`inline-flex items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] disabled:opacity-40 ${customizeOpen && cueId ? 'border-fuchsia-300/28 bg-fuchsia-500/10 text-fuchsia-100' : 'border-white/10 bg-black/25 text-zinc-300'}`}
                     >
-                        {customizeOpen && cueId ? 'Hide Cue Options' : 'Cue Options'}
+                        {customizeOpen && cueId ? 'Hide Sting Options' : 'Sting Options'}
                     </button>
                 </div>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
                 <div>
-                    <FieldLabel>Cue</FieldLabel>
+                    <FieldLabel>Sting</FieldLabel>
                     <SelectControl
                         value={cueId}
                         onChange={(event) => setCueId(event.target.value)}
                         disabled={disabled}
                     >
-                        <option value="">No cue</option>
+                        <option value="">No sting</option>
                         {MOMENT_CUE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>{option.label}</option>
                         ))}
@@ -1779,7 +1779,7 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                     </div>
                 ) : (
                     <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-3 py-3 text-sm text-zinc-500">
-                        No cue attached.
+                        No sting attached.
                     </div>
                 )}
             </div>
@@ -1814,7 +1814,7 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                             })}
                             disabled={disabled}
                         />
-                        <span>Auto-fire this cue</span>
+                        <span>Auto-fire this sting</span>
                     </label>
                 </div>
             ) : null}
@@ -1822,7 +1822,7 @@ const RunOfShowMomentCueFields = ({ item = {}, onUpdateItem, disabled = false })
                 <div className="mt-3 rounded-xl bg-black/15 px-3 py-2 text-xs text-zinc-400">
                     {autoFire
                         ? `This scene will trigger ${cueSummaryLabel(audioPlan)} automatically.`
-                        : 'Cue selected, but auto-fire is off. Turn it on when you want this beat to trigger on its own.'}
+                        : 'Sting selected, but auto-fire is off. Turn it on when you want this beat to trigger on its own.'}
                 </div>
             ) : null}
         </div>
@@ -7017,11 +7017,12 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                                         <div>
                                                             <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/80">Performance Setup</div>
-                                                            <div className="mt-1 text-sm text-zinc-200">Set the performer and song here. Track picks and edge-case rules stay below.</div>
+                                                            <div className="mt-1 text-sm text-zinc-200">Work top to bottom: performer, song, then track. Supporting options stay below so the main path stays obvious.</div>
                                                         </div>
                                                         <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                                                             <span className={`rounded-full border px-2 py-1 ${performerReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{performerReady ? 'Performer ready' : 'Performer needed'}</span>
                                                             <span className={`rounded-full border px-2 py-1 ${(songReady && artistReady) ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{songReady && artistReady ? 'Song ready' : 'Song needed'}</span>
+                                                            <span className={`rounded-full border px-2 py-1 ${playbackReady ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>{playbackReady ? 'Track ready' : 'Track needed'}</span>
                                                         </div>
                                                     </div>
                                                     <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_auto]">
@@ -7102,43 +7103,43 @@ export default function RunOfShowDirectorPanel({
                                                                 Find Karaoke Backing
                                                             </ControlButton>
                                                             <ControlButton onClick={() => setExclusivePrepStep(item.id, performerReady ? (songReady && artistReady ? 'track' : 'song') : 'singer')}>
-                                                                {performerReady ? (songReady && artistReady ? 'Open Track Setup' : 'Open Song Setup') : 'Open Performer Setup'}
+                                                                {performerReady ? (songReady && artistReady ? 'Continue To Track' : 'Continue To Song') : 'Continue To Performer'}
                                                             </ControlButton>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Setup Progress</div>
+                                                                <div className="mt-1 text-sm text-zinc-200">
+                                                                    {performancePrepPrimaryAction
+                                                                        ? `Next step: ${performancePrepPrimaryAction.label}.`
+                                                                        : 'Performer, song, and track are ready for this performance.'}
+                                                                </div>
+                                                                <div className="mt-2 text-xs text-zinc-400">
+                                                                    {`${performancePrepSteps.filter((step) => step.done).length} of ${performancePrepSteps.length} setup steps are locked in.`}
+                                                                </div>
+                                                            </div>
+                                                            {performancePrepPrimaryAction ? (
+                                                                <ControlButton tone={performancePrepPrimaryAction.tone} onClick={performancePrepPrimaryAction.onClick}>
+                                                                    {performancePrepPrimaryAction.label}
+                                                                </ControlButton>
+                                                            ) : (
+                                                                <span className="rounded-full border border-emerald-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                                                    Ready to run
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div className="mt-3 text-xs text-cyan-100/72">
-                                                        This is the main setup path for the performance. Use queue matches below when you want to pull in a live request, and open advanced settings only for unusual cases.
-                                                    </div>
-                                                </div>
-                                                <div className={`rounded-2xl border px-4 py-4 ${performancePrepPrimaryAction ? 'border-cyan-300/18 bg-cyan-500/8' : 'border-emerald-300/18 bg-emerald-500/8'}`}>
-                                                    <div className="flex flex-wrap items-start justify-between gap-3">
-                                                        <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Performance Prep</div>
-                                                            <div className="mt-1 text-sm text-zinc-200">
-                                                                {performancePrepPrimaryAction
-                                                                    ? `Next up: ${performancePrepPrimaryAction.label}.`
-                                                                    : 'Performer, song, and track are ready for this performance.'}
-                                                            </div>
-                                                            <div className="mt-2 text-xs text-zinc-400">
-                                                                {`${performancePrepSteps.filter((step) => step.done).length} of ${performancePrepSteps.length} prep steps locked in. Use the stepper below to stay on one setup task at a time.`}
-                                                            </div>
-                                                        </div>
-                                                        {performancePrepPrimaryAction ? (
-                                                            <ControlButton tone={performancePrepPrimaryAction.tone} onClick={performancePrepPrimaryAction.onClick}>
-                                                                {performancePrepPrimaryAction.label}
-                                                            </ControlButton>
-                                                        ) : (
-                                                            <span className="rounded-full border border-emerald-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
-                                                                Ready to run
-                                                            </span>
-                                                        )}
+                                                        This is the main setup path for the performance. Use queue matches or submissions only when you want to pull in a live request, and open advanced settings only for unusual cases.
                                                     </div>
                                                 </div>
                                                 {prepInboxMode ? (
                                                     <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
                                                         <div className="flex flex-wrap items-start justify-between gap-3">
                                                             <div>
-                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Prep Inbox</div>
+                                                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Suggested Matches</div>
                                                                 <div className="mt-1 text-sm text-zinc-300">
                                                                     {prepInboxMode === 'submissions'
                                                                         ? 'Start here. Review the best submissions for this performance before you worry about anything else.'
@@ -7195,10 +7196,10 @@ export default function RunOfShowDirectorPanel({
                                                     </div>
                                                 ) : null}
                                                 <div className="grid gap-2 md:grid-cols-3">
-                                                    {[
+                                                    {[ 
                                                         {
                                                             key: 'singer',
-                                                            title: 'Singer',
+                                                            title: 'Performer',
                                                             detail: slotNeedsApprovals ? `${pendingCount} waiting` : (performerReady ? (item.assignedPerformerName || 'Assigned performance') : 'Choose one'),
                                                             done: !slotNeedsApprovals && performerReady,
                                                         },
@@ -7224,7 +7225,7 @@ export default function RunOfShowDirectorPanel({
                                                                 className={`rounded-2xl border px-3 py-3 text-left transition ${active ? 'border-cyan-300/35 bg-cyan-500/12' : 'border-white/10 bg-black/15 hover:bg-black/25'}`}
                                                             >
                                                                 <div className="flex items-center justify-between gap-2">
-                                                                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">{step.title}</div>
+                                                                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">{`Step ${step.key === 'singer' ? '1' : step.key === 'song' ? '2' : '3'} - ${step.title}`}</div>
                                                                     <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${step.done ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100' : active ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100' : 'border-amber-300/25 bg-amber-500/10 text-amber-100'}`}>
                                                                         {step.done ? 'Done' : active ? 'Now' : 'Next'}
                                                                     </span>
@@ -7237,8 +7238,8 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
                                                         <div data-run-of-show-prep-section={`${item.id}:singer`}>
                                                             <CollapsiblePanel
-                                                                label="Singer Setup"
-                                                                title={performerReady ? 'Singer assigned' : 'Choose singer'}
+                                                                label="Step 1"
+                                                                title={performerReady ? 'Performer assigned' : 'Choose performer'}
                                                                 summary={item.performerMode === RUN_OF_SHOW_PERFORMER_MODES.openSubmission
                                                                     ? 'Confirm who should own this performance.'
                                                                     : 'Assign or adjust who will perform this song.'}
@@ -7310,7 +7311,7 @@ export default function RunOfShowDirectorPanel({
                                                         </div>
                                                         <div data-run-of-show-prep-section={`${item.id}:song`}>
                                                             <CollapsiblePanel
-                                                                label="Song Setup"
+                                                                label="Step 2"
                                                                 title={songReady && artistReady ? 'Song details locked in' : 'Add song details'}
                                                                 summary="Fill in or adjust the song title and artist used for track search."
                                                                 open={songSetupOpen}
@@ -7469,7 +7470,7 @@ export default function RunOfShowDirectorPanel({
                                                 <div data-run-of-show-prep-section={`${item.id}:track`} className="border-t border-white/10 pt-3 space-y-3">
                                                     <div className="flex items-start justify-between gap-3">
                                                         <div>
-                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Track Setup</div>
+                                                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Step 3 - Track Setup</div>
                                                             <div className="mt-1 text-sm text-zinc-300">Choose the working track for this performance. Open details only if the main path is not enough.</div>
                                                         </div>
                                                         {mediaPicker.itemId === item.id && mediaPicker.loading ? <span className="text-xs text-cyan-100/80">Loading...</span> : null}
@@ -7810,7 +7811,7 @@ export default function RunOfShowDirectorPanel({
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div>
                                                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Scene Style</div>
-                                                            <div className="mt-1 text-sm text-zinc-300">Choose the mood for this takeover. It sets the TV look and the default cue behavior together.</div>
+                                                            <div className="mt-1 text-sm text-zinc-300">Choose the mood for this takeover. It sets the TV look and the default sting behavior together.</div>
                                                         </div>
                                                         {matchedTakeoverPreset ? (
                                                             <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
@@ -7901,7 +7902,7 @@ export default function RunOfShowDirectorPanel({
                                                 />
                                                 <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">How It Sounds</div>
-                                                    <div className="mt-1 text-sm text-zinc-300">Attach takeover audio or cue punctuation only when this scene needs it.</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">Attach takeover audio or sting punctuation only when this scene needs it.</div>
                                                 </div>
                                                 {soundtrackControlsOpen || soundtrackConfigured ? (
                                                     <RunOfShowTakeoverSoundtrackEditor

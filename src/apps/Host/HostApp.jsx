@@ -3,7 +3,6 @@ import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import HostChatPanel from './components/HostChatPanel';
 import HostTopChrome from './components/HostTopChrome';
-import HostRoomReadinessPanel from './components/HostRoomReadinessPanel';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
@@ -4655,14 +4654,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return false;
         }
     });
-    const [roomReadinessCollapsed, setRoomReadinessCollapsed] = useState(() => {
-        try {
-            if (typeof window === 'undefined') return false;
-            return localStorage.getItem('bross_host_room_readiness_collapsed') === '1';
-        } catch {
-            return false;
-        }
-    });
     const [audiencePreviewMode, setAudiencePreviewMode] = useState(() => {
         try {
             if (typeof window === 'undefined') return 'live_audience';
@@ -7963,7 +7954,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         try {
             localStorage.setItem('bross_host_audience_preview_visible', audiencePreviewVisible ? '1' : '0');
             localStorage.setItem('bross_host_audience_preview_collapsed', audiencePreviewCollapsed ? '1' : '0');
-            localStorage.setItem('bross_host_room_readiness_collapsed', roomReadinessCollapsed ? '1' : '0');
             localStorage.setItem(
                 'bross_host_audience_preview_mode',
                 normalizeAudiencePreviewMode(audiencePreviewMode) === 'live_audience' ? 'live_audience' : 'thumbnail'
@@ -7984,7 +7974,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [
         audiencePreviewVisible,
         audiencePreviewCollapsed,
-        roomReadinessCollapsed,
         audiencePreviewMode,
         audiencePreviewSize,
         publicTvPreviewVisible,
@@ -9588,11 +9577,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const sourceLabel = String(options?.sourceLabel || '').trim().toLowerCase();
         const itemTitle = String(options?.itemTitle || '').trim();
         const isRunOfShowCue = sourceLabel === 'run of show';
-        let detail = meta.detail || 'Live room cue';
+        let detail = meta.detail || 'Live room sting';
         if (isRunOfShowCue && itemTitle) {
-            detail = `Scene cue for ${itemTitle}`;
+            detail = `Scene sting for ${itemTitle}`;
         } else if (isRunOfShowCue) {
-            detail = 'Scene cue live';
+            detail = 'Scene sting live';
         } else if (itemTitle) {
             detail = itemTitle;
         } else if (sourceLabel) {
@@ -9604,7 +9593,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             detail,
             icon: meta.icon,
             toneClass: meta.toneClass,
-            sourceTag: isRunOfShowCue ? 'Scene cue' : 'Live moment',
+            sourceTag: isRunOfShowCue ? 'Scene sting' : 'Live moment',
             startedAt: Date.now()
         });
         if (hostMomentFeedbackTimerRef.current) {
@@ -9634,21 +9623,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             await startBeatDrop?.();
             await logMoment(sourceLabel ? `triggered a hype moment from ${sourceLabel}` : 'triggered a hype moment');
             showHostMomentFeedback(normalizedCueId, options);
-            if (!quiet) toast?.(itemTitle ? `Hype cue fired for ${itemTitle}.` : 'Hype moment live.');
+            if (!quiet) toast?.(itemTitle ? `Hype sting fired for ${itemTitle}.` : 'Hype moment live.');
             return;
         }
         if (normalizedCueId === 'celebrate') {
             playMomentSound(momentSoundUrls.celebrate);
-            await logMoment(sourceLabel ? `triggered a celebration cue from ${sourceLabel}` : 'triggered a celebration moment');
+            await logMoment(sourceLabel ? `triggered a celebration sting from ${sourceLabel}` : 'triggered a celebration moment');
             showHostMomentFeedback(normalizedCueId, options);
-            if (!quiet) toast?.(itemTitle ? `Celebrate cue fired for ${itemTitle}.` : 'Celebration cue live.');
+            if (!quiet) toast?.(itemTitle ? `Celebrate sting fired for ${itemTitle}.` : 'Celebration sting live.');
             return;
         }
         if (normalizedCueId === 'reveal') {
             playMomentSound(momentSoundUrls.reveal);
-            await logMoment(sourceLabel ? `triggered a reveal cue from ${sourceLabel}` : 'triggered a reveal cue');
+            await logMoment(sourceLabel ? `triggered a reveal sting from ${sourceLabel}` : 'triggered a reveal sting');
             showHostMomentFeedback(normalizedCueId, options);
-            if (!quiet) toast?.(itemTitle ? `Reveal cue fired for ${itemTitle}.` : 'Reveal cue live.');
+            if (!quiet) toast?.(itemTitle ? `Reveal sting fired for ${itemTitle}.` : 'Reveal sting live.');
             return;
         }
         if (normalizedCueId === 'next_up') {
@@ -9656,7 +9645,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             playMomentSound(momentSoundUrls.next_up);
             await logMoment(sourceLabel ? `teed up the next act from ${sourceLabel}` : 'teed up the next performer', EMOJI.mic);
             showHostMomentFeedback(normalizedCueId, options);
-            if (!quiet) toast?.(itemTitle ? `Next up cue fired for ${itemTitle}.` : 'Next up cue live.');
+            if (!quiet) toast?.(itemTitle ? `Next up sting fired for ${itemTitle}.` : 'Next up sting live.');
             return;
         }
         if (normalizedCueId === 'reset') {
@@ -11906,6 +11895,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (assist?.label) return assist.label;
         return autoDj ? 'Auto DJ' : 'Manual';
     }, [autoDj, missionDraft?.assistLevel, room?.missionControl?.setupDraft?.assistLevel]);
+    const roomReadinessState = useMemo(() => {
+        const hasRoom = !!String(roomCode || '').trim();
+        const blockers = [
+            !hasRoom,
+            !stageQuickStartTvReady,
+            !stageQuickStartAudienceReady,
+        ].filter(Boolean).length;
+        const waiting = [
+            hasRoom && stageQuickStartTvReady && !activeQuickStartProgress.tvOpened,
+            hasRoom && stageQuickStartAudienceReady && !activeQuickStartProgress.joinLinkCopied,
+        ].filter(Boolean).length;
+        const statusLabel = blockers > 0
+            ? `${blockers} blocker${blockers === 1 ? '' : 's'}`
+            : waiting > 0
+                ? `${waiting} launch step${waiting === 1 ? '' : 's'}`
+                : 'Ready';
+        const title = blockers > 0
+            ? 'Room needs setup'
+            : waiting > 0
+                ? 'Room ready to launch'
+                : 'Room live-ready';
+        const detail = blockers > 0
+            ? 'Finish TV and guest entry before launch.'
+            : waiting > 0
+                ? 'Open TV and share the join link from Queue Controls.'
+                : `${roomReadinessQueueSummary} · ${roomReadinessAutomationLabel}`;
+        return {
+            blockers,
+            waiting,
+            active: blockers === 0,
+            needsAttention: blockers > 0,
+            statusLabel,
+            summary: `${title}. ${detail}`.trim(),
+        };
+    }, [
+        activeQuickStartProgress.joinLinkCopied,
+        activeQuickStartProgress.tvOpened,
+        roomCode,
+        roomReadinessAutomationLabel,
+        roomReadinessQueueSummary,
+        stageQuickStartAudienceReady,
+        stageQuickStartTvReady,
+    ]);
     const stageQuickStartSummary = stageQuickStartCompletedCount === 4
         ? 'Quick start complete. Keep running the room from this live deck.'
         : (isFirstHostRoomRun
@@ -15236,6 +15268,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setSettingsTab('general');
                     }}
                     onOpenQueueControls={focusQueueLiveControls}
+                    roomReadinessSummary={roomReadinessState.summary}
+                    roomReadinessStatusLabel={roomReadinessState.statusLabel}
+                    roomReadinessActive={roomReadinessState.active}
+                    roomReadinessNeedsAttention={roomReadinessState.needsAttention}
+                    roomReadinessLaunchBusy={roomReadinessLaunching || nightSetupApplying}
+                    onLaunchRoom={handleRoomReadinessLaunch}
                     onOpenHostDashboard={openHostRoomDashboard}
                     showStageQuickStart={showStageQuickStartChecklist}
                     stageQuickStartCompletedCount={stageQuickStartCompletedCount}
@@ -15314,30 +15352,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                     />
                 )}
-                {tab === 'stage' && roomCode ? (
-                    <HostRoomReadinessPanel
-                        roomCode={roomCode}
-                        roomName={room?.roomName || room?.name || room?.title || ''}
-                        queueSummary={roomReadinessQueueSummary}
-                        automationLabel={roomReadinessAutomationLabel}
-                        tvReady={stageQuickStartTvReady}
-                        tvOpened={!!activeQuickStartProgress.tvOpened}
-                        joinLinkReady={stageQuickStartAudienceReady}
-                        joinLinkCopied={!!activeQuickStartProgress.joinLinkCopied}
-                        appleMusicConnected={appleMusicAuthorized}
-                        hasRunOfShowPlan={Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0}
-                        runOfShowEnabled={isRunOfShowRoom}
-                        launchBusy={roomReadinessLaunching || nightSetupApplying}
-                        onLaunchRoom={handleRoomReadinessLaunch}
-                        onOpenTv={handleStageQuickStartOpenTv}
-                        onCopyJoinLink={handleStageQuickStartCopyJoinLink}
-                        onOpenSetup={focusQueueLiveControls}
-                        onOpenShowPlan={() => handleTopChromeTabChange('run_of_show')}
-                        onConnectAppleMusic={handleStageQuickStartConnectAppleMusic}
-                        collapsed={roomReadinessCollapsed}
-                        onToggleCollapsed={() => setRoomReadinessCollapsed((value) => !value)}
-                    />
-                ) : null}
                 <div
                     data-host-queue-runtime="mounted"
                     aria-hidden={tab !== 'stage' ? 'true' : undefined}

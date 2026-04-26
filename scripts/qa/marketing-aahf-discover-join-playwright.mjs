@@ -67,6 +67,7 @@ const secureTokenResponse = Object.freeze({
 
 const loadDiscover = async (page, baseUrl, timeoutMs) => {
   await page.goto(`${baseUrl}/discover`, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page.waitForLoadState("networkidle", { timeout: timeoutMs }).catch(() => {});
   const searchInput = page.locator('input[placeholder*="Host, venue, city, or vibe"]').first();
   await searchInput.waitFor({ state: "visible", timeout: timeoutMs });
   return searchInput;

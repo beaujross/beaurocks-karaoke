@@ -102,3 +102,22 @@ This note captures product and engineering lessons that should outlive the immed
   - focused inspector
 - The product should feel closer to a sequence editor than a settings form.
 - `Build / Run / Review` separation is the right direction; continuing to stack forms and dropdowns will keep failing the intuition test.
+
+## Live Event Room Contract (AAHF / May 1)
+
+- Treat the May 1 event room as a persistent production room, not a throwaway rehearsal room.
+- The canonical room code is `AAHF`.
+- Discovery, join poster QR, and direct room entry should all converge on `/join/AAHF`.
+- The audience should not be asked to re-solve room-code entry after selecting a known event from Discovery.
+- Event-day operational priority is:
+  - one real room
+  - one join path
+  - one host
+  - no blank stage
+
+## Continuity Rule
+
+- `Fail gracefully` in this product means the room never falls into a blank stage or dead-air state.
+- Continuity should be handled inside one transition policy, not by letting Auto DJ, dead-air filler, Run Of Show, and fallback features act like separate controllers.
+- Run Of Show remains the planner of record.
+- Coverage / fallback behavior is a temporary bridge back into the planned flow, not a replacement runtime.

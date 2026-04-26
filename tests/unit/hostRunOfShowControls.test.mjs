@@ -89,6 +89,9 @@ test("Host chrome routes live automation access back into the queue tab", () => 
 
   assert.match(chromeSource, /data-feature-id="deck-open-queue-controls"/);
   assert.match(chromeSource, /Queue Controls/);
+  assert.match(chromeSource, /roomReadinessStatusLabel = 'Room'/);
+  assert.match(chromeSource, /fa-solid fa-rocket/);
+  assert.match(chromeSource, /Launching\.\.\.' : 'Launch'/);
   assert.doesNotMatch(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
   assert.doesNotMatch(chromeSource, /Auto DJ Queue/);
   assert.match(hostSource, /onOpenQueueControls=\{focusQueueLiveControls\}/);
@@ -204,6 +207,7 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   const hostSource = readFileSync(hostAppPath, "utf8");
   const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
   const queueHudSource = readFileSync(runOfShowQueueHudPath, "utf8");
+  const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
   assert.match(hostSource, /import \{\s*buildRunOfShowGameLaunchRoomUpdates\s*\} from '..\/..\/lib\/gameLaunchSupport';/);
   assert.match(
@@ -220,12 +224,34 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
   assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
   assert.match(queueHudSource, /Item Actions/);
+  assert.match(queueHudSource, /Hide Later/);
+  assert.match(queueHudSource, /Show Later/);
+  assert.match(queueHudSource, />\s*Previous\s*</);
+  assert.match(queueHudSource, />\s*Stop Show\s*</);
   assert.match(queueHudSource, /Move Earlier/);
   assert.match(queueHudSource, /Move Later/);
   assert.match(queueHudSource, /Fix Issue/);
   assert.match(queueHudSource, /Preview/);
   assert.match(queueHudSource, /Edit/);
   assert.match(queueHudSource, /keep the room moving/);
+  assert.doesNotMatch(queueHudSource, /\{moreOpen \? 'Less' : 'More'\}/);
+  assert.doesNotMatch(chromeSource, /compactRunOfShowToolsOpen/);
+  assert.doesNotMatch(chromeSource, /\? \(compactRunOfShowDense \? 'Hide' : 'Less'\) : 'More'/);
+});
+
+test("Host-facing moment language uses sting instead of cue where it would collide with queue", () => {
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
+  const chromeSource = readFileSync(hostTopChromePath, "utf8");
+
+  assert.match(directorPanelSource, /Scene Sting/);
+  assert.match(directorPanelSource, /Sting Options/);
+  assert.match(directorPanelSource, /No sting attached\./);
+  assert.match(chromeSource, /Sting live/);
+  assert.match(hostSource, /Scene sting/);
+  assert.match(hostSource, /Next up sting fired/);
+  assert.doesNotMatch(directorPanelSource, /Scene Cue/);
+  assert.doesNotMatch(chromeSource, /Cue live/);
 });
 
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {

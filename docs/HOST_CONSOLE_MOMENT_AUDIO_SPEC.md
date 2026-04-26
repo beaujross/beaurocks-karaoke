@@ -1,6 +1,22 @@
 # Host Console Moment Audio Spec
 Date: 2026-04-04
 
+## 2026-04-26 Terminology Guardrail
+
+User-facing `cue` language is too easy to confuse with `queue`, especially in voice-to-text and live verbal collaboration.
+
+Current product rule:
+
+- scheduled flow items remain `Performance`, `Moment`, and `Scene`
+- short audio punctuation should prefer `Sting` in user-facing copy
+- do not use `Cue` as a separate primary host-facing scheduling concept
+
+Practical implication:
+
+- sponsor beats, announcements, and similar planned beats should be modeled as `Moment` or `Scene`
+- a `Sting` may optionally decorate those items
+- raw cue/audio concepts can remain internal until a larger post-event sound-bank cleanup happens
+
 ## Goal
 Make BeauRocks feel more like a live game console or game show desk during hosting:
 
@@ -395,5 +411,4 @@ If the host asks:
 - "Which of these 18 sounds is the right one?"
 
 the design has failed.
-
 

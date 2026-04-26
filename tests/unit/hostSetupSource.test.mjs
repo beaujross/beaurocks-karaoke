@@ -5,7 +5,7 @@ import { test } from 'vitest';
 const primaryPicksPath = 'src/apps/Host/components/setup/MissionSetupPrimaryPicks.jsx';
 const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx';
 const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
-const readinessPath = 'src/apps/Host/components/HostRoomReadinessPanel.jsx';
+const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
 
@@ -118,48 +118,48 @@ test('night setup wizard can close without forcing hosts through every step', ()
 });
 
 test('host panel presents readiness and one launch action before deeper setup', () => {
-  const readinessSource = readFileSync(readinessPath, 'utf8');
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const topChromeSource = readFileSync(topChromePath, 'utf8');
 
   assert.match(
-    readinessSource,
-    /Room Readiness/,
-    'Host panel should expose room readiness as the main setup model',
+    topChromeSource,
+    /roomReadinessSummary = ''/,
+    'Host top chrome should accept a compact room readiness summary',
   );
   assert.match(
-    readinessSource,
-    /Launch Room/,
-    'Readiness surface should provide one launch action',
+    topChromeSource,
+    /roomReadinessStatusLabel = 'Room'/,
+    'Host top chrome should expose a compact room readiness status label',
   );
   assert.match(
-    readinessSource,
+    topChromeSource,
     /Queue Controls/,
-    'Readiness surface should hand off live tweaks to queue controls instead of setup',
+    'Readiness handoff should still point hosts to queue controls for live tweaks',
   );
   assert.doesNotMatch(
-    readinessSource,
-    /Adjust/,
-    'Readiness surface should not frame live tweaks as a generic setup action',
+    hostAppSource,
+    /<HostRoomReadinessPanel/,
+    'Host app should stop rendering the old standalone room readiness strip above the queue',
   );
   assert.match(
-    readinessSource,
-    /collapsed = false/,
-    'Readiness surface should support a collapsed state',
+    topChromeSource,
+    /label=\{roomReadinessStatusLabel\}/,
+    'Readiness status should live alongside the top chrome status lights',
   );
   assert.match(
-    readinessSource,
-    /Hide/,
-    'Expanded readiness surface should be closeable',
+    topChromeSource,
+    /fa-solid fa-rocket/,
+    'Readiness status should use a dedicated launch/readiness indicator in top chrome',
   );
   assert.match(
-    readinessSource,
-    /Show/,
-    'Collapsed readiness surface should be restorable',
+    topChromeSource,
+    /Launching\.\.\.' : 'Launch'/,
+    'Top chrome should provide one direct launch action for the room package',
   );
   assert.match(
     hostAppSource,
-    /<HostRoomReadinessPanel/,
-    'Host app should render the readiness surface above the live queue',
+    /const roomReadinessState = useMemo\(\(\) => \{/,
+    'Host app should derive a compact room readiness state for the chrome',
   );
   assert.match(
     hostAppSource,
@@ -173,18 +173,8 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
-    /onOpenSetup=\{focusQueueLiveControls\}/,
-    'Readiness surface should open queue controls for in-flow tweaks',
-  );
-  assert.match(
-    hostAppSource,
-    /collapsed=\{roomReadinessCollapsed\}/,
-    'Host app should pass the room readiness collapse state into the surface',
-  );
-  assert.match(
-    hostAppSource,
-    /onToggleCollapsed=\{\(\) => setRoomReadinessCollapsed\(\(value\) => !value\)\}/,
-    'Host app should allow the readiness surface to toggle open and closed',
+    /roomReadinessSummary=\{roomReadinessState\.summary\}/,
+    'Host app should pass the derived readiness summary into top chrome',
   );
   assert.match(
     hostAppSource,
@@ -203,8 +193,8 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
-    /bross_host_room_readiness_collapsed/,
-    'Host app should persist the readiness collapse preference',
+    /onLaunchRoom=\{handleRoomReadinessLaunch\}/,
+    'Host app should wire the chrome launch action into the shared launch package',
   );
 });
 
