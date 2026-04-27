@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAHF Karaoke Kick-Off Audience Guide</title>
+  <style>
+    :root {
+      --bg: #f7f3ea;
+      --paper: #fffdf9;
+      --ink: #1f2430;
+      --muted: #61584d;
+      --line: #e7d8c1;
+      --primary: #e05a44;
+      --secondary: #f4c94a;
+      --accent: #8f2d2a;
+      --shadow: 0 22px 56px rgba(74, 40, 24, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      color: var(--ink);
+      font-family: "Aptos", "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(224, 90, 68, 0.12), transparent 28%),
+        radial-gradient(circle at top right, rgba(244, 201, 74, 0.18), transparent 26%),
+        linear-gradient(180deg, #fcfaf5 0%, var(--bg) 100%);
+      line-height: 1.35;
+    }
+
+    .page {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0 auto;
+      background: var(--paper);
+      border: 1px solid rgba(143, 45, 42, 0.10);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      position: relative;
+      padding: 28px 32px 26px;
+      background:
+        linear-gradient(135deg, rgba(224, 90, 68, 0.10), rgba(244, 201, 74, 0.18)),
+        linear-gradient(180deg, #fffdf9 0%, #fff8ef 100%);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 7px;
+      background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .lockup {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+    }
+
+    .lockup img {
+      width: 84px;
+      height: 84px;
+      object-fit: contain;
+      flex-shrink: 0;
+      filter: drop-shadow(0 12px 20px rgba(143, 45, 42, 0.14));
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      max-width: 560px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .room-card {
+      width: 240px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 14px 15px;
+    }
+
+    .room-label {
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .room-value {
+      margin-top: 6px;
+      font-size: 28px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+
+    .room-note {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .top-band {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 18px;
+      padding: 22px 32px 8px;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(180deg, #fff 0%, #fffdf8 100%);
+      padding: 18px;
+    }
+
+    .panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .wifi-banner {
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: linear-gradient(135deg, rgba(224, 90, 68, 0.92), rgba(143, 45, 42, 0.96));
+      color: #fff;
+      box-shadow: 0 12px 26px rgba(143, 45, 42, 0.18);
+    }
+
+    .wifi-label {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      opacity: 0.88;
+    }
+
+    .wifi-name {
+      margin-top: 8px;
+      font-size: 24px;
+      line-height: 1.05;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+    }
+
+    .wifi-copy {
+      margin-top: 8px;
+      font-size: 13px;
+      opacity: 0.92;
+    }
+
+    .qr-box {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      align-content: start;
+      min-height: 100%;
+    }
+
+    .qr-placeholder {
+      width: 230px;
+      height: 230px;
+      border-radius: 22px;
+      border: 2px dashed rgba(143, 45, 42, 0.28);
+      background:
+        linear-gradient(135deg, rgba(244, 201, 74, 0.15), rgba(224, 90, 68, 0.08));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+      color: var(--accent);
+      font-weight: 800;
+      font-size: 16px;
+    }
+
+    .qr-url {
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .steps {
+      display: grid;
+      gap: 12px;
+      padding: 10px 32px 0;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fff 0%, #fffdf9 100%);
+    }
+
+    .step-num {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--accent), var(--primary));
+      box-shadow: 0 10px 22px rgba(143, 45, 42, 0.16);
+    }
+
+    .step-title {
+      margin: 2px 0 4px;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .step-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.8px;
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      padding: 18px 32px 28px;
+    }
+
+    .rules-list,
+    .tips-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .rules-list li,
+    .tips-list li {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+
+    .small-note {
+      margin-top: 12px;
+      border-radius: 14px;
+      padding: 11px 12px;
+      background: rgba(143, 45, 42, 0.05);
+      border: 1px solid rgba(143, 45, 42, 0.10);
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    strong {
+      color: var(--ink);
+    }
+
+    @page {
+      size: letter;
+      margin: 0.35in;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #fff;
+      }
+
+      .page {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="brand-row">
+        <div class="lockup">
+          <img src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
+          <div>
+            <p class="eyebrow">AAHF Festival x BeauRocks Karaoke</p>
+            <h1>How To Join The Karaoke Kick-Off</h1>
+            <p class="subtitle">
+              Connect once, join fast, request your songs, and keep an eye on the queue so you are ready when your turn comes up.
+            </p>
+          </div>
+        </div>
+
+        <div class="room-card">
+          <div class="room-label">Tonight’s Room Code</div>
+          <div class="room-value">AAHF</div>
+          <div class="room-note">If the join page ever asks for a room code, enter <strong>AAHF</strong>.</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="top-band">
+      <div class="panel">
+        <h2>Start Here</h2>
+        <div class="wifi-banner">
+          <div class="wifi-label">Connect To Wi-Fi First</div>
+          <div class="wifi-name">AAHF Festival Karaoke Kick Off</div>
+          <div class="wifi-copy">For the best experience, join the event Wi-Fi before you scan the QR code or open the join link.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="qr-box">
+          <div class="qr-placeholder">QR Code Goes Here</div>
+          <div class="qr-url">
+            Scan to open:<br />
+            <strong>aahfestival.org/karaoke-kickoff</strong><br />
+            This should redirect guests into the BeauRocks audience join flow.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>
+          <div class="step-title">Connect to the Wi-Fi</div>
+          <p class="step-copy">Join <strong>AAHF Festival Karaoke Kick Off</strong> so the audience app loads quickly and stays stable in the room.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>
+          <div class="step-title">Scan the QR code</div>
+          <p class="step-copy">The QR code should send you to <strong>aahfestival.org/karaoke-kickoff</strong>, then redirect you into the BeauRocks join flow for room <strong>AAHF</strong>.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>
+          <div class="step-title">Pick your emoji first</div>
+          <p class="step-copy">The streamlined AAHF join flow is designed to drop you at the emoji-select screen. Pick the emoji that feels like you.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">4</div>
+        <div>
+          <div class="step-title">Enter your display name</div>
+          <p class="step-copy">Use the name you want the host and the room to recognize when your song comes up.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">5</div>
+        <div>
+          <div class="step-title">Continue with email or support</div>
+          <p class="step-copy">This room is currently configured for <strong>email or donation access</strong>. If prompted, you can continue with email or support the AAHF fundraiser through Givebutter.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">6</div>
+        <div>
+          <div class="step-title">Browse or search for your song</div>
+          <p class="step-copy">Use the audience browse and search flow to find your song. Guests request the song intent first; the room handles backing-track resolution behind the scenes.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">7</div>
+        <div>
+          <div class="step-title">Submit your request</div>
+          <p class="step-copy">Tap to send your request. Because this room is moderated, your request may wait for host approval before it fully joins the active queue.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-num">8</div>
+        <div>
+          <div class="step-title">Watch the queue and stay nearby</div>
+          <p class="step-copy">Keep your phone handy, watch your place in line, and be ready when you are close to the top of the queue.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="bottom-grid">
+      <div class="panel">
+        <h2>Tonight’s Current Room Rules</h2>
+        <ul class="rules-list">
+          <li><strong>Room code:</strong> AAHF</li>
+          <li><strong>Audience shell:</strong> streamlined AAHF festival join flow</li>
+          <li><strong>Queue limit:</strong> 2 songs per person per night</li>
+          <li><strong>Queue style:</strong> round robin</li>
+          <li><strong>First-time boost:</strong> off</li>
+          <li><strong>Host approval:</strong> on</li>
+          <li><strong>Guest track-picking:</strong> off</li>
+          <li><strong>Auto lyrics:</strong> on for queued songs</li>
+          <li><strong>Scoring + fame:</strong> on</li>
+          <li><strong>Pop trivia default:</strong> off</li>
+        </ul>
+        <div class="small-note">
+          <strong>What that means:</strong> you can request songs normally, but the host keeps control over the final backing choice and what joins the live queue.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>How Search Works Tonight</h2>
+        <ul class="tips-list">
+          <li><strong>Audience members can browse and search songs.</strong> The room is not set to “known tracks only.”</li>
+          <li><strong>Guests do not directly pick YouTube backings tonight.</strong> This room is using the <strong>host chooses the track</strong> model.</li>
+          <li><strong>Behind the scenes, the room can resolve from known catalog and curated sources.</strong> The AAHF preset has <strong>YouTube</strong> and <strong>iTunes/song catalog</strong> enabled on the host side, with <strong>local-library audience search off</strong>.</li>
+          <li><strong>If your song does not already have a clean known backing, it can still be requested.</strong> It may simply wait for the host to choose the best playable version.</li>
+          <li><strong>Premium reactions and custom emoji are open in this room.</strong></li>
+        </ul>
+        <div class="small-note">
+          Best audience behavior: search for the exact song you want, submit once, and let the host/co-host team keep the night flowing.
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

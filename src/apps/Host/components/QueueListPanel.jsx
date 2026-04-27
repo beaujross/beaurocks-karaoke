@@ -178,6 +178,8 @@ const QueueInspector = ({
     onRemove,
     onAssignQueueSongToRunOfShowItem,
     runOfShowAssignableSlots = [],
+    runOfShowOpenSlots = [],
+    onAssignQueueSongToNextOpenRunOfShowSlot,
 }) => {
     const [selectedSlotId, setSelectedSlotId] = React.useState('');
 
@@ -186,9 +188,9 @@ const QueueInspector = ({
             setSelectedSlotId('');
             return;
         }
-        const fallbackSlotId = String(song?.runOfShowItemId || runOfShowAssignableSlots?.[0]?.id || '').trim();
+        const fallbackSlotId = String(song?.runOfShowItemId || runOfShowOpenSlots?.[0]?.id || runOfShowAssignableSlots?.[0]?.id || '').trim();
         setSelectedSlotId(fallbackSlotId);
-    }, [runOfShowAssignableSlots, song?.id, song?.runOfShowItemId]);
+    }, [runOfShowAssignableSlots, runOfShowOpenSlots, song?.id, song?.runOfShowItemId]);
 
     if (!song?.id) return null;
     const songStatus = String(song?.status || '').trim().toLowerCase();
@@ -197,6 +199,10 @@ const QueueInspector = ({
     const isPendingApproval = songStatus === 'pending' && !needsTrackReview;
     const isAssigned = songStatus === 'assigned';
     const selectedSlot = runOfShowAssignableSlots.find((slot) => slot.id === selectedSlotId) || null;
+    const nextOpenSlot = runOfShowOpenSlots[0] || null;
+    const canFastAssignToOpenSlot = !isHeld && !needsTrackReview && !isPendingApproval && !isAssigned
+        && typeof onAssignQueueSongToNextOpenRunOfShowSlot === 'function'
+        && !!nextOpenSlot?.id;
 
     return (
         <div
@@ -295,31 +301,53 @@ const QueueInspector = ({
                 </button>
             </div>
 
-            {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
+            {(typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length) || canFastAssignToOpenSlot ? (
                 !isHeld && !needsTrackReview && !isPendingApproval ? (
                 <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
                     <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Run Of Show Slot</div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select
-                            value={selectedSlotId}
-                            onChange={(event) => setSelectedSlotId(event.target.value)}
-                            className="min-w-[180px] rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
-                        >
-                            {runOfShowAssignableSlots.map((slot) => (
-                                <option key={slot.id} value={slot.id}>{slot.label}</option>
-                            ))}
-                        </select>
-                        <button
-                            type="button"
-                            disabled={!selectedSlotId}
-                            onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
-                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] px-3 text-[11px] disabled:opacity-45`}
-                        >
-                            {song?.runOfShowItemId ? 'Reassign Slot' : 'Assign Slot'}
-                        </button>
-                    </div>
+                    {canFastAssignToOpenSlot ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => onAssignQueueSongToNextOpenRunOfShowSlot(song.id)}
+                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] px-3 text-[11px]`}
+                            >
+                                {runOfShowOpenSlots.length === 1
+                                    ? `Assign To ${nextOpenSlot.label}`
+                                    : `Assign To Next Open Slot`}
+                            </button>
+                            {runOfShowOpenSlots.length > 1 ? (
+                                <div className="text-xs text-zinc-400">
+                                    Next open: {nextOpenSlot.label}
+                                </div>
+                            ) : null}
+                        </div>
+                    ) : null}
+                    {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <select
+                                value={selectedSlotId}
+                                onChange={(event) => setSelectedSlotId(event.target.value)}
+                                className="min-w-[180px] rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                            >
+                                {runOfShowAssignableSlots.map((slot) => (
+                                    <option key={slot.id} value={slot.id}>{slot.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                disabled={!selectedSlotId}
+                                onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] px-3 text-[11px] disabled:opacity-45`}
+                            >
+                                {song?.runOfShowItemId ? 'Reassign Selected Slot' : 'Assign Selected Slot'}
+                            </button>
+                        </div>
+                    ) : null}
                     {selectedSlot ? (
                         <div className="mt-2 text-xs text-zinc-400">Selected slot: {selectedSlot.label}</div>
+                    ) : canFastAssignToOpenSlot ? (
+                        <div className="mt-2 text-xs text-zinc-400">Open slot: {nextOpenSlot.label}</div>
                     ) : null}
                 </div>
                 ) : null
@@ -371,8 +399,11 @@ const QueueListPanel = ({
     styles,
     compactViewport = false,
     runOfShowAssignableSlots = [],
+    runOfShowOpenSlots = [],
     queueSurfaceCounts = null,
     onAssignQueueSongToRunOfShowItem,
+    onAssignQueueSongToNextOpenRunOfShowSlot,
+    onFillRunOfShowOpenSlotsFromQueue,
     quickControls = null,
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
@@ -443,11 +474,11 @@ const QueueListPanel = ({
                 label: `Held ${heldCount}`
             }
             : null,
-        runOfShowAssignableSlots.length
+        runOfShowOpenSlots.length
             ? {
                 key: 'openSlots',
                 className: 'rounded-full border border-emerald-300/30 bg-emerald-500/10 px-2 py-1 text-emerald-100',
-                label: `Open Slots ${runOfShowAssignableSlots.length}`
+                label: `Open Slots ${runOfShowOpenSlots.length}`
             }
             : null
     ].filter(Boolean);
@@ -473,11 +504,13 @@ const QueueListPanel = ({
                 toneClass: 'border-white/10 bg-black/25 text-zinc-300',
                 accentClass: 'text-zinc-100'
             }
-            : runOfShowAssignableSlots.length > 0 && readyCount > 0
+            : runOfShowOpenSlots.length > 0 && readyCount > 0
                 ? {
                     eyebrow: 'Run of show ready',
-                    title: `${runOfShowAssignableSlots.length} slot${runOfShowAssignableSlots.length === 1 ? '' : 's'} can pull from queue`,
-                    detail: 'Use slot assignment on any ready song when you want the show plan to absorb it.',
+                    title: `${runOfShowOpenSlots.length} open slot${runOfShowOpenSlots.length === 1 ? '' : 's'} can pull from queue`,
+                    detail: runOfShowOpenSlots.length === 1
+                        ? 'One tap can drop the next ready song straight into the open performance slot.'
+                        : 'Use Fill Next Slot or Fill All Suggested to absorb queued singers into open performance slots.',
                     toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
                     accentClass: 'text-cyan-100'
                 }
@@ -500,6 +533,8 @@ const QueueListPanel = ({
                         toneClass: heldCount > 0 ? 'border-zinc-300/20 bg-zinc-500/10 text-zinc-200' : 'border-violet-300/25 bg-violet-500/10 text-violet-100',
                         accentClass: heldCount > 0 ? 'text-zinc-100' : 'text-violet-100'
                     };
+
+    const canFillRunOfShowFromQueue = runOfShowOpenSlots.length > 0 && readyCount > 0 && typeof onFillRunOfShowOpenSlotsFromQueue === 'function';
 
     return (
         <>
@@ -526,6 +561,26 @@ const QueueListPanel = ({
                             {queueSummaryChips.map((chip) => (
                                 <span key={chip.key} className={chip.className}>{chip.label}</span>
                             ))}
+                        </div>
+                    ) : null}
+                    {canFillRunOfShowFromQueue ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2" data-feature-id="queue-open-slot-actions">
+                            <button
+                                type="button"
+                                onClick={() => onFillRunOfShowOpenSlotsFromQueue?.({ limit: 1 })}
+                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[38px] px-3 text-[11px]`}
+                            >
+                                Fill Next Slot
+                            </button>
+                            {Math.min(runOfShowOpenSlots.length, readyCount) > 1 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => onFillRunOfShowOpenSlotsFromQueue?.()}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
+                                >
+                                    Fill All Suggested
+                                </button>
+                            ) : null}
                         </div>
                     ) : null}
                 </div>
@@ -558,6 +613,8 @@ const QueueListPanel = ({
                 onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
                 runOfShowAssignableSlots={runOfShowAssignableSlots}
+                runOfShowOpenSlots={runOfShowOpenSlots}
+                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
             />
             {pending.length > 0 ? (
                 <div className={`mb-3 border-b border-white/10 ${compactViewport ? 'pb-1.5' : 'pb-2'}`}>

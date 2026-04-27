@@ -16,11 +16,23 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   const hostQueueTabSource = readFileSync(hostQueueTabPath, 'utf8');
 
   assert.match(hostAppSource, /<HostQueueTab[\s\S]*runtimeVisible=\{tab === 'stage'\}/);
+  assert.match(hostAppSource, /const recentCoHostSignals = useMemo/);
+  assert.match(hostAppSource, /isCoHostSignalActivity\(entry\)/);
+  assert.match(hostAppSource, /coHostSignals: recentCoHostSignals/);
+  assert.match(hostAppSource, /const coHostSignalToastStateRef = useRef/);
+  assert.match(hostAppSource, /contextTitle/);
+  assert.match(hostAppSource, /contextMeta/);
+  assert.match(hostAppSource, /performanceSongTitle/);
+  assert.match(hostAppSource, /performanceArtistName/);
+  assert.match(hostAppSource, /performanceAlbumArtUrl/);
+  assert.match(hostAppSource, /performanceElapsedSec/);
+  assert.match(hostAppSource, /toast\(`Co-host: \$\{freshSignal\.hostLabel\}/);
   assert.match(hostQueueTabSource, /import HostLiveOpsPanel from '\.\/HostLiveOpsPanel';/);
   assert.match(hostQueueTabSource, /<HostLiveOpsPanel[\s\S]*current=\{current\}/);
   assert.match(hostQueueTabSource, /runOfShowFlightedItem=\{runOfShowStagedItem\}/);
   assert.match(hostQueueTabSource, /runOfShowOnDeckItem=\{runOfShowNextItem\}/);
   assert.match(hostQueueTabSource, /crowdPulse=\{crowdPulse\}/);
+  assert.match(hostQueueTabSource, /coHostSignals=\{coHostSignals\}/);
   assert.match(hostQueueTabSource, /showStageSummaryHeader=\{false\}/);
   assert.match(hostQueueTabSource, /h-full min-h-0 flex flex-col overflow-hidden/);
   assert.match(hostQueueTabSource, /flex-1 min-h-0 overflow-y-auto custom-scrollbar/);
@@ -35,6 +47,9 @@ test('live lane panel collapses host runtime into now next and conveyor cards', 
   assert.match(source, /Next Singer/);
   assert.match(source, /Conveyor/);
   assert.match(source, /Crowd Pulse/);
+  assert.match(source, /Tell Host/);
+  assert.match(source, /Context-rich audio notes from trusted co-hosts/);
+  assert.match(source, /No recent co-host audio notes\./);
   assert.match(source, /Start Next Singer/);
   assert.match(source, /Open Conveyor/);
   assert.match(source, /End Current/);

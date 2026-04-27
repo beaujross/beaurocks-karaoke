@@ -161,7 +161,20 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
     releaseWindow: {
       active: true,
       itemId: optionalItem.id,
+      subjectType: "queue_faceoff",
       governanceMode: "cohost_vote",
+      choiceLabels: {
+        slot_scene: "Don't Stop Believin'",
+        keep_queue_moving: "Mr. Brightside"
+      },
+      choiceDetails: {
+        slot_scene: "Taylor",
+        keep_queue_moving: "Jordan"
+      },
+      choiceSongIds: {
+        slot_scene: "song_1",
+        keep_queue_moving: "song_2"
+      },
       votesByUid: {
         co_1: "slot_scene",
         stranger: "keep_queue_moving"
@@ -172,7 +185,20 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
   assert.equal(director.items[0].governanceMode, "crowd_signal");
   assert.equal(director.items[0].releasePolicy, "suggest_then_host_confirm");
   assert.equal(director.releaseWindow.active, true);
+  assert.equal(director.releaseWindow.subjectType, "queue_faceoff");
   assert.equal(director.releaseWindow.governanceMode, "cohost_vote");
+  assert.deepEqual(director.releaseWindow.choiceLabels, {
+    slot_scene: "Don't Stop Believin'",
+    keep_queue_moving: "Mr. Brightside"
+  });
+  assert.deepEqual(director.releaseWindow.choiceDetails, {
+    slot_scene: "Taylor",
+    keep_queue_moving: "Jordan"
+  });
+  assert.deepEqual(director.releaseWindow.choiceSongIds, {
+    slot_scene: "song_1",
+    keep_queue_moving: "song_2"
+  });
   assert.deepEqual(
     director.releaseWindow.votesByUid,
     {
@@ -187,9 +213,35 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
       keepQueueMovingCount: 0,
       totalVotes: 1,
       leadingChoice: "slot_scene",
-      summary: "1-0 favor running the scene next"
+      summary: "1-0 favor \"Don't Stop Believin'\""
     }
   );
+});
+
+test("runOfShowDirector crowd votes count the full room while preserving custom choice labels", () => {
+  const tally = getRunOfShowReleaseWindowTally({
+    active: true,
+    governanceMode: "crowd_vote",
+    choiceLabels: {
+      slot_scene: "Song A",
+      keep_queue_moving: "Song B"
+    },
+    votesByUid: {
+      co_1: "slot_scene",
+      guest_1: "keep_queue_moving",
+      guest_2: "keep_queue_moving"
+    }
+  }, {
+    coHosts: ["co_1"]
+  });
+
+  assert.deepEqual(tally, {
+    slotSceneCount: 1,
+    keepQueueMovingCount: 2,
+    totalVotes: 3,
+    leadingChoice: "keep_queue_moving",
+    summary: "2-1 favor \"Song B\""
+  });
 });
 
 test("runOfShowDirector preserves legacy placeholder slots while keeping open submissions distinct", () => {

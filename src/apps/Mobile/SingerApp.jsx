@@ -43,12 +43,16 @@ import { resolveSongCatalog, extractYouTubeId, buildSongKey } from '../../lib/so
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
 import {
     AUDIENCE_ACCESS_MODES,
+    CO_HOST_CREDIT_POLICIES,
     CREDIT_EARNING_MODES,
+    DEFAULT_REACTION_TAP_COOLDOWN_MS,
     MONEYBAGS_BADGE_LABEL,
     normalizeAudienceExperience,
     buildAudienceSupportOffer,
     buildGivebutterSupportLaunchUrl,
+    normalizeCoHostCreditPolicy,
     normalizePurchaseCelebration,
+    normalizeReactionTapCooldownMs,
 } from '../../lib/roomMonetization';
 import {
     decorateBrowseSongs
@@ -101,6 +105,11 @@ import {
     getRunOfShowOperatorRole,
     getRunOfShowReleaseWindowTally
 } from '../../lib/runOfShowDirector';
+import {
+    COHOST_SIGNAL_COOLDOWN_MS,
+    COHOST_SIGNAL_OPTIONS,
+    getCoHostSignalMeta
+} from '../../lib/coHostSignals';
 import {
     getVolleyOrbMobileMainLine,
     getVolleyOrbBaseAction,
@@ -160,7 +169,7 @@ const buildDoodleOkeProjectionId = (roomCodeValue = '', promptIdValue = '') => {
 };
 
 // Helper Component for Animated Points
-const AnimatedPoints = ({ value, onClick, className = '', rewardDelta = 0, rewardPulseKey = '' }) => {
+const AnimatedPoints = ({ value, onClick, className = '', rewardDelta = 0, rewardPulseKey = '', displayValue = null, caption = 'PTS' }) => {
     const [display, setDisplay] = useState(value);
     const showRewardBadge = !!rewardPulseKey && rewardDelta > 0;
 
@@ -178,8 +187,8 @@ const AnimatedPoints = ({ value, onClick, className = '', rewardDelta = 0, rewar
 
     return (
         <button onClick={onClick} className={`relative overflow-visible bg-black/60 backdrop-blur-sm px-3 py-2 rounded-full border border-cyan-500/30 flex items-center gap-2 shadow-lg active:scale-95 transition-transform z-50 points-hint h-11 w-[120px] sm:w-[132px] justify-between ${showRewardBadge ? 'scale-[1.04] border-emerald-300/70 shadow-[0_0_28px_rgba(16,185,129,0.38)]' : ''} ${className}`}>
-            <span className="text-cyan-300 font-black text-xl font-mono">{display}</span>
-            <span className="text-[11px] text-cyan-300 font-bold">PTS</span>
+            <span className="text-cyan-300 font-black text-xl font-mono">{displayValue ?? display}</span>
+            <span className="text-[11px] text-cyan-300 font-bold">{caption}</span>
             <div className="w-5 h-5 rounded-full bg-white/10 flex items-center justify-center text-[12px] font-black relative overflow-hidden">
                 <span className="absolute inset-0 flex items-center justify-center points-hint-i">i</span>
                 <span className="absolute inset-0 flex items-center justify-center points-hint-plus">+</span>
@@ -248,6 +257,23 @@ const AudienceBrowseSongRow = ({
         </div>
     </div>
 );
+
+const getAudienceSongArtworkUrl = (song = {}) =>
+    String(
+        song?.albumArtUrl
+        || song?.artworkUrl100
+        || song?.artworkUrl60
+        || song?.artworkUrl
+        || song?.art
+        || ''
+    ).trim();
+
+const formatElapsedClock = (valueSec = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(valueSec || 0) || 0));
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
 
 const DEFAULT_EMOJI = emoji(0x1F600);
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
@@ -923,6 +949,7 @@ const SingerApp = ({ roomCode, uid }) => {
         const targetRoomCode = String(params.get('room') || roomCode || '').trim().toUpperCase() || 'DEMOAUD';
         return buildQaAudienceFixture(fixtureId, { roomCode: targetRoomCode }) || null;
     })();
+    const isQaAudienceFixture = !!initialAudienceDemoFixture;
     const [user, setUser] = useState(initialAudienceDemoFixture?.user || null);
     const [profile, setProfile] = useState(initialAudienceDemoFixture?.profile || null);
     const [allUsers, setAllUsers] = useState(Array.isArray(initialAudienceDemoFixture?.allUsers) ? initialAudienceDemoFixture.allUsers : []); // For Leaderboard
@@ -1033,19 +1060,19 @@ const SingerApp = ({ roomCode, uid }) => {
     const [authReadyUid, setAuthReadyUid] = useState(null);
     const activeUid = useMemo(
         () => resolveAudienceSessionUid({
-            authCurrentUid: auth.currentUser?.uid,
-            authReadyUid,
+            authCurrentUid: isQaAudienceFixture ? '' : auth.currentUser?.uid,
+            authReadyUid: isQaAudienceFixture ? '' : authReadyUid,
             routeUid: uid
         }),
-        [authReadyUid, uid]
+        [authReadyUid, isQaAudienceFixture, uid]
     );
     const accountProfileUid = useMemo(
         () => resolveAudienceSessionUid({
-            authCurrentUid: auth.currentUser?.uid,
-            authReadyUid,
+            authCurrentUid: isQaAudienceFixture ? '' : auth.currentUser?.uid,
+            authReadyUid: isQaAudienceFixture ? '' : authReadyUid,
             routeUid: uid
         }),
-        [authReadyUid, uid]
+        [authReadyUid, isQaAudienceFixture, uid]
     );
     const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
         uid: activeUid || user?.uid || '',
@@ -1070,6 +1097,100 @@ const SingerApp = ({ roomCode, uid }) => {
         }
         return governanceMode === 'crowd_signal' || governanceMode === 'crowd_vote';
     }, [audienceReleaseWindow?.active, audienceReleaseWindow?.governanceMode, runOfShowOperatorRole]);
+    const audienceReleaseGovernanceMode = useMemo(
+        () => String(audienceReleaseWindow?.governanceMode || '').trim().toLowerCase(),
+        [audienceReleaseWindow?.governanceMode]
+    );
+    const audienceReleaseSubjectType = useMemo(
+        () => String(audienceReleaseWindow?.subjectType || '').trim().toLowerCase(),
+        [audienceReleaseWindow?.subjectType]
+    );
+    const isAudienceCoHostDecision = audienceReleaseGovernanceMode === 'cohost_vote';
+    const isAudienceSongFaceOffDecision = audienceReleaseSubjectType === 'queue_faceoff';
+    const isAudienceSlotFillDecision = audienceReleaseSubjectType === 'slot_fill_choice';
+    const audienceReleaseChoiceLabels = useMemo(() => {
+        const slotSceneLabel = String(audienceReleaseWindow?.choiceLabels?.slot_scene || '').trim();
+        const keepQueueMovingLabel = String(audienceReleaseWindow?.choiceLabels?.keep_queue_moving || '').trim();
+        return {
+            slotScene: slotSceneLabel || (isAudienceCoHostDecision ? 'Run Scene Next' : 'Slot Scene'),
+            keepQueueMoving: keepQueueMovingLabel || (isAudienceCoHostDecision ? 'Keep Karaoke Moving' : 'Keep Singing')
+        };
+    }, [
+        audienceReleaseWindow?.choiceLabels?.keep_queue_moving,
+        audienceReleaseWindow?.choiceLabels?.slot_scene,
+        isAudienceCoHostDecision
+    ]);
+    const audienceReleaseChoiceDetails = useMemo(() => ({
+        slotScene: String(audienceReleaseWindow?.choiceDetails?.slot_scene || '').trim(),
+        keepQueueMoving: String(audienceReleaseWindow?.choiceDetails?.keep_queue_moving || '').trim()
+    }), [
+        audienceReleaseWindow?.choiceDetails?.keep_queue_moving,
+        audienceReleaseWindow?.choiceDetails?.slot_scene
+    ]);
+    const audienceReleaseChoiceSongs = useMemo(() => ({
+        slotScene: (songs || []).find((song) => song.id === String(audienceReleaseWindow?.choiceSongIds?.slot_scene || '').trim()) || null,
+        keepQueueMoving: (songs || []).find((song) => song.id === String(audienceReleaseWindow?.choiceSongIds?.keep_queue_moving || '').trim()) || null
+    }), [
+        audienceReleaseWindow?.choiceSongIds?.keep_queue_moving,
+        audienceReleaseWindow?.choiceSongIds?.slot_scene,
+        songs
+    ]);
+    const audienceReleaseVoteCountLabel = `${releaseWindowTally.totalVotes || 0} vote${(releaseWindowTally.totalVotes || 0) === 1 ? '' : 's'}`;
+    const canUseCoHostQuickSignals = useMemo(
+        () => (runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host') && !canSeeAudienceReleaseWindow,
+        [canSeeAudienceReleaseWindow, runOfShowOperatorRole]
+    );
+    const [coHostSignalCooldownById, setCoHostSignalCooldownById] = useState({});
+    const [coHostSignalSheetOpen, setCoHostSignalSheetOpen] = useState(false);
+    const [coHostSignalNowMs, setCoHostSignalNowMs] = useState(0);
+    const audioCoHostSignals = useMemo(
+        () => [...COHOST_SIGNAL_OPTIONS].sort((left, right) => {
+            const orderDelta = Number(left?.sortOrder || 99) - Number(right?.sortOrder || 99);
+            if (orderDelta !== 0) return orderDelta;
+            return String(left?.label || '').localeCompare(String(right?.label || ''));
+        }),
+        []
+    );
+    const currentPerformanceSignalContext = useMemo(() => {
+        const artworkUrl = getAudienceSongArtworkUrl(currentSinger);
+        const startedAtMs = timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0;
+        const elapsedSec = startedAtMs > 0
+            ? Math.max(0, Math.round(((coHostSignalNowMs || Date.now()) - startedAtMs) / 1000))
+            : 0;
+        return {
+            artworkUrl,
+            singerName: String(currentSinger?.singerName || '').trim(),
+            songTitle: String(currentSinger?.songTitle || '').trim(),
+            artistName: String(currentSinger?.artist || currentSinger?.artistName || '').trim(),
+            elapsedSec,
+            elapsedLabel: startedAtMs > 0 ? `${formatElapsedClock(elapsedSec)} in` : '',
+            isLive: !!String(currentSinger?.id || '').trim()
+        };
+    }, [
+        coHostSignalNowMs,
+        currentSinger
+    ]);
+    const audienceReleaseTone = useMemo(() => (
+        isAudienceCoHostDecision
+            ? {
+                cardClass: 'border-amber-300/28 bg-[linear-gradient(145deg,rgba(35,20,10,0.96),rgba(24,16,12,0.92))] shadow-[0_20px_60px_rgba(120,53,15,0.26)]',
+                eyebrowClass: 'text-amber-200',
+                helperClass: 'text-amber-100/80',
+                badgeClass: 'border-amber-300/25 bg-amber-500/12 text-amber-50',
+                choiceLabelClass: 'text-amber-100',
+                selectedChoiceClass: 'border-amber-300/45 bg-amber-500/16 text-amber-50',
+                pillClass: 'border-amber-300/30 bg-amber-400/12 text-amber-100'
+            }
+            : {
+                cardClass: 'border-cyan-300/22 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(14,19,31,0.92))] shadow-[0_20px_60px_rgba(0,0,0,0.4)]',
+                eyebrowClass: 'text-cyan-200',
+                helperClass: 'text-cyan-100/80',
+                badgeClass: 'border-white/10 bg-black/35 text-zinc-200',
+                choiceLabelClass: 'text-cyan-200',
+                selectedChoiceClass: 'border-cyan-300/45 bg-cyan-500/14 text-cyan-50',
+                pillClass: 'border-cyan-300/30 bg-cyan-400/12 text-cyan-100'
+            }
+    ), [isAudienceCoHostDecision]);
     const myReleaseWindowVote = useMemo(
         () => String(audienceReleaseWindow?.votesByUid?.[activeUid] || '').trim().toLowerCase(),
         [activeUid, audienceReleaseWindow?.votesByUid]
@@ -1127,7 +1248,6 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof window === 'undefined') return false;
         return new URLSearchParams(window.location.search || '').get('mkDemoEmbed') === '1';
     }, []);
-    const isQaAudienceFixture = !!initialAudienceDemoFixture;
     const [demoFixture, setDemoFixture] = useState(initialAudienceDemoFixture || (isMarketingDemoEmbed ? {} : null));
     const isMarketingDemoFixture = isMarketingDemoEmbed && !!demoFixture;
     const isAudienceFixtureMode = (isMarketingDemoEmbed || isQaAudienceFixture) && !!demoFixture;
@@ -1562,7 +1682,9 @@ const SingerApp = ({ roomCode, uid }) => {
         social: true
     });
     const [isFormInitialized, setIsFormInitialized] = useState(false);
-    const [cooldownFlash, setCooldownFlash] = useState(false);
+    const [cooldownFlashKey, setCooldownFlashKey] = useState('');
+    const [reactionCooldownByType, setReactionCooldownByType] = useState({});
+    const [reactionCooldownNowMs, setReactionCooldownNowMs] = useState(0);
     const [stormPhase, setStormPhase] = useState('off');
     const [stormJoined, setStormJoined] = useState(false);
     const [stormFlash, setStormFlash] = useState(false);
@@ -2490,7 +2612,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const guitarStringCooldownRef = useRef([0,0,0,0,0]);
     const stringTimers = useRef([]);
     const guitarFeedbackTimerRef = useRef(null);
-    const lastReactionAt = useRef(0);
     const reactionFlushTimer = useRef(null);
     const pendingReactions = useRef({});
     const pendingReactionCount = useRef(0);
@@ -2636,7 +2757,7 @@ const SingerApp = ({ roomCode, uid }) => {
         }
     }, [user, activeUid, roomCode]);
 
-    const getEffectivePoints = () => (user?.points || 0) + localPointOffset;
+    const getEffectivePoints = useCallback(() => (user?.points || 0) + localPointOffset, [localPointOffset, user?.points]);
     const effectivePoints = Math.max(0, getEffectivePoints());
     const activeEventCredits = useMemo(() => {
         const source = room?.eventCredits && typeof room.eventCredits === 'object' ? room.eventCredits : {};
@@ -2675,6 +2796,8 @@ const SingerApp = ({ roomCode, uid }) => {
                 : [],
             audienceAccessMode: String(source.audienceAccessMode || '').trim().toLowerCase(),
             creditEarningMode: String(source.creditEarningMode || '').trim().toLowerCase(),
+            coHostCreditPolicy: normalizeCoHostCreditPolicy(source.coHostCreditPolicy || ''),
+            reactionTapCooldownMs: normalizeReactionTapCooldownMs(source.reactionTapCooldownMs ?? DEFAULT_REACTION_TAP_COOLDOWN_MS),
             timedLobbyEnabled: source.timedLobbyEnabled === true,
             timedLobbyPoints: Math.max(0, Number(source.timedLobbyPoints || 0) || 0),
             timedLobbyIntervalMin: Math.max(1, Number(source.timedLobbyIntervalMin || 10) || 10),
@@ -2698,6 +2821,20 @@ const SingerApp = ({ roomCode, uid }) => {
                 : [],
         };
     }, [room?.eventCredits]);
+    const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
+    const coHostCreditPolicy = normalizeCoHostCreditPolicy(activeEventCredits.coHostCreditPolicy || '');
+    const coHostUnlimitedCredits = isRunOfShowCoHost && coHostCreditPolicy === CO_HOST_CREDIT_POLICIES.unlimited;
+    const coHostFreeReactions = isRunOfShowCoHost
+        && (
+            coHostCreditPolicy === CO_HOST_CREDIT_POLICIES.freeReactions
+            || coHostCreditPolicy === CO_HOST_CREDIT_POLICIES.unlimited
+        );
+    const reactionTapCooldownMs = normalizeReactionTapCooldownMs(activeEventCredits.reactionTapCooldownMs ?? DEFAULT_REACTION_TAP_COOLDOWN_MS);
+    const coHostReactionPolicyLabel = coHostUnlimitedCredits
+        ? 'Unlimited co-host'
+        : coHostFreeReactions
+            ? 'Co-host reactions free'
+            : '';
     const eventPromoSummary = useMemo(() => {
         const promoCampaigns = Array.isArray(activeEventCredits.promoCampaigns) ? activeEventCredits.promoCampaigns : [];
         return {
@@ -2741,6 +2878,10 @@ const SingerApp = ({ roomCode, uid }) => {
             isDonationFirstAccess
             || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
         );
+    const simplifyFestivalSupportAccess = allowsDonationAccess
+        && isCustomAudienceBrand
+        && audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open
+        && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
     const hasSupporterAccess = allowsDonationAccess
         && (
             !!user?.roomBoostBadge
@@ -2757,21 +2898,29 @@ const SingerApp = ({ roomCode, uid }) => {
     }), [audienceFeatureAccess, authUserUid, hasSupporterAccess, isAnon, isVipAccount]);
     const premiumReactionsUnlocked = hasPremiumRoomAccess || premiumReactionAccess.allowed;
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
-    const accessActionLabel = allowsDonationAccess
-        ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
+    const accessActionLabel = simplifyFestivalSupportAccess
+        ? 'Continue with Email'
+        : allowsDonationAccess
+            ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
         : (simpleEmailCaptureMode ? 'Submit Email' : (isCustomAudienceBrand ? `Continue with ${audienceBrandTitle}` : 'Continue with Email'));
-    const accessConnectedLabel = hasSupporterAccess && !isVipAccount
-        ? `${supporterAccessLabel} Ready`
-        : (isCustomAudienceBrand ? `${audienceBrandTitle} Access Ready` : 'Email Access Ready');
-    const audienceAccessHeadline = allowsDonationAccess
-        ? (isDonationFirstAccess ? `Support ${audienceBrandTitle}` : `Support ${audienceBrandTitle} or continue with email`)
+    const accessConnectedLabel = simplifyFestivalSupportAccess
+        ? 'Email Access Ready'
+        : hasSupporterAccess && !isVipAccount
+            ? `${supporterAccessLabel} Ready`
+            : (isCustomAudienceBrand ? `${audienceBrandTitle} Access Ready` : 'Email Access Ready');
+    const audienceAccessHeadline = simplifyFestivalSupportAccess
+        ? 'Continue with Email'
+        : allowsDonationAccess
+            ? (isDonationFirstAccess ? `Support ${audienceBrandTitle}` : `Support ${audienceBrandTitle} or continue with email`)
         : (simpleEmailCaptureMode ? 'Submit Email' : 'Continue with Email');
-    const audienceAccessBody = allowsDonationAccess
-        ? (
-            isDonationFirstAccess
-                ? `Givebutter support can unlock ${supporterAccessLabel.toLowerCase()} perks, featured reactions, and room moments without interrupting the night.`
-                : `You can unlock ${supporterAccessLabel.toLowerCase()} perks by supporting the fundraiser, or keep the standard email path for profile sync and cross-room history.`
-        )
+    const audienceAccessBody = simplifyFestivalSupportAccess
+        ? `Email is optional but recommended if you want to reconnect, keep your profile in sync, and carry your history forward. AAHF support moments can stay separate from your karaoke join flow.`
+        : allowsDonationAccess
+            ? (
+                isDonationFirstAccess
+                    ? `Givebutter support can unlock ${supporterAccessLabel.toLowerCase()} perks, featured reactions, and room moments without interrupting the night.`
+                    : `You can unlock ${supporterAccessLabel.toLowerCase()} perks by supporting the fundraiser, or keep the standard email path for profile sync and cross-room history.`
+            )
         : (simpleEmailCaptureMode
             ? `Enter your email for this room only. No account creation or sign-in link is required.`
             : `Enter your email and we will send a secure sign-in link. Open the link on this device to reconnect, unlock ${premiumPerksLabel}, and carry your history forward.`);
@@ -2822,7 +2971,7 @@ const SingerApp = ({ roomCode, uid }) => {
         user,
     ]);
     const openVipUpgrade = useCallback((preferredPath = 'auto') => {
-        const wantsEmail = preferredPath === 'email';
+        const wantsEmail = preferredPath === 'email' || (preferredPath === 'auto' && simplifyFestivalSupportAccess);
         if (!wantsEmail && allowsDonationAccess) {
             setSupportEmbedOpen(!!roomSupportOffer?.supportEmbedUrl);
             setShowPoints(true);
@@ -2833,7 +2982,7 @@ const SingerApp = ({ roomCode, uid }) => {
             return;
         }
         openEmailAccessModal();
-    }, [allowsDonationAccess, openEmailAccessModal, roomSupportOffer]);
+    }, [allowsDonationAccess, openEmailAccessModal, roomSupportOffer, simplifyFestivalSupportAccess]);
     const eventCreditsSummary = useMemo(() => {
         if (!roomCode) {
             return {
@@ -4363,11 +4512,77 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return () => clearInterval(interval);
     }, [user, isVipAccount, queuePointDelta]);
 
-    const triggerCooldownFlash = () => {
-        setCooldownFlash(true);
+    const triggerCooldownFlash = (reactionKey = '') => {
+        setCooldownFlashKey(reactionKey);
         if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-        cooldownTimer.current = setTimeout(() => setCooldownFlash(false), 350);
+        cooldownTimer.current = setTimeout(() => {
+            setCooldownFlashKey((current) => (current === reactionKey ? '' : current));
+        }, 350);
     };
+    useEffect(() => {
+        const cooldownEntries = Object.values(reactionCooldownByType || {}).filter((value) => Number(value || 0) > Date.now());
+        if (!cooldownEntries.length) {
+            setReactionCooldownNowMs(0);
+            return undefined;
+        }
+        const tick = () => setReactionCooldownNowMs(Date.now());
+        tick();
+        const interval = setInterval(tick, 100);
+        return () => clearInterval(interval);
+    }, [reactionCooldownByType]);
+    useEffect(() => {
+        const cooldownEntries = Object.values(coHostSignalCooldownById || {}).filter((value) => Number(value || 0) > Date.now());
+        if (!cooldownEntries.length && !coHostSignalSheetOpen) {
+            setCoHostSignalNowMs(0);
+            return undefined;
+        }
+        const tick = () => setCoHostSignalNowMs(Date.now());
+        tick();
+        const interval = setInterval(tick, 500);
+        return () => clearInterval(interval);
+    }, [coHostSignalCooldownById, coHostSignalSheetOpen]);
+    useEffect(() => {
+        if (canUseCoHostQuickSignals) return;
+        setCoHostSignalSheetOpen(false);
+    }, [canUseCoHostQuickSignals]);
+    const canAffordRoomCost = useCallback((cost = 0) => {
+        const safeCost = Math.max(0, Number(cost || 0) || 0);
+        if (!safeCost) return true;
+        if (coHostUnlimitedCredits) return true;
+        return getEffectivePoints() >= safeCost;
+    }, [coHostUnlimitedCredits, getEffectivePoints]);
+    const getReactionCooldownRemainingMs = useCallback((reactionKey = '') => {
+        const safeReactionKey = String(reactionKey || '').trim().toLowerCase();
+        if (!safeReactionKey) return 0;
+        const cooldownUntil = Number(reactionCooldownByType?.[safeReactionKey] || 0);
+        if (!cooldownUntil) return 0;
+        const clockNow = Number(reactionCooldownNowMs || Date.now());
+        return Math.max(0, cooldownUntil - clockNow);
+    }, [reactionCooldownByType, reactionCooldownNowMs]);
+    const isReactionCoolingDown = useCallback((reactionKey = '') => (
+        getReactionCooldownRemainingMs(reactionKey) > 0
+    ), [getReactionCooldownRemainingMs]);
+    const getReactionCooldownLabel = useCallback((reactionKey = '') => (
+        `${Math.max(0.1, getReactionCooldownRemainingMs(reactionKey) / 1000).toFixed(1)}s`
+    ), [getReactionCooldownRemainingMs]);
+    const spendRoomPoints = useCallback((cost = 0) => {
+        const safeCost = Math.max(0, Number(cost || 0) || 0);
+        if (!safeCost || coHostUnlimitedCredits) return;
+        queuePointDelta(-safeCost);
+    }, [coHostUnlimitedCredits, queuePointDelta]);
+    const reactionCostLabel = useCallback((cost = 0) => {
+        if (coHostFreeReactions) return 'FREE';
+        return `${Math.max(0, Number(cost || 0) || 0)} PTS`;
+    }, [coHostFreeReactions]);
+    const renderReactionCooldownBadge = useCallback((reactionKey = '', className = 'border-white/20 bg-black/55 text-white') => {
+        if (!isReactionCoolingDown(reactionKey)) return null;
+        return (
+            <div className={`pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_10px_24px_rgba(0,0,0,0.35)] ${className}`}>
+                <i className="fa-regular fa-clock"></i>
+                {getReactionCooldownLabel(reactionKey)}
+            </div>
+        );
+    }, [getReactionCooldownLabel, isReactionCoolingDown]);
 
     useEffect(() => {
         if (!lobbyPlayUsageCount) return undefined;
@@ -6160,29 +6375,36 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     };
 
     const react = async (type, cost=10) => { 
-        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_result') && type === 'clap') cost = 0;
-        if(!user || getEffectivePoints() < cost) return toast(`Need ${cost} pts!`); 
+        const safeType = String(type || '').trim().toLowerCase();
+        let nextCost = Math.max(0, Number(cost || 0) || 0);
+        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_result') && safeType === 'clap') nextCost = 0;
+        if (coHostFreeReactions) nextCost = 0;
+        if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} pts!`); 
         const now = Date.now();
-        if (now - lastReactionAt.current < 350) {
-            triggerCooldownFlash();
+        const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
+        if (reactionTapCooldownMs > 0 && cooldownUntil > now) {
+            triggerCooldownFlash(safeType);
             return;
         }
-        lastReactionAt.current = now;
+        if (reactionTapCooldownMs > 0) {
+            setReactionCooldownByType((prev) => ({
+                ...(prev || {}),
+                [safeType]: now + reactionTapCooldownMs,
+            }));
+        }
         markActive();
-        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && type === 'clap') {
+        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && safeType === 'clap') {
             setApplauseTapCount(prev => prev + 1);
             setApplauseTapPulseAt(now);
         }
         
         const id = Date.now(); 
-        setLocalReactions(prev => [...prev, { id, type, left: Math.random() * 80 + 10 }]); 
+        setLocalReactions(prev => [...prev, { id, type: safeType, left: Math.random() * 80 + 10 }]); 
         setTimeout(() => setLocalReactions(prev => prev.filter(r => r.id !== id)), 4000);
 
         try {
-            queueReactionWrite(type, cost);
-            if (cost > 0) { 
-                queuePointDelta(-cost);
-            }
+            queueReactionWrite(safeType, nextCost);
+            spendRoomPoints(nextCost);
         } catch (error) { console.error(error); }
     };
 
@@ -6663,7 +6885,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         const nameEmojiChanged = safeName !== oldName || nextAvatar !== user.avatar;
         const changeCost = getNameEmojiChangeCost();
-        if (nameEmojiChanged && changeCost > 0 && getEffectivePoints() < changeCost) {
+        if (nameEmojiChanged && changeCost > 0 && !canAffordRoomCost(changeCost)) {
             toast(`Need ${changeCost} PTS to change name/emoji.`);
             return;
         }
@@ -6689,7 +6911,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             setForm(prev => ({ ...prev, emoji: resolvedAvatar }));
         }
         if (nameEmojiChanged && changeCost > 0) {
-            queuePointDelta(-changeCost);
+            spendRoomPoints(changeCost);
             syncPoints(true);
         }
         if(oldName !== safeName) logActivity(`changed name to ${safeName}`, EMOJI.pencil);
@@ -7715,7 +7937,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {isAnon ? accessActionLabel : accessConnectedLabel}
                 </button>
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
-                    {allowsDonationAccess
+                    {simplifyFestivalSupportAccess
+                        ? 'Use email here anytime to reconnect and keep your profile synced. Support moments for AAHF can stay on the main screen instead of blocking join.'
+                        : allowsDonationAccess
                         ? 'Use support or email access here anytime to reconnect, unlock room perks, and keep your profile synced.'
                         : `Use your email link here anytime to reconnect, unlock ${premiumPerksLabel}, and keep your profile synced.`}
                 </div>
@@ -9326,9 +9550,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const lockedAvatar = avatarUnlockModal.item || {};
         const unlockType = String(avatarUnlockModal.status?.unlockType || lockedAvatar?.unlock?.type || '').trim().toLowerCase();
         const pointsCost = Math.max(0, Number(lockedAvatar?.unlock?.cost || 0));
-        const effectivePoints = Math.max(0, getEffectivePoints());
-        const canBuyWithPoints = unlockType === 'points' && !!user && effectivePoints >= pointsCost;
-        const canNotAffordWithPoints = unlockType === 'points' && effectivePoints < pointsCost;
+        const modalEffectivePoints = coHostUnlimitedCredits ? Number.POSITIVE_INFINITY : Math.max(0, getEffectivePoints());
+        const canBuyWithPoints = unlockType === 'points' && !!user && (coHostUnlimitedCredits || modalEffectivePoints >= pointsCost);
+        const canNotAffordWithPoints = unlockType === 'points' && !coHostUnlimitedCredits && modalEffectivePoints < pointsCost;
         return (
             <div className="fixed inset-0 bg-black/80 z-[140] flex items-center justify-center p-6 text-white font-saira" onClick={() => setAvatarUnlockModal(null)}>
                 <div className="w-full max-w-sm rounded-3xl border border-fuchsia-300/25 bg-gradient-to-br from-[#140d22] via-[#11131b] to-[#0a0d12] p-6 shadow-[0_0_40px_rgba(236,72,153,0.2)]" onClick={(e) => e.stopPropagation()}>
@@ -9351,8 +9575,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     {unlockType === 'points' ? (
                         <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
                             {canBuyWithPoints
-                                ? `You have ${effectivePoints} PTS, so this unlock can happen instantly without leaving the room.`
-                                : `You have ${effectivePoints} PTS. Earn or buy more points later if you want to unlock this one.`}
+                                ? (coHostUnlimitedCredits
+                                    ? 'You have unlimited co-host credits, so this unlock can happen instantly without leaving the room.'
+                                    : `You have ${modalEffectivePoints} PTS, so this unlock can happen instantly without leaving the room.`)
+                                : `You have ${modalEffectivePoints} PTS. Earn or buy more points later if you want to unlock this one.`}
                         </div>
                     ) : null}
                     {unlockType === 'vip' ? (
@@ -9371,7 +9597,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button
                                 onClick={async () => {
                                     try {
-                                        queuePointDelta(-pointsCost);
+                                        spendRoomPoints(pointsCost);
                                         if (!accountProfileUid) throw new Error('Missing account UID');
                                         await updateDoc(doc(db, 'users', accountProfileUid), { unlockedEmojis: arrayUnion(lockedAvatar.id) });
                                         setForm(prev => ({ ...prev, emoji: lockedAvatar.emoji || prev.emoji }));
@@ -9452,7 +9678,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
                 <h2 className="mb-2 text-2xl font-black leading-tight text-white">{audienceAccessHeadline}</h2>
                 <p className="mb-4 text-sm leading-6 text-zinc-300">{audienceAccessBody}</p>
-                {allowsDonationAccess && roomSupportOffer && (
+                {allowsDonationAccess && roomSupportOffer && !simplifyFestivalSupportAccess && (
                     <button
                         onClick={() => {
                             setShowPhoneModal(false);
@@ -9483,6 +9709,21 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button onClick={sendAccountEmailLink} className="flex-1 rounded-2xl bg-[#00C4D9] py-3 font-bold text-black shadow-[0_14px_30px_rgba(0,196,217,0.28)] transition hover:bg-cyan-400">{accountAuthLoading ? 'Sending...' : (simpleEmailCaptureMode ? 'Save Again' : 'Resend Link')}</button>
                         </div>
                     </>
+                )}
+                {allowsDonationAccess && roomSupportOffer && simplifyFestivalSupportAccess && (
+                    <button
+                        onClick={() => {
+                            setShowPhoneModal(false);
+                            startGivebutterSupportCheckout(roomSupportOffer);
+                        }}
+                        className="mt-3 w-full rounded-2xl border border-emerald-300/25 bg-emerald-500/10 px-4 py-3 text-left text-emerald-100"
+                    >
+                        <div className="text-[11px] uppercase tracking-[0.24em] text-emerald-200">Optional support</div>
+                        <div className="mt-1 text-base font-bold text-white">{supportCtaLabel}</div>
+                        <div className="mt-1 text-sm text-emerald-100/80">
+                            Support AAHF separately without slowing down your karaoke join.
+                        </div>
+                    </button>
                 )}
             </div>
         </div>
@@ -9656,6 +9897,44 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                 </div>
                 {!showPointsShop ? (
+                    simplifyFestivalSupportAccess ? (
+                    <>
+                        <div className="grid gap-3">
+                            <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
+                                <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
+                                    {eventCreditsSummary.title}
+                                </div>
+                                <div className="text-base text-zinc-100">
+                                    {eventCreditsSummary.body}
+                                </div>
+                                <div className="mt-3 text-sm text-zinc-300">
+                                    Room points are for the live session. Use email if you want your profile and history to carry forward.
+                                </div>
+                            </div>
+                            <div className="bg-black/30 border border-pink-400/35 rounded-2xl p-4">
+                                <div className="text-base uppercase tracking-widest text-pink-200 mb-2">Support AAHF</div>
+                                <div className="text-base text-zinc-100">
+                                    Support is optional. When the room flashes a support moment on the main screen, you can donate there without interrupting your karaoke flow.
+                                </div>
+                                {roomSupportOffer?.supportUrl ? (
+                                    <button
+                                        onClick={() => startGivebutterSupportCheckout(roomSupportOffer)}
+                                        className="mt-3 w-full rounded-xl border border-emerald-300/35 bg-emerald-500/12 px-4 py-3 font-bold text-emerald-100"
+                                    >
+                                        {supportCtaLabel}
+                                    </button>
+                                ) : null}
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2 mt-4">
+                            <button onClick={() => { setSupportEmbedOpen(false); setShowPointsShop(true); }} className="bg-gradient-to-r from-pink-600/40 to-cyan-500/40 border border-pink-400/50 px-6 py-3 rounded-xl font-bold text-white text-base tracking-wide min-h-[44px]">
+                                Get More Points
+                            </button>
+                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
+                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
+                        </div>
+                    </>
+                    ) : (
                     <>
                         <div className="grid gap-3">
                             <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
@@ -9742,6 +10021,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
                         </div>
                     </>
+                    )
                 ) : (
                     <>
                         <div className="space-y-5">
@@ -10035,11 +10315,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             />
                         ))}
                     </div>
+                    {isReactionCoolingDown('clap') ? (
+                        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-cyan-200/30 bg-cyan-400/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-50">
+                            <i className="fa-regular fa-clock"></i>
+                            Clap cooldown {getReactionCooldownLabel('clap')}
+                        </div>
+                    ) : null}
                 </div>
-                <button onClick={()=>react('clap', 0)} className={`w-full h-64 bg-[#00C4D9] rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 shadow-2xl active:scale-95 transition-transform ${cooldownFlash ? 'ring-4 ring-red-300 animate-pulse' : ''}`}>
+                <button
+                    data-feature-id="applause-clap-button"
+                    onClick={()=>react('clap', 0)}
+                    disabled={isReactionCoolingDown('clap')}
+                    className={`relative w-full h-64 rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 bg-[#00C4D9] shadow-2xl transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-80' : 'active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-4 ring-red-300 animate-pulse' : ''}`}
+                >
+                    {renderReactionCooldownBadge('clap', 'border-cyan-100/40 bg-black/50 text-cyan-50')}
                     <span className="text-8xl">{String.fromCodePoint(0x1F44F)}</span>
                 </button>
-                <p className="mt-8 font-bold">TAP FAST! (Free)</p>
+                <p className="mt-8 text-center font-bold">
+                    {isReactionCoolingDown('clap') ? `Ready again in ${getReactionCooldownLabel('clap')}` : 'Tap to push the applause meter'}
+                </p>
             </div>
         );
     }
@@ -10126,15 +10420,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
                         <div className="grid grid-cols-3 gap-2 mt-2">
                             <button
+                                disabled={isReactionCoolingDown('heart')}
                                 onClick={() => react('heart', REACTION_COSTS.heart)}
-                                className="rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 active:scale-95 transition-transform"
+                                className={`relative rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
+                                {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                 {getEmojiChar('heart')} Love
                             </button>
                             <button
+                                disabled={isReactionCoolingDown('drink')}
                                 onClick={() => react('drink', REACTION_COSTS.drink)}
-                                className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
+                                {renderReactionCooldownBadge('drink', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                 {getEmojiChar('drink')} Cheers
                             </button>
                             <button
@@ -10163,15 +10461,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
                         <div className="grid grid-cols-3 gap-2 mt-2">
                             <button
+                                disabled={isReactionCoolingDown('fire')}
                                 onClick={() => react('fire', REACTION_COSTS.fire)}
-                                className="rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 active:scale-95 transition-transform"
+                                className={`relative rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
+                                {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                 {getEmojiChar('fire')} Hype
                             </button>
                             <button
+                                disabled={isReactionCoolingDown('clap')}
                                 onClick={() => react('clap', REACTION_COSTS.clap)}
-                                className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
+                                {renderReactionCooldownBadge('clap', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                 {getEmojiChar('clap')} Clap
                             </button>
                             <button
@@ -10371,6 +10673,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const noSingerOnStage = !currentSinger;
     const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
+    const showStreamlinedIdleRequestCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && isStreamlinedAudienceShell;
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -10423,6 +10726,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         ? 'trivia'
         : lobbyVolleySceneActive
             ? 'volley'
+            : canSeeAudienceReleaseWindow && isAudienceSongFaceOffDecision
+                ? ''
             : karaokePerformanceVotingOpen
                 ? 'voting'
                 : '';
@@ -10702,14 +11007,65 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const safeChoice = String(choice || '').trim().toLowerCase();
         if (!roomCode || !activeUid || !audienceReleaseWindow?.active) return;
         if (!['slot_scene', 'keep_queue_moving'].includes(safeChoice)) return;
+        const voteLabel = safeChoice === 'slot_scene'
+            ? audienceReleaseChoiceLabels.slotScene
+            : audienceReleaseChoiceLabels.keepQueueMoving;
         try {
             await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
                 [`runOfShowDirector.releaseWindow.votesByUid.${activeUid}`]: safeChoice
             });
-            toast(safeChoice === 'slot_scene' ? 'You voted to slot the scene.' : 'You voted to keep the queue moving.');
+            toast(`You voted for ${voteLabel}.`);
         } catch (error) {
             console.warn('Run of show release vote failed', error);
             toast('Could not submit that vote right now.');
+        }
+    };
+    const sendCoHostQuickSignal = async (signalId = '') => {
+        const meta = getCoHostSignalMeta(signalId);
+        if (!meta || !roomCode || !canUseCoHostQuickSignals) return;
+        const now = Date.now();
+        const cooldownUntil = Number(coHostSignalCooldownById?.[meta.id] || 0);
+        if (cooldownUntil > now) {
+            const waitSec = Math.max(1, Math.ceil((cooldownUntil - now) / 1000));
+            toast(`Wait ${waitSec}s before sending ${meta.shortLabel.toLowerCase()} again.`);
+            return;
+        }
+        try {
+            const actorUid = String(activeUid || auth.currentUser?.uid || '').trim();
+            const performanceMeta = buildPerformanceReactionMeta();
+            const performanceSongTitle = String(currentSinger?.songTitle || '').trim();
+            const performanceArtistName = String(currentSinger?.artist || currentSinger?.artistName || '').trim();
+            const performanceAlbumArtUrl = String(getAudienceSongArtworkUrl(currentSinger) || '').trim();
+            const performanceStartedAtMs = Number(performanceMeta.performanceStartedAtMs || 0);
+            const performanceElapsedSec = performanceStartedAtMs > 0
+                ? Math.max(0, Math.round((now - performanceStartedAtMs) / 1000))
+                : 0;
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                roomCode,
+                uid: actorUid || null,
+                user: user?.name || form.name || 'Co-Host',
+                text: meta.activityText,
+                icon: meta.emoji || EMOJI.sparkle,
+                type: 'cohost_signal',
+                signalId: meta.id,
+                signalLabel: meta.label,
+                signalScope: performanceMeta.performanceId ? 'performance' : 'room',
+                ...performanceMeta,
+                performanceSongTitle: performanceSongTitle || null,
+                performanceArtistName: performanceArtistName || null,
+                performanceAlbumArtUrl: performanceAlbumArtUrl || null,
+                performanceElapsedSec: performanceElapsedSec || 0,
+                timestamp: serverTimestamp()
+            });
+            setCoHostSignalCooldownById((prev) => ({
+                ...(prev || {}),
+                [meta.id]: now + COHOST_SIGNAL_COOLDOWN_MS
+            }));
+            setCoHostSignalSheetOpen(false);
+            toast(meta.toastLabel || 'Signal sent to host.');
+        } catch (error) {
+            console.warn('Co-host quick signal failed', error);
+            toast('Could not send that co-host signal right now.');
         }
     };
 
@@ -10777,6 +11133,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                               onClick={() => setShowPoints(true)}
                               rewardDelta={pointsRewardPulse.delta}
                               rewardPulseKey={pointsRewardPulse.key}
+                              displayValue={coHostUnlimitedCredits ? '∞' : null}
+                              caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                               className="h-10 w-[118px] sm:w-[132px]"
                           />
                       </div>
@@ -10786,45 +11144,217 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
             {canSeeAudienceReleaseWindow && (
                 <div className="absolute inset-x-3 top-[104px] z-[92] pointer-events-auto md:inset-x-5">
-                    <div className="rounded-[1.6rem] border border-white/12 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(14,19,31,0.92))] px-4 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur">
+                    <div className={`mx-auto max-w-[26rem] rounded-[1.35rem] border px-3.5 py-3.5 backdrop-blur ${audienceReleaseTone.cardClass}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Release Window</div>
-                                <div className="mt-1 text-sm font-bold text-white">
+                                <div className={`text-[9px] uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
+                                    {isAudienceSongFaceOffDecision
+                                        ? (isAudienceCoHostDecision ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
+                                        : isAudienceSlotFillDecision
+                                            ? (isAudienceCoHostDecision ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
+                                        : isAudienceCoHostDecision
+                                            ? 'Co-Host Decision'
+                                            : 'Release Window'}
+                                </div>
+                                {isAudienceCoHostDecision ? (
+                                    <div className={`mt-1.5 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.15em] ${audienceReleaseTone.pillClass}`}>
+                                        <i className="fa-solid fa-star"></i>
+                                        Promoted Co-Host
+                                    </div>
+                                ) : null}
+                                <div className="mt-1.5 text-sm font-bold leading-tight text-white">
                                     {String(audienceReleaseWindow?.prompt || 'Should this scene slot in next?').trim()}
                                 </div>
-                                <div className="mt-1 text-xs text-zinc-400">
-                                    {String(audienceReleaseWindow?.itemTitle || 'Optional scene').trim()} | {String(audienceReleaseWindow?.governanceMode || 'crowd_signal').replaceAll('_', ' ')}
-                                </div>
+                                {isAudienceSongFaceOffDecision ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        Pick one. Host confirms the winner.
+                                    </div>
+                                ) : isAudienceSlotFillDecision ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        Pick who should fill this slot. Host confirms.
+                                    </div>
+                                ) : isAudienceCoHostDecision ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        Co-hosts are helping steer what happens next.
+                                    </div>
+                                ) : audienceReleaseWindow?.itemTitle ? (
+                                    <div className="mt-1.5 text-[11px] text-zinc-400">
+                                        {String(audienceReleaseWindow.itemTitle).trim()}
+                                    </div>
+                                ) : null}
                             </div>
-                            <div className="rounded-full border border-white/10 bg-black/35 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200">
-                                {releaseWindowTally.totalVotes || 0} votes
+                            <div className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                                {audienceReleaseVoteCountLabel}
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('slot_scene')}
-                                className={`rounded-2xl border px-3 py-3 text-left ${myReleaseWindowVote === 'slot_scene' ? 'border-cyan-300/45 bg-cyan-500/14 text-cyan-50' : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`rounded-[1.1rem] border px-2.5 py-2.5 text-left ${myReleaseWindowVote === 'slot_scene' ? audienceReleaseTone.selectedChoiceClass : 'border-white/10 bg-black/20 text-white'}`}
                             >
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Slot Scene</div>
-                                <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.slotSceneCount}</div>
+                                <div className="flex items-start gap-2.5">
+                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-lg">
+                                        {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene) ? (
+                                            <img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.slotScene)} alt={audienceReleaseChoiceLabels.slotScene} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                <i className="fa-solid fa-music"></i>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className={`truncate text-[10px] uppercase tracking-[0.18em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
+                                            <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-white">
+                                                {releaseWindowTally.slotSceneCount}
+                                            </div>
+                                        </div>
+                                        <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
+                                            {audienceReleaseChoiceDetails.slotScene || audienceReleaseChoiceSongs.slotScene?.singerName || 'Queued singer'}
+                                        </div>
+                                        <div className="truncate text-[11px] text-zinc-400">
+                                            {String(audienceReleaseChoiceSongs.slotScene?.artist || audienceReleaseChoiceSongs.slotScene?.artistName || '').trim() || 'Ready queue pick'}
+                                        </div>
+                                    </div>
+                                </div>
                             </button>
                             <button
                                 type="button"
                                 onClick={() => castRunOfShowReleaseVote('keep_queue_moving')}
-                                className={`rounded-2xl border px-3 py-3 text-left ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
+                                className={`rounded-[1.1rem] border px-2.5 py-2.5 text-left ${myReleaseWindowVote === 'keep_queue_moving' ? 'border-pink-300/45 bg-pink-500/14 text-pink-50' : 'border-white/10 bg-black/20 text-white'}`}
                             >
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-pink-200">Keep Singing</div>
-                                <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.keepQueueMovingCount}</div>
+                                <div className="flex items-start gap-2.5">
+                                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5 shadow-lg">
+                                        {getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving) ? (
+                                            <img src={getAudienceSongArtworkUrl(audienceReleaseChoiceSongs.keepQueueMoving)} alt={audienceReleaseChoiceLabels.keepQueueMoving} className="h-full w-full object-cover" />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                <i className="fa-solid fa-music"></i>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-pink-200">{audienceReleaseChoiceLabels.keepQueueMoving}</div>
+                                            <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-white">
+                                                {releaseWindowTally.keepQueueMovingCount}
+                                            </div>
+                                        </div>
+                                        <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
+                                            {audienceReleaseChoiceDetails.keepQueueMoving || audienceReleaseChoiceSongs.keepQueueMoving?.singerName || 'Queued singer'}
+                                        </div>
+                                        <div className="truncate text-[11px] text-zinc-400">
+                                            {String(audienceReleaseChoiceSongs.keepQueueMoving?.artist || audienceReleaseChoiceSongs.keepQueueMoving?.artistName || '').trim() || 'Ready queue pick'}
+                                        </div>
+                                    </div>
+                                </div>
                             </button>
                         </div>
-                        <div className="mt-3 text-xs text-zinc-400">
+                        <div className="mt-2 text-[11px] text-zinc-400">
                             {releaseWindowTally.summary}
                         </div>
                     </div>
                 </div>
             )}
+            {canUseCoHostQuickSignals ? (
+                <div
+                    className="pointer-events-none fixed inset-x-3 z-[96] md:inset-x-5"
+                    style={{ bottom: mobileFloatingBottomInset }}
+                    data-feature-id="cohost-quick-signals"
+                >
+                    <div className="pointer-events-auto mx-auto flex max-w-[26rem] flex-col items-end gap-2">
+                        {coHostSignalSheetOpen ? (
+                            <div className="w-full rounded-[1.25rem] border border-amber-300/18 bg-[linear-gradient(145deg,rgba(24,17,10,0.97),rgba(11,10,18,0.94))] px-3 py-3 shadow-[0_18px_48px_rgba(0,0,0,0.34)]">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex items-start gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-lg">
+                                            {currentPerformanceSignalContext.artworkUrl ? (
+                                                <img src={currentPerformanceSignalContext.artworkUrl} alt={currentPerformanceSignalContext.songTitle || 'Current performance'} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-amber-200">
+                                                    <i className="fa-solid fa-wave-square"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0">
+                                            <div className="text-[9px] uppercase tracking-[0.22em] text-amber-200">Tell Host</div>
+                                            <div className="mt-1 text-sm font-bold leading-tight text-white">
+                                                {currentPerformanceSignalContext.songTitle || 'Audio note'}
+                                            </div>
+                                            <div className="mt-0.5 text-[11px] text-zinc-300">
+                                                {currentPerformanceSignalContext.singerName || currentPerformanceSignalContext.artistName
+                                                    ? [currentPerformanceSignalContext.singerName, currentPerformanceSignalContext.artistName].filter(Boolean).join(' - ')
+                                                    : 'No live performance. Signals still carry a timestamp.'}
+                                            </div>
+                                            <div className="mt-1 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-amber-100/78">
+                                                <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-0.5">
+                                                    {currentPerformanceSignalContext.isLive ? 'Live Performance' : 'Room Note'}
+                                                </span>
+                                                {currentPerformanceSignalContext.elapsedLabel ? (
+                                                    <span>{currentPerformanceSignalContext.elapsedLabel}</span>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCoHostSignalSheetOpen(false)}
+                                        className="inline-flex min-h-[34px] items-center justify-center rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-100"
+                                    >
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                    {audioCoHostSignals.map((signal) => {
+                                        const cooldownUntil = Number(coHostSignalCooldownById?.[signal.id] || 0);
+                                        const coolingDown = cooldownUntil > coHostSignalNowMs;
+                                        const remainingSec = Math.max(1, Math.ceil((cooldownUntil - coHostSignalNowMs) / 1000));
+                                        return (
+                                            <button
+                                                key={signal.id}
+                                                type="button"
+                                                disabled={coolingDown}
+                                                onClick={() => sendCoHostQuickSignal(signal.id)}
+                                                className={`rounded-2xl border px-3 py-2.5 text-left transition ${
+                                                    coolingDown
+                                                        ? 'cursor-not-allowed border-white/10 bg-black/25 text-zinc-500'
+                                                        : 'border-amber-300/22 bg-black/28 text-white hover:border-amber-200/45 hover:bg-amber-500/10'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className={`inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] ${coolingDown ? 'text-zinc-500' : 'text-white'}`}>
+                                                        <i className={`fa-solid ${signal.icon} ${coolingDown ? 'text-zinc-500' : 'text-amber-200'}`}></i>
+                                                        {signal.shortLabel}
+                                                    </span>
+                                                    <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${
+                                                        coolingDown
+                                                            ? 'border-white/10 bg-white/5 text-zinc-400'
+                                                            : 'border-amber-300/18 bg-amber-500/10 text-amber-100'
+                                                    }`}>
+                                                        {coolingDown ? `${remainingSec}s` : 'Send'}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="mt-2 text-[10px] text-zinc-400">
+                                    Audio-only notes. The app timestamps them and ties them to the live performance when one is up.
+                                </div>
+                            </div>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => setCoHostSignalSheetOpen((prev) => !prev)}
+                            className="inline-flex min-h-[42px] items-center gap-2 rounded-full border border-amber-300/24 bg-[linear-gradient(145deg,rgba(34,22,10,0.96),rgba(18,14,22,0.92))] px-4 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-amber-50 shadow-[0_16px_36px_rgba(0,0,0,0.3)]"
+                        >
+                            <i className={`fa-solid ${coHostSignalSheetOpen ? 'fa-xmark' : 'fa-sliders'}`}></i>
+                            <span>{coHostSignalSheetOpen ? 'Close Tell Host' : 'Tell Host'}</span>
+                        </button>
+                    </div>
+                </div>
+            ) : null}
 
             {/* Local Reactions Layer */}
             <div className="absolute inset-0 z-[90] pointer-events-none overflow-hidden">{localReactions.map(r => (<div key={r.id} className={`absolute bottom-0 flex flex-col items-center ${getReactionClass(r.type)}`} style={{left: `${r.left}%`}}><div className="text-8xl filter drop-shadow-xl">{getEmojiChar(r.type)}</div></div>))}</div>
@@ -10908,15 +11438,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <div className="text-xs text-zinc-200 mt-1">Keep your phone raised, sway with the crowd, and send support to the stage.</div>
                             <div className="grid grid-cols-3 gap-2 mt-2">
                                 <button
+                                    disabled={isReactionCoolingDown('heart')}
                                     onClick={() => react('heart', REACTION_COSTS.heart)}
-                                    className="rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 active:scale-95 transition-transform"
+                                    className={`relative rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
+                                    {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                     {getEmojiChar('heart')} Love
                                 </button>
                                 <button
+                                    disabled={isReactionCoolingDown('drink')}
                                     onClick={() => react('drink', REACTION_COSTS.drink)}
-                                    className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                    className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
+                                    {renderReactionCooldownBadge('drink', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                     {getEmojiChar('drink')} Cheers
                                 </button>
                             {!isStreamlinedAudienceShell && (
@@ -10943,15 +11477,19 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <div className="text-xs text-zinc-200 mt-1">Build crowd heat fast with hype reactions and callouts.</div>
                             <div className="grid grid-cols-3 gap-2 mt-2">
                                 <button
+                                    disabled={isReactionCoolingDown('fire')}
                                     onClick={() => react('fire', REACTION_COSTS.fire)}
-                                    className="rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 active:scale-95 transition-transform"
+                                    className={`relative rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
+                                    {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                     {getEmojiChar('fire')} Hype
                                 </button>
                                 <button
+                                    disabled={isReactionCoolingDown('clap')}
                                     onClick={() => react('clap', REACTION_COSTS.clap)}
-                                    className="rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 active:scale-95 transition-transform"
+                                    className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
+                                    {renderReactionCooldownBadge('clap', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                     {getEmojiChar('clap')} Clap
                                 </button>
                             {!isStreamlinedAudienceShell && (
@@ -11442,6 +11980,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                 onClick={() => setShowPoints(true)}
                                                                 rewardDelta={popTriviaAwardSyncedDelta}
                                                                 rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
+                                                                displayValue={coHostUnlimitedCredits ? '∞' : null}
+                                                                caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                                                                 className="h-10 w-[132px] shrink-0"
                                                             />
                                                         </div>
@@ -11603,6 +12143,66 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
                 {tab === 'home' && (
                     <div className="space-y-5">
+                        {showStreamlinedIdleRequestCard && (
+                            <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Ready to Sing</div>
+                                        <div className="mt-1 text-[1.4rem] font-black leading-tight text-white">
+                                            Request your song before the next slot opens
+                                        </div>
+                                        <div className="mt-2 text-sm leading-6 text-zinc-300">
+                                            Search + add song. The host matches the backing and drops it into the live queue.
+                                        </div>
+                                    </div>
+                                    <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
+                                        <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Queue</div>
+                                        <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
+                                    </div>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                        <i className="fa-solid fa-hashtag text-[9px]"></i>
+                                        Room {roomCode || 'AAHF'}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                        <i className="fa-solid fa-users text-[9px]"></i>
+                                        {allUsers.length || 0} in room
+                                    </span>
+                                </div>
+                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        data-feature-id="singer-streamlined-idle-request-cta"
+                                        onClick={openAudienceCatalogSearch}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)]"
+                                        style={audienceBrandPalette.primaryPillStyle}
+                                    >
+                                        <i className="fa-solid fa-plus"></i>
+                                        Request a Song
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setTab('request');
+                                            setSongsTab('queue');
+                                        }}
+                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-zinc-100"
+                                    >
+                                        <i className="fa-solid fa-list"></i>
+                                        View Queue
+                                    </button>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowHowToPlay(true)}
+                                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200"
+                                >
+                                    <i className="fa-solid fa-circle-info text-[10px]"></i>
+                                    How it works
+                                </button>
+                            </div>
+                        )}
                          {autoCrowdMomentActive && (
                              <div className="rounded-2xl border border-cyan-300/45 bg-gradient-to-r from-cyan-500/14 via-[#08111d] to-fuchsia-500/14 px-3 py-3 shadow-[0_0_20px_rgba(34,211,238,0.18)]">
                                  <div className="flex items-center justify-between gap-3">
@@ -11765,27 +12365,36 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                          ) : (
                              <>
                                  <div className="grid grid-cols-2 gap-4">
-                                     <button onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 border-2 border-orange-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-orange-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                     <button data-feature-id="reaction-fire-button" disabled={isReactionCoolingDown('fire')} onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden rounded-2xl border-2 border-orange-500/80 bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:bg-orange-500 active:scale-95'} ${cooldownFlashKey === 'fire' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('fire')}</span>
                                          <span className="font-bold text-orange-200 text-base">HYPE</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{REACTION_COSTS.fire} PTS</div>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{reactionCostLabel(REACTION_COSTS.fire)}</div>
                                      </button>
-                                     <button onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 border-2 border-pink-500/80 rounded-2xl p-3 flex flex-col items-center active:bg-pink-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                     <button data-feature-id="reaction-heart-button" disabled={isReactionCoolingDown('heart')} onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden rounded-2xl border-2 border-pink-500/80 bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:bg-pink-500 active:scale-95'} ${cooldownFlashKey === 'heart' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('heart')}</span>
                                          <span className="font-bold text-pink-200 text-base">LOVE</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{REACTION_COSTS.heart} PTS</div>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{reactionCostLabel(REACTION_COSTS.heart)}</div>
                                      </button>
-                                     <button onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 border-2 border-cyan-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-[#00C4D9] active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                     <button data-feature-id="reaction-clap-button" disabled={isReactionCoolingDown('clap')} onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         {renderReactionCooldownBadge('clap', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('clap')}</span>
                                          <span className="font-bold text-cyan-200 text-base">CLAP</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{REACTION_COSTS.clap} PTS</div>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{reactionCostLabel(REACTION_COSTS.clap)}</div>
                                      </button>
-                                     <button onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 border-2 border-blue-400/80 rounded-2xl p-3 flex flex-col items-center active:bg-blue-500 active:scale-95 transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${cooldownFlash ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                     <button data-feature-id="reaction-drink-button" disabled={isReactionCoolingDown('drink')} onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden rounded-2xl border-2 border-blue-400/80 bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:bg-blue-500 active:scale-95'} ${cooldownFlashKey === 'drink' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                         {renderReactionCooldownBadge('drink', 'border-blue-300/35 bg-black/55 text-blue-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('drink')}</span>
                                          <span className="font-bold text-blue-200 text-base">CHEERS</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{REACTION_COSTS.drink} PTS</div>
+                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{reactionCostLabel(REACTION_COSTS.drink)}</div>
                                      </button>
                                  </div>
+                                 {coHostReactionPolicyLabel ? (
+                                     <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-amber-100">
+                                         {coHostReactionPolicyLabel}
+                                     </div>
+                                 ) : null}
                                  <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
                                      const accent = {
                                          rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
@@ -11795,11 +12404,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      }[t];
                                      const cost = REACTION_COSTS[t];
                                      return (
-                                     <button key={t} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all active:scale-95 ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'}`}>
-                                             <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
-                                             <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
-                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
-                                                 {cost} PTS
+                                     <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
+                                            {premiumReactionsUnlocked ? renderReactionCooldownBadge(t, 'border-white/15 bg-black/55 text-cyan-50') : null}
+                                            <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
+                                            <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
+                                            <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
+                                                 {reactionCostLabel(cost)}
                                              </div>
                                              {!premiumReactionsUnlocked && (
                                                  <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
@@ -11816,10 +12426,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                              </>
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
-                         <div className="flex gap-2 w-full">
-                            <button onClick={() => setShowPoints(true)} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">{EMOJI.info} Points</button>
-                            <button onClick={() => setShowHowToPlay(true)} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">How to Play</button>
-                            <button onClick={openEditProfile} className="flex-1 bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">Change Name/Emoji</button>
+                         <div className={`grid w-full gap-2 ${isStreamlinedAudienceShell ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                            <button onClick={() => setShowPoints(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">{EMOJI.info} Points</button>
+                            {!isStreamlinedAudienceShell && (
+                                <button onClick={() => setShowHowToPlay(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">How to Play</button>
+                            )}
+                            <button onClick={openEditProfile} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">Change Name/Emoji</button>
                          </div>
                     </div>
                 )}
@@ -13651,6 +14263,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 onClick={() => setShowPoints(true)}
                                                 rewardDelta={popTriviaAwardSyncedDelta}
                                                 rewardPulseKey={popTriviaAwardSync.questionId === popTriviaRevealQuestionId ? `${popTriviaAwardSync.questionId}_${popTriviaAwardSync.delta}` : ''}
+                                                displayValue={coHostUnlimitedCredits ? '∞' : null}
+                                                caption={coHostUnlimitedCredits ? 'FREE' : 'PTS'}
                                                 className="h-10 w-[132px] shrink-0"
                                             />
                                         </div>

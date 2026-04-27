@@ -65,6 +65,10 @@ import {
   describeAutoDjSequenceState,
 } from '../autoDjStateMachine';
 import { getAutoEndSchedule, getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
+import {
+  getRunOfShowReleaseWindowTally,
+  normalizeRunOfShowDirector,
+} from '../../../lib/runOfShowDirector';
 
 const QueueYouTubeSearchModal = React.lazy(() => import('./QueueYouTubeSearchModal'));
 const QueueEditSongModal = React.lazy(() => import('./QueueEditSongModal'));
@@ -78,6 +82,17 @@ const stripKaraokeDecorators = (value = '') =>
     .replace(/\s*\[(?:official\s+)?(?:karaoke|instrumental).*?\]\s*$/i, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+
+const buildQueueFaceOffSongLabel = (song = {}) =>
+  String(song?.songTitle || song?.title || '').trim() || 'Song';
+
+const buildQueueFaceOffSongDetail = (song = {}) =>
+  String(song?.singerName || song?.artist || '').trim() || 'Queued pick';
+
+const buildQueueFaceOffSongArtwork = (song = {}) =>
+  String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || song?.art || '').trim();
+
+const buildVoteCountLabel = (count = 0) => `${count} vote${count === 1 ? '' : 's'}`;
 
 const parseDecoratedSongTitle = (value = '') => {
   const raw = String(value || '').trim();
@@ -539,7 +554,7 @@ const isDirectChatMessage = (message = {}) => (
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], onAssignQueueSongToRunOfShowItem, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, coHostSignals = [], ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -693,6 +708,200 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         assignedQueueOpen,
         setAssignedQueueOpen
     });
+    const normalizedDecisionDirector = useMemo(
+        () => normalizeRunOfShowDirector(runOfShowDirector || room?.runOfShowDirector || {}),
+        [room?.runOfShowDirector, runOfShowDirector]
+    );
+    const activeReleaseWindow = normalizedDecisionDirector?.releaseWindow?.active
+        ? normalizedDecisionDirector.releaseWindow
+        : null;
+    const activeQueueFaceOffWindow = activeReleaseWindow?.subjectType === 'queue_faceoff'
+        ? activeReleaseWindow
+        : null;
+    const activeSlotFillWindow = activeReleaseWindow?.subjectType === 'slot_fill_choice'
+        ? activeReleaseWindow
+        : null;
+    const activeNonQueueDecisionWindow = activeReleaseWindow && !['queue_faceoff', 'slot_fill_choice'].includes(String(activeReleaseWindow?.subjectType || '').trim().toLowerCase())
+        ? activeReleaseWindow
+        : null;
+    const isCoHostQueueFaceOff = String(activeQueueFaceOffWindow?.governanceMode || '').trim().toLowerCase() === 'cohost_vote';
+    const queueFaceOffTone = isCoHostQueueFaceOff
+        ? {
+            panelClass: 'border-amber-300/22 bg-[linear-gradient(145deg,rgba(35,20,10,0.98),rgba(24,16,12,0.92))]',
+            eyebrowClass: 'text-amber-200',
+            winnerClass: 'border-amber-300/40 bg-amber-500/10',
+            choiceLabelClass: 'text-amber-100',
+            badgeClass: 'border-amber-300/20 bg-black/30 text-amber-50'
+        }
+        : {
+            panelClass: 'border-cyan-300/20 bg-[linear-gradient(145deg,rgba(16,24,39,0.98),rgba(14,30,46,0.92))]',
+            eyebrowClass: 'text-cyan-300',
+            winnerClass: 'border-cyan-300/40 bg-cyan-500/10',
+            choiceLabelClass: 'text-cyan-200',
+            badgeClass: 'border-white/10 bg-black/30 text-zinc-100'
+        };
+    const queueFaceOffCandidates = useMemo(
+        () => (Array.isArray(queue) ? queue.slice(0, 2) : []),
+        [queue]
+    );
+    const slotFillCandidates = useMemo(
+        () => (Array.isArray(queue) ? queue.slice(0, 2) : []),
+        [queue]
+    );
+    const slotFillTarget = useMemo(() => {
+        const activeSlotId = String(activeSlotFillWindow?.itemId || '').trim();
+        if (activeSlotId) {
+            return (Array.isArray(runOfShowAssignableSlots) ? runOfShowAssignableSlots : []).find((slot) => slot.id === activeSlotId) || null;
+        }
+        return (Array.isArray(runOfShowAssignableSlots) ? runOfShowAssignableSlots : [])[0] || null;
+    }, [activeSlotFillWindow?.itemId, runOfShowAssignableSlots]);
+    const queueFaceOffTally = useMemo(
+        () => getRunOfShowReleaseWindowTally(activeQueueFaceOffWindow || {}, room?.runOfShowRoles || {}),
+        [activeQueueFaceOffWindow, room?.runOfShowRoles]
+    );
+    const slotFillTally = useMemo(
+        () => getRunOfShowReleaseWindowTally(activeSlotFillWindow || {}, room?.runOfShowRoles || {}),
+        [activeSlotFillWindow, room?.runOfShowRoles]
+    );
+    const queueFaceOffWinnerChoice = String(queueFaceOffTally?.leadingChoice || '').trim().toLowerCase();
+    const queueFaceOffWinnerSongId = queueFaceOffWinnerChoice
+        ? String(activeQueueFaceOffWindow?.choiceSongIds?.[queueFaceOffWinnerChoice] || '').trim()
+        : '';
+    const queueFaceOffWinnerSong = queueFaceOffWinnerSongId
+        ? (songs || []).find((song) => song.id === queueFaceOffWinnerSongId) || null
+        : null;
+    const slotFillWinnerChoice = String(slotFillTally?.leadingChoice || '').trim().toLowerCase();
+    const slotFillWinnerSongId = slotFillWinnerChoice
+        ? String(activeSlotFillWindow?.choiceSongIds?.[slotFillWinnerChoice] || '').trim()
+        : '';
+    const slotFillWinnerSong = slotFillWinnerSongId
+        ? (songs || []).find((song) => song.id === slotFillWinnerSongId) || null
+        : null;
+    const persistQueueDecisionWindow = useCallback(async (nextWindow = null) => {
+        const safeDirector = normalizeRunOfShowDirector(runOfShowDirector || room?.runOfShowDirector || {});
+        const nextDirector = normalizeRunOfShowDirector({
+            ...safeDirector,
+            releaseWindow: nextWindow || {}
+        });
+        await updateRoom({ runOfShowDirector: nextDirector });
+        return nextDirector;
+    }, [room?.runOfShowDirector, runOfShowDirector, updateRoom]);
+    const openQueueFaceOffVote = useCallback(async (governanceMode = 'cohost_vote') => {
+        if (activeReleaseWindow?.active) {
+            toast('Another live decision is already open. Close it before starting a song face-off.');
+            return;
+        }
+        if (queueFaceOffCandidates.length < 2) {
+            toast('Need at least two ready queue songs for a face-off.');
+            return;
+        }
+        const [firstSong, secondSong] = queueFaceOffCandidates;
+        const safeGovernanceMode = ['cohost_vote', 'crowd_vote'].includes(String(governanceMode || '').trim().toLowerCase())
+            ? String(governanceMode || '').trim().toLowerCase()
+            : 'cohost_vote';
+        const openedAtMs = nowMs();
+        await persistQueueDecisionWindow({
+            active: true,
+            itemId: `queue_faceoff:${firstSong.id}:${secondSong.id}`,
+            itemTitle: 'Next Song Face-Off',
+            subjectType: 'queue_faceoff',
+            governanceMode: safeGovernanceMode,
+            releasePolicy: 'suggest_then_host_confirm',
+            prompt: safeGovernanceMode === 'cohost_vote'
+                ? 'Co-hosts: which queued song should go next?'
+                : 'Audience: which queued song should go next?',
+            openedAtMs,
+            closesAtMs: openedAtMs + (20 * 1000),
+            choiceLabels: {
+                slot_scene: buildQueueFaceOffSongLabel(firstSong),
+                keep_queue_moving: buildQueueFaceOffSongLabel(secondSong),
+            },
+            choiceDetails: {
+                slot_scene: buildQueueFaceOffSongDetail(firstSong),
+                keep_queue_moving: buildQueueFaceOffSongDetail(secondSong),
+            },
+            choiceSongIds: {
+                slot_scene: firstSong.id,
+                keep_queue_moving: secondSong.id,
+            },
+            votesByUid: {},
+            resultChoice: '',
+            resolvedAtMs: 0
+        });
+        toast(safeGovernanceMode === 'cohost_vote' ? 'Co-host song face-off is live.' : 'Audience song face-off is live.');
+    }, [activeReleaseWindow?.active, persistQueueDecisionWindow, queueFaceOffCandidates, toast]);
+    const closeQueueFaceOffVote = useCallback(async (resultChoice = '') => {
+        if (!activeQueueFaceOffWindow) return;
+        await persistQueueDecisionWindow({
+            ...(activeQueueFaceOffWindow || {}),
+            active: false,
+            resultChoice: String(resultChoice || '').trim().toLowerCase(),
+            resolvedAtMs: nowMs()
+        });
+    }, [activeQueueFaceOffWindow, persistQueueDecisionWindow]);
+    const openSlotFillVote = useCallback(async (governanceMode = 'cohost_vote') => {
+        if (activeReleaseWindow?.active) {
+            toast('Another live decision is already open. Close it before starting a slot-fill vote.');
+            return;
+        }
+        if (!slotFillTarget?.id) {
+            toast('Need an open performance slot before co-hosts can help fill it.');
+            return;
+        }
+        if (slotFillCandidates.length < 2) {
+            toast('Need at least two ready queue songs to compare for the next slot.');
+            return;
+        }
+        const [firstSong, secondSong] = slotFillCandidates;
+        const safeGovernanceMode = ['cohost_vote', 'crowd_vote'].includes(String(governanceMode || '').trim().toLowerCase())
+            ? String(governanceMode || '').trim().toLowerCase()
+            : 'cohost_vote';
+        const safeSlotLabel = String(slotFillTarget.label || slotFillTarget.songTitle || slotFillTarget.id || 'the next open slot').trim();
+        const openedAtMs = nowMs();
+        await persistQueueDecisionWindow({
+            active: true,
+            itemId: slotFillTarget.id,
+            itemTitle: safeSlotLabel,
+            subjectType: 'slot_fill_choice',
+            governanceMode: safeGovernanceMode,
+            releasePolicy: 'suggest_then_host_confirm',
+            prompt: safeGovernanceMode === 'cohost_vote'
+                ? `Co-hosts: who should fill ${safeSlotLabel}?`
+                : `Audience: who should fill ${safeSlotLabel}?`,
+            openedAtMs,
+            closesAtMs: openedAtMs + (20 * 1000),
+            choiceLabels: {
+                slot_scene: buildQueueFaceOffSongLabel(firstSong),
+                keep_queue_moving: buildQueueFaceOffSongLabel(secondSong),
+            },
+            choiceDetails: {
+                slot_scene: buildQueueFaceOffSongDetail(firstSong),
+                keep_queue_moving: buildQueueFaceOffSongDetail(secondSong),
+            },
+            choiceSongIds: {
+                slot_scene: firstSong.id,
+                keep_queue_moving: secondSong.id,
+            },
+            votesByUid: {},
+            resultChoice: '',
+            resolvedAtMs: 0
+        });
+        toast(safeGovernanceMode === 'cohost_vote' ? 'Co-host slot-fill vote is live.' : 'Audience slot-fill vote is live.');
+    }, [activeReleaseWindow?.active, persistQueueDecisionWindow, slotFillCandidates, slotFillTarget, toast]);
+    const closeSlotFillVote = useCallback(async (resultChoice = '') => {
+        if (!activeSlotFillWindow) return;
+        await persistQueueDecisionWindow({
+            ...(activeSlotFillWindow || {}),
+            active: false,
+            resultChoice: String(resultChoice || '').trim().toLowerCase(),
+            resolvedAtMs: nowMs()
+        });
+    }, [activeSlotFillWindow, persistQueueDecisionWindow]);
+    const applySlotFillWinner = useCallback(async () => {
+        if (!slotFillWinnerSong?.id || !slotFillTarget?.id || typeof onAssignQueueSongToRunOfShowItem !== 'function') return;
+        await onAssignQueueSongToRunOfShowItem(slotFillWinnerSong.id, slotFillTarget.id);
+        await closeSlotFillVote(slotFillWinnerChoice);
+    }, [closeSlotFillVote, onAssignQueueSongToRunOfShowItem, slotFillTarget?.id, slotFillWinnerChoice, slotFillWinnerSong?.id]);
     useEffect(() => {
         if (!roomCode) {
             setTrustedCatalog({});
@@ -2069,6 +2278,26 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'lineup_moved_next' });
         toast(`${targetSong.singerName || 'Singer'} moved next.`);
     }, [pushAutoDjEvent, queue, songs, toast]);
+    const applyQueueFaceOffWinner = useCallback(async () => {
+        if (!activeQueueFaceOffWindow) return;
+        if (!queueFaceOffWinnerChoice) {
+            toast('No winner yet. Break the tie or close the vote.');
+            return;
+        }
+        if (!queueFaceOffWinnerSongId) {
+            toast('Winning song is no longer available in the queue.');
+            return;
+        }
+        await moveSingerNext(queueFaceOffWinnerSongId);
+        await closeQueueFaceOffVote(queueFaceOffWinnerChoice);
+    }, [
+        activeQueueFaceOffWindow,
+        closeQueueFaceOffVote,
+        moveSingerNext,
+        queueFaceOffWinnerChoice,
+        queueFaceOffWinnerSongId,
+        toast
+    ]);
 
     const holdSinger = useCallback(async (songId = '', reason = 'not_here') => {
         const targetSongId = String(songId || '').trim();
@@ -2761,6 +2990,322 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
                 featureId="panel-queue-list"
             />
+            {showQueueList ? (
+                activeQueueFaceOffWindow ? (
+                    <div className={`rounded-2xl border p-3 shadow-[0_16px_36px_rgba(0,0,0,0.22)] ${queueFaceOffTone.panelClass}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className={`text-[10px] uppercase tracking-[0.24em] ${queueFaceOffTone.eyebrowClass}`}>
+                                    {String(activeQueueFaceOffWindow.governanceMode || '').trim().toLowerCase() === 'cohost_vote'
+                                        ? 'Co-Host Song Face-Off'
+                                        : 'Audience Song Face-Off'}
+                                </div>
+                                <div className="mt-1 text-sm font-semibold text-white">
+                                    {String(activeQueueFaceOffWindow.prompt || 'Which queued song should go next?').trim()}
+                                </div>
+                                <div className="mt-1 text-xs text-zinc-400">
+                                    One vote per joined user. Host confirms the winning song before the queue changes.
+                                </div>
+                            </div>
+                            <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${queueFaceOffTone.badgeClass}`}>
+                                {buildVoteCountLabel(queueFaceOffTally.totalVotes || 0)}
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {[
+                                {
+                                    key: 'slot_scene',
+                                    label: String(activeQueueFaceOffWindow.choiceLabels?.slot_scene || 'Song A').trim() || 'Song A',
+                                    detail: String(activeQueueFaceOffWindow.choiceDetails?.slot_scene || '').trim(),
+                                    count: queueFaceOffTally.slotSceneCount,
+                                    song: (songs || []).find((song) => song.id === String(activeQueueFaceOffWindow.choiceSongIds?.slot_scene || '').trim()) || null
+                                },
+                                {
+                                    key: 'keep_queue_moving',
+                                    label: String(activeQueueFaceOffWindow.choiceLabels?.keep_queue_moving || 'Song B').trim() || 'Song B',
+                                    detail: String(activeQueueFaceOffWindow.choiceDetails?.keep_queue_moving || '').trim(),
+                                    count: queueFaceOffTally.keepQueueMovingCount,
+                                    song: (songs || []).find((song) => song.id === String(activeQueueFaceOffWindow.choiceSongIds?.keep_queue_moving || '').trim()) || null
+                                }
+                            ].map((choice) => (
+                                <div key={choice.key} className={`rounded-2xl border px-3 py-3 ${queueFaceOffWinnerChoice === choice.key ? queueFaceOffTone.winnerClass : 'border-white/10 bg-black/25'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                            {buildQueueFaceOffSongArtwork(choice.song) ? (
+                                                <img src={buildQueueFaceOffSongArtwork(choice.song)} alt={choice.label} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                    <i className="fa-solid fa-music"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className={`text-[10px] uppercase tracking-[0.18em] ${queueFaceOffTone.choiceLabelClass}`}>{choice.label}</div>
+                                            {choice.detail ? (
+                                                <div className="mt-1 truncate text-sm font-semibold text-white">{choice.detail}</div>
+                                            ) : null}
+                                            <div className="truncate text-xs text-zinc-400">
+                                                {String(choice.song?.artist || choice.song?.artistName || '').trim() || 'Ready queue pick'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-lg font-black text-white">{choice.count}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-xs text-zinc-400">
+                                {queueFaceOffTally.summary}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => void closeQueueFaceOffVote()}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[11px]`}
+                                >
+                                    Close Vote
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void applyQueueFaceOffWinner()}
+                                    disabled={!queueFaceOffWinnerSong || !queueFaceOffWinnerChoice}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-[11px] ${(!queueFaceOffWinnerSong || !queueFaceOffWinnerChoice) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {queueFaceOffWinnerSong
+                                        ? `Make ${(queueFaceOffWinnerSong.singerName || 'Winner')} - ${buildQueueFaceOffSongLabel(queueFaceOffWinnerSong)} Next`
+                                        : 'Apply Winner'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : activeSlotFillWindow ? (
+                    <div className="rounded-2xl border border-amber-300/22 bg-[linear-gradient(145deg,rgba(35,20,10,0.98),rgba(24,16,12,0.92))] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.22)]">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200">
+                                    {String(activeSlotFillWindow.governanceMode || '').trim().toLowerCase() === 'cohost_vote'
+                                        ? 'Co-Host Slot Fill'
+                                        : 'Audience Slot Fill'}
+                                </div>
+                                <div className="mt-1 text-sm font-semibold text-white">
+                                    {String(activeSlotFillWindow.prompt || 'Who should fill the next open slot?').trim()}
+                                </div>
+                                <div className="mt-1 text-xs text-zinc-400">
+                                    One vote per joined user. Host confirms the winning singer before assigning the slot.
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {slotFillTarget?.label ? (
+                                    <div className="rounded-full border border-amber-300/22 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50">
+                                        {slotFillTarget.label}
+                                    </div>
+                                ) : null}
+                                <div className="rounded-full border border-amber-300/20 bg-black/30 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50">
+                                    {buildVoteCountLabel(slotFillTally.totalVotes || 0)}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {[
+                                {
+                                    key: 'slot_scene',
+                                    label: String(activeSlotFillWindow.choiceLabels?.slot_scene || 'Singer A').trim() || 'Singer A',
+                                    detail: String(activeSlotFillWindow.choiceDetails?.slot_scene || '').trim(),
+                                    count: slotFillTally.slotSceneCount,
+                                    song: (songs || []).find((song) => song.id === String(activeSlotFillWindow.choiceSongIds?.slot_scene || '').trim()) || null
+                                },
+                                {
+                                    key: 'keep_queue_moving',
+                                    label: String(activeSlotFillWindow.choiceLabels?.keep_queue_moving || 'Singer B').trim() || 'Singer B',
+                                    detail: String(activeSlotFillWindow.choiceDetails?.keep_queue_moving || '').trim(),
+                                    count: slotFillTally.keepQueueMovingCount,
+                                    song: (songs || []).find((song) => song.id === String(activeSlotFillWindow.choiceSongIds?.keep_queue_moving || '').trim()) || null
+                                }
+                            ].map((choice) => (
+                                <div key={choice.key} className={`rounded-2xl border px-3 py-3 ${slotFillWinnerChoice === choice.key ? 'border-amber-300/40 bg-amber-500/10' : 'border-white/10 bg-black/25'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                            {buildQueueFaceOffSongArtwork(choice.song) ? (
+                                                <img src={buildQueueFaceOffSongArtwork(choice.song)} alt={choice.label} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                    <i className="fa-solid fa-music"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-amber-100">{choice.label}</div>
+                                            {choice.detail ? (
+                                                <div className="mt-1 truncate text-sm font-semibold text-white">{choice.detail}</div>
+                                            ) : null}
+                                            <div className="truncate text-xs text-zinc-400">
+                                                {String(choice.song?.artist || choice.song?.artistName || '').trim() || 'Ready queue pick'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 text-lg font-black text-white">{choice.count}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-xs text-zinc-400">
+                                {slotFillTally.summary}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => void closeSlotFillVote()}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[11px]`}
+                                >
+                                    Close Vote
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => void applySlotFillWinner()}
+                                    disabled={!slotFillWinnerSong || !slotFillWinnerChoice || !slotFillTarget?.id}
+                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-[11px] ${(!slotFillWinnerSong || !slotFillWinnerChoice || !slotFillTarget?.id) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {slotFillWinnerSong && slotFillTarget?.label
+                                        ? `Assign ${(slotFillWinnerSong.singerName || 'Winner')} - ${buildQueueFaceOffSongLabel(slotFillWinnerSong)} To ${slotFillTarget.label}`
+                                        : 'Assign Winner To Slot'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : activeNonQueueDecisionWindow ? (
+                    <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200">Live Decision In Progress</div>
+                        <div className="mt-1 text-sm font-semibold text-white">
+                            {String(activeNonQueueDecisionWindow.prompt || activeNonQueueDecisionWindow.itemTitle || 'Another room decision is active.').trim()}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-300">
+                            Finish or close the current room vote before starting another co-host planning moment.
+                        </div>
+                        {typeof onOpenRunOfShow === 'function' ? (
+                            <div className="mt-3">
+                                <button
+                                    type="button"
+                                    onClick={onOpenRunOfShow}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[11px]`}
+                                >
+                                    Open Run Of Show
+                                </button>
+                            </div>
+                        ) : null}
+                    </div>
+                ) : queueFaceOffCandidates.length >= 2 ? (
+                    <div className="space-y-3">
+                        {slotFillTarget?.id && slotFillCandidates.length >= 2 ? (
+                            <div className="rounded-2xl border border-amber-300/18 bg-[linear-gradient(145deg,rgba(68,33,12,0.56),rgba(10,16,30,0.96))] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.18)]">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="text-[10px] uppercase tracking-[0.24em] text-amber-200">Co-Host Planning</div>
+                                        <div className="mt-1 text-sm font-semibold text-white">Let trusted voters help fill the next open slot</div>
+                                        <div className="mt-1 text-xs text-zinc-400">
+                                            Keep long-range planning lightweight. Compare two queued singers before the host assigns {slotFillTarget.label || 'the open slot'}.
+                                        </div>
+                                    </div>
+                                    <div className="rounded-full border border-amber-300/20 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-50">
+                                        {slotFillTarget.label || 'Open Slot'}
+                                    </div>
+                                </div>
+                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                    {slotFillCandidates.map((song, index) => (
+                                        <div key={song.id || index} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                                    {buildQueueFaceOffSongArtwork(song) ? (
+                                                        <img src={buildQueueFaceOffSongArtwork(song)} alt={buildQueueFaceOffSongLabel(song)} className="h-full w-full object-cover" />
+                                                    ) : (
+                                                        <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                            <i className="fa-solid fa-music"></i>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="text-[10px] uppercase tracking-[0.18em] text-amber-100">Candidate {index + 1}</div>
+                                                    <div className="mt-1 text-sm font-semibold text-white">{buildQueueFaceOffSongLabel(song)}</div>
+                                                    <div className="mt-1 text-xs text-zinc-400">{buildQueueFaceOffSongDetail(song)}</div>
+                                                    <div className="truncate text-xs text-zinc-500">{String(song?.artist || song?.artistName || '').trim() || 'Ready queue pick'}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => void openSlotFillVote('cohost_vote')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-[11px]`}
+                                    >
+                                        Start Slot-Fill Vote
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void openSlotFillVote('crowd_vote')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[11px]`}
+                                    >
+                                        Open Slot Fill To Audience
+                                    </button>
+                                </div>
+                            </div>
+                        ) : null}
+                        <div className="rounded-2xl border border-fuchsia-300/18 bg-[linear-gradient(145deg,rgba(43,19,48,0.55),rgba(10,16,30,0.96))] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.18)]">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Co-Host Moment</div>
+                                <div className="mt-1 text-sm font-semibold text-white">Let trusted voters help pick the next song</div>
+                                <div className="mt-1 text-xs text-zinc-400">
+                                    The vote compares the next two ready queue songs. Host confirmation is still required before the queue changes.
+                                </div>
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-100">
+                                Top 2 Ready Songs
+                            </div>
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {queueFaceOffCandidates.map((song, index) => (
+                                <div key={song.id || index} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                            {buildQueueFaceOffSongArtwork(song) ? (
+                                                <img src={buildQueueFaceOffSongArtwork(song)} alt={buildQueueFaceOffSongLabel(song)} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                    <i className="fa-solid fa-music"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Candidate {index + 1}</div>
+                                            <div className="mt-1 text-sm font-semibold text-white">{buildQueueFaceOffSongLabel(song)}</div>
+                                            <div className="mt-1 text-xs text-zinc-400">{buildQueueFaceOffSongDetail(song)}</div>
+                                            <div className="truncate text-xs text-zinc-500">{String(song?.artist || song?.artistName || '').trim() || 'Ready queue pick'}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => void openQueueFaceOffVote('cohost_vote')}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1.5 text-[11px]`}
+                            >
+                                Start Co-Host Vote
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void openQueueFaceOffVote('crowd_vote')}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[11px]`}
+                            >
+                                Open To Audience
+                            </button>
+                        </div>
+                    </div>
+                    </div>
+                ) : null
+            ) : null}
             {showQueueList && reviewQueueItems.length > 0 && (
                 <div className="rounded-2xl border border-amber-300/20 bg-gradient-to-br from-amber-500/10 via-black/30 to-pink-500/10 p-3 space-y-3">
                     <button
@@ -2994,8 +3539,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 reviewRequiredCount={reviewQueueItems.length}
                 reviewRequired={reviewRequired}
                 runOfShowAssignableSlots={runOfShowAssignableSlots}
+                runOfShowOpenSlots={runOfShowOpenSlots}
                 queueSurfaceCounts={queueSurface.counts}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
+                onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
             />
             <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
                 <SectionHeader
@@ -3313,6 +3861,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             runOfShowFlightedItem={runOfShowStagedItem}
                             runOfShowOnDeckItem={runOfShowNextItem}
                             crowdPulse={crowdPulse}
+                            coHostSignals={coHostSignals}
                             onTogglePlay={togglePlay}
                             onEndPerformance={handleEndPerformance}
                             onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}

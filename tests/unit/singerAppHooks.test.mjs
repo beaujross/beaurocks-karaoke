@@ -89,6 +89,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
+    /const showStreamlinedIdleRequestCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && isStreamlinedAudienceShell;/,
+    "SingerApp should explicitly identify the streamlined idle home state for a request-first card",
+  );
+  assert.match(
+    source,
     /const streamlinedSongsNavItems = \[\s*\{ key: 'requests', label: 'Add Song', icon: 'fa-plus' \},/,
     "SingerApp should label the streamlined request tab as Add Song so the primary action is obvious",
   );
@@ -136,6 +141,26 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /Request a Song/,
     "SingerApp should expose a Request a Song CTA from streamlined party surfaces",
+  );
+  assert.match(
+    source,
+    /Request your song before the next slot opens/,
+    "SingerApp streamlined idle home should lead with a simple request-first headline before the stage goes live",
+  );
+  assert.match(
+    source,
+    /Search \+ add song\. The host matches the backing and drops it into the live queue\./,
+    "SingerApp streamlined idle home should explain the request path in one short sentence",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-streamlined-idle-request-cta"/,
+    "SingerApp streamlined idle home should expose a dedicated request CTA for QA and regression coverage",
+  );
+  assert.match(
+    source,
+    /How it works/,
+    "SingerApp streamlined idle home should keep help available as a small secondary action instead of a full utility tile row",
   );
   assert.match(
     source,
@@ -188,6 +213,16 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /premiumReactionsUnlocked \? react\(t, cost\) : openVipUpgrade\(\)/,
     "SingerApp featured reaction buttons should use the room access policy instead of only VIP/support state",
+  );
+  assert.match(
+    source,
+    /grid w-full gap-2 \$\{isStreamlinedAudienceShell \? 'grid-cols-2' : 'grid-cols-3'\}/,
+    "SingerApp should trim the always-visible utility row in streamlined mode so idle home stays focused on request and queue actions",
+  );
+  assert.match(
+    source,
+    /!isStreamlinedAudienceShell && \(\s*<button onClick=\{\(\) => setShowHowToPlay\(true\)\}/,
+    "SingerApp should demote the How to Play utility button out of the streamlined always-visible action row",
   );
 });
 
@@ -323,6 +358,66 @@ test("SingerApp gives audience members local applause tap feedback", () => {
     source,
     /\{applauseTapCount\}/,
     "SingerApp should render the local applause tap count",
+  );
+});
+
+test("SingerApp applies host-configured reaction cooldowns and co-host credit policy", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /coHostCreditPolicy: normalizeCoHostCreditPolicy\(source\.coHostCreditPolicy \|\| ''\)/,
+    "SingerApp should read the co-host credit policy from room event credits",
+  );
+  assert.match(
+    source,
+    /reactionTapCooldownMs: normalizeReactionTapCooldownMs\(source\.reactionTapCooldownMs \?\? DEFAULT_REACTION_TAP_COOLDOWN_MS\)/,
+    "SingerApp should read the host-configured reaction cooldown from room event credits",
+  );
+  assert.match(
+    source,
+    /const coHostUnlimitedCredits = isRunOfShowCoHost && coHostCreditPolicy === CO_HOST_CREDIT_POLICIES\.unlimited;/,
+    "SingerApp should support unlimited co-host credit policy",
+  );
+  assert.match(
+    source,
+    /const coHostFreeReactions = isRunOfShowCoHost[\s\S]*CO_HOST_CREDIT_POLICIES\.freeReactions[\s\S]*CO_HOST_CREDIT_POLICIES\.unlimited/,
+    "SingerApp should let co-host reactions run free under the configured policy",
+  );
+  assert.match(
+    source,
+    /const \[reactionCooldownByType, setReactionCooldownByType\] = useState\(\{\}\);/,
+    "SingerApp should track reaction cooldowns per reaction key instead of sharing one room-wide lockout",
+  );
+  assert.match(
+    source,
+    /const getReactionCooldownRemainingMs = useCallback\(\(reactionKey = ''\) =>/,
+    "SingerApp should resolve cooldown timers per reaction key",
+  );
+  assert.match(
+    source,
+    /const cooldownUntil = Number\(reactionCooldownByType\?\.\[safeType\] \|\| 0\);/,
+    "SingerApp should look up cooldown state for the tapped reaction only",
+  );
+  assert.match(
+    source,
+    /setReactionCooldownByType\(\(prev\) => \(\{[\s\S]*\[safeType\]: now \+ reactionTapCooldownMs/,
+    "SingerApp should start a cooldown only for the tapped reaction button",
+  );
+  assert.match(
+    source,
+    /renderReactionCooldownBadge/,
+    "SingerApp should render a visible countdown badge on cooled-down reaction controls",
+  );
+  assert.match(
+    source,
+    /Clap cooldown \{getReactionCooldownLabel\('clap'\)\}/,
+    "SingerApp applause mode should show the cooldown timer on the clap experience",
+  );
+  assert.match(
+    source,
+    /displayValue=\{coHostUnlimitedCredits \? '∞' : null\}/,
+    "SingerApp should visually show unlimited co-host credits in the audience points pill",
   );
 });
 

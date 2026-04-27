@@ -32,6 +32,15 @@ const getRunOfShowSceneSummary = (item = {}) => {
 const cardBaseClass = 'rounded-2xl border px-3 py-3';
 const actionButtonClass = 'inline-flex min-h-[38px] items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] transition';
 
+const getCoHostSignalToneClass = (tone = 'zinc') => {
+    if (tone === 'amber') return 'border-amber-300/25 bg-amber-500/10 text-amber-100';
+    if (tone === 'sky') return 'border-sky-300/25 bg-sky-500/10 text-sky-100';
+    if (tone === 'emerald') return 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100';
+    if (tone === 'rose') return 'border-rose-300/25 bg-rose-500/10 text-rose-100';
+    if (tone === 'violet') return 'border-violet-300/25 bg-violet-500/10 text-violet-100';
+    return 'border-white/10 bg-black/20 text-zinc-200';
+};
+
 const LaneCard = ({ label, title, detail, toneClass = '', meta = '', metaToneClass = '' }) => (
     <div className={`${cardBaseClass} ${toneClass || 'border-white/10 bg-black/25'}`}>
         <div className="flex items-start justify-between gap-3">
@@ -63,6 +72,7 @@ export default function HostLiveOpsPanel({
     runOfShowFlightedItem = null,
     runOfShowOnDeckItem = null,
     crowdPulse = null,
+    coHostSignals = [],
     onTogglePlay,
     onEndPerformance,
     onReturnCurrentToQueue,
@@ -185,6 +195,60 @@ export default function HostLiveOpsPanel({
                         <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">{Number(crowdPulseMetrics.recentAudienceActionCount || 0)} actions</span>
                     </div>
                 </div>
+            </div>
+
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Tell Host</div>
+                        <div className="mt-1 text-sm font-semibold text-white">Context-rich audio notes from trusted co-hosts</div>
+                        <div className="mt-1 text-xs text-zinc-400">Each note stays tied to the performance it came from, so the host gets one clean read without another inbox.</div>
+                    </div>
+                    {coHostSignals.length ? (
+                        <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
+                            {coHostSignals.length} active
+                        </span>
+                    ) : null}
+                </div>
+                {coHostSignals.length ? (
+                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                        {coHostSignals.slice(0, 4).map((signal) => (
+                            <div key={signal.id} className={`rounded-2xl border px-3 py-3 ${getCoHostSignalToneClass(signal.tone)}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex flex-1 items-start gap-3">
+                                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                                            {signal.artworkUrl ? (
+                                                <img src={signal.artworkUrl} alt={signal.contextTitle || signal.label} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-sm text-white/70">
+                                                    <i className={`fa-solid ${signal.icon || 'fa-bullhorn'}`}></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <i className={`fa-solid ${signal.icon || 'fa-bullhorn'} text-[12px]`}></i>
+                                                <div className="truncate text-sm font-semibold text-white">{signal.hostLabel || signal.label}</div>
+                                            </div>
+                                            <div className="mt-1 truncate text-xs font-black uppercase tracking-[0.12em] text-white/90">
+                                                {signal.contextTitle || 'General room note'}
+                                            </div>
+                                            <div className="mt-1 text-xs text-zinc-200">{signal.summary}</div>
+                                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-zinc-300">{signal.contextMeta || signal.latestAgeLabel || 'recently'}</div>
+                                        </div>
+                                    </div>
+                                    <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
+                                        {signal.uniqueCount || signal.count || 1}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-xs text-zinc-400">
+                        No recent co-host audio notes.
+                    </div>
+                )}
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">

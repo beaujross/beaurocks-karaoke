@@ -86,7 +86,10 @@ const buildHostQueueTabProps = (overrides = {}) => ({
   onClearRunOfShow: noop,
   onReturnCurrentToQueue: noop,
   runOfShowAssignableSlots: [],
+  runOfShowOpenSlots: [],
   onAssignQueueSongToRunOfShowItem: noop,
+  onAssignQueueSongToNextOpenRunOfShowSlot: noop,
+  onFillRunOfShowOpenSlotsFromQueue: noop,
   scenePresets: [],
   scenePresetUploading: false,
   scenePresetUploadProgress: 0,
@@ -97,6 +100,7 @@ const buildHostQueueTabProps = (overrides = {}) => ({
   onClearScenePreset: noop,
   onDeleteScenePreset: noop,
   crowdPulse: null,
+  coHostSignals: [],
   ytDiagnosticsMap: {},
   fetchYtDiagnostics: async () => null,
   getYtDiagnosticsKey: () => '',
@@ -200,4 +204,30 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
 
   assert.match(markup, /Run Of Show/);
   assert.match(markup, />3</);
+});
+
+test('HostQueueTab renders compact co-host signal summaries in the live lane', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    coHostSignals: [
+      {
+        id: 'track_up',
+        hostLabel: 'Track needs a bump',
+        summary: '2 co-hosts flagged this',
+        contextTitle: 'Jordan - Valerie',
+        contextMeta: 'Amy Winehouse • 0:42 in • 1m ago',
+        icon: 'fa-wave-square',
+        tone: 'amber',
+        uniqueCount: 2,
+        latestAgeLabel: '1m ago',
+      },
+    ],
+  });
+
+  assert.match(markup, /Tell Host/);
+  assert.match(markup, /Context-rich audio notes from trusted co-hosts/);
+  assert.match(markup, /Track needs a bump/);
+  assert.match(markup, /Jordan - Valerie/);
+  assert.match(markup, /2 co-hosts flagged this/);
 });

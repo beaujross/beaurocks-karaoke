@@ -4,6 +4,9 @@ import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 export const FIXED_QA_HOST_NOW_MS = 1763503200000;
 export const QA_AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+const QA_DREAMS_ART_URL = '/images/marketing/audience-surface-live.png';
+const QA_VALERIE_ART_URL = '/images/marketing/app-landing-live.png';
+const QA_SINCE_U_BEEN_GONE_ART_URL = '/images/marketing/tv-surface-live.png';
 export const QA_AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
     appTitle: 'AAHF Festival',
     primaryColor: '#E05A44',
@@ -21,6 +24,21 @@ export const QA_HOST_SCENARIOS = Object.freeze([
         id: 'run-of-show-stage-live',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Live Stage', 'Performance Controls', 'Post-Performance Timing']
+    },
+    {
+        id: 'cohost-queue-faceoff',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Co-Host Song Face-Off', 'Which queued song should go next?', 'Make Taylor Next']
+    },
+    {
+        id: 'cohost-helper-catalog',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Co-Host Helper Catalog', 'Browse And Add For Guests', 'Copy Helper Link']
+    },
+    {
+        id: 'cohost-credit-policy-settings',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Audience Store And Support', 'Co-host credit policy', 'Reaction tap cooldown']
     }
 ]);
 
@@ -274,7 +292,7 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     status: 'performing',
                     mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
                     youtubeId: 'yt_demo_backing_01',
-                    albumArtUrl: AAHF_LOGO_URL,
+                    albumArtUrl: QA_DREAMS_ART_URL,
                     hostBonus: 25,
                     lyrics: 'Thunder only happens when it\'s raining',
                 },
@@ -289,8 +307,170 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     status: 'requested',
                     mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
                     youtubeId: 'yt_demo_valerie_02',
+                    albumArtUrl: QA_VALERIE_ART_URL,
                 }
             ],
+        };
+    }
+    if (safeId === 'cohost-queue-faceoff') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                runOfShowDirector: {
+                    ...(fixture.room?.runOfShowDirector || {}),
+                    releaseWindow: {
+                        active: true,
+                        subjectType: 'queue_faceoff',
+                        governanceMode: 'cohost_vote',
+                        releasePolicy: 'suggest_then_host_confirm',
+                        itemId: 'queue_faceoff:queue_1:queue_2',
+                        itemTitle: 'Next Song Face-Off',
+                        prompt: 'Co-hosts: which queued song should go next?',
+                        openedAtMs: nowMs - 9_000,
+                        closesAtMs: nowMs + 20_000,
+                        choiceLabels: {
+                            slot_scene: 'Valerie',
+                            keep_queue_moving: 'Since U Been Gone',
+                        },
+                        choiceDetails: {
+                            slot_scene: 'Jordan',
+                            keep_queue_moving: 'Taylor',
+                        },
+                        choiceSongIds: {
+                            slot_scene: 'queue_1',
+                            keep_queue_moving: 'queue_2',
+                        },
+                        votesByUid: {
+                            co_host_1: 'slot_scene',
+                            co_host_2: 'keep_queue_moving',
+                            co_host_3: 'keep_queue_moving',
+                        },
+                    },
+                },
+            },
+            songs: [
+                {
+                    id: 'perf_live_1',
+                    singerName: 'Alex Rivers',
+                    singer: 'Alex Rivers',
+                    songTitle: 'Dreams',
+                    title: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    status: 'performing',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    albumArtUrl: QA_DREAMS_ART_URL,
+                    hostBonus: 25,
+                    lyrics: 'Thunder only happens when it is raining',
+                },
+                {
+                    id: 'queue_1',
+                    singerUid: 'aud_2',
+                    singerName: 'Jordan',
+                    singer: 'Jordan',
+                    songTitle: 'Valerie',
+                    title: 'Valerie',
+                    artist: 'Amy Winehouse',
+                    artistName: 'Amy Winehouse',
+                    status: 'requested',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
+                    youtubeId: 'yt_demo_valerie_02',
+                    albumArtUrl: QA_VALERIE_ART_URL,
+                    resolutionStatus: 'ready',
+                    duration: 198,
+                    priorityScore: 10,
+                },
+                {
+                    id: 'queue_2',
+                    singerUid: 'aud_1',
+                    singerName: 'Taylor',
+                    singer: 'Taylor',
+                    songTitle: 'Since U Been Gone',
+                    title: 'Since U Been Gone',
+                    artist: 'Kelly Clarkson',
+                    artistName: 'Kelly Clarkson',
+                    status: 'requested',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_since_u_03',
+                    youtubeId: 'yt_demo_since_u_03',
+                    albumArtUrl: QA_SINCE_U_BEEN_GONE_ART_URL,
+                    resolutionStatus: 'ready',
+                    duration: 201,
+                    priorityScore: 20,
+                }
+            ],
+        };
+    }
+    if (safeId === 'cohost-helper-catalog') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'browse',
+            activeWorkspaceView: 'queue',
+            activeWorkspaceSection: 'queue.catalog',
+            catalogueOnly: true,
+            room: {
+                ...(fixture.room || {}),
+                runOfShowRoles: {
+                    coHosts: ['co_host_1'],
+                },
+            },
+            songs: [
+                {
+                    id: 'queue_1',
+                    singerUid: 'aud_1',
+                    singerName: 'Taylor',
+                    singer: 'Taylor',
+                    songTitle: 'Dreams',
+                    title: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    status: 'requested',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    albumArtUrl: QA_DREAMS_ART_URL,
+                    resolutionStatus: 'ready',
+                    duration: 212,
+                    priorityScore: 10,
+                }
+            ],
+        };
+    }
+    if (safeId === 'cohost-credit-policy-settings') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'admin',
+            settingsTab: 'monetization',
+            room: {
+                ...(fixture.room || {}),
+                eventCredits: {
+                    enabled: true,
+                    presetId: 'custom_event_credits',
+                    eventId: 'cohost_policy_demo',
+                    eventLabel: 'Co-Host Policy Demo',
+                    supportProvider: 'givebutter',
+                    supportLabel: 'Support AAHF Festival',
+                    supportUrl: 'https://givebutter.com/aahf-kickoff',
+                    supportCampaignCode: 'aahf_kickoff',
+                    supportPoints: 0,
+                    supportBadge: true,
+                    supportOffers: [],
+                    audienceAccessMode: 'email_or_donation',
+                    creditEarningMode: 'playful',
+                    coHostCreditPolicy: 'unlimited',
+                    reactionTapCooldownMs: 1600,
+                    timedLobbyEnabled: true,
+                    timedLobbyPoints: 50,
+                    timedLobbyIntervalMin: 10,
+                    timedLobbyMaxPerGuest: 300,
+                    supportCelebrationStyle: 'moneybags_burst',
+                    promoCampaigns: [],
+                },
+            },
         };
     }
     return null;

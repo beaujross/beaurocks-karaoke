@@ -37,6 +37,9 @@ test('queue list exposes one inspector surface for queue-item operations', () =>
   assert.match(queueListPanelSource, /Edit Details/);
   assert.match(queueListPanelSource, /Hold Singer/);
   assert.match(queueListPanelSource, /Remove From Queue/);
-  assert.match(queueListPanelSource, /Assign Slot|Reassign Slot/);
+  assert.match(queueListPanelSource, /Fill Next Slot/);
+  assert.match(queueListPanelSource, /Fill All Suggested/);
+  assert.match(queueListPanelSource, /Assign To Next Open Slot|Assign To .*Open/);
+  assert.match(queueListPanelSource, /Assign Selected Slot|Reassign Selected Slot/);
   assert.match(queueListPanelSource, /Awaiting Approval/);
 });

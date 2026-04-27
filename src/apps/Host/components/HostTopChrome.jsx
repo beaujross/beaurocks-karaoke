@@ -153,6 +153,7 @@ const HostTopChrome = ({
     onOpenAiSettings,
     onOpenAccessSettings,
     onOpenQueueControls,
+    onOpenCatalogueHelper,
     roomReadinessSummary = '',
     roomReadinessStatusLabel = 'Room',
     roomReadinessActive = false,
@@ -191,6 +192,7 @@ const HostTopChrome = ({
     const resolvedTvBase = tvBase || appBase;
     const launchTvHref = String(launchUrls?.tvUrl || '').trim() || `${resolvedTvBase}?room=${roomCode}&mode=tv`;
     const launchAudienceHref = String(launchUrls?.audienceUrl || '').trim() || `${resolvedAudienceBase}?room=${roomCode}`;
+    const helperCatalogHref = `${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog&catalogue=1`;
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -1062,10 +1064,24 @@ const HostTopChrome = ({
                             </button>
                             <button
                                 type="button"
-                                onClick={() => openLaunchTarget(`${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog&catalogue=1`)}
+                                onClick={() => {
+                                    if (typeof onOpenCatalogueHelper === 'function') {
+                                        closeAllTopMenus();
+                                        onOpenCatalogueHelper();
+                                        return;
+                                    }
+                                    openLaunchTarget(helperCatalogHref);
+                                }}
                                 className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
                             >
-                                <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Launch Catalogue
+                                <i className="fa-solid fa-book-open mr-2 text-yellow-300"></i> Open Helper Catalog
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openLaunchTarget(helperCatalogHref)}
+                                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
+                            >
+                                <i className="fa-solid fa-up-right-from-square mr-2 text-yellow-300"></i> Open Helper Window
                             </button>
                             <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
                                 Game Displays

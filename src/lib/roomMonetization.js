@@ -13,13 +13,20 @@ export const CREDIT_EARNING_MODES = Object.freeze({
     playful: 'playful',
     custom: 'custom',
 });
+export const CO_HOST_CREDIT_POLICIES = Object.freeze({
+    standard: 'standard',
+    freeReactions: 'free_reactions',
+    unlimited: 'unlimited',
+});
 export const SUPPORT_CELEBRATION_STYLES = Object.freeze({
     standard: 'standard',
     moneybagsBurst: 'moneybags_burst',
 });
+export const DEFAULT_REACTION_TAP_COOLDOWN_MS = 900;
 
 const AUDIENCE_ACCESS_MODE_VALUES = new Set(Object.values(AUDIENCE_ACCESS_MODES));
 const CREDIT_EARNING_MODE_VALUES = new Set(Object.values(CREDIT_EARNING_MODES));
+const CO_HOST_CREDIT_POLICY_VALUES = new Set(Object.values(CO_HOST_CREDIT_POLICIES));
 const SUPPORT_CELEBRATION_STYLE_VALUES = new Set(Object.values(SUPPORT_CELEBRATION_STYLES));
 const SUPPORT_REWARD_SCOPES = new Set(['buyer', 'room', 'buyer_and_room']);
 
@@ -93,6 +100,13 @@ export const normalizeCreditEarningMode = (value = '') => {
     return CREDIT_EARNING_MODE_VALUES.has(token) ? token : CREDIT_EARNING_MODES.standard;
 };
 
+export const normalizeCoHostCreditPolicy = (value = '') => {
+    const token = String(value || '').trim().toLowerCase();
+    return CO_HOST_CREDIT_POLICY_VALUES.has(token)
+        ? token
+        : CO_HOST_CREDIT_POLICIES.standard;
+};
+
 export const normalizeSupportCelebrationStyle = (value = '') => {
     const token = String(value || '').trim().toLowerCase();
     return SUPPORT_CELEBRATION_STYLE_VALUES.has(token)
@@ -100,11 +114,19 @@ export const normalizeSupportCelebrationStyle = (value = '') => {
         : SUPPORT_CELEBRATION_STYLES.standard;
 };
 
+export const normalizeReactionTapCooldownMs = (value = DEFAULT_REACTION_TAP_COOLDOWN_MS) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return DEFAULT_REACTION_TAP_COOLDOWN_MS;
+    return Math.min(5000, Math.max(250, Math.round(parsed)));
+};
+
 export const normalizeAudienceExperience = (input = {}) => {
     const source = input && typeof input === 'object' ? input : {};
     return {
         audienceAccessMode: normalizeAudienceAccessMode(source.audienceAccessMode || ''),
         creditEarningMode: normalizeCreditEarningMode(source.creditEarningMode || ''),
+        coHostCreditPolicy: normalizeCoHostCreditPolicy(source.coHostCreditPolicy || ''),
+        reactionTapCooldownMs: normalizeReactionTapCooldownMs(source.reactionTapCooldownMs),
         timedLobbyEnabled: source.timedLobbyEnabled === true,
         timedLobbyPoints: Math.max(0, Math.floor(Number(source.timedLobbyPoints || 0) || 0)),
         timedLobbyIntervalMin: Math.max(1, Math.floor(Number(source.timedLobbyIntervalMin || 0) || 0)),

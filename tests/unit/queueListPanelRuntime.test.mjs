@@ -58,8 +58,11 @@ const buildQueueListPanelProps = (overrides = {}) => ({
   styles,
   compactViewport: false,
   runOfShowAssignableSlots: [],
+  runOfShowOpenSlots: [],
   queueSurfaceCounts: null,
   onAssignQueueSongToRunOfShowItem: noop,
+  onAssignQueueSongToNextOpenRunOfShowSlot: noop,
+  onFillRunOfShowOpenSlotsFromQueue: noop,
   quickControls: {
     queueRuleSummary: 'Queue rules stay live here.',
     automationSummary: 'Automation stays close to the queue.',
@@ -148,4 +151,83 @@ test('QueueListPanel inspector adapts to held and review-needed queue items', as
     })),
   );
   assert.match(reviewMarkup, /Pick Backing/);
+});
+
+test('QueueListPanel exposes fast run-of-show fill actions when open slots and ready queue coexist', async () => {
+  vi.doMock('../../src/lib/firebase.js', () => ({
+    db: {},
+    doc: (...parts) => ({ parts }),
+    deleteDoc: async () => {},
+  }));
+
+  const { default: QueueListPanel } = await import('../../src/apps/Host/components/QueueListPanel.jsx');
+
+  const markup = renderToStaticMarkup(
+    React.createElement(QueueListPanel, buildQueueListPanelProps({
+      runOfShowAssignableSlots: [
+        { id: 'slot-1', label: '#1 · Opener' },
+        { id: 'slot-2', label: '#2 · Mid Set' },
+      ],
+      runOfShowOpenSlots: [
+        { id: 'slot-1', label: '#1 · Opener' },
+        { id: 'slot-2', label: '#2 · Mid Set' },
+      ],
+    })),
+  );
+
+  assert.match(markup, /data-feature-id="queue-open-slot-actions"/);
+  assert.match(markup, /Fill Next Slot/);
+  assert.match(markup, /Fill All Suggested/);
+  assert.match(markup, /Assign To Next Open Slot/);
+  assert.match(markup, /Assign Selected Slot/);
+});
+
+test('QueueListPanel tightens copy when there is only one open run-of-show slot', async () => {
+  vi.doMock('../../src/lib/firebase.js', () => ({
+    db: {},
+    doc: (...parts) => ({ parts }),
+    deleteDoc: async () => {},
+  }));
+
+  const { default: QueueListPanel } = await import('../../src/apps/Host/components/QueueListPanel.jsx');
+
+  const markup = renderToStaticMarkup(
+    React.createElement(QueueListPanel, buildQueueListPanelProps({
+      runOfShowAssignableSlots: [
+        { id: 'slot-1', label: '#1 · Opener' },
+      ],
+      runOfShowOpenSlots: [
+        { id: 'slot-1', label: '#1 · Opener' },
+      ],
+    })),
+  );
+
+  assert.match(markup, /1 open slot can pull from queue/);
+  assert.match(markup, /Assign To #1 · Opener/);
+  assert.match(markup, /Fill Next Slot/);
+  assert.doesNotMatch(markup, /Fill All Suggested/);
+  assert.doesNotMatch(markup, /Assign To Next Open Slot/);
+});
+
+test('QueueListPanel does not show fast-fill actions for assignable slots that are not truly open', async () => {
+  vi.doMock('../../src/lib/firebase.js', () => ({
+    db: {},
+    doc: (...parts) => ({ parts }),
+    deleteDoc: async () => {},
+  }));
+
+  const { default: QueueListPanel } = await import('../../src/apps/Host/components/QueueListPanel.jsx');
+
+  const markup = renderToStaticMarkup(
+    React.createElement(QueueListPanel, buildQueueListPanelProps({
+      runOfShowAssignableSlots: [
+        { id: 'slot-2', label: '#2 · Already Planned' },
+      ],
+      runOfShowOpenSlots: [],
+    })),
+  );
+
+  assert.doesNotMatch(markup, /data-feature-id="queue-open-slot-actions"/);
+  assert.doesNotMatch(markup, /Fill Next Slot/);
+  assert.match(markup, /Assign Selected Slot/);
 });

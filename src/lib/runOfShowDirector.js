@@ -325,10 +325,20 @@ const createDefaultRunOfShowReleaseWindow = (overrides = {}) => {
             .map(([uid, choice]) => [cleanText(uid), cleanText(choice).toLowerCase()])
             .filter(([uid, choice]) => uid && ALLOWED_RELEASE_WINDOW_CHOICES.has(choice)))
         : {};
+    const normalizeReleaseWindowChoiceMap = (value = {}, maxLen = 120) => (
+        value && typeof value === 'object' && !Array.isArray(value)
+            ? Object.fromEntries(
+                ['slot_scene', 'keep_queue_moving']
+                    .map((choice) => [choice, String(value?.[choice] || '').trim().slice(0, maxLen)])
+                    .filter(([, label]) => label)
+            )
+            : {}
+    );
     return {
         active: overrides?.active === true,
         itemId: cleanText(overrides?.itemId),
         itemTitle: cleanText(overrides?.itemTitle),
+        subjectType: cleanText(overrides?.subjectType).toLowerCase() || 'run_of_show_release',
         governanceMode: ALLOWED_GOVERNANCE_MODES.has(cleanText(overrides?.governanceMode).toLowerCase())
             ? cleanText(overrides?.governanceMode).toLowerCase()
             : 'host_only',
@@ -338,6 +348,9 @@ const createDefaultRunOfShowReleaseWindow = (overrides = {}) => {
         prompt: cleanText(overrides?.prompt),
         openedAtMs: asTimestampMs(overrides?.openedAtMs, 0),
         closesAtMs: asTimestampMs(overrides?.closesAtMs, 0),
+        choiceLabels: normalizeReleaseWindowChoiceMap(overrides?.choiceLabels, 140),
+        choiceDetails: normalizeReleaseWindowChoiceMap(overrides?.choiceDetails, 180),
+        choiceSongIds: normalizeReleaseWindowChoiceMap(overrides?.choiceSongIds, 180),
         votesByUid,
         resultChoice: ALLOWED_RELEASE_WINDOW_CHOICES.has(cleanText(overrides?.resultChoice).toLowerCase())
             ? cleanText(overrides?.resultChoice).toLowerCase()
@@ -1257,6 +1270,8 @@ export const getRunOfShowReleaseWindowTally = (releaseWindow = {}, roles = {}) =
     const leadingChoice = slotSceneCount === keepQueueMovingCount
         ? ''
         : (slotSceneCount > keepQueueMovingCount ? 'slot_scene' : 'keep_queue_moving');
+    const slotSceneLabel = String(safeWindow.choiceLabels?.slot_scene || '').trim();
+    const keepQueueMovingLabel = String(safeWindow.choiceLabels?.keep_queue_moving || '').trim();
     return {
         slotSceneCount,
         keepQueueMovingCount,
@@ -1265,9 +1280,13 @@ export const getRunOfShowReleaseWindowTally = (releaseWindow = {}, roles = {}) =
         summary: !totalVotes
             ? 'No votes yet'
             : leadingChoice === 'slot_scene'
-                ? `${slotSceneCount}-${keepQueueMovingCount} favor running the scene next`
+                ? slotSceneLabel
+                    ? `${slotSceneCount}-${keepQueueMovingCount} favor "${slotSceneLabel}"`
+                    : `${slotSceneCount}-${keepQueueMovingCount} favor running the scene next`
                 : leadingChoice === 'keep_queue_moving'
-                    ? `${keepQueueMovingCount}-${slotSceneCount} favor keeping performances moving`
+                    ? keepQueueMovingLabel
+                        ? `${keepQueueMovingCount}-${slotSceneCount} favor "${keepQueueMovingLabel}"`
+                        : `${keepQueueMovingCount}-${slotSceneCount} favor keeping performances moving`
                     : `${slotSceneCount}-${keepQueueMovingCount} split room`
     };
 };

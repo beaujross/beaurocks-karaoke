@@ -92,6 +92,11 @@ import {
     isApprovedPlayableBrowseSong
 } from '../../lib/browseCatalog';
 import {
+    COHOST_SIGNAL_WINDOW_MS,
+    getCoHostSignalMeta,
+    isCoHostSignalActivity
+} from '../../lib/coHostSignals';
+import {
     DEAD_AIR_AUTOFILL_SOURCE,
     buildDeadAirFillerSongPlan,
     getDeadAirAutoFillIntent,
@@ -1000,6 +1005,31 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
     };
 };
 
+const isOpenRunOfShowPerformanceSlot = (item = {}) => {
+    if (String(item?.type || '').trim().toLowerCase() !== 'performance') return false;
+    const status = String(item?.status || '').trim().toLowerCase();
+    if (['complete', 'skipped', 'live'].includes(status)) return false;
+    const queueLinkState = String(item?.queueLinkState || '').trim().toLowerCase();
+    if (queueLinkState === 'linked') return false;
+    const hasPerformerIdentity = !!String(item?.assignedPerformerUid || item?.assignedPerformerName || '').trim();
+    const hasSongIdentity = !!String(item?.songId || item?.songTitle || item?.artistName || '').trim();
+    const hasSubmission = !!String(item?.approvedSubmissionId || '').trim();
+    const backingPlan = item?.backingPlan && typeof item.backingPlan === 'object' ? item.backingPlan : {};
+    const hasBackingPlan = [
+        backingPlan?.label,
+        backingPlan?.mediaUrl,
+        backingPlan?.youtubeId,
+        backingPlan?.appleMusicId,
+        backingPlan?.trackId,
+        backingPlan?.submittedBackingId
+    ].some((value) => String(value || '').trim().length > 0) || backingPlan?.playbackReady === true;
+    return !String(item?.preparedQueueSongId || '').trim()
+        && !hasPerformerIdentity
+        && !hasSongIdentity
+        && !hasSubmission
+        && !hasBackingPlan;
+};
+
 const SELFIE_PROMPTS = [
     'Give us your best "Blue Steel" face',
     'Recreate a famous movie scene',
@@ -1693,6 +1723,20 @@ const getTimestampMs = (value) => {
     if (typeof value?.toMillis === 'function') return value.toMillis();
     if (typeof value?.seconds === 'number') return value.seconds * 1000;
     return 0;
+};
+
+const formatRelativeShortAge = (valueMs = 0, now = Date.now()) => {
+    const deltaMs = Math.max(0, now - Number(valueMs || 0));
+    if (deltaMs < 60 * 1000) return `${Math.max(1, Math.round(deltaMs / 1000))}s ago`;
+    if (deltaMs < 60 * 60 * 1000) return `${Math.max(1, Math.round(deltaMs / (60 * 1000)))}m ago`;
+    return `${Math.max(1, Math.round(deltaMs / (60 * 60 * 1000)))}h ago`;
+};
+
+const formatElapsedClock = (valueSec = 0) => {
+    const totalSec = Math.max(0, Math.round(Number(valueSec || 0) || 0));
+    const minutes = Math.floor(totalSec / 60);
+    const seconds = totalSec % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
 const isPermissionDeniedError = (error) => {
@@ -4149,7 +4193,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [cataloguePendingSong, setCataloguePendingSong] = useState(null);
     const [cataloguePromptBusy, setCataloguePromptBusy] = useState(false);
     const [catalogueSearchQ, setCatalogueSearchQ] = useState('');
-    const [_catalogueResults, setCatalogueResults] = useState([]);
+    const [catalogueResults, setCatalogueResults] = useState([]);
     const [activeBrowseList, setActiveBrowseList] = useState(null);
     const [showTop100, setShowTop100] = useState(false);
     const [showYtIndex, setShowYtIndex] = useState(false);
@@ -4871,6 +4915,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         if (!isMarketingDemoFixture) return;
         const fixture = demoFixture || {};
+        const fixtureParams = typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search || '')
+            : new URLSearchParams();
         const fixtureRoomCode = String(fixture.roomCode || normalizedInitialCode || '').trim().toUpperCase();
         if (fixtureRoomCode) {
             setRoomCode(fixtureRoomCode);
@@ -4892,6 +4939,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (fixture.tab) setTab(fixture.tab);
         if (fixture.settingsTab) setSettingsTab(fixture.settingsTab);
         if (fixture.lobbyTab) setLobbyTab(fixture.lobbyTab);
+        const fixtureWorkspaceView = String(fixture.activeWorkspaceView || fixtureParams.get('view') || '').trim();
+        const fixtureWorkspaceSection = String(fixture.activeWorkspaceSection || fixtureParams.get('section') || '').trim();
+        if (fixtureWorkspaceView) setActiveWorkspaceView(fixtureWorkspaceView);
+        if (fixtureWorkspaceSection) setActiveWorkspaceSection(fixtureWorkspaceSection);
+        if (fixture.catalogueOnly === true || fixtureParams.get('catalogue') === '1') setCatalogueOnly(true);
         if (Array.isArray(fixture.runOfShowSubmissions)) setRunOfShowSubmissions(fixture.runOfShowSubmissions);
         setEntryError('');
     }, [demoFixture, isMarketingDemoFixture, normalizedInitialCode, setEntryError]);
@@ -5268,6 +5320,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const toast = useToast();
     const [activeMomentFeedback, setActiveMomentFeedback] = useState(null);
     const moderationNudgeAtRef = useRef(0);
+    const coHostSignalToastStateRef = useRef({ hydrated: false, latestById: {} });
     const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
     const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
     const getCurrentRunOfShowDirector = useCallback(
@@ -6265,6 +6318,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }),
         [runOfShowDirector?.items]
     );
+    const runOfShowOpenPerformanceSlots = useMemo(
+        () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
+            .filter((item) => isOpenRunOfShowPerformanceSlot(item))
+            .map((item) => {
+                const safeSequence = Number(item?.sequence || 0);
+                const parts = [
+                    safeSequence > 0 ? `#${safeSequence}` : '',
+                    String(item?.title || '').trim() || 'Performance Slot'
+                ].filter(Boolean);
+                return {
+                    id: item.id,
+                    label: parts.join(' · '),
+                    sequence: safeSequence
+                };
+            }),
+        [runOfShowDirector?.items]
+    );
     const runOfShowQueueCandidates = useMemo(
         () => (Array.isArray(songs) ? songs : []).filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested'),
         [songs]
@@ -6298,6 +6368,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         toast(`Assigned ${queueSong.songTitle || 'queue song'} to slot ${targetItem.sequence || '?'}.`);
     }, [patchRunOfShowItem, runOfShowDirector?.items, songs, toast]);
+    const assignQueueSongToNextOpenRunOfShowSlot = useCallback(async (songId) => {
+        const safeSongId = String(songId || '').trim();
+        const nextOpenSlot = runOfShowOpenPerformanceSlots[0] || null;
+        if (!safeSongId || !nextOpenSlot?.id) return;
+        await assignQueueSongToRunOfShowItem(safeSongId, nextOpenSlot.id);
+    }, [assignQueueSongToRunOfShowItem, runOfShowOpenPerformanceSlots]);
+    const fillRunOfShowOpenSlotsFromQueue = useCallback(async ({ limit } = {}) => {
+        const openSlots = Array.isArray(runOfShowOpenPerformanceSlots) ? runOfShowOpenPerformanceSlots : [];
+        const readyQueueSongs = Array.isArray(runOfShowQueueCandidates) ? runOfShowQueueCandidates : [];
+        if (!openSlots.length || !readyQueueSongs.length) return;
+        const numericLimit = Number(limit);
+        const maxAssignments = Number.isFinite(numericLimit) && numericLimit > 0
+            ? Math.min(openSlots.length, readyQueueSongs.length, Math.floor(numericLimit))
+            : Math.min(openSlots.length, readyQueueSongs.length);
+        if (maxAssignments <= 0) return;
+        for (let index = 0; index < maxAssignments; index += 1) {
+            const slot = openSlots[index];
+            const queueSong = readyQueueSongs[index];
+            if (!slot?.id || !queueSong?.id) continue;
+            await assignQueueSongToRunOfShowItem(queueSong.id, slot.id);
+        }
+        if (maxAssignments > 1) {
+            toast(`Filled ${maxAssignments} upcoming slot${maxAssignments === 1 ? '' : 's'} from the queue.`);
+        }
+    }, [assignQueueSongToRunOfShowItem, runOfShowOpenPerformanceSlots, runOfShowQueueCandidates, toast]);
     const maybePauseRunOfShowAutomationForMissingSinger = useCallback(async () => {
         if (!roomCode || !runOfShowAutomationEnabled || runOfShowDirector?.automationPaused || runOfShowLiveItem) {
             if (!runOfShowLiveItem) {
@@ -7243,6 +7338,113 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const isFirstHostRoomRun = !hasWorkspaceIdentityReady;
     const recentActivities = (activities || []).filter(a => toMs(a.timestamp) > nowMs() - 5 * 60 * 1000);
     const lastActivity = activities?.[0];
+    const recentCoHostSignals = useMemo(() => {
+        const cutoffMs = nowMs() - COHOST_SIGNAL_WINDOW_MS;
+        const groupedSignals = new Map();
+        (Array.isArray(activities) ? activities : []).forEach((entry) => {
+            if (!isCoHostSignalActivity(entry)) return;
+            const signalTs = toMs(entry?.timestamp);
+            if (signalTs < cutoffMs) return;
+            const meta = getCoHostSignalMeta(entry?.signalId);
+            if (!meta) return;
+            const key = meta.id;
+            const existing = groupedSignals.get(key) || {
+                id: meta.id,
+                label: meta.label,
+                hostLabel: meta.hostLabel,
+                icon: meta.icon,
+                tone: meta.tone,
+                count: 0,
+                latestAtMs: 0,
+                latestUser: '',
+                userNames: new Set(),
+                latestPerformanceSingerName: '',
+                latestPerformanceSongTitle: '',
+                latestPerformanceArtistName: '',
+                latestPerformanceAlbumArtUrl: '',
+                latestPerformanceElapsedSec: 0,
+                latestSignalScope: 'room',
+            };
+            const userName = String(entry?.user || '').trim();
+            const signalIsLatest = signalTs >= existing.latestAtMs;
+            existing.count += 1;
+            existing.latestAtMs = Math.max(existing.latestAtMs, signalTs);
+            if (userName) {
+                existing.latestUser = signalIsLatest ? userName : (existing.latestUser || userName);
+                existing.userNames.add(userName);
+            }
+            if (signalIsLatest) {
+                existing.latestPerformanceSingerName = String(entry?.performanceSingerName || '').trim();
+                existing.latestPerformanceSongTitle = String(entry?.performanceSongTitle || '').trim();
+                existing.latestPerformanceArtistName = String(entry?.performanceArtistName || '').trim();
+                existing.latestPerformanceAlbumArtUrl = String(entry?.performanceAlbumArtUrl || '').trim();
+                existing.latestPerformanceElapsedSec = Math.max(0, Number(entry?.performanceElapsedSec || 0) || 0);
+                existing.latestSignalScope = String(entry?.signalScope || '').trim().toLowerCase() === 'performance' ? 'performance' : 'room';
+            }
+            groupedSignals.set(key, existing);
+        });
+        return Array.from(groupedSignals.values())
+            .map((entry) => {
+                const uniqueCount = entry.userNames.size;
+                const singerName = String(entry.latestPerformanceSingerName || '').trim();
+                const songTitle = String(entry.latestPerformanceSongTitle || '').trim();
+                const artistName = String(entry.latestPerformanceArtistName || '').trim();
+                const contextTitle = singerName && songTitle
+                    ? `${singerName} - ${songTitle}`
+                    : singerName || songTitle || 'General room note';
+                const contextMeta = [
+                    artistName,
+                    entry.latestSignalScope === 'performance' && entry.latestPerformanceElapsedSec > 0
+                        ? `${formatElapsedClock(entry.latestPerformanceElapsedSec)} in`
+                        : '',
+                    formatRelativeShortAge(entry.latestAtMs)
+                ].filter(Boolean).join(' • ');
+                return {
+                    id: entry.id,
+                    label: entry.label,
+                    hostLabel: entry.hostLabel,
+                    icon: entry.icon,
+                    tone: entry.tone,
+                    count: entry.count,
+                    uniqueCount,
+                    latestAtMs: entry.latestAtMs,
+                    latestAgeLabel: formatRelativeShortAge(entry.latestAtMs),
+                    contextTitle,
+                    contextMeta,
+                    artworkUrl: entry.latestPerformanceAlbumArtUrl || '',
+                    summary: uniqueCount > 1
+                        ? `${uniqueCount} co-hosts flagged this`
+                        : `${entry.latestUser || 'A co-host'} flagged this`
+                };
+            })
+            .sort((left, right) => right.latestAtMs - left.latestAtMs)
+            .slice(0, 4);
+    }, [activities]);
+    useEffect(() => {
+        const snapshot = coHostSignalToastStateRef.current || { hydrated: false, latestById: {} };
+        const nextLatestById = {};
+        recentCoHostSignals.forEach((signal) => {
+            nextLatestById[signal.id] = signal.latestAtMs;
+        });
+        if (!snapshot.hydrated) {
+            coHostSignalToastStateRef.current = {
+                hydrated: true,
+                latestById: nextLatestById,
+            };
+            return;
+        }
+        const freshSignal = recentCoHostSignals.find((signal) => {
+            const previousMs = Number(snapshot.latestById?.[signal.id] || 0);
+            return signal.latestAtMs > previousMs && signal.latestAtMs >= nowMs() - 20 * 1000;
+        });
+        if (freshSignal && typeof toast === 'function') {
+            toast(`Co-host: ${freshSignal.hostLabel}${freshSignal.contextTitle && freshSignal.contextTitle !== 'General room note' ? ` for ${freshSignal.contextTitle}` : ''}`);
+        }
+        coHostSignalToastStateRef.current = {
+            hydrated: true,
+            latestById: nextLatestById,
+        };
+    }, [recentCoHostSignals, toast]);
     const {
         smokeRunning,
         smokeResults,
@@ -7498,6 +7700,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const url = new URL(window.location.href);
         const params = url.searchParams;
         params.set('hostUiVersion', 'v2');
+        if (catalogueOnly && tab === 'browse') {
+            params.set('catalogue', '1');
+        } else {
+            params.delete('catalogue');
+        }
         if (tab === 'admin') {
             const sectionId = SETTINGS_TAB_TO_SECTION[settingsTab] || activeWorkspaceSection || 'ops.room_setup';
             const sectionMeta = getSectionMeta(sectionId);
@@ -7512,7 +7719,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             params.set('tab', tab);
         }
         window.history.replaceState({}, '', `${url.pathname}?${params.toString()}`);
-    }, [tab, settingsTab, activeWorkspaceSection, activeWorkspaceView]);
+    }, [catalogueOnly, tab, settingsTab, activeWorkspaceSection, activeWorkspaceView]);
     useEffect(() => () => {
         stormTimersRef.current.forEach(t => clearTimeout(t));
         stormTimersRef.current = [];
@@ -8921,6 +9128,75 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         window.open(url, '_blank', 'noopener,noreferrer');
         return true;
     }, [roomCode, activeRoomLaunchUrls?.tvUrl, toast]);
+
+    const helperCatalogUrl = useMemo(() => {
+        const baseUrl = String(activeRoomLaunchUrls?.hostUrl || '').trim()
+            || (roomCode ? `${hostBase}?mode=host&room=${encodeURIComponent(roomCode)}` : '');
+        if (!baseUrl) return '';
+        try {
+            const nextUrl = new URL(baseUrl, typeof window !== 'undefined' ? window.location.origin : 'https://beaurocks.app');
+            nextUrl.searchParams.set('mode', 'host');
+            if (roomCode) nextUrl.searchParams.set('room', roomCode);
+            nextUrl.searchParams.set('view', 'queue');
+            nextUrl.searchParams.set('section', 'queue.catalog');
+            nextUrl.searchParams.set('catalogue', '1');
+            return nextUrl.toString();
+        } catch {
+            return '';
+        }
+    }, [activeRoomLaunchUrls?.hostUrl, hostBase, roomCode]);
+
+    const openCatalogueHelper = useCallback(() => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        setCatalogueOnly(true);
+        setTab('browse');
+        setActiveWorkspaceView('queue');
+        setActiveWorkspaceSection('queue.catalog');
+        setShowSettings(false);
+        toast('Helper catalog ready for co-host or staff use.');
+        return true;
+    }, [roomCode, setShowSettings, toast]);
+
+    const exitCatalogueHelper = useCallback(() => {
+        setCatalogueOnly(false);
+        setTab('stage');
+        setActiveWorkspaceView('queue');
+        setActiveWorkspaceSection('queue.live_run');
+    }, []);
+
+    const openCatalogueHelperWindow = useCallback(() => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        if (!helperCatalogUrl) {
+            toast('Helper catalog link is unavailable right now.');
+            return false;
+        }
+        window.open(helperCatalogUrl, 'beaurocks_helper_catalog', 'noopener,noreferrer');
+        return true;
+    }, [helperCatalogUrl, roomCode, toast]);
+
+    const copyCatalogueHelperLink = useCallback(async () => {
+        if (!roomCode) {
+            toast('Open a room first.');
+            return false;
+        }
+        if (!helperCatalogUrl) {
+            toast('Helper catalog link is unavailable right now.');
+            return false;
+        }
+        try {
+            await navigator.clipboard.writeText(helperCatalogUrl);
+            toast('Helper catalog link copied. Staff sign-in required on that device.');
+        } catch {
+            toast(helperCatalogUrl);
+        }
+        return true;
+    }, [helperCatalogUrl, roomCode, toast]);
 
     const copyActiveRoomAudienceLink = useCallback(async () => {
         if (!roomCode) {
@@ -10653,7 +10929,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const queueItems = (items || []).filter(item => item?.id && item?.url);
         if (!queueItems.length) return { queuedCount: 0, firstQueuedSong: null };
         const basePriority = nowMs();
-        const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        const singerIdentity = resolveQueueSingerIdentity(singerOverride);
+        const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
         let queuedCount = 0;
         let firstQueuedSong = null;
         for (let start = 0; start < queueItems.length; start += 400) {
@@ -11001,9 +11278,65 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadProgress(0);
         }
     };
-    const addLocalItemToQueue = async (item) => {
+    const appendQaHelperQueueSong = useCallback((payload = {}, options = {}) => {
+        const safePayload = {
+            roomCode,
+            songId: String(payload.songId || '').trim() || buildSongKey(payload.songTitle || 'Song', payload.artist || ''),
+            trackId: payload.trackId || null,
+            trackSource: String(payload.trackSource || '').trim() || 'fixture_helper',
+            songTitle: String(payload.songTitle || payload.title || '').trim() || 'Song',
+            artist: String(payload.artist || '').trim() || 'Unknown Artist',
+            singerUid: String(payload.singerUid || '').trim() || null,
+            singerName: String(payload.singerName || room?.hostName || hostName || 'Host').trim() || 'Host',
+            mediaUrl: String(payload.mediaUrl || '').trim(),
+            albumArtUrl: String(payload.albumArtUrl || payload.artworkUrl100 || '').trim(),
+            lyrics: String(payload.lyrics || '').trim(),
+            status: String(payload.status || 'requested').trim() || 'requested',
+            priorityScore: Number(payload.priorityScore || nowMs()),
+            emoji: payload.emoji || EMOJI.mic,
+            backingAudioOnly: payload.backingAudioOnly === true,
+            audioOnly: payload.audioOnly === true,
+            duration: payload.duration ?? null,
+        };
+        const queuedSong = {
+            id: `qa_helper_${nowMs()}_${Math.random().toString(36).slice(2, 8)}`,
+            timestamp: safePayload.priorityScore,
+            ...safePayload,
+        };
+        setSongs((prev) => [...(Array.isArray(prev) ? prev : []), queuedSong]);
+        if (typeof window !== 'undefined') {
+            const nextEvent = {
+                type: 'helper_queue_add',
+                source: String(options.source || safePayload.trackSource || 'fixture_helper').trim(),
+                payload: safePayload,
+                queuedSong,
+            };
+            const existingEvents = Array.isArray(window.__qaHelperQueueEvents) ? window.__qaHelperQueueEvents : [];
+            window.__qaHelperQueueEvents = [...existingEvents, nextEvent];
+            window.__qaLastHelperQueuePayload = nextEvent;
+        }
+        return queuedSong;
+    }, [hostName, room?.hostName, roomCode]);
+    const addLocalItemToQueue = async (item, singerOverride) => {
         if (!item?.title || !item?.url) return;
         try {
+            const singerIdentity = resolveQueueSingerIdentity(singerOverride);
+            const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
+            if (isMarketingDemoFixture) {
+                appendQaHelperQueueSong({
+                    songTitle: item.title,
+                    artist: item.artist || 'Local Upload',
+                    singerUid: singerIdentity.singerUid || null,
+                    singerName,
+                    mediaUrl: item.url,
+                    albumArtUrl: item.artworkUrl100 || '',
+                    trackSource: 'custom',
+                    backingAudioOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
+                    audioOnly: item.mediaType === 'audio' || isAudioUrl(item.url)
+                }, { source: 'local_library' });
+                toast('Added local upload to queue');
+                return;
+            }
             const songRecord = await ensureSong({
                 title: item.title,
                 artist: item.artist || 'Local Upload',
@@ -11028,9 +11361,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 trackSource: 'custom',
                 songTitle: item.title,
                 artist: item.artist || 'Local Upload',
-                singerName: room?.hostName || hostName || 'Host',
+                singerUid: singerIdentity.singerUid || null,
+                singerName,
                 mediaUrl: item.url,
-                albumArtUrl: '',
+                albumArtUrl: item.artworkUrl100 || '',
                 lyrics: '',
                 status: 'requested',
                 timestamp: serverTimestamp(),
@@ -12413,7 +12747,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queueBrowseSong = async (song, singerOverride, options = {}) => {
         if (!song?.title) return;
         const art = await fetchTop100Art(song);
-        const singerName = singerOverride || room?.hostName || hostName || 'Host';
+        const singerIdentity = resolveQueueSingerIdentity(singerOverride);
+        const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
+        if (isMarketingDemoFixture) {
+            appendQaHelperQueueSong({
+                songTitle: song.title,
+                artist: song.artist || 'Unknown',
+                singerUid: singerIdentity.singerUid || null,
+                singerName,
+                mediaUrl: song.mediaUrl || '',
+                albumArtUrl: art || song.art || '',
+                trackSource: 'browse_catalog',
+                duration: song.durationSec || song.duration || null,
+                backingAudioOnly: false,
+                audioOnly: false
+            }, { source: 'browse_catalog' });
+            toast('Added to queue');
+            return;
+        }
         const automationSource = String(options?.automationSource || '').trim().toLowerCase();
         const approvedBrowseBacking = isApprovedPlayableBrowseSong(song) ? song.backing : null;
         const canonicalMatch = await (async () => {
@@ -12484,6 +12835,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             trackSource,
             songTitle: canonicalTitle,
             artist: canonicalArtist,
+            singerUid: singerIdentity.singerUid || null,
             singerName,
             mediaUrl,
             albumArtUrl: art || song.art || '',
@@ -13090,9 +13442,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const topicHits = TOPIC_HITS.map((list, idx) => buildBrowseList(list, idx + BROWSE_CATEGORIES.length));
     const exportToCSV = (data, filename) => { const csvContent = "data:text/csv;charset=utf-8," + [Object.keys(data[0]||{}).join(",")].concat(data.map(r => Object.values(r).join(","))).join("\n"); const link = document.createElement("a"); link.setAttribute("href", encodeURI(csvContent)); link.setAttribute("download", filename); document.body.appendChild(link); link.click(); document.body.removeChild(link); };
 
+    const resolveQueueSingerIdentity = (singerOverride) => {
+        if (typeof singerOverride === 'object' && singerOverride) {
+            const singerName = String(singerOverride.name || singerOverride.singerName || '').trim();
+            const singerUid = String(singerOverride.uid || singerOverride.singerUid || '').trim();
+            return { singerName, singerUid };
+        }
+        return {
+            singerName: String(singerOverride || '').trim(),
+            singerUid: ''
+        };
+    };
 
     const queueYouTubeIndexItem = async (item, singerOverride) => {
         if (!item?.trackName) return;
+        const singerIdentity = resolveQueueSingerIdentity(singerOverride);
+        const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
+        if (isMarketingDemoFixture) {
+            appendQaHelperQueueSong({
+                songTitle: item.trackName,
+                artist: item.artistName || 'YouTube',
+                singerUid: singerIdentity.singerUid || null,
+                singerName,
+                mediaUrl: item.url,
+                albumArtUrl: item.artworkUrl100 || '',
+                trackSource: 'youtube',
+                backingAudioOnly: false,
+                audioOnly: false
+            }, { source: 'youtube_helper' });
+            toast('Added to queue');
+            return;
+        }
         const songRecord = await ensureSong({
             title: item.trackName,
             artist: item.artistName || 'YouTube',
@@ -13117,7 +13497,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             trackSource: 'youtube',
             songTitle: item.trackName,
             artist: item.artistName || 'YouTube',
-            singerName: singerOverride || room?.hostName || hostName || 'Host',
+            singerUid: singerIdentity.singerUid || null,
+            singerName,
             mediaUrl: item.url,
             albumArtUrl: item.artworkUrl100 || '',
             status: 'requested',
@@ -13130,35 +13511,76 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast('Added to queue');
     };
 
-    const resolveCatalogueSinger = () => {
-        if (catalogueUserId) {
-            const matched = users.find(u => u.id?.split('_')[1] === catalogueUserId || u.uid === catalogueUserId);
-            return matched?.name || catalogueName.trim();
+    const resolveCatalogueSingerSelection = (selectedUserId = catalogueUserId, typedSingerName = catalogueName) => {
+        if (selectedUserId) {
+            const matched = users.find(u => u.id?.split('_')[1] === selectedUserId || u.uid === selectedUserId);
+            const singerUid = String(matched?.uid || selectedUserId || '').trim();
+            return {
+                name: String(matched?.name || typedSingerName || '').trim(),
+                uid: singerUid
+            };
         }
-        return catalogueName.trim();
+        return {
+            name: String(typedSingerName || '').trim(),
+            uid: ''
+        };
     };
+
+    const resolveCatalogueSinger = (selectedUserId = catalogueUserId, typedSingerName = catalogueName) =>
+        resolveCatalogueSingerSelection(selectedUserId, typedSingerName).name;
+
+    const catalogueHelperSingerSelection = resolveCatalogueSingerSelection();
+    const catalogueHelperSingerName = catalogueHelperSingerSelection.name;
+    const catalogueHelperSingerAssigned = !!catalogueHelperSingerName;
+    const catalogueHelperSingerBadge = catalogueUserId ? 'Joined guest' : 'Typed name';
+    const catalogueHelperSingerLabel = catalogueHelperSingerAssigned
+        ? (catalogueHelperSingerName.length > 20 ? `${catalogueHelperSingerName.slice(0, 19)}…` : catalogueHelperSingerName)
+        : '';
+    const catalogueAddButtonLabel = catalogueOnly
+        ? (catalogueHelperSingerAssigned ? `Add For ${catalogueHelperSingerLabel}` : 'Choose Singer')
+        : '+ Add to Queue';
+    const cataloguePendingSongTitle = cataloguePendingSong
+        ? (cataloguePendingSong.__yt ? cataloguePendingSong.item?.trackName : cataloguePendingSong.title)
+        : '';
+    const cataloguePendingSongArtist = cataloguePendingSong
+        ? (cataloguePendingSong.__yt ? cataloguePendingSong.item?.artistName : cataloguePendingSong.artist)
+        : '';
+    const cataloguePendingSongArtwork = cataloguePendingSong
+        ? String(
+            cataloguePendingSong.__yt
+                ? (cataloguePendingSong.item?.artworkUrl100 || '')
+                : (
+                    cataloguePendingSong.albumArtUrl
+                    || cataloguePendingSong.art
+                    || cataloguePendingSong.artworkUrl100
+                    || ''
+                )
+        ).trim()
+        : '';
 
     const closeCataloguePrompt = () => {
         if (cataloguePromptBusy) return;
         setCataloguePendingSong(null);
-        setCatalogueUserId('');
-        setCatalogueName('');
         setShowCataloguePrompt(false);
     };
 
     const confirmCatalogueQueue = async () => {
         if (!cataloguePendingSong || cataloguePromptBusy) return;
-        const singerName = resolveCatalogueSinger() || room?.hostName || hostName || 'Host';
+        const singerSelection = resolveCatalogueSingerSelection();
+        if (catalogueOnly && !singerSelection.name) {
+            toast('Choose who this song is for first.');
+            return;
+        }
         setCataloguePromptBusy(true);
         try {
-            if (cataloguePendingSong.__yt) {
-                await queueYouTubeIndexItem(cataloguePendingSong.item, singerName);
+            if (cataloguePendingSong.__localLibrary) {
+                await addLocalItemToQueue(cataloguePendingSong.localItem, singerSelection);
+            } else if (cataloguePendingSong.__yt) {
+                await queueYouTubeIndexItem(cataloguePendingSong.item, singerSelection);
             } else {
-                await queueBrowseSong(cataloguePendingSong, singerName);
+                await queueBrowseSong(cataloguePendingSong, singerSelection);
             }
             setCataloguePendingSong(null);
-            setCatalogueUserId('');
-            setCatalogueName('');
             setShowCataloguePrompt(false);
         } catch (error) {
             hostLogger.error('Catalogue helper queue failed', error);
@@ -13168,34 +13590,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const queueBrowseSongFromCatalog = (song) => {
+    const queueBrowseSongFromCatalog = async (song) => {
         if (!catalogueOnly) {
-            queueBrowseSong(song);
+            await queueBrowseSong(song);
+            return;
+        }
+        const singerSelection = resolveCatalogueSingerSelection();
+        if (singerSelection.name) {
+            try {
+                await queueBrowseSong(song, singerSelection);
+            } catch (error) {
+                hostLogger.error('Helper browse queue failed', error);
+                toast('Could not add that catalogue pick right now.');
+            }
             return;
         }
         setCataloguePendingSong(song);
-        setCatalogueUserId('');
-        setCatalogueName('');
         setShowCataloguePrompt(true);
     };
 
-    const queueYouTubeFromCatalog = (item) => {
+    const queueYouTubeFromCatalog = async (item) => {
         if (!catalogueOnly) {
-            queueYouTubeIndexItem(item);
+            await queueYouTubeIndexItem(item);
+            return;
+        }
+        const singerSelection = resolveCatalogueSingerSelection();
+        if (singerSelection.name) {
+            try {
+                await queueYouTubeIndexItem(item, singerSelection);
+            } catch (error) {
+                hostLogger.error('Helper YouTube queue failed', error);
+                toast('Could not add that catalogue pick right now.');
+            }
             return;
         }
         setCataloguePendingSong({ __yt: true, item });
-        setCatalogueUserId('');
-        setCatalogueName('');
         setShowCataloguePrompt(true);
     };
-    const _handleCatalogueResultClick = (r) => {
+    const _handleCatalogueResultClick = async (r) => {
         if (r.source === 'local') {
-            addLocalItemToQueue(r);
+            if (catalogueOnly) {
+                const singerSelection = resolveCatalogueSingerSelection();
+                if (singerSelection.name) await addLocalItemToQueue(r, singerSelection);
+                else {
+                    setCataloguePendingSong({
+                        title: r.trackName,
+                        artist: r.artistName,
+                        albumArtUrl: r.artworkUrl100 || '',
+                        __localLibrary: true,
+                        localItem: r
+                    });
+                    setShowCataloguePrompt(true);
+                    return;
+                }
+            } else {
+                await addLocalItemToQueue(r);
+            }
         } else if (r.source === 'youtube') {
-            queueYouTubeFromCatalog(r);
+            await queueYouTubeFromCatalog(r);
         } else {
-            queueBrowseSongFromCatalog({
+            await queueBrowseSongFromCatalog({
                 title: r.trackName,
                 artist: r.artistName,
                 art: r.artworkUrl100 ? r.artworkUrl100.replace('100x100', '600x600') : ''
@@ -13207,33 +13661,205 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const browsePanel = (
                     <div className="flex flex-col h-full min-h-0 gap-6 pr-2 custom-scrollbar touch-scroll-y">
+                        {!catalogueOnly ? (
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Browse</div>
+                                    <div className="text-2xl font-bold text-white">Karaoke Catalog</div>
+                                </div>
+                                <div className="text-sm text-zinc-500">
+                                    Drag to queue from Stage
+                                </div>
+                            </div>
+                        ) : null}
                         {catalogueOnly && (
-                            <div className="rounded-2xl border border-yellow-300/25 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                                <div className="font-black uppercase tracking-[0.24em] text-[11px] text-yellow-200">Roaming DJ helper mode</div>
-                                <div className="mt-1 text-yellow-100/80">Browse picks stay here and ask who the song is for before entering the queue.</div>
+                            <div className="rounded-[28px] border border-yellow-300/20 bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.24),transparent_34%),linear-gradient(145deg,rgba(24,24,27,0.96),rgba(10,10,16,0.92))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-yellow-200">Current Singer Target</div>
+                                        <div className="mt-1 text-lg font-black text-white">
+                                            {catalogueHelperSingerAssigned ? catalogueHelperSingerName : 'Choose who this browse session is adding for'}
+                                        </div>
+                                        <div className="mt-1 text-sm text-yellow-50/78">
+                                            Pick once, then tap album art or add. You can change the target any time.
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${catalogueHelperSingerAssigned ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-yellow-300/28 bg-yellow-500/12 text-yellow-100'}`}>
+                                            {catalogueHelperSingerAssigned ? catalogueHelperSingerBadge : 'Required for helper adds'}
+                                        </div>
+                                        {catalogueHelperSingerAssigned && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCatalogueUserId('');
+                                                    setCatalogueName('');
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                                            >
+                                                <i className="fa-solid fa-rotate-left"></i>
+                                                Clear Singer
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.2fr),minmax(0,0.8fr)]">
+                                    <div>
+                                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-yellow-100/72">Joined singer</label>
+                                        <select
+                                            value={catalogueUserId}
+                                            onChange={(event) => {
+                                                const nextUid = event.target.value;
+                                                setCatalogueUserId(nextUid);
+                                                if (nextUid) {
+                                                    const matched = users.find(u => u.id?.split('_')[1] === nextUid || u.uid === nextUid);
+                                                    setCatalogueName(matched?.name || '');
+                                                }
+                                            }}
+                                            className={`${STYLES.input} border-yellow-300/20 bg-black/35 text-white`}
+                                        >
+                                            <option value="">Pick someone already checked in</option>
+                                            {users.map((user) => {
+                                                const uidValue = user.uid || user.id?.split('_')[1] || user.id || '';
+                                                if (!uidValue) return null;
+                                                return (
+                                                    <option key={uidValue} value={uidValue}>
+                                                        {user.name || uidValue}
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="mb-2 block text-[11px] font-black uppercase tracking-[0.22em] text-yellow-100/72">Or type singer name</label>
+                                        <input
+                                            value={catalogueName}
+                                            onChange={(event) => {
+                                                setCatalogueName(event.target.value);
+                                                setCatalogueUserId('');
+                                            }}
+                                            className={`${STYLES.input} border-yellow-300/20 bg-black/35 text-white`}
+                                            placeholder="Jordan at table 4"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         )}
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                                <div className="text-sm uppercase tracking-[0.3em] text-zinc-500">Browse</div>
-                                <div className="text-2xl font-bold text-white">Karaoke Catalog</div>
+                        {catalogueOnly && (
+                            <div className="rounded-[28px] border border-yellow-300/18 bg-[linear-gradient(155deg,rgba(18,18,24,0.96),rgba(8,10,16,0.96))] p-4 shadow-[0_14px_36px_rgba(0,0,0,0.24)]">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-yellow-200">Helper Search</div>
+                                        <div className="mt-1 text-sm text-zinc-300">Find a song fast, then add it for the selected singer.</div>
+                                    </div>
+                                    <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                        {searchSources.local ? 'Library' : ''}{searchSources.local && (searchSources.youtube || searchSources.itunes) ? ' + ' : ''}{searchSources.youtube ? 'YouTube' : ''}{searchSources.youtube && searchSources.itunes ? ' + ' : ''}{searchSources.itunes ? (appleMusicAuthorized ? 'Apple' : 'Apple fallback') : ''}
+                                    </div>
+                                </div>
+                                <div className="mt-4 rounded-2xl border border-yellow-300/16 bg-black/25 px-4 py-3">
+                                    <div className="flex items-center gap-3">
+                                        <i className="fa-solid fa-magnifying-glass text-yellow-100/70"></i>
+                                        <input
+                                            value={catalogueSearchQ}
+                                            onChange={(event) => setCatalogueSearchQ(event.target.value)}
+                                            className="flex-1 bg-transparent text-sm text-white outline-none"
+                                            placeholder="Search song or artist..."
+                                        />
+                                        {catalogueSearchQ ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setCatalogueSearchQ('');
+                                                    setCatalogueResults([]);
+                                                }}
+                                                className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300"
+                                            >
+                                                Clear
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                                <div className="mt-3">
+                                    {catalogueSearchQ.trim().length < 3 ? (
+                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-500">
+                                            Type at least 3 characters to search the room library, approved YouTube, and Apple catalog matches.
+                                        </div>
+                                    ) : catalogueResults.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {catalogueResults.slice(0, 8).map((result) => {
+                                                const sourceLabel = result.source === 'local'
+                                                    ? 'Room Library'
+                                                    : result.source === 'youtube'
+                                                        ? 'YouTube'
+                                                        : 'Apple';
+                                                return (
+                                                    <button
+                                                        key={`${result.source}_${result.trackName}_${result.artistName}_${result.url || result.collectionId || result.trackId || ''}`}
+                                                        type="button"
+                                                        onClick={() => { void _handleCatalogueResultClick(result); }}
+                                                        className="flex w-full items-center gap-3 rounded-2xl border border-yellow-300/12 bg-[linear-gradient(155deg,rgba(24,24,27,0.96),rgba(10,10,16,0.96))] px-3 py-3 text-left transition hover:border-yellow-300/32"
+                                                    >
+                                                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/30 shadow-lg">
+                                                            {result.artworkUrl100 ? (
+                                                                <img src={result.artworkUrl100} alt={result.trackName} className="h-full w-full object-cover" loading="lazy" />
+                                                            ) : (
+                                                                <i className="fa-solid fa-compact-disc text-yellow-100/70"></i>
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="truncate text-sm font-bold text-white">{result.trackName}</div>
+                                                            <div className="truncate text-sm text-zinc-400">{result.artistName}</div>
+                                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                                <span className="rounded-full border border-yellow-300/20 bg-yellow-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100">
+                                                                    {sourceLabel}
+                                                                </span>
+                                                                {result.sourceDetail ? (
+                                                                    <span className="truncate text-[11px] text-zinc-500">{result.sourceDetail}</span>
+                                                                ) : null}
+                                                            </div>
+                                                        </div>
+                                                        <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                                            {catalogueAddButtonLabel}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-500">
+                                            No helper search matches yet. Try another title, artist, or browse below.
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                            <div className="text-sm text-zinc-500">Drag to queue from Stage</div>
-                        </div>
+                        )}
                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                             {browseCategories.map((c) => (
                                 <div
                                     key={c.title}
                                     onClick={() => { setActiveBrowseList(c); }}
-                                    className="relative overflow-hidden rounded-2xl border border-cyan-500/10 hover:border-cyan-500/30 transition-colors text-left cursor-pointer h-40"
+                                    className={`relative overflow-hidden rounded-2xl border transition-colors text-left cursor-pointer h-40 ${catalogueOnly ? 'border-yellow-300/16 hover:border-yellow-300/34' : 'border-cyan-500/10 hover:border-cyan-500/30'}`}
                                 >
                                     {c.samples?.[0]?.art && (
                                         <img src={c.samples[0].art} alt={c.title} className="absolute inset-0 w-full h-full object-cover" />
                                     )}
                                     <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/70 to-black/90"></div>
                                     <div className="relative z-10 p-4 flex flex-col h-full justify-end">
-                                        <div className="text-sm font-bold text-cyan-300">{c.title}</div>
+                                        <div className={`text-sm font-bold ${catalogueOnly ? 'text-yellow-200' : 'text-cyan-300'}`}>{c.title}</div>
                                         <div className="text-sm text-zinc-400 mt-1">{c.subtitle}</div>
+                                        <div className="mt-3 flex items-center gap-2">
+                                            {c.samples.slice(0, 3).map((sample) => (
+                                                <div key={`${c.title}_${sample.title}_${sample.artist}`} className="h-8 w-8 overflow-hidden rounded-lg border border-white/10 bg-black/30 shadow-lg">
+                                                    {sample.art ? (
+                                                        <img src={sample.art} alt={`${sample.title} art`} className="h-full w-full object-cover" loading="lazy" />
+                                                    ) : (
+                                                        <div className="flex h-full w-full items-center justify-center text-[10px] text-zinc-500">
+                                                            <i className="fa-solid fa-compact-disc"></i>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                             ))}
@@ -13248,7 +13874,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div
                                         key={hit.title}
                                         onClick={() => { setActiveBrowseList(hit); }}
-                                        className="relative overflow-hidden rounded-xl border border-zinc-800 hover:border-[#00C4D9]/40 transition-colors cursor-pointer h-32"
+                                        className={`relative overflow-hidden rounded-xl border transition-colors cursor-pointer h-32 ${catalogueOnly ? 'border-yellow-300/12 hover:border-yellow-300/32' : 'border-zinc-800 hover:border-[#00C4D9]/40'}`}
                                     >
                                         {hit.samples?.[0]?.art && (
                                             <img src={hit.samples[0].art} alt={hit.title} className="absolute inset-0 w-full h-full object-cover" />
@@ -13256,6 +13882,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/60 to-black/90"></div>
                                         <div className="relative z-10 p-3 flex flex-col h-full justify-end">
                                             <div className="text-sm font-bold text-white">{hit.title}</div>
+                                            <div className="mt-2 flex items-center gap-1.5">
+                                                {hit.samples.slice(0, 3).map((sample) => (
+                                                    <div key={`${hit.title}_${sample.title}_${sample.artist}`} className="h-7 w-7 overflow-hidden rounded-md border border-white/10 bg-black/30">
+                                                        {sample.art ? (
+                                                            <img src={sample.art} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                                        ) : null}
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -13281,15 +13916,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         <div
                                             key={`${item.source}_${item.videoId || item.id || item.url}`}
                                             onClick={() => {
-                                                if (item.source === 'youtube') queueYouTubeFromCatalog(item);
-                                                else addLocalItemToQueue(item);
+                                                if (item.source === 'youtube') {
+                                                    void queueYouTubeFromCatalog(item);
+                                                } else if (catalogueOnly && !catalogueHelperSingerAssigned) {
+                                                    setCataloguePendingSong({
+                                                        title: item.trackName,
+                                                        artist: item.artistName,
+                                                        albumArtUrl: item.artworkUrl100 || '',
+                                                        __localLibrary: true,
+                                                        localItem: item
+                                                    });
+                                                    setShowCataloguePrompt(true);
+                                                } else if (catalogueOnly) {
+                                                    void addLocalItemToQueue(item, catalogueHelperSingerSelection);
+                                                } else {
+                                                    void addLocalItemToQueue(item);
+                                                }
                                             }}
-                                            className="bg-zinc-900/70 border border-zinc-800 rounded-xl px-3 py-3 text-left cursor-pointer hover:border-[#00C4D9]/40"
+                                            className={`rounded-xl px-3 py-3 text-left cursor-pointer ${catalogueOnly ? 'border border-yellow-300/14 bg-[linear-gradient(155deg,rgba(24,24,27,0.92),rgba(10,10,12,0.96))] hover:border-yellow-300/34' : 'bg-zinc-900/70 border border-zinc-800 hover:border-[#00C4D9]/40'}`}
                                         >
                                             <div className="flex items-center gap-3">
-                                                <div className="w-12 h-12 rounded-lg bg-black/30 border border-white/10 overflow-hidden flex items-center justify-center">
+                                                <div className="w-14 h-14 rounded-xl bg-black/30 border border-white/10 overflow-hidden flex items-center justify-center shadow-lg">
                                                     {item.artworkUrl100 ? (
-                                                        <img src={item.artworkUrl100} alt={item.trackName} className="w-12 h-12 object-cover" />
+                                                        <img src={item.artworkUrl100} alt={item.trackName} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <i className={`fa-solid ${item.mediaType === 'audio' ? 'fa-waveform-lines' : item.offlineReady ? 'fa-hard-drive' : 'fa-film'} text-cyan-200/80`}></i>
                                                     )}
@@ -13300,7 +13949,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <div className="mt-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100/75">{sourceBadge}</div>
                                                 </div>
                                             </div>
-                                            <div className="mt-3 text-sm uppercase tracking-widest text-zinc-500">Tap to queue</div>
+                                            <div className={`mt-3 text-sm uppercase tracking-widest ${catalogueOnly ? 'text-yellow-100/72' : 'text-zinc-500'}`}>{catalogueAddButtonLabel}</div>
                                         </div>
                                     )})}
                                 </div>
@@ -13308,10 +13957,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         )}
                         {activeBrowseList && (
                             <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
-                                    <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-4 border-b border-zinc-800">
+                                    <div className={`flex flex-wrap items-center justify-between gap-2 px-6 py-4 border-b ${catalogueOnly ? 'border-yellow-300/16 bg-[linear-gradient(145deg,rgba(120,53,15,0.14),rgba(8,13,24,0.96))]' : 'border-zinc-800'}`}>
                                         <button onClick={() => setActiveBrowseList(null)} className="text-zinc-400 text-sm">&larr; Back</button>
                                         <div className="text-lg font-bold">{activeBrowseList.title}</div>
-                                        <div className="text-sm text-zinc-500">{activeBrowseList.subtitle || 'Browse list'}</div>
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            {catalogueOnly && (
+                                                <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${catalogueHelperSingerAssigned ? 'border-yellow-300/24 bg-yellow-500/10 text-yellow-100' : 'border-white/10 bg-white/5 text-zinc-300'}`}>
+                                                    {catalogueHelperSingerAssigned ? `Adding For ${catalogueHelperSingerName}` : 'Choose singer to add faster'}
+                                                </div>
+                                            )}
+                                            <div className="text-sm text-zinc-500">{activeBrowseList.subtitle || 'Browse list'}</div>
+                                        </div>
                                     </div>
                                 <div className="px-6 py-4">
                                 </div>
@@ -13320,11 +13976,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {activeBrowseList.songs.map((song, idx) => (
                                                 <div
                                                     key={`${song.title}-${song.artist}`}
-                                                    className="flex items-center gap-3 bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 hover:border-[#00C4D9]/40"
+                                                    className={`flex items-center gap-3 rounded-xl p-3 ${catalogueOnly ? 'bg-[linear-gradient(155deg,rgba(24,24,27,0.96),rgba(10,10,16,0.96))] border border-yellow-300/14 hover:border-yellow-300/32' : 'bg-zinc-800/60 border border-zinc-700 hover:border-[#00C4D9]/40'}`}
                                                 >
                                                     <div className="text-sm text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
                                                     <div className="relative">
-                                                        <img src={song.art} alt={song.title} className="w-12 h-12 rounded-lg object-cover" />
+                                                        <img src={song.art} alt={song.title} className="w-14 h-14 rounded-xl object-cover shadow-lg" />
                                                         {top100ArtLoading[song.artKey] && (
                                                             <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center text-sm text-zinc-200">Loading</div>
                                                         )}
@@ -13338,10 +13994,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         </div>
                                                     </div>
                                                     <button
-                                                        onClick={() => queueBrowseSongFromCatalog(song)}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                        onClick={() => { void queueBrowseSongFromCatalog(song); }}
+                                                        className={`${STYLES.btnStd} ${catalogueOnly ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                                     >
-                                                        + Add to Queue
+                                                        {catalogueAddButtonLabel}
                                                     </button>
                                                 </div>
                                             ))}
@@ -13379,11 +14035,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         {top100Songs.map((song, idx) => (
                                                 <div
                                                     key={`${song.title}-${song.artist}`}
-                                                    className="flex items-center gap-3 bg-zinc-800/60 border border-zinc-700 rounded-xl p-3 hover:border-[#00C4D9]/40"
+                                                    className={`flex items-center gap-3 rounded-xl p-3 ${catalogueOnly ? 'bg-[linear-gradient(155deg,rgba(24,24,27,0.96),rgba(10,10,16,0.96))] border border-yellow-300/14 hover:border-yellow-300/32' : 'bg-zinc-800/60 border border-zinc-700 hover:border-[#00C4D9]/40'}`}
                                                 >
                                                     <div className="text-sm text-zinc-500 font-mono w-6 text-center">{idx + 1}</div>
                                                     <div className="relative">
-                                                        <img src={song.art} alt={song.title} className="w-12 h-12 rounded-lg object-cover" />
+                                                        <img src={song.art} alt={song.title} className="w-14 h-14 rounded-xl object-cover shadow-lg" />
                                                         {top100ArtLoading[song.artKey] && (
                                                             <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center text-sm text-zinc-200">Loading</div>
                                                         )}
@@ -13397,10 +14053,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         </div>
                                                     </div>
                                                     <button
-                                                        onClick={() => queueBrowseSongFromCatalog(song)}
-                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
+                                                        onClick={() => { void queueBrowseSongFromCatalog(song); }}
+                                                        className={`${STYLES.btnStd} ${catalogueOnly ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                                     >
-                                                        + Add to Queue
+                                                        {catalogueAddButtonLabel}
                                                     </button>
                                                 </div>
                                         ))}
@@ -13412,12 +14068,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="fixed inset-0 z-[95] bg-black/78 backdrop-blur-sm flex items-center justify-center p-4">
                                 <div className="w-full max-w-lg rounded-3xl border border-cyan-300/25 bg-[#080d18] shadow-2xl overflow-hidden">
                                     <div className="p-5 border-b border-white/10 bg-gradient-to-r from-cyan-500/12 via-zinc-950 to-pink-500/12">
-                                        <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200">Assign catalogue pick</div>
-                                        <div className="mt-2 text-2xl font-black text-white">
-                                            {cataloguePendingSong.__yt ? cataloguePendingSong.item?.trackName : cataloguePendingSong.title}
-                                        </div>
-                                        <div className="text-sm text-zinc-400">
-                                            {cataloguePendingSong.__yt ? cataloguePendingSong.item?.artistName : cataloguePendingSong.artist}
+                                        <div className="flex items-start gap-4">
+                                            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30 shadow-lg">
+                                                {cataloguePendingSongArtwork ? (
+                                                    <img src={cataloguePendingSongArtwork} alt={cataloguePendingSongTitle} className="h-full w-full object-cover" />
+                                                ) : (
+                                                    <i className="fa-solid fa-compact-disc text-2xl text-cyan-100/75"></i>
+                                                )}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <div className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-200">Assign helper pick</div>
+                                                <div className="mt-2 text-2xl font-black text-white">
+                                                    {cataloguePendingSongTitle}
+                                                </div>
+                                                <div className="text-sm text-zinc-400">
+                                                    {cataloguePendingSongArtist}
+                                                </div>
+                                                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-yellow-300/25 bg-yellow-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-yellow-100">
+                                                    <i className="fa-solid fa-user-check"></i>
+                                                    Choose singer before adding
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="p-5 space-y-4">
@@ -13436,7 +14107,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 className={`${STYLES.input} bg-zinc-950 border-cyan-300/25`}
                                                 disabled={cataloguePromptBusy}
                                             >
-                                                <option value="">Queue as roaming DJ / type a name</option>
+                                                <option value="">Type a singer name or pick someone already in the room</option>
                                                 {users.map((user) => {
                                                     const uidValue = user.uid || user.id?.split('_')[1] || user.id || '';
                                                     if (!uidValue) return null;
@@ -13460,7 +14131,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 placeholder={room?.hostName || hostName || 'Host'}
                                                 disabled={cataloguePromptBusy}
                                             />
-                                            <div className="mt-2 text-xs text-zinc-500">Leave blank to queue under the host/helper name.</div>
+                                            <div className="mt-2 text-xs text-zinc-500">Required in helper mode so the queue reflects the correct singer.</div>
                                         </div>
                                         <div className="flex flex-wrap items-center justify-end gap-2 pt-2">
                                             <button
@@ -13475,9 +14146,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 type="button"
                                                 onClick={confirmCatalogueQueue}
                                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4`}
-                                                disabled={cataloguePromptBusy}
+                                                disabled={cataloguePromptBusy || !resolveCatalogueSinger()}
                                             >
-                                                {cataloguePromptBusy ? `${EMOJI.refresh} Adding...` : '+ Add to Queue'}
+                                                {cataloguePromptBusy ? `${EMOJI.refresh} Adding...` : (resolveCatalogueSinger() ? `+ Add For ${resolveCatalogueSinger()}` : 'Choose Singer First')}
                                             </button>
                                         </div>
                                     </div>
@@ -15082,13 +15753,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
         crowdPulse,
+        coHostSignals: recentCoHostSignals,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
         getYtDiagnosticsKey,
         getTrackDiagnosticsTone,
         getTrackDiagnosticsSupport,
         runOfShowAssignableSlots,
+        runOfShowOpenSlots: runOfShowOpenPerformanceSlots,
         onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem,
+        onAssignQueueSongToNextOpenRunOfShowSlot: assignQueueSongToNextOpenRunOfShowSlot,
+        onFillRunOfShowOpenSlotsFromQueue: fillRunOfShowOpenSlotsFromQueue,
         onTriggerMoment: triggerHostMomentCue,
         activeMomentId: activeMomentFeedback?.id || ''
     };
@@ -15143,6 +15818,82 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
     }
 
+    if (catalogueOnly) {
+        return (
+            <div
+                data-host-helper-shell="true"
+                data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
+                data-host-active-tab={String(tab || '').trim()}
+                data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
+                className="host-app min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_22%),linear-gradient(180deg,#09090b_0%,#0a0d18_100%)] text-white font-saira flex flex-col overflow-hidden"
+            >
+                <div className="shrink-0 border-b border-yellow-300/16 bg-[linear-gradient(145deg,rgba(68,33,12,0.92),rgba(9,14,25,0.94))] shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
+                    <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5 md:px-6">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.26em] text-yellow-200">Co-Host Helper Catalog</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <div className="text-lg font-black text-white">Browse and add for guests</div>
+                                {roomCode ? (
+                                    <span className="inline-flex items-center rounded-full border border-yellow-300/24 bg-yellow-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100">
+                                        Room {roomCode}
+                                    </span>
+                                ) : null}
+                                {catalogueHelperSingerAssigned ? (
+                                    <span className="inline-flex items-center rounded-full border border-emerald-300/28 bg-emerald-500/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                        Adding for {catalogueHelperSingerName}
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                        Pick singer first
+                                    </span>
+                                )}
+                            </div>
+                            <div className="mt-1 text-sm text-yellow-100/72">
+                                Staff-safe roaming iPad mode. Search, pick the singer, queue the song.
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={openCatalogueHelperWindow}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-xs`}
+                            >
+                                <i className="fa-solid fa-up-right-from-square"></i>
+                                Open On Another Device
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => { void copyCatalogueHelperLink(); }}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                            >
+                                <i className="fa-solid fa-link"></i>
+                                Copy Helper Link
+                            </button>
+                            <button
+                                type="button"
+                                onClick={exitCatalogueHelper}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-xs`}
+                            >
+                                <i className="fa-solid fa-arrow-left"></i>
+                                Back To Host Deck
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-5 md:px-6">
+                    <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col">
+                        {hostUpdateDeploymentBanner ? (
+                            <div className="mb-4">
+                                {hostUpdateDeploymentBanner}
+                            </div>
+                        ) : null}
+                        {browsePanel}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
             <div
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
@@ -15171,6 +15922,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     openAdminWorkspace={openAdminWorkspace}
                     styles={STYLES}
                     logoFallback={ASSETS.logo}
+                    onOpenCatalogueHelper={openCatalogueHelper}
                     audioPanelOpen={audioPanelOpen}
                     setAudioPanelOpen={setAudioPanelOpen}
                     stageMeterLevel={stageMeterLevel}

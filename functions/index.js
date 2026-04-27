@@ -13581,6 +13581,9 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
 
   const filtered = hydrated.filter((item) => {
     if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
+    const sourceType = String(item.sourceType || "").trim().toLowerCase();
+    const isHostRoomSession = item.listingType === "room_session" && sourceType === "host_room";
+    if (isHostRoomSession && !item.isOfficialBeauRocksListing) return false;
     if (
       listingTypeFilter !== "all"
       && item.listingType !== listingTypeFilter

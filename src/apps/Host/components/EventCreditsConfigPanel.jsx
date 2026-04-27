@@ -5,11 +5,15 @@ import {
 } from '../hostLaunchHelpers';
 import {
     AUDIENCE_ACCESS_MODES,
+    CO_HOST_CREDIT_POLICIES,
     CREDIT_EARNING_MODES,
+    DEFAULT_REACTION_TAP_COOLDOWN_MS,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     normalizeAudienceAccessMode,
+    normalizeCoHostCreditPolicy,
     normalizeCreditEarningMode,
+    normalizeReactionTapCooldownMs,
     normalizeSupportCelebrationStyle,
 } from '../../../lib/roomMonetization';
 
@@ -95,6 +99,24 @@ const CELEBRATION_OPTIONS = [
     },
 ];
 
+const CO_HOST_CREDIT_POLICY_OPTIONS = [
+    {
+        value: CO_HOST_CREDIT_POLICIES.standard,
+        label: 'Standard co-host',
+        note: 'Co-hosts use the same credits as everyone else.',
+    },
+    {
+        value: CO_HOST_CREDIT_POLICIES.freeReactions,
+        label: 'Free reactions',
+        note: 'Co-hosts can react and clap for free, while other point-spend actions stay normal.',
+    },
+    {
+        value: CO_HOST_CREDIT_POLICIES.unlimited,
+        label: 'Unlimited co-host',
+        note: 'Co-hosts bypass all room point costs tonight. Use when they are effectively operators.',
+    },
+];
+
 const EventCreditsConfigPanel = ({
     eventCreditsConfig,
     setEventCreditsConfig,
@@ -112,6 +134,8 @@ const EventCreditsConfigPanel = ({
     const accessMode = normalizeAudienceAccessMode(eventCreditsConfig?.audienceAccessMode || '');
     const creditMode = normalizeCreditEarningMode(eventCreditsConfig?.creditEarningMode || '');
     const celebrationStyle = normalizeSupportCelebrationStyle(eventCreditsConfig?.supportCelebrationStyle || '');
+    const coHostCreditPolicy = normalizeCoHostCreditPolicy(eventCreditsConfig?.coHostCreditPolicy || '');
+    const reactionTapCooldownMs = normalizeReactionTapCooldownMs(eventCreditsConfig?.reactionTapCooldownMs ?? DEFAULT_REACTION_TAP_COOLDOWN_MS);
     const presetLabel = (
         EVENT_CREDITS_PRESET_OPTIONS.find((preset) => preset.id === (eventCreditsConfig?.presetId || ''))
         || EVENT_CREDITS_PRESET_OPTIONS.find((preset) => preset.id === 'custom_event_credits')
@@ -120,11 +144,13 @@ const EventCreditsConfigPanel = ({
     const accessModeMeta = ACCESS_MODE_OPTIONS.find((option) => option.value === accessMode) || ACCESS_MODE_OPTIONS[0];
     const creditModeMeta = CREDIT_MODE_OPTIONS.find((option) => option.value === creditMode) || CREDIT_MODE_OPTIONS[0];
     const celebrationMeta = CELEBRATION_OPTIONS.find((option) => option.value === celebrationStyle) || CELEBRATION_OPTIONS[0];
+    const coHostCreditPolicyMeta = CO_HOST_CREDIT_POLICY_OPTIONS.find((option) => option.value === coHostCreditPolicy) || CO_HOST_CREDIT_POLICY_OPTIONS[0];
     const summaryPills = [
         presetLabel,
         accessModeMeta.label,
         supportProvider === 'givebutter' ? 'Givebutter live' : 'No donation flow',
         creditModeMeta.label,
+        coHostCreditPolicyMeta.label,
         celebrationMeta.label,
     ];
 
@@ -258,6 +284,37 @@ const EventCreditsConfigPanel = ({
                             onChange={(e) => updateConfig({ timedLobbyEnabled: e.target.checked, creditEarningMode: CREDIT_EARNING_MODES.custom })}
                         />
                         Award capped lobby refill credits while guests stay active
+                    </label>
+                </div>
+
+                <div className={`mt-4 grid gap-3 ${compact ? 'lg:grid-cols-1' : 'lg:grid-cols-2'}`}>
+                    <label className="block">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Co-host credit policy</div>
+                        <select
+                            value={coHostCreditPolicy}
+                            onChange={(e) => updateConfig({ coHostCreditPolicy: e.target.value })}
+                            className={inputClass}
+                        >
+                            {CO_HOST_CREDIT_POLICY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                        <div className="mt-2 text-xs text-zinc-400">{coHostCreditPolicyMeta.note}</div>
+                    </label>
+                    <label className="block">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-cyan-100/70">Reaction tap cooldown</div>
+                        <input
+                            type="number"
+                            min="0.25"
+                            max="5"
+                            step="0.1"
+                            value={(reactionTapCooldownMs / 1000).toFixed(1)}
+                            onChange={(e) => updateConfig({ reactionTapCooldownMs: normalizeReactionTapCooldownMs(Number(e.target.value || 0) * 1000) })}
+                            className={inputClass}
+                        />
+                        <div className="mt-2 text-xs text-zinc-400">
+                            Shared by emoji reactions and the applause clap button. Hosts can tighten or loosen this per room.
+                        </div>
                     </label>
                 </div>
 

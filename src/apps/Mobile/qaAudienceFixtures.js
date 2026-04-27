@@ -4,6 +4,9 @@ import { normalizeAudienceFeatureAccess } from '../../lib/audienceFeatureAccess.
 const DEFAULT_ROOM_CODE = 'DEMOAUD';
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+const QA_DREAMS_ART_URL = '/images/marketing/audience-surface-live.png';
+const QA_VALERIE_ART_URL = '/images/marketing/app-landing-live.png';
+const QA_SINCE_U_BEEN_GONE_ART_URL = '/images/marketing/tv-surface-live.png';
 const AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
     appTitle: 'AAHF Festival',
     primaryColor: '#E05A44',
@@ -65,6 +68,8 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
             { id: 'headliner', label: 'Headliner', amount: 20, points: 7500, rewardScope: 'buyer', awardBadge: false, supportUrl: 'https://givebutter.com/aahf-kickoff', supportCampaignCode: 'aahf_kickoff' },
         ],
         audienceAccessMode: 'email_or_donation',
+        coHostCreditPolicy: 'standard',
+        reactionTapCooldownMs: 900,
         supportCelebrationStyle: 'moneybags_burst',
     },
     roomPlan: {
@@ -97,6 +102,7 @@ const buildBaseSongs = () => ([
         songTitle: 'Dreams',
         title: 'Dreams',
         artist: 'Fleetwood Mac',
+        albumArtUrl: QA_DREAMS_ART_URL,
         emoji: '🎤',
         hypeScore: 88,
         applauseScore: 91,
@@ -110,6 +116,7 @@ const buildBaseSongs = () => ([
         songTitle: 'Valerie',
         title: 'Valerie',
         artist: 'Amy Winehouse',
+        albumArtUrl: QA_VALERIE_ART_URL,
         emoji: '✨',
     },
     {
@@ -121,6 +128,7 @@ const buildBaseSongs = () => ([
         songTitle: 'Since U Been Gone',
         title: 'Since U Been Gone',
         artist: 'Kelly Clarkson',
+        albumArtUrl: QA_SINCE_U_BEEN_GONE_ART_URL,
         emoji: '🔥',
     }
 ]);
@@ -156,6 +164,10 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'streamlined-aahf-join',
     'streamlined-aahf-join-about',
     'streamlined-aahf-join-access',
+    'cohost-song-faceoff',
+    'crowd-song-faceoff',
+    'cohost-unlimited-reactions',
+    'applause-cooldown',
     'classic-trivia',
     'streamlined-trivia',
 ]);
@@ -199,6 +211,134 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
 
     if (safeId === 'streamlined-aahf-join-access') {
         return buildAahfJoinFixture({ roomCode, showPhoneModal: true });
+    }
+
+    if (safeId === 'cohost-song-faceoff') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', isVip: false },
+            profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', vipLevel: 0, totalFamePoints: 1800, currentLevel: 4, points: 640 },
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+                hostUid: 'fixture_host',
+                hostUids: ['fixture_host'],
+                runOfShowRoles: {
+                    coHosts: ['qa_cohost-song-faceoff'],
+                },
+                runOfShowDirector: {
+                    releaseWindow: {
+                        active: true,
+                        subjectType: 'queue_faceoff',
+                        governanceMode: 'cohost_vote',
+                        releasePolicy: 'suggest_then_host_confirm',
+                        itemId: 'queue_faceoff:requested_1:requested_2',
+                        itemTitle: 'Next Song Face-Off',
+                        prompt: 'Co-hosts: which queued song should go next?',
+                        openedAtMs: Date.now() - 10_000,
+                        closesAtMs: Date.now() + 20_000,
+                        choiceLabels: {
+                            slot_scene: 'Valerie',
+                            keep_queue_moving: 'Since U Been Gone',
+                        },
+                        choiceDetails: {
+                            slot_scene: 'Jordan',
+                            keep_queue_moving: 'Taylor Demo',
+                        },
+                        choiceSongIds: {
+                            slot_scene: 'requested_1',
+                            keep_queue_moving: 'requested_2',
+                        },
+                        votesByUid: {
+                            'qa_cohost-song-faceoff': 'slot_scene',
+                            cohost_guest_2: 'keep_queue_moving',
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    if (safeId === 'crowd-song-faceoff') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', isVip: false },
+            profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', vipLevel: 0, totalFamePoints: 1800, currentLevel: 4, points: 640 },
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+                hostUid: 'fixture_host',
+                hostUids: ['fixture_host'],
+                runOfShowRoles: {
+                    coHosts: ['cohost_guest_1'],
+                },
+                runOfShowDirector: {
+                    releaseWindow: {
+                        active: true,
+                        subjectType: 'queue_faceoff',
+                        governanceMode: 'crowd_vote',
+                        releasePolicy: 'suggest_then_host_confirm',
+                        itemId: 'queue_faceoff:requested_1:requested_2',
+                        itemTitle: 'Next Song Face-Off',
+                        prompt: 'Audience: which queued song should go next?',
+                        openedAtMs: Date.now() - 12_000,
+                        closesAtMs: Date.now() + 18_000,
+                        choiceLabels: {
+                            slot_scene: 'Valerie',
+                            keep_queue_moving: 'Since U Been Gone',
+                        },
+                        choiceDetails: {
+                            slot_scene: 'Jordan',
+                            keep_queue_moving: 'Taylor Demo',
+                        },
+                        choiceSongIds: {
+                            slot_scene: 'requested_1',
+                            keep_queue_moving: 'requested_2',
+                        },
+                        votesByUid: {
+                            audience_guest_1: 'slot_scene',
+                            audience_guest_2: 'keep_queue_moving',
+                            audience_guest_3: 'keep_queue_moving',
+                        },
+                    },
+                },
+            },
+        };
+    }
+
+    if (safeId === 'cohost-unlimited-reactions') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', isVip: false },
+            profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', vipLevel: 0, totalFamePoints: 1800, currentLevel: 4, points: 18 },
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+                hostUid: 'fixture_host',
+                hostUids: ['fixture_host'],
+                runOfShowRoles: {
+                    coHosts: ['qa_cohost-unlimited-reactions'],
+                },
+                eventCredits: {
+                    ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }).eventCredits,
+                    coHostCreditPolicy: 'unlimited',
+                    reactionTapCooldownMs: 1600,
+                },
+            },
+        };
+    }
+
+    if (safeId === 'applause-cooldown') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'applause' }),
+            user: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', isVip: false },
+            profile: { uid: 'fixture_user', name: 'Taylor Demo', avatar: '🎤', vipLevel: 0, totalFamePoints: 1800, currentLevel: 4, points: 640 },
+            room: {
+                ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'applause' }),
+                activeMode: 'applause',
+                eventCredits: {
+                    ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'applause' }).eventCredits,
+                    reactionTapCooldownMs: 1400,
+                },
+            },
+        };
     }
 
     if (safeId === 'classic-trivia') {

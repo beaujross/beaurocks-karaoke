@@ -3639,6 +3639,55 @@ export default function RunOfShowDirectorPanel({
         () => getRunOfShowReleaseWindowTally(activeReleaseWindow || {}, safeRoles),
         [activeReleaseWindow, safeRoles]
     );
+    const activeReleaseGovernanceMode = useMemo(
+        () => String(activeReleaseWindow?.governanceMode || '').trim().toLowerCase(),
+        [activeReleaseWindow?.governanceMode]
+    );
+    const activeReleaseSubjectType = useMemo(
+        () => String(activeReleaseWindow?.subjectType || '').trim().toLowerCase(),
+        [activeReleaseWindow?.subjectType]
+    );
+    const isActiveQueueFaceOff = activeReleaseSubjectType === 'queue_faceoff';
+    const isActiveSlotFillChoice = activeReleaseSubjectType === 'slot_fill_choice';
+    const isActiveCoHostRelease = activeReleaseGovernanceMode === 'cohost_vote';
+    const activeReleaseChoiceLabels = useMemo(() => ({
+        slotScene: String(activeReleaseWindow?.choiceLabels?.slot_scene || '').trim() || 'Slot Scene',
+        keepQueueMoving: String(activeReleaseWindow?.choiceLabels?.keep_queue_moving || '').trim() || 'Keep Queue Moving',
+    }), [
+        activeReleaseWindow?.choiceLabels?.keep_queue_moving,
+        activeReleaseWindow?.choiceLabels?.slot_scene
+    ]);
+    const activeReleaseChoiceDetails = useMemo(() => ({
+        slotScene: String(activeReleaseWindow?.choiceDetails?.slot_scene || '').trim(),
+        keepQueueMoving: String(activeReleaseWindow?.choiceDetails?.keep_queue_moving || '').trim()
+    }), [
+        activeReleaseWindow?.choiceDetails?.keep_queue_moving,
+        activeReleaseWindow?.choiceDetails?.slot_scene
+    ]);
+    const activeReleaseChoiceSongs = useMemo(() => ({
+        slotScene: (Array.isArray(queueSongs) ? queueSongs : []).find((entry) => entry.id === String(activeReleaseWindow?.choiceSongIds?.slot_scene || '').trim()) || null,
+        keepQueueMoving: (Array.isArray(queueSongs) ? queueSongs : []).find((entry) => entry.id === String(activeReleaseWindow?.choiceSongIds?.keep_queue_moving || '').trim()) || null
+    }), [
+        activeReleaseWindow?.choiceSongIds?.keep_queue_moving,
+        activeReleaseWindow?.choiceSongIds?.slot_scene,
+        queueSongs
+    ]);
+    const activeReleaseVoteCountLabel = `${releaseWindowTally.totalVotes || 0} vote${(releaseWindowTally.totalVotes || 0) === 1 ? '' : 's'}`;
+    const activeReleaseTone = isActiveCoHostRelease
+        ? {
+            eyebrowClass: 'text-amber-200',
+            helperClass: 'text-amber-100/80',
+            badgeClass: 'border-amber-300/25 bg-amber-500/12 text-amber-50',
+            modeClass: 'border-amber-300/20 bg-amber-500/8',
+            choiceLabelClass: 'text-amber-100'
+        }
+        : {
+            eyebrowClass: 'text-zinc-500',
+            helperClass: 'text-zinc-400',
+            badgeClass: 'border-white/10 bg-black/20 text-zinc-300',
+            modeClass: 'border-white/10 bg-black/20',
+            choiceLabelClass: 'text-zinc-500'
+        };
     const laterItems = useMemo(
         () => (Array.isArray(conveyorSnapshot.laterItems) ? conveyorSnapshot.laterItems : []).slice(0, 4),
         [conveyorSnapshot.laterItems]
@@ -6373,7 +6422,23 @@ export default function RunOfShowDirectorPanel({
                     <article className={`${surfaceClass} p-4`} aria-label="Release window">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Release Window</div>
+                                <div className={`text-[10px] uppercase tracking-[0.24em] ${activeReleaseTone.eyebrowClass}`}>
+                                    {activeReleaseWindow?.active
+                                        ? isActiveQueueFaceOff
+                                            ? (isActiveCoHostRelease ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
+                                            : isActiveSlotFillChoice
+                                                ? (isActiveCoHostRelease ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
+                                            : isActiveCoHostRelease
+                                                ? 'Co-Host Decision'
+                                                : 'Release Window'
+                                        : 'Release Window'}
+                                </div>
+                                {activeReleaseWindow?.active && isActiveCoHostRelease ? (
+                                    <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                        <i className="fa-solid fa-star"></i>
+                                        Promoted Co-Host
+                                    </div>
+                                ) : null}
                                 <div className="mt-1 text-sm font-semibold text-white">
                                     {activeReleaseWindow?.active
                                         ? (activeReleaseWindow.prompt || getRunOfShowReleaseWindowPrompt(releaseWindowItem))
@@ -6384,6 +6449,17 @@ export default function RunOfShowDirectorPanel({
                                         ? (releaseWindowItem?.title || activeReleaseWindow?.itemTitle || 'Optional scene')
                                         : 'Use this when you want signal before a non-required scene lands in the live lane.'}
                                 </div>
+                                {activeReleaseWindow?.active ? (
+                                    <div className={`mt-2 text-xs ${activeReleaseTone.helperClass}`}>
+                                        {isActiveQueueFaceOff
+                                            ? 'This is host-opened and time-boxed. One vote per joined user, then the host confirms the winning song before changing the queue.'
+                                            : isActiveSlotFillChoice
+                                                ? 'This is host-opened and time-boxed. One vote per joined user, then the host confirms who fills the next performance slot.'
+                                            : isActiveCoHostRelease
+                                                ? 'Promoted co-hosts are helping steer the next room decision.'
+                                                : 'The host can gather room signal here before committing the next move.'}
+                                    </div>
+                                ) : null}
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 {activeReleaseWindow?.active ? (
@@ -6425,25 +6501,64 @@ export default function RunOfShowDirectorPanel({
                         ) : null}
                         {activeReleaseWindow?.active ? (
                             <div className="mt-3 grid gap-2 md:grid-cols-3">
-                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className={`rounded-2xl border px-3 py-3 ${activeReleaseTone.modeClass}`}>
                                     <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Mode</div>
                                     <div className="mt-1 text-lg font-black text-white">
                                         {String(activeReleaseWindow.governanceMode || 'host_only').replaceAll('_', ' ')}
                                     </div>
                                 </div>
-                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Slot Scene</div>
+                                <div className={`rounded-2xl border px-3 py-3 ${activeReleaseTone.modeClass}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                            {String(activeReleaseChoiceSongs.slotScene?.albumArtUrl || activeReleaseChoiceSongs.slotScene?.artworkUrl100 || activeReleaseChoiceSongs.slotScene?.artworkUrl || activeReleaseChoiceSongs.slotScene?.art || '').trim() ? (
+                                                <img src={String(activeReleaseChoiceSongs.slotScene?.albumArtUrl || activeReleaseChoiceSongs.slotScene?.artworkUrl100 || activeReleaseChoiceSongs.slotScene?.artworkUrl || activeReleaseChoiceSongs.slotScene?.art || '').trim()} alt={activeReleaseChoiceLabels.slotScene} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                    <i className="fa-solid fa-music"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className={`text-[10px] uppercase tracking-[0.16em] ${activeReleaseTone.choiceLabelClass}`}>{activeReleaseChoiceLabels.slotScene}</div>
+                                            {activeReleaseChoiceDetails.slotScene ? (
+                                                <div className="mt-1 truncate text-xs text-zinc-400">{activeReleaseChoiceDetails.slotScene}</div>
+                                            ) : null}
+                                            <div className="truncate text-xs text-zinc-500">{String(activeReleaseChoiceSongs.slotScene?.artist || activeReleaseChoiceSongs.slotScene?.artistName || '').trim() || 'Ready queue pick'}</div>
+                                        </div>
+                                    </div>
                                     <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.slotSceneCount}</div>
                                 </div>
-                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Keep Queue Moving</div>
+                                <div className={`rounded-2xl border px-3 py-3 ${activeReleaseTone.modeClass}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                                            {String(activeReleaseChoiceSongs.keepQueueMoving?.albumArtUrl || activeReleaseChoiceSongs.keepQueueMoving?.artworkUrl100 || activeReleaseChoiceSongs.keepQueueMoving?.artworkUrl || activeReleaseChoiceSongs.keepQueueMoving?.art || '').trim() ? (
+                                                <img src={String(activeReleaseChoiceSongs.keepQueueMoving?.albumArtUrl || activeReleaseChoiceSongs.keepQueueMoving?.artworkUrl100 || activeReleaseChoiceSongs.keepQueueMoving?.artworkUrl || activeReleaseChoiceSongs.keepQueueMoving?.art || '').trim()} alt={activeReleaseChoiceLabels.keepQueueMoving} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                    <i className="fa-solid fa-music"></i>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-[10px] uppercase tracking-[0.16em] text-pink-200">{activeReleaseChoiceLabels.keepQueueMoving}</div>
+                                            {activeReleaseChoiceDetails.keepQueueMoving ? (
+                                                <div className="mt-1 truncate text-xs text-zinc-400">{activeReleaseChoiceDetails.keepQueueMoving}</div>
+                                            ) : null}
+                                            <div className="truncate text-xs text-zinc-500">{String(activeReleaseChoiceSongs.keepQueueMoving?.artist || activeReleaseChoiceSongs.keepQueueMoving?.artistName || '').trim() || 'Ready queue pick'}</div>
+                                        </div>
+                                    </div>
                                     <div className="mt-1 text-lg font-black text-white">{releaseWindowTally.keepQueueMovingCount}</div>
                                 </div>
                             </div>
                         ) : null}
                         {activeReleaseWindow?.active ? (
                             <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
-                                {releaseWindowTally.summary}
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span>{releaseWindowTally.summary}</span>
+                                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${activeReleaseTone.badgeClass}`}>
+                                        {activeReleaseVoteCountLabel}
+                                    </span>
+                                </div>
                             </div>
                         ) : null}
                     </article>

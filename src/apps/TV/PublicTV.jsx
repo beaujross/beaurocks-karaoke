@@ -1242,6 +1242,11 @@ const RunOfShowStatusHud = ({ hud = null, fixed = true }) => {
 };
 
 // --- SUB-COMPONENTS ---
+const getRoomSupportSurface = (room = {}) => ({
+    label: String(room?.eventCredits?.supportLabel || '').trim(),
+    url: String(room?.eventCredits?.supportEmbedUrl || room?.eventCredits?.supportUrl || '').trim(),
+});
+
 const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     const [src, setSrc] = useState('');
 
@@ -1587,14 +1592,29 @@ const buildRoomLeaderboardStats = (users = [], songs = []) => {
 };
 
 const TipOverlay = ({ room }) => {
+    const supportSurface = getRoomSupportSurface(room);
+    const qrImageUrl = String(room?.tipQrUrl || '').trim();
+    const qrValue = String(room?.tipUrl || supportSurface.url || '').trim();
+    const usesSupportFallback = !String(room?.tipUrl || '').trim() && !!supportSurface.url;
+    const overlayHeadline = usesSupportFallback ? (supportSurface.label || 'Support the Room') : 'Show Some Love!';
+    const overlaySubhead = usesSupportFallback ? 'Scan to support the fundraiser' : `Scan to tip the host ${EMOJI.tip}`;
     return (
         <div className="public-tv fixed inset-0 z-[200] bg-gradient-to-br from-green-900 to-emerald-950 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/money.png')] opacity-10"></div>
-            <h1 className="text-[clamp(2.25rem,10vw,7.5rem)] 2xl:text-[10rem] font-bebas text-white mb-4 md:mb-8 drop-shadow-lg leading-none">SHOW SOME LOVE!</h1>
+            <h1 className="text-[clamp(2.25rem,10vw,7.5rem)] 2xl:text-[10rem] font-bebas text-white mb-4 md:mb-8 drop-shadow-lg leading-none">{overlayHeadline}</h1>
             <div className="bg-white p-4 md:p-6 2xl:p-8 rounded-3xl shadow-[0_0_100px_rgba(255,255,255,0.2)] mb-4 md:mb-8 transform hover:scale-105 transition-transform duration-500">
-                <img src={room.tipQrUrl || ASSETS.venmoQr} className="w-[68vw] h-[68vw] max-w-[500px] max-h-[500px] object-cover rounded-lg" alt="Tip QR" />
+                {qrImageUrl ? (
+                    <img src={qrImageUrl} className="w-[68vw] h-[68vw] max-w-[500px] max-h-[500px] object-cover rounded-lg" alt="Support QR" />
+                ) : (
+                    <LocalQrImage
+                        value={qrValue}
+                        size={500}
+                        className="w-[68vw] h-[68vw] max-w-[500px] max-h-[500px] object-cover rounded-lg"
+                        alt="Support QR"
+                    />
+                )}
             </div>
-            <div className="text-lg md:text-3xl 2xl:text-5xl text-green-200 font-bold bg-black/40 px-5 py-3 md:px-8 md:py-4 2xl:px-12 2xl:py-6 rounded-full border border-green-500/30 backdrop-blur-md">SCAN TO TIP THE HOST {EMOJI.tip}</div>
+            <div className="text-lg md:text-3xl 2xl:text-5xl text-green-200 font-bold bg-black/40 px-5 py-3 md:px-8 md:py-4 2xl:px-12 2xl:py-6 rounded-full border border-green-500/30 backdrop-blur-md">{overlaySubhead}</div>
         </div>
     );
 };
@@ -4141,13 +4161,13 @@ const PublicTV = ({ roomCode }) => {
     }, [recap]);
 
     const triggerTipPulse = useCallback((key) => {
-        if (!room?.tipUrl && !room?.tipQrUrl) return;
+        if (!room?.tipUrl && !room?.tipQrUrl && !getRoomSupportSurface(room).url) return;
         if (lastTipKey.current === key) return;
         lastTipKey.current = key;
         setTipPulse(true);
         if (tipPulseTimer.current) clearTimeout(tipPulseTimer.current);
         tipPulseTimer.current = setTimeout(() => setTipPulse(false), 9000);
-    }, [room?.tipUrl, room?.tipQrUrl]);
+    }, [room]);
     const experienceLabel = (() => {
         if (room?.activeScreen && room.activeScreen !== 'stage') {
             return formatExperienceLabel(room.activeScreen);
@@ -6460,10 +6480,14 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {showAmbientFx && tipPulse && (room?.tipUrl || room?.tipQrUrl) && (
+            {showAmbientFx && tipPulse && (room?.tipUrl || room?.tipQrUrl || getRoomSupportSurface(room).url) && (
                 <div className="absolute bottom-3 right-3 md:bottom-6 md:right-6 z-[120] bg-emerald-500/90 text-black px-3 py-2 md:px-6 md:py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
-                    <div className="text-xs md:text-sm font-bold uppercase tracking-[0.12em] md:tracking-widest">Show some love</div>
-                    <div className="text-sm md:text-2xl font-black">Tip the host {EMOJI.tip}</div>
+                    <div className="text-xs md:text-sm font-bold uppercase tracking-[0.12em] md:tracking-widest">
+                        {room?.tipUrl || room?.tipQrUrl ? 'Show some love' : (getRoomSupportSurface(room).label || 'Support the room')}
+                    </div>
+                    <div className="text-sm md:text-2xl font-black">
+                        {room?.tipUrl || room?.tipQrUrl ? `Tip the host ${EMOJI.tip}` : 'Scan to support the fundraiser'}
+                    </div>
                 </div>
             )}
             {showAmbientFx && bonusDropBurst && (

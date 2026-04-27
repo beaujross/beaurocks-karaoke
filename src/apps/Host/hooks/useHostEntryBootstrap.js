@@ -4,14 +4,12 @@ const useHostEntryBootstrap = ({
     createQuickLaunchDiscoveryDraft,
     getViewDefaultSection,
     hostOnboardingPlanOptions = [],
-    isMarketingDemoFixture = false,
     legacyTabRedirects = {},
     normalizeGameParam,
     normalizeLaunchRoomCode,
     openModerationInbox,
     openOnboardingWizard,
     parseLaunchBoolParam,
-    qaHostFixtureId = '',
     sectionToSettingsTab = {},
     setActiveWorkspaceSection,
     setActiveWorkspaceView,
@@ -27,7 +25,6 @@ const useHostEntryBootstrap = ({
     setTab,
 }) => {
     useEffect(() => {
-        if (isMarketingDemoFixture && qaHostFixtureId) return;
         const params = new URLSearchParams(window.location.search);
         const t = params.get('tab');
         const c = params.get('catalogue');
@@ -148,14 +145,12 @@ const useHostEntryBootstrap = ({
         createQuickLaunchDiscoveryDraft,
         getViewDefaultSection,
         hostOnboardingPlanOptions,
-        isMarketingDemoFixture,
         legacyTabRedirects,
         normalizeGameParam,
         normalizeLaunchRoomCode,
         openModerationInbox,
         openOnboardingWizard,
         parseLaunchBoolParam,
-        qaHostFixtureId,
         sectionToSettingsTab,
         setActiveWorkspaceSection,
         setActiveWorkspaceView,

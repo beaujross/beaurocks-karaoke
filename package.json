@@ -53,6 +53,8 @@
     "qa:games:matrix:secure": "node scripts/qa/run-host-game-matrix-secure.mjs",
     "qa:host:run-of-show": "node scripts/qa/host-run-of-show-console-playwright.mjs",
     "qa:host:run-of-show:app": "node scripts/qa/host-run-of-show-hostapp-playwright.mjs",
+    "qa:cohost:screenshots": "node scripts/qa/cohost-experience-screenshots.mjs",
+    "qa:cohost:helper-flow": "node scripts/qa/cohost-helper-flow-playwright.mjs",
     "qa:audience:app": "node scripts/qa/audience-event-profile-playwright.mjs && node scripts/qa/audience-aahf-branding-visuals.mjs",
     "qa:audience:branding": "node scripts/qa/audience-aahf-branding-visuals.mjs",
     "qa:audience:crowd-selfie": "node scripts/qa/crowd-selfie-flow-playwright.mjs",

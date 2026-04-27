@@ -402,7 +402,7 @@ const App = () => {
     if (view === 'mobile') return (uid || qaAudienceFixtureId) ? (
         <Suspense fallback={<ViewLoader />}>
             <ToastProvider>
-                <SingerApp roomCode={roomCode} uid={uid || `qa_${qaAudienceFixtureId || 'audience'}`} />
+                <SingerApp roomCode={roomCode} uid={qaAudienceFixtureId ? `qa_${qaAudienceFixtureId}` : uid} />
             </ToastProvider>
         </Suspense>
     ) : <ViewLoader />;
