@@ -64,6 +64,7 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
+import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import {
     getHostMomentCueMeta,
     getHostMomentCueSoundCandidates
@@ -1003,31 +1004,6 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
             resolutionStatus: queuePlaybackReady ? 'ready' : 'needs_selection'
         }
     };
-};
-
-const isOpenRunOfShowPerformanceSlot = (item = {}) => {
-    if (String(item?.type || '').trim().toLowerCase() !== 'performance') return false;
-    const status = String(item?.status || '').trim().toLowerCase();
-    if (['complete', 'skipped', 'live'].includes(status)) return false;
-    const queueLinkState = String(item?.queueLinkState || '').trim().toLowerCase();
-    if (queueLinkState === 'linked') return false;
-    const hasPerformerIdentity = !!String(item?.assignedPerformerUid || item?.assignedPerformerName || '').trim();
-    const hasSongIdentity = !!String(item?.songId || item?.songTitle || item?.artistName || '').trim();
-    const hasSubmission = !!String(item?.approvedSubmissionId || '').trim();
-    const backingPlan = item?.backingPlan && typeof item.backingPlan === 'object' ? item.backingPlan : {};
-    const hasBackingPlan = [
-        backingPlan?.label,
-        backingPlan?.mediaUrl,
-        backingPlan?.youtubeId,
-        backingPlan?.appleMusicId,
-        backingPlan?.trackId,
-        backingPlan?.submittedBackingId
-    ].some((value) => String(value || '').trim().length > 0) || backingPlan?.playbackReady === true;
-    return !String(item?.preparedQueueSongId || '').trim()
-        && !hasPerformerIdentity
-        && !hasSongIdentity
-        && !hasSubmission
-        && !hasBackingPlan;
 };
 
 const SELFIE_PROMPTS = [
@@ -6377,20 +6353,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const fillRunOfShowOpenSlotsFromQueue = useCallback(async ({ limit } = {}) => {
         const openSlots = Array.isArray(runOfShowOpenPerformanceSlots) ? runOfShowOpenPerformanceSlots : [];
         const readyQueueSongs = Array.isArray(runOfShowQueueCandidates) ? runOfShowQueueCandidates : [];
-        if (!openSlots.length || !readyQueueSongs.length) return;
-        const numericLimit = Number(limit);
-        const maxAssignments = Number.isFinite(numericLimit) && numericLimit > 0
-            ? Math.min(openSlots.length, readyQueueSongs.length, Math.floor(numericLimit))
-            : Math.min(openSlots.length, readyQueueSongs.length);
-        if (maxAssignments <= 0) return;
-        for (let index = 0; index < maxAssignments; index += 1) {
-            const slot = openSlots[index];
-            const queueSong = readyQueueSongs[index];
+        const assignments = computeOpenSlotAssignments({ openSlots, readyQueueSongs, limit });
+        if (!assignments.length) return;
+        for (const entry of assignments) {
+            const slot = entry.slot;
+            const queueSong = entry.queueSong;
             if (!slot?.id || !queueSong?.id) continue;
             await assignQueueSongToRunOfShowItem(queueSong.id, slot.id);
         }
-        if (maxAssignments > 1) {
-            toast(`Filled ${maxAssignments} upcoming slot${maxAssignments === 1 ? '' : 's'} from the queue.`);
+        if (assignments.length > 1) {
+            toast(`Filled ${assignments.length} upcoming slot${assignments.length === 1 ? '' : 's'} from the queue.`);
         }
     }, [assignQueueSongToRunOfShowItem, runOfShowOpenPerformanceSlots, runOfShowQueueCandidates, toast]);
     const maybePauseRunOfShowAutomationForMissingSinger = useCallback(async () => {

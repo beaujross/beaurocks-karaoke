@@ -144,6 +144,23 @@ import {
     normalizeYouTubePlaybackState,
     YOUTUBE_PLAYBACK_STATUSES
 } from '../../lib/youtubePlaybackStatus';
+import {
+    buildAudienceAccessPresentation,
+    shouldSimplifyFestivalSupportAccess
+} from './lib/audienceAccessPresentation.js';
+import {
+    buildCoHostSignalActivityPayload,
+    buildCurrentPerformanceSignalContext,
+    buildPerformanceReactionMeta,
+    getAudienceSongArtworkUrl,
+    timestampToMs
+} from './lib/coHostSignalPayload.js';
+import {
+    applyReactionCooldown,
+    getReactionCooldownLabel as getReactionCooldownLabelForMap,
+    getReactionCooldownRemainingMs as getReactionCooldownRemainingMsForMap
+} from './lib/reactionCooldowns.js';
+import { shouldShowStreamlinedIdleRequestCard } from './lib/singerHomeState.js';
 
 const AUDIENCE_EMAIL_LINK_STORAGE_KEY = 'beaurocks_audience_email_link';
 
@@ -258,23 +275,6 @@ const AudienceBrowseSongRow = ({
     </div>
 );
 
-const getAudienceSongArtworkUrl = (song = {}) =>
-    String(
-        song?.albumArtUrl
-        || song?.artworkUrl100
-        || song?.artworkUrl60
-        || song?.artworkUrl
-        || song?.art
-        || ''
-    ).trim();
-
-const formatElapsedClock = (valueSec = 0) => {
-    const totalSec = Math.max(0, Math.round(Number(valueSec || 0) || 0));
-    const minutes = Math.floor(totalSec / 60);
-    const seconds = totalSec % 60;
-    return `${minutes}:${String(seconds).padStart(2, '0')}`;
-};
-
 const DEFAULT_EMOJI = emoji(0x1F600);
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -377,17 +377,6 @@ const LOBBY_PLAYGROUND_ULTIMATES = VOLLEY_ORB_ULTIMATES.map((item) => ({
     })[item.id] || 'text-cyan-100'
 }));
 const LOBBY_PLAYGROUND_WINDOW_MS = 60 * 1000;
-const timestampToMs = (value) => {
-    if (!value) return 0;
-    if (typeof value === 'number') return value;
-    if (typeof value?.toMillis === 'function') return value.toMillis();
-    if (typeof value?.seconds === 'number') {
-        const nanos = typeof value?.nanoseconds === 'number' ? value.nanoseconds : 0;
-        return (value.seconds * 1000) + Math.floor(nanos / 1000000);
-    }
-    return 0;
-};
-
 const isQueuePermissionDeniedError = (error) => {
     const code = String(error?.code || '').toLowerCase();
     const message = String(error?.message || '').toLowerCase();
@@ -1151,22 +1140,9 @@ const SingerApp = ({ roomCode, uid }) => {
         }),
         []
     );
-    const currentPerformanceSignalContext = useMemo(() => {
-        const artworkUrl = getAudienceSongArtworkUrl(currentSinger);
-        const startedAtMs = timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0;
-        const elapsedSec = startedAtMs > 0
-            ? Math.max(0, Math.round(((coHostSignalNowMs || Date.now()) - startedAtMs) / 1000))
-            : 0;
-        return {
-            artworkUrl,
-            singerName: String(currentSinger?.singerName || '').trim(),
-            songTitle: String(currentSinger?.songTitle || '').trim(),
-            artistName: String(currentSinger?.artist || currentSinger?.artistName || '').trim(),
-            elapsedSec,
-            elapsedLabel: startedAtMs > 0 ? `${formatElapsedClock(elapsedSec)} in` : '',
-            isLive: !!String(currentSinger?.id || '').trim()
-        };
-    }, [
+    const currentPerformanceSignalContext = useMemo(() => (
+        buildCurrentPerformanceSignalContext(currentSinger, coHostSignalNowMs || Date.now())
+    ), [
         coHostSignalNowMs,
         currentSinger
     ]);
@@ -2878,10 +2854,13 @@ const SingerApp = ({ roomCode, uid }) => {
             isDonationFirstAccess
             || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
         );
-    const simplifyFestivalSupportAccess = allowsDonationAccess
-        && isCustomAudienceBrand
-        && audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open
-        && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
+    const simplifyFestivalSupportAccess = shouldSimplifyFestivalSupportAccess({
+        audienceAccessMode: audienceExperience.audienceAccessMode,
+        roomSupportOffer,
+        openCustomEmoji: audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+        openPremiumReactions: audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open,
+        audienceBrandTitle,
+    });
     const hasSupporterAccess = allowsDonationAccess
         && (
             !!user?.roomBoostBadge
@@ -2898,32 +2877,25 @@ const SingerApp = ({ roomCode, uid }) => {
     }), [audienceFeatureAccess, authUserUid, hasSupporterAccess, isAnon, isVipAccount]);
     const premiumReactionsUnlocked = hasPremiumRoomAccess || premiumReactionAccess.allowed;
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
-    const accessActionLabel = simplifyFestivalSupportAccess
-        ? 'Continue with Email'
-        : allowsDonationAccess
-            ? (isDonationFirstAccess ? supportCtaLabel : 'Support or Continue')
-        : (simpleEmailCaptureMode ? 'Submit Email' : (isCustomAudienceBrand ? `Continue with ${audienceBrandTitle}` : 'Continue with Email'));
-    const accessConnectedLabel = simplifyFestivalSupportAccess
-        ? 'Email Access Ready'
-        : hasSupporterAccess && !isVipAccount
-            ? `${supporterAccessLabel} Ready`
-            : (isCustomAudienceBrand ? `${audienceBrandTitle} Access Ready` : 'Email Access Ready');
-    const audienceAccessHeadline = simplifyFestivalSupportAccess
-        ? 'Continue with Email'
-        : allowsDonationAccess
-            ? (isDonationFirstAccess ? `Support ${audienceBrandTitle}` : `Support ${audienceBrandTitle} or continue with email`)
-        : (simpleEmailCaptureMode ? 'Submit Email' : 'Continue with Email');
-    const audienceAccessBody = simplifyFestivalSupportAccess
-        ? `Email is optional but recommended if you want to reconnect, keep your profile in sync, and carry your history forward. AAHF support moments can stay separate from your karaoke join flow.`
-        : allowsDonationAccess
-            ? (
-                isDonationFirstAccess
-                    ? `Givebutter support can unlock ${supporterAccessLabel.toLowerCase()} perks, featured reactions, and room moments without interrupting the night.`
-                    : `You can unlock ${supporterAccessLabel.toLowerCase()} perks by supporting the fundraiser, or keep the standard email path for profile sync and cross-room history.`
-            )
-        : (simpleEmailCaptureMode
-            ? `Enter your email for this room only. No account creation or sign-in link is required.`
-            : `Enter your email and we will send a secure sign-in link. Open the link on this device to reconnect, unlock ${premiumPerksLabel}, and carry your history forward.`);
+    const {
+        accessActionLabel,
+        accessConnectedLabel: baseAccessConnectedLabel,
+        audienceAccessHeadline,
+        audienceAccessBody,
+    } = buildAudienceAccessPresentation({
+        simplifyFestivalSupportAccess,
+        allowsDonationAccess,
+        isDonationFirstAccess,
+        supportCtaLabel,
+        simpleEmailCaptureMode,
+        isCustomAudienceBrand,
+        audienceBrandTitle,
+        supporterAccessLabel,
+        premiumPerksLabel,
+    });
+    const accessConnectedLabel = hasSupporterAccess && !isVipAccount
+        ? `${supporterAccessLabel} Ready`
+        : baseAccessConnectedLabel;
     useEffect(() => {
         if (!roomCode || !activeUid || !user) return undefined;
         if (!activeEventCredits.enabled || !activeEventCredits.timedLobbyEnabled) return undefined;
@@ -3225,20 +3197,9 @@ const SingerApp = ({ roomCode, uid }) => {
         }, 800);
     };
 
-    const buildPerformanceReactionMeta = useCallback(() => {
-        const payload = {};
-        const performanceId = String(currentSinger?.id || '').trim();
-        const performanceSongId = String(currentSinger?.songId || '').trim();
-        const performanceSingerUid = String(currentSinger?.singerUid || '').trim();
-        const performanceSingerName = String(currentSinger?.singerName || '').trim();
-        const performanceStartedAtMs = timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0;
-        if (performanceId) payload.performanceId = performanceId;
-        if (performanceSongId) payload.performanceSongId = performanceSongId;
-        if (performanceSingerUid) payload.performanceSingerUid = performanceSingerUid;
-        if (performanceSingerName) payload.performanceSingerName = performanceSingerName;
-        if (performanceStartedAtMs > 0) payload.performanceStartedAtMs = performanceStartedAtMs;
-        return payload;
-    }, [currentSinger]);
+    const buildPerformanceReactionMetaMemo = useCallback(() => (
+        buildPerformanceReactionMeta(currentSinger)
+    ), [currentSinger]);
 
     const mergeRoomUserVibeState = useCallback(async (updates = {}) => {
         if (!roomCode || !activeUid) return;
@@ -3270,7 +3231,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: isVipAccount,
-                    ...buildPerformanceReactionMeta(),
+                    ...buildPerformanceReactionMetaMemo(),
                     timestamp: serverTimestamp()
                 });
             } catch (reactionError) {
@@ -3289,7 +3250,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.guitarSessionId, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState, isVipAccount]);
+    }, [roomCode, user, room?.guitarSessionId, activeUid, buildPerformanceReactionMetaMemo, mergeRoomUserVibeState, isVipAccount]);
 
     const queueStrumWrite = () => {
         pendingStrumHits.current += 1;
@@ -3314,7 +3275,7 @@ const SingerApp = ({ roomCode, uid }) => {
                     userName: user.name,
                     avatar: user.avatar,
                     isVip: isVipAccount,
-                    ...buildPerformanceReactionMeta(),
+                    ...buildPerformanceReactionMetaMemo(),
                     timestamp: serverTimestamp()
                 });
             } catch (reactionError) {
@@ -3332,7 +3293,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, room?.strobeSessionId, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState, isVipAccount]);
+    }, [roomCode, user, room?.strobeSessionId, activeUid, buildPerformanceReactionMetaMemo, mergeRoomUserVibeState, isVipAccount]);
 
     const queueStrobeTap = () => {
         pendingStrobeTaps.current += 1;
@@ -3365,7 +3326,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             userName: user.name,
                             avatar: user.avatar,
                             isVip: isVipAccount,
-                            ...buildPerformanceReactionMeta(),
+                            ...buildPerformanceReactionMetaMemo(),
                             timestamp: serverTimestamp()
                         }
                     );
@@ -3383,7 +3344,7 @@ const SingerApp = ({ roomCode, uid }) => {
         } catch (e) {
             console.error(e);
         }
-    }, [roomCode, user, activeUid, buildPerformanceReactionMeta, mergeRoomUserVibeState, isVipAccount]);
+    }, [roomCode, user, activeUid, buildPerformanceReactionMetaMemo, mergeRoomUserVibeState, isVipAccount]);
 
     const queueStormLayerWrite = (layerId) => {
         const key = String(layerId || '').trim().toLowerCase();
@@ -4552,19 +4513,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         return getEffectivePoints() >= safeCost;
     }, [coHostUnlimitedCredits, getEffectivePoints]);
     const getReactionCooldownRemainingMs = useCallback((reactionKey = '') => {
-        const safeReactionKey = String(reactionKey || '').trim().toLowerCase();
-        if (!safeReactionKey) return 0;
-        const cooldownUntil = Number(reactionCooldownByType?.[safeReactionKey] || 0);
-        if (!cooldownUntil) return 0;
         const clockNow = Number(reactionCooldownNowMs || Date.now());
-        return Math.max(0, cooldownUntil - clockNow);
+        return getReactionCooldownRemainingMsForMap(reactionCooldownByType, reactionKey, clockNow);
     }, [reactionCooldownByType, reactionCooldownNowMs]);
     const isReactionCoolingDown = useCallback((reactionKey = '') => (
         getReactionCooldownRemainingMs(reactionKey) > 0
     ), [getReactionCooldownRemainingMs]);
     const getReactionCooldownLabel = useCallback((reactionKey = '') => (
-        `${Math.max(0.1, getReactionCooldownRemainingMs(reactionKey) / 1000).toFixed(1)}s`
-    ), [getReactionCooldownRemainingMs]);
+        getReactionCooldownLabelForMap(reactionCooldownByType, reactionKey, Number(reactionCooldownNowMs || Date.now()))
+    ), [reactionCooldownByType, reactionCooldownNowMs]);
     const spendRoomPoints = useCallback((cost = 0) => {
         const safeCost = Math.max(0, Number(cost || 0) || 0);
         if (!safeCost || coHostUnlimitedCredits) return;
@@ -6387,10 +6344,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             return;
         }
         if (reactionTapCooldownMs > 0) {
-            setReactionCooldownByType((prev) => ({
-                ...(prev || {}),
-                [safeType]: now + reactionTapCooldownMs,
-            }));
+            setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, reactionTapCooldownMs));
         }
         markActive();
         if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && safeType === 'clap') {
@@ -10673,7 +10627,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const noSingerOnStage = !currentSinger;
     const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
-    const showStreamlinedIdleRequestCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && isStreamlinedAudienceShell;
+    const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard({
+        tab,
+        noSingerOnStage,
+        lobbyVolleySceneActive,
+        isStreamlinedAudienceShell,
+    });
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -11032,29 +10991,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         try {
             const actorUid = String(activeUid || auth.currentUser?.uid || '').trim();
-            const performanceMeta = buildPerformanceReactionMeta();
-            const performanceSongTitle = String(currentSinger?.songTitle || '').trim();
-            const performanceArtistName = String(currentSinger?.artist || currentSinger?.artistName || '').trim();
-            const performanceAlbumArtUrl = String(getAudienceSongArtworkUrl(currentSinger) || '').trim();
-            const performanceStartedAtMs = Number(performanceMeta.performanceStartedAtMs || 0);
-            const performanceElapsedSec = performanceStartedAtMs > 0
-                ? Math.max(0, Math.round((now - performanceStartedAtMs) / 1000))
-                : 0;
-            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+            const activityPayload = buildCoHostSignalActivityPayload({
+                meta,
                 roomCode,
-                uid: actorUid || null,
-                user: user?.name || form.name || 'Co-Host',
-                text: meta.activityText,
-                icon: meta.emoji || EMOJI.sparkle,
-                type: 'cohost_signal',
-                signalId: meta.id,
-                signalLabel: meta.label,
-                signalScope: performanceMeta.performanceId ? 'performance' : 'room',
-                ...performanceMeta,
-                performanceSongTitle: performanceSongTitle || null,
-                performanceArtistName: performanceArtistName || null,
-                performanceAlbumArtUrl: performanceAlbumArtUrl || null,
-                performanceElapsedSec: performanceElapsedSec || 0,
+                actorUid,
+                actorName: user?.name || form.name || 'Co-Host',
+                currentSinger,
+                nowMs: now,
+                iconFallback: EMOJI.sparkle,
+            });
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                ...activityPayload,
                 timestamp: serverTimestamp()
             });
             setCoHostSignalCooldownById((prev) => ({

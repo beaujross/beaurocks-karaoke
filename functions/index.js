@@ -38,6 +38,7 @@ const {
 } = require("./lib/popTrivia");
 const REACTION_POINT_COSTS = require("./lib/reactionPointCosts.json");
 const OFFICIAL_BEAUROCKS_DISCOVER_LISTINGS = require("./lib/officialBeauRocksDiscoverListings.json");
+const { shouldIncludeDiscoverListing } = require("./lib/discoverVisibility");
 
 admin.initializeApp();
 const APP_ID = "bross-app";
@@ -13579,23 +13580,15 @@ exports.listDirectoryDiscover = onCall({ cors: true }, async (request) => {
     return next;
   });
 
-  const filtered = hydrated.filter((item) => {
-    if (item.listingType !== "venue" && String(item.visibility || "public") !== "public") return false;
-    const sourceType = String(item.sourceType || "").trim().toLowerCase();
-    const isHostRoomSession = item.listingType === "room_session" && sourceType === "host_room";
-    if (isHostRoomSession && !item.isOfficialBeauRocksListing) return false;
-    if (
-      listingTypeFilter !== "all"
-      && item.listingType !== listingTypeFilter
-      && !(listingTypeFilter === "event" && item.isOfficialBeauRocksListing && item.listingType === "room_session")
-    ) return false;
-    if (hostUidFilter && String(item.hostUid || "") !== hostUidFilter) return false;
-    if (officialRoomOnly && !item.isOfficialBeauRocksListing) return false;
-    if (!matchesDirectoryDiscoverSearch(item, searchToken)) return false;
-    if (!matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs)) return false;
-    if (bounds && !isDirectoryLocationInBounds(item.location, bounds)) return false;
-    return true;
-  });
+  const filtered = hydrated.filter((item) => shouldIncludeDiscoverListing({
+    item,
+    listingTypeFilter,
+    hostUidFilter,
+    officialRoomOnly,
+    matchesSearch: matchesDirectoryDiscoverSearch(item, searchToken),
+    matchesTimeWindow: matchesDirectoryDiscoverTimeWindow(item, timeWindow, nowMs),
+    inBounds: bounds ? isDirectoryLocationInBounds(item.location, bounds) : true,
+  }));
 
   const typeRank = { event: 0, room_session: 1, venue: 2 };
   const sorted = filtered.slice().sort((a, b) => {

@@ -69,6 +69,25 @@ Product rules:
 - Run-of-show generation should inherit setup context, including automation style and dead-air behavior.
 - Dead-air automation should use known-good browse catalog songs, with Autopilot able to create `Dead-Air Bridge` moments in generated show plans.
 
+## 2026-04-27 Co-Host And Event Simplicity Notes
+
+These are now the default simplification rules for live karaoke events unless a later event contract overrides them:
+
+- Keep the room karaoke-first. Join, request, queue visibility, and stage flow should outrank side modes and monetization surfaces.
+- Co-host remains one concept, not a growing role tree.
+- Co-host phone UX should stay narrow:
+  - primary live action is `Tell Host`
+  - `Tell Host` is audio-focused, not a general communications system
+  - signals should be contextual to the active performance when possible
+- Co-host operational power should primarily live in the helper catalog, not in a second host deck or a phone-side mini-console.
+- Helper catalog is the preferred path for passive long-range queue building by trusted helpers or co-hosts.
+- Host attention should remain separated by meaning:
+  - live room issues in live ops
+  - moderation in inbox
+  - run-of-show approvals in show tooling
+- Optional modes like trivia, Would You Rather, Doodle Oke, and Selfie Cam should remain available but visually contained unless they are explicitly central to the event contract.
+- When simplifying for an event, prefer removing duplicate attention surfaces over adding new coordination lanes.
+
 Current implementation anchors:
 
 - `src/apps/Host/components/HostRoomReadinessPanel.jsx`

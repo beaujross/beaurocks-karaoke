@@ -7,17 +7,12 @@ const source = readFileSync('functions/index.js', 'utf8');
 test('directory discover suppresses host-published room sessions while preserving official room entries', () => {
   assert.match(
     source,
-    /const sourceType = String\(item\.sourceType \|\| ""\)\.trim\(\)\.toLowerCase\(\);/,
-    'Discover filtering should normalize listing source type before making room-session visibility decisions',
+    /const \{ shouldIncludeDiscoverListing \} = require\("\.\/lib\/discoverVisibility"\);/,
+    'Discover filtering should use the extracted discover visibility helper',
   );
   assert.match(
     source,
-    /const isHostRoomSession = item\.listingType === "room_session" && sourceType === "host_room";/,
-    'Discover filtering should explicitly identify host-published room sessions',
-  );
-  assert.match(
-    source,
-    /if \(isHostRoomSession && !item\.isOfficialBeauRocksListing\) return false;/,
-    'Public discover should hide ad hoc host room sessions while leaving the official AAHF room available',
+    /const filtered = hydrated\.filter\(\(item\) => shouldIncludeDiscoverListing\(\{/,
+    'Public discover should delegate visibility decisions to the extracted helper',
   );
 });

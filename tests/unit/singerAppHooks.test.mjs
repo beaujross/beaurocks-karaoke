@@ -89,8 +89,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const showStreamlinedIdleRequestCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && isStreamlinedAudienceShell;/,
-    "SingerApp should explicitly identify the streamlined idle home state for a request-first card",
+    /const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard\(\{/,
+    "SingerApp should derive the streamlined idle request-first state through a dedicated helper",
   );
   assert.match(
     source,
@@ -401,8 +401,8 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
   );
   assert.match(
     source,
-    /setReactionCooldownByType\(\(prev\) => \(\{[\s\S]*\[safeType\]: now \+ reactionTapCooldownMs/,
-    "SingerApp should start a cooldown only for the tapped reaction button",
+    /setReactionCooldownByType\(\(prev\) => applyReactionCooldown\(prev, safeType, now, reactionTapCooldownMs\)\);/,
+    "SingerApp should start a cooldown only for the tapped reaction button via the extracted helper",
   );
   assert.match(
     source,

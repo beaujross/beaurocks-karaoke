@@ -55,17 +55,27 @@ As of 2026-02-08, this is a focused engineering assessment of current technical 
 - Guest-first points are correct for live-event UX, but VIP / skip-line style rewards should not depend on reusable shared codes.
 - Risk: code leakage converts paid/limited rewards into low-trust redemptions unless attendee entitlements or one-time promo records are used.
 
+13. Source-only tests can create false confidence around giant UI modules.
+- `SingerApp.jsx`, `HostApp.jsx`, and some live-ops surfaces have historically been protected by source-shape assertions more than behavior tests.
+- Risk: a refactor can keep the same strings or structure patterns while still breaking the live room flow.
+- Guardrail: for event-facing flows, prefer small extracted helpers plus deterministic unit/runtime tests over additional regex/source checks.
+
+14. Optional modes can silently consume hardening time without improving event confidence.
+- Trivia, Would You Rather, Doodle Oke, Selfie Cam, and other audience-side extras are real product surfaces, but they should not automatically receive the same testing depth as join/request/queue/run-of-show flows.
+- Risk: unstable optional experiences dilute engineering time and make the room feel more complex if they are over-promoted before they are trusted.
+- Guardrail: keep optional modes in a smoke-and-graceful-failure lane unless they are explicitly promoted into the event contract.
+
 ## Severity 3 - Low
 
-13. Inconsistent documentation source-of-truth.
+15. Inconsistent documentation source-of-truth.
 - Many roadmap/spec docs exist, but not all appear synchronized with current implementation.
 - Risk: onboarding confusion and duplicate planning effort.
 
-14. Legacy/duplicate files increase ambiguity.
+16. Legacy/duplicate files increase ambiguity.
 - Keep legacy scaffolds out of active `src/` paths (archive only).
 - Risk: accidental edits to non-active paths.
 
-15. Functions dependency drift is visible in production deploys.
+17. Functions dependency drift is visible in production deploys.
 - `functions/package.json` still warns on deploy for outdated `firebase-functions`.
 - Risk: unnecessary deployment noise, delayed compatibility problems, and harder incident triage when warnings are normalized.
 
