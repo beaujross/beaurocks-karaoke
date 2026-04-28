@@ -185,6 +185,7 @@ const HostTopChrome = ({
     onToggleRunOfShowAutomationPause,
     runOfShowQaStatusDetail = '',
     runOfShowFocusMode = false,
+    crowdPulse = null,
     activeMomentFeedback = null
 }) => {
     const resolvedHostBase = hostBase || appBase;
@@ -193,6 +194,21 @@ const HostTopChrome = ({
     const launchTvHref = String(launchUrls?.tvUrl || '').trim() || `${resolvedTvBase}?room=${roomCode}&mode=tv`;
     const launchAudienceHref = String(launchUrls?.audienceUrl || '').trim() || `${resolvedAudienceBase}?room=${roomCode}`;
     const helperCatalogHref = `${resolvedHostBase}?room=${encodeURIComponent(roomCode || '')}&mode=host&view=queue&section=queue.catalog&catalogue=1`;
+    const buildPrintHref = (pathname = '') => {
+        const safePath = String(pathname || '').trim();
+        if (!safePath) return '';
+        const fallbackBase = typeof window !== 'undefined'
+            ? window.location.origin
+            : 'https://app.beaurocks.app';
+        try {
+            return new URL(safePath, resolvedHostBase || resolvedAudienceBase || resolvedTvBase || fallbackBase).toString();
+        } catch {
+            return safePath;
+        }
+    };
+    const audiencePosterHref = buildPrintHref('/print/aahf-audience-guide.html');
+    const coHostPosterHref = buildPrintHref('/print/cohost-guide.html');
+    const hostWalkthroughHref = buildPrintHref('/print/aahf-host-walkthrough.html');
     const clampNumber = (value, min, max, fallback = min) => {
         const numeric = Number(value);
         if (!Number.isFinite(numeric)) return fallback;
@@ -320,6 +336,12 @@ const HostTopChrome = ({
         || showVibeQuickMenu
         || showLaunchMenu
         || showNavMenu;
+    const crowdPulseMetrics = crowdPulse?.metrics || {};
+    const crowdPulseLabel = String(crowdPulse?.label || '').trim() || 'No signal';
+    const crowdPulseSummary = String(crowdPulse?.summary || crowdPulse?.recommendationTitle || '').trim()
+        || 'Open queue controls for live crowd guidance.';
+    const crowdPulseToneClass = crowdPulse?.chipClass || 'border-white/10 bg-black/20 text-zinc-200';
+    const crowdPulseLivePct = Math.max(0, Number(crowdPulseMetrics.livePhonePct || 0) || 0);
     const normalizedRunOfShowDirector = React.useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || {}),
         [runOfShowDirector]
@@ -1084,6 +1106,33 @@ const HostTopChrome = ({
                                 <i className="fa-solid fa-up-right-from-square mr-2 text-yellow-300"></i> Open Helper Window
                             </button>
                             <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
+                                Print Guides
+                            </div>
+                            <button
+                                type="button"
+                                data-feature-id="launch-audience-poster"
+                                onClick={() => openLaunchTarget(audiencePosterHref)}
+                                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
+                            >
+                                <i className="fa-solid fa-signs-post mr-2 text-amber-300"></i> Audience Poster
+                            </button>
+                            <button
+                                type="button"
+                                data-feature-id="launch-cohost-poster"
+                                onClick={() => openLaunchTarget(coHostPosterHref)}
+                                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
+                            >
+                                <i className="fa-solid fa-user-group mr-2 text-amber-300"></i> Co-Host Poster
+                            </button>
+                            <button
+                                type="button"
+                                data-feature-id="launch-host-walkthrough"
+                                onClick={() => openLaunchTarget(hostWalkthroughHref)}
+                                className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-900"
+                            >
+                                <i className="fa-solid fa-clipboard-list mr-2 text-amber-300"></i> Host Walkthrough
+                            </button>
+                            <div className="px-4 py-2 text-sm uppercase tracking-[0.3em] text-zinc-500 border-t border-zinc-800">
                                 Game Displays
                             </div>
                             {gamesMeta.map((game, idx, arr) => (
@@ -1193,17 +1242,6 @@ const HostTopChrome = ({
                         onClick={onOpenAccessSettings}
                         title={authSessionReady ? 'Session active. Open access settings.' : 'Session not ready. Open access settings.'}
                     />
-                    {typeof onLaunchRoom === 'function' ? (
-                        <button
-                            type="button"
-                            onClick={onLaunchRoom}
-                            disabled={roomReadinessLaunchBusy}
-                            className={`${styles.btnStd} ${roomReadinessNeedsAttention ? styles.btnNeutral : styles.btnHighlight} px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] disabled:opacity-50`}
-                            title={roomReadinessSummary || 'Launch room surfaces.'}
-                        >
-                            {roomReadinessLaunchBusy ? 'Launching...' : 'Launch'}
-                        </button>
-                    ) : null}
                 </div>
                 <button
                     onClick={() => {
@@ -1297,6 +1335,32 @@ const HostTopChrome = ({
                                 {activeAutomationCount} on
                             </span>
                             <i className="fa-solid fa-arrow-down text-[10px]"></i>
+                        </span>
+                    </button>
+                </div>
+                <div className={quickStripItemClass}>
+                    <button
+                        type="button"
+                        data-feature-id="deck-crowd-pulse"
+                        onClick={() => {
+                            closeAllTopMenus();
+                            onOpenQueueControls?.();
+                        }}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[164px] sm:min-w-[184px]'} justify-between`}
+                        title={crowdPulseSummary}
+                        style={{ touchAction: 'manipulation' }}
+                    >
+                        <span className="inline-flex items-center gap-2">
+                            <i className="fa-solid fa-signal"></i>
+                            Crowd Pulse
+                        </span>
+                        <span className="inline-flex items-center gap-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${crowdPulseToneClass}`}>
+                                {crowdPulseLabel}
+                            </span>
+                            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-300">
+                                {Math.round(crowdPulseLivePct)}% live
+                            </span>
                         </span>
                     </button>
                 </div>
@@ -2086,208 +2150,6 @@ const HostTopChrome = ({
                 </div>
             ) : null}
         </div>
-        {(runOfShowEnabled || hasRunOfShowPlan) && compactRunOfShowItems.length > 0 && !runOfShowFocusMode && (
-            <div className="w-full">
-                <div className={`rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] ${compactRunOfShowDense ? 'px-3 py-2' : 'px-3 py-3'}`}>
-                    <div className={`flex flex-wrap justify-between gap-2.5 ${compactRunOfShowDense ? 'items-center' : 'items-start'}`}>
-                        <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Run Of Show</div>
-                            <div className={`flex flex-wrap items-center gap-2 ${compactRunOfShowDense ? 'mt-0.5' : 'mt-1'}`}>
-                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${runOfShowHudToneClass}`}>
-                                    {runOfShowHudState.title}
-                                </span>
-                                {compactRunOfShowCurrentIndex >= 0 ? (
-                                    <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        {compactRunOfShowCurrentIndex + 1} of {compactRunOfShowItems.length}
-                                    </span>
-                                ) : null}
-                            </div>
-                            {!compactRunOfShowDense ? (
-                                <>
-                                    <div className="mt-2 text-[13px] text-zinc-300">
-                                        {runOfShowHudState.detail}
-                                    </div>
-                                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                                        <span>Total show {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
-                                        <span>{compactRunOfShowItems.length} sequence{compactRunOfShowItems.length === 1 ? '' : 's'}</span>
-                                        {runOfShowEnabled ? <span>Live mode</span> : <span>Not live yet</span>}
-                                    </div>
-                                </>
-                            ) : (
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
-                                    <span>{formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}</span>
-                                    <span>{compactRunOfShowItems.length} slots</span>
-                                    {runOfShowEnabled ? <span>Live</span> : <span>Draft</span>}
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {runOfShowPrimaryAction?.label ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        runOfShowPrimaryAction.onClick();
-                                    }}
-                                    disabled={runOfShowPrimaryAction.disabled}
-                                    className={`${styles.btnStd} ${runOfShowPrimaryAction.className} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em] disabled:opacity-40`}
-                                >
-                                    {runOfShowPrimaryAction.label}
-                                </button>
-                            ) : null}
-                            {typeof onOpenShowWorkspace === 'function' && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onOpenShowWorkspace();
-                                    }}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
-                                >
-                                    {compactRunOfShowDense ? 'Open Show' : 'Show Workspace'}
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => setCompactRunOfShowCollapsed((prev) => !prev)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
-                            >
-                                {compactRunOfShowCollapsed
-                                    ? (compactRunOfShowDense ? 'Show Bar' : 'Show Timeline')
-                                    : (compactRunOfShowDense ? 'Hide Bar' : 'Hide Timeline')}
-                            </button>
-                            {runOfShowEnabled && typeof onRewindRunOfShow === 'function' ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onRewindRunOfShow();
-                                    }}
-                                    disabled={compactRunOfShowItems.length < 2}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em]`}
-                                >
-                                    Previous
-                                </button>
-                            ) : null}
-                            {runOfShowEnabled && typeof onStopRunOfShow === 'function' ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        onStopRunOfShow();
-                                    }}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} shrink-0 ${compactRunOfShowDense ? 'px-2.5 py-1 text-[10px]' : 'px-3 py-1.5 text-[11px]'} normal-case tracking-[0.04em] disabled:opacity-40`}
-                                >
-                                    Stop Show
-                                </button>
-                            ) : null}
-                        </div>
-                    </div>
-                    {!compactRunOfShowCollapsed && compactRunOfShowDense ? (
-                        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
-                            {compactRunOfShowItems.map((item) => (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => {
-                                        if (typeof onTriggerRunOfShowItem === 'function') {
-                                            onTriggerRunOfShowItem(item.id);
-                                            return;
-                                        }
-                                        if (typeof onFocusRunOfShowItem === 'function') {
-                                            onFocusRunOfShowItem(item.id);
-                                            return;
-                                        }
-                                        onOpenShowWorkspace?.();
-                                    }}
-                                    className={`min-w-[138px] max-w-[170px] shrink-0 rounded-xl border px-2.5 py-2 text-left transition hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_20px_rgba(16,185,129,0.14)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.3),0_0_16px_rgba(14,165,233,0.1)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.24)]' : ''}`}
-                                >
-                                    <div className="flex items-center gap-2">
-                                        {item.artworkUrl ? (
-                                            <div className={`h-8 w-8 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
-                                                <img src={item.artworkUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                                            </div>
-                                        ) : (
-                                            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
-                                                <i className={`fa-solid ${item.iconClass} text-xs`}></i>
-                                            </div>
-                                        )}
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center justify-between gap-1.5">
-                                                <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${item.statusToneClass}`}>
-                                                    {item.badgeLabel}
-                                                </span>
-                                                <span className="text-[9px] uppercase tracking-[0.12em] text-zinc-300">{item.durationLabel}</span>
-                                            </div>
-                                            <div className={`mt-1 truncate text-[12px] font-black leading-tight ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : !compactRunOfShowCollapsed ? (
-                        <div className="mt-3 flex gap-2.5 overflow-x-auto pb-1.5 custom-scrollbar">
-                            {compactRunOfShowItems.map((item) => (
-                                <button
-                                    key={item.id}
-                                    type="button"
-                                    onClick={() => {
-                                        if (typeof onTriggerRunOfShowItem === 'function') {
-                                            onTriggerRunOfShowItem(item.id);
-                                            return;
-                                        }
-                                        if (typeof onFocusRunOfShowItem === 'function') {
-                                            onFocusRunOfShowItem(item.id);
-                                            return;
-                                        }
-                                        onOpenShowWorkspace?.();
-                                    }}
-                                    className={`min-w-[196px] max-w-[244px] shrink-0 rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300/35 ${item.cardToneClass} ${item.isLive ? 'shadow-[0_0_0_1px_rgba(52,211,153,0.35),0_0_24px_rgba(16,185,129,0.16)]' : item.isStaged ? 'shadow-[0_0_0_1px_rgba(56,189,248,0.32),0_0_20px_rgba(14,165,233,0.12)]' : item.isNext ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.28)]' : ''}`}
-                                >
-                                    <div className="flex items-start gap-2.5">
-                                        {item.artworkUrl ? (
-                                            <div className={`h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${item.isComplete ? 'grayscale' : ''}`}>
-                                                <img src={item.artworkUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
-                                            </div>
-                                        ) : (
-                                            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/30 ${item.isComplete ? 'text-zinc-500' : 'text-zinc-200'}`}>
-                                                <i className={`fa-solid ${item.iconClass}`}></i>
-                                            </div>
-    )}
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${item.statusToneClass}`}>
-                                                    {item.badgeLabel}
-                                                </span>
-                                                <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200">
-                                                    {item.durationLabel}
-                                                </span>
-                                            </div>
-                                            <div className={`mt-1.5 line-clamp-2 text-[13px] font-black leading-snug ${item.isComplete ? 'text-zinc-400' : 'text-white'}`}>{item.title}</div>
-                                            {item.summary ? <div className={`mt-1 line-clamp-2 text-[12px] ${item.isComplete ? 'text-zinc-500' : 'text-zinc-300'}`}>{item.summary}</div> : null}
-                                            <div className={`mt-1.5 text-[10px] uppercase tracking-[0.16em] ${item.isComplete ? 'text-zinc-600' : 'text-zinc-400'}`}>{item.detail}</div>
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full border border-cyan-300/22 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                                {compactRunOfShowItems.length} slots
-                            </span>
-                            <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                {formatRunOfShowTotalDuration(compactRunOfShowTotalDurationSec)}
-                            </span>
-                            <span className="text-xs text-zinc-400">
-                                {runOfShowEnabled
-                                    ? (compactRunOfShowItems[compactRunOfShowCurrentIndex]?.title
-                                        ? `Focused on ${compactRunOfShowItems[compactRunOfShowCurrentIndex].title}`
-                                        : 'Live show ready')
-                                    : (compactRunOfShowItems[0]?.title ? `Starts with ${compactRunOfShowItems[0].title}` : 'Timeline ready')}
-                            </span>
-                            {runOfShowQaStatusDetail ? <span className="text-xs text-zinc-500">{runOfShowQaStatusDetail}</span> : null}
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
     </div>
     );
 };

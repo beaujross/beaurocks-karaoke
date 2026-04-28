@@ -88,10 +88,24 @@ test("Host chrome routes live automation access back into the queue tab", () => 
   const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
   assert.match(chromeSource, /data-feature-id="deck-open-queue-controls"/);
+  assert.match(chromeSource, /data-feature-id="deck-crowd-pulse"/);
+  assert.match(chromeSource, /Crowd Pulse/);
   assert.match(chromeSource, /Queue Controls/);
   assert.match(chromeSource, /roomReadinessStatusLabel = 'Room'/);
   assert.match(chromeSource, /fa-solid fa-rocket/);
-  assert.match(chromeSource, /Launching\.\.\.' : 'Launch'/);
+  assert.match(chromeSource, /Launch TV/);
+  assert.match(chromeSource, /Launch Mobile/);
+  assert.match(chromeSource, /Print Guides/);
+  assert.match(chromeSource, /data-feature-id="launch-audience-poster"/);
+  assert.match(chromeSource, /data-feature-id="launch-cohost-poster"/);
+  assert.match(chromeSource, /data-feature-id="launch-host-walkthrough"/);
+  assert.match(chromeSource, /Audience Poster/);
+  assert.match(chromeSource, /Co-Host Poster/);
+  assert.match(chromeSource, /Host Walkthrough/);
+  assert.match(chromeSource, /\/print\/aahf-audience-guide\.html/);
+  assert.match(chromeSource, /\/print\/cohost-guide\.html/);
+  assert.match(chromeSource, /\/print\/aahf-host-walkthrough\.html/);
+  assert.doesNotMatch(chromeSource, /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/);
   assert.doesNotMatch(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
   assert.doesNotMatch(chromeSource, /Auto DJ Queue/);
   assert.match(hostSource, /onOpenQueueControls=\{focusQueueLiveControls\}/);
@@ -252,6 +266,17 @@ test("Host-facing moment language uses sting instead of cue where it would colli
   assert.match(hostSource, /Next up sting fired/);
   assert.doesNotMatch(directorPanelSource, /Scene Cue/);
   assert.doesNotMatch(chromeSource, /Cue live/);
+});
+
+test("Host top chrome does not duplicate the run-of-show bar once queue tabs own that surface", () => {
+  const chromeSource = readFileSync(hostTopChromePath, "utf8");
+  const liveOpsSource = readFileSync(hostQueueTabPath, "utf8");
+
+  assert.doesNotMatch(chromeSource, /text-\[10px\] uppercase tracking-\[0\.26em\] text-cyan-200\/80">Run Of Show</);
+  assert.doesNotMatch(chromeSource, /compactRunOfShowItems\.length > 0/);
+  assert.match(liveOpsSource, /queue-surface-tab-add-desktop/);
+  assert.match(liveOpsSource, /queue-surface-tab-queue-desktop/);
+  assert.match(liveOpsSource, /queue-surface-tab-show-desktop/);
 });
 
 test("Host stage auto-end duration sync updates room metadata, not only the queue document", () => {

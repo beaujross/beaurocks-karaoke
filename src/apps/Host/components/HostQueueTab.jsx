@@ -319,6 +319,7 @@ const startQueueSongOnStage = async ({
       singAlongMode: false,
       videoPlaying: false,
       videoStartTimestamp: null,
+      pausedAt: null,
       currentPerformanceMeta: {
         songId: safeSongId,
         startedAtMs: performanceStartedAtMs,
@@ -345,6 +346,7 @@ const startQueueSongOnStage = async ({
       singAlongMode: false,
       videoPlaying: autoStartMedia && !!songMediaUrl,
       videoStartTimestamp: autoStartMedia ? performanceStartedAtMs : null,
+      pausedAt: null,
       currentPerformanceMeta: {
         songId: safeSongId,
         startedAtMs: performanceStartedAtMs,
@@ -2234,6 +2236,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     currentPerformanceSession: null,
                     singAlongMode: false,
                     videoPlaying: false,
+                    videoStartTimestamp: null,
+                    pausedAt: null,
                     showLyricsTv: false,
                     showVisualizerTv: false,
                     showLyricsSinger: false,
@@ -2570,6 +2574,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             videoStartTimestamp: room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp,
             pausedAt: room?.pausedAt,
             performanceMetaSongId: room?.currentPerformanceMeta?.songId,
+            performanceSessionSongId: room?.currentPerformanceSession?.songId,
             performanceSessionState: room?.currentPerformanceSession?.playbackState,
             performanceSessionSourceType: room?.currentPerformanceSession?.sourceType,
             performanceSessionLastHeartbeatAtMs: room?.currentPerformanceSession?.lastHeartbeatAtMs,
@@ -2802,7 +2807,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
 
     useEffect(() => {
-        if (!hasRunOfShowQueueHud && desktopQueueSurfaceTab !== 'queue') {
+        if (!hasRunOfShowQueueHud && desktopQueueSurfaceTab === 'show') {
             setDesktopQueueSurfaceTab('queue');
         }
     }, [desktopQueueSurfaceTab, hasRunOfShowQueueHud]);
@@ -3563,21 +3568,33 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
         <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
-            {hasRunOfShowQueueHud ? (
-                <div className="border-b border-white/10 bg-black/20 px-3 py-3">
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
-                        <button
-                            type="button"
-                            onClick={() => setDesktopQueueSurfaceTab('queue')}
-                            data-feature-id="queue-surface-tab-queue-desktop"
-                            className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                                desktopQueueSurfaceTab === 'queue'
-                                    ? 'bg-cyan-500/15 text-cyan-100'
-                                    : 'text-zinc-300 hover:text-white'
-                            }`}
-                        >
-                            Queue
-                        </button>
+            <div className="border-b border-white/10 bg-black/20 px-3 py-3">
+                <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
+                    <button
+                        type="button"
+                        onClick={() => setDesktopQueueSurfaceTab('add')}
+                        data-feature-id="queue-surface-tab-add-desktop"
+                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                            desktopQueueSurfaceTab === 'add'
+                                ? 'bg-cyan-500/15 text-cyan-100'
+                                : 'text-zinc-300 hover:text-white'
+                        }`}
+                    >
+                        Add To Queue
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setDesktopQueueSurfaceTab('queue')}
+                        data-feature-id="queue-surface-tab-queue-desktop"
+                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+                            desktopQueueSurfaceTab === 'queue'
+                                ? 'bg-cyan-500/15 text-cyan-100'
+                                : 'text-zinc-300 hover:text-white'
+                        }`}
+                    >
+                        Current Queue
+                    </button>
+                    {hasRunOfShowQueueHud ? (
                         <button
                             type="button"
                             onClick={() => setDesktopQueueSurfaceTab('show')}
@@ -3595,10 +3612,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 </span>
                             ) : null}
                         </button>
-                    </div>
+                    ) : null}
                 </div>
-            ) : null}
-            {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud ? runOfShowQueueHudSection : queueListSection}
+            </div>
+            {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud
+                ? runOfShowQueueHudSection
+                : desktopQueueSurfaceTab === 'add'
+                    ? <div className="flex-1 overflow-y-auto custom-scrollbar">{addToQueueSection}</div>
+                    : queueListSection}
         </div>
     ) : null;
     const compactQueueStatusChips = [
@@ -3835,7 +3856,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     ? 'flex flex-col gap-3'
                     : isTightLayout
                         ? 'grid grid-cols-[minmax(280px,1.02fr)_minmax(360px,1fr)] gap-5'
-                        : 'grid grid-cols-[minmax(280px,0.9fr)_minmax(360px,1fr)_minmax(360px,1fr)] gap-5'
+                        : 'grid grid-cols-[minmax(280px,0.9fr)_minmax(760px,1.75fr)] gap-5'
             } overflow-hidden`}>
             {/* LEFT CONTROLS */}
             <div className={`w-full flex flex-col ${
@@ -4003,12 +4024,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {queueSurface.isCompactQueueSurface ? (
                 compactQueueSurfacePanel
             ) : (
-                <>
-                    <div className={`${STYLES.panel} min-h-0 overflow-y-auto custom-scrollbar`}>
-                        {addToQueueSection}
-                    </div>
-                    {desktopQueueSurfacePanel}
-                </>
+                desktopQueueSurfacePanel
             )}
             </div>
         </div>

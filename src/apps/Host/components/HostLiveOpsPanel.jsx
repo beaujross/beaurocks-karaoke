@@ -71,7 +71,6 @@ export default function HostLiveOpsPanel({
     runOfShowLiveItem = null,
     runOfShowFlightedItem = null,
     runOfShowOnDeckItem = null,
-    crowdPulse = null,
     coHostSignals = [],
     onTogglePlay,
     onEndPerformance,
@@ -85,7 +84,6 @@ export default function HostLiveOpsPanel({
     const hasLiveScene = !!runOfShowLiveItem?.id;
     const flightedScene = runOfShowFlightedItem?.id ? runOfShowFlightedItem : null;
     const onDeckScene = runOfShowOnDeckItem?.id ? runOfShowOnDeckItem : null;
-    const crowdPulseMetrics = crowdPulse?.metrics || {};
 
     const nowCard = hasCurrentPerformance
         ? {
@@ -147,12 +145,6 @@ export default function HostLiveOpsPanel({
                 : 'border-white/10 bg-black/20 text-zinc-200'
     };
 
-    const recommendationTitle = String(crowdPulse?.recommendationTitle || '').trim() || 'Host is steering the room';
-    const recommendationDetail = String(crowdPulse?.recommendationDetail || '').trim()
-        || (nextQueueSong
-            ? 'Queue has a ready singer. Keep the room moving unless you need a deliberate reset.'
-            : 'Queue is thin. Prep a quick reset or open the conveyor for a short scene.');
-
     return (
         <section
             data-feature-id="host-live-ops-panel"
@@ -175,26 +167,6 @@ export default function HostLiveOpsPanel({
                 <LaneCard {...nowCard} />
                 <LaneCard {...nextCard} />
                 <LaneCard {...conveyorCard} />
-            </div>
-
-            <div className={`mt-3 rounded-2xl border px-3 py-3 ${crowdPulse?.panelClass || 'border-white/10 bg-black/20'}`}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Crowd Pulse</div>
-                            <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${crowdPulse?.chipClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                                {crowdPulse?.label || 'No signal'}
-                            </span>
-                        </div>
-                        <div className="mt-1 text-sm font-semibold text-white">{recommendationTitle}</div>
-                        <div className="mt-1 text-xs text-zinc-300">{recommendationDetail}</div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
-                        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">{Number(crowdPulseMetrics.livePhonePct || 0)}% live</span>
-                        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">{Number(crowdPulseMetrics.engagedAudiencePct || 0)}% engaged</span>
-                        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1">{Number(crowdPulseMetrics.recentAudienceActionCount || 0)} actions</span>
-                    </div>
-                </div>
             </div>
 
             <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">

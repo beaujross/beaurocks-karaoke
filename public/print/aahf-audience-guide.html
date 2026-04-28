@@ -136,7 +136,7 @@
       display: grid;
       grid-template-columns: 1fr 0.98fr;
       gap: 20px;
-      padding: 20px 34px 16px;
+      padding: 20px 34px 14px;
       align-items: start;
     }
 
@@ -270,7 +270,37 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
-      padding: 0 34px 16px;
+      padding: 0 34px 14px;
+    }
+
+    .fact-card {
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 16px 18px;
+    }
+
+    .fact-kicker {
+      margin: 0 0 8px;
+      color: var(--festival-deep);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .fact-title {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .fact-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.4;
     }
 
     .mini-card {
@@ -303,10 +333,10 @@
     .visual-card img {
       display: block;
       width: 100%;
-      height: 174px;
+      height: 150px;
       object-fit: contain;
       background: linear-gradient(180deg, #101828 0%, #1f2937 100%);
-      padding: 10px;
+      padding: 8px;
     }
 
     .visual-body {
@@ -359,7 +389,7 @@
             <p class="eyebrow">AAHF Festival Karaoke Kick-Off</p>
             <h1>Scan. Join. Tap Songs.</h1>
             <p class="subtitle">
-              Direct to room AAHF. Fast to search. Clear to queue.
+              Open karaoke queue. Bonus points all night. Any live vote shows up right on your phone.
             </p>
           </div>
         </div>
@@ -374,7 +404,7 @@
 
     <section class="main">
       <div class="panel">
-        <h2 class="panel-title">Tonight's path</h2>
+        <h2 class="panel-title">How tonight works</h2>
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
@@ -388,7 +418,7 @@
             <div class="step-num">2</div>
             <div>
               <p class="step-title">Pick emoji + name</p>
-              <p class="step-copy">Use the name the host will recognize. Clear the quick continue step.</p>
+              <p class="step-copy">No BeauRocks email is required tonight. Use the name the host will recognize.</p>
             </div>
           </div>
 
@@ -396,7 +426,7 @@
             <div class="step-num">3</div>
             <div>
               <p class="step-title">Tap Songs. Search.</p>
-              <p class="step-copy">Send the request, then watch the queue.</p>
+              <p class="step-copy">Send the request, then watch the queue and stay ready when you get close.</p>
             </div>
           </div>
         </div>
@@ -408,9 +438,29 @@
           <img src="./aahf-kickoff-join-qr.svg" alt="QR code for the BeauRocks AAHF room join" />
         </div>
         <div class="join-url">app.beaurocks.app</div>
-        <p class="sub-copy">If you see a code field, enter <strong>AAHF</strong>.</p>
+        <p class="sub-copy">If you see a code field, enter <strong>AAHF</strong>. Support is optional and stays separate from karaoke join.</p>
         <img class="beau-logo" src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="Powered by BeauRocks" />
         <div class="beau-note">Powered by BeauRocks</div>
+      </div>
+    </section>
+
+    <section class="mini-band">
+      <div class="fact-card">
+        <p class="fact-kicker">Queue Format</p>
+        <h3 class="fact-title">Open request night</h3>
+        <p class="fact-copy">Guests send requests from Songs. The host approves and calls singers from the live queue.</p>
+      </div>
+
+      <div class="fact-card">
+        <p class="fact-kicker">Points Tonight</p>
+        <h3 class="fact-title">200 to start</h3>
+        <p class="fact-copy">Active guests get <strong>+25</strong> every <strong>10 min</strong>, capped at <strong>+150</strong>. Bonus drops can add more.</p>
+      </div>
+
+      <div class="fact-card">
+        <p class="fact-kicker">Votes + Winners</p>
+        <h3 class="fact-title">Only when host opens them</h3>
+        <p class="fact-copy">There is no all-night crowd vote running by default. If a live vote opens, it appears on your phone. Winners are host-announced moments.</p>
       </div>
     </section>
 
@@ -419,7 +469,7 @@
         <img src="./screenshots/singer-join.png" alt="AAHF room join screen" />
         <div class="visual-body">
           <h3 class="visual-title">Join</h3>
-          <p class="visual-copy">Emoji. Name. Go.</p>
+          <p class="visual-copy">Emoji. Name. No email gate.</p>
         </div>
       </div>
 
@@ -427,7 +477,7 @@
         <img src="./screenshots/singer-party.png" alt="AAHF party tab screen" />
         <div class="visual-body">
           <h3 class="visual-title">Party</h3>
-          <p class="visual-copy">Room status first.</p>
+          <p class="visual-copy">Room status. Queue watch.</p>
         </div>
       </div>
 
@@ -435,7 +485,7 @@
         <img src="./screenshots/singer-browse.png" alt="AAHF browse and request screen" />
         <div class="visual-body">
           <h3 class="visual-title">Songs</h3>
-          <p class="visual-copy">Search. Add. Queue.</p>
+          <p class="visual-copy">Search. Add. Stay ready.</p>
         </div>
       </div>
     </section>

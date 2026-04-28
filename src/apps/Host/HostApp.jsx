@@ -16034,6 +16034,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onRewindRunOfShow={rewindRunOfShowPrevious}
                     onToggleRunOfShowAutomationPause={toggleRunOfShowAutomationPause}
                     runOfShowFocusMode={tab === 'run_of_show'}
+                    crowdPulse={crowdPulse}
                     activeMomentFeedback={activeMomentFeedback}
                 />
                 {showModerationInbox ? (

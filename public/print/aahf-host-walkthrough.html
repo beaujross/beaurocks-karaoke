@@ -261,6 +261,48 @@
       margin-top: 18px;
     }
 
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .settings-card {
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 18px 20px;
+    }
+
+    .settings-kicker {
+      margin: 0 0 8px;
+      color: var(--festival-deep);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .settings-title {
+      margin: 0 0 8px;
+      font-size: 24px;
+      line-height: 1.04;
+      letter-spacing: -0.03em;
+    }
+
+    .settings-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .settings-list li {
+      margin-bottom: 8px;
+      font-size: 15px;
+      line-height: 1.4;
+      color: var(--ink);
+    }
+
     .mini-card {
       border-radius: 20px;
       border: 1px solid var(--line);
@@ -383,6 +425,57 @@
             <h3 class="story-title">The host keeps approvals, timing, and room state coherent</h3>
             <p class="story-copy">The host workspace now keeps live lane, add to queue, current queue, and run of show in one tighter operating surface.</p>
           </div>
+        </article>
+      </div>
+
+      <h2 class="section-title">AAHF settings to verify before doors</h2>
+      <p class="section-copy">
+        These are the live room assumptions behind the audience poster. If they change, the guest explanation should change too.
+      </p>
+
+      <div class="settings-grid">
+        <article class="settings-card">
+          <p class="settings-kicker">Guest Access</p>
+          <h3 class="settings-title">Simple join stays on</h3>
+          <ul class="settings-list">
+            <li>Audience shell should stay <strong>streamlined</strong>.</li>
+            <li>Join path should stay <strong>app.beaurocks.app/?room=AAHF</strong>.</li>
+            <li>No BeauRocks email should be required at join.</li>
+            <li>Custom emoji and premium reactions should stay <strong>open</strong>.</li>
+          </ul>
+        </article>
+
+        <article class="settings-card">
+          <p class="settings-kicker">Points Tonight</p>
+          <h3 class="settings-title">Friendly refill economy</h3>
+          <ul class="settings-list">
+            <li>Join credits: <strong>200</strong>.</li>
+            <li>Active-room refill: <strong>+25 every 10 min</strong>.</li>
+            <li>Per-guest refill cap: <strong>150</strong>.</li>
+            <li>Reaction cooldown: <strong>0.9 sec</strong>.</li>
+          </ul>
+        </article>
+
+        <article class="settings-card">
+          <p class="settings-kicker">Support + Promos</p>
+          <h3 class="settings-title">Optional, not blocking</h3>
+          <ul class="settings-list">
+            <li>Support CTA should stay <strong>Support AAHF Festival</strong>.</li>
+            <li>Support should remain optional, never the join gate.</li>
+            <li>Website check-in bonus: <strong>+150</strong>.</li>
+            <li>Social promo bonus: <strong>+250</strong>.</li>
+          </ul>
+        </article>
+
+        <article class="settings-card">
+          <p class="settings-kicker">Voting + Winners</p>
+          <h3 class="settings-title">Not always-on tonight</h3>
+          <ul class="settings-list">
+            <li>Run of show template is loaded, but <strong>not live</strong>.</li>
+            <li>There is no all-night crowd vote running by default.</li>
+            <li>Votes only appear when the host opens a live room moment.</li>
+            <li>Winner reveals are host-run moments, not automatic after every song.</li>
+          </ul>
         </article>
       </div>
     </div>
