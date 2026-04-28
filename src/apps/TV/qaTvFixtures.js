@@ -1,8 +1,19 @@
 export const FIXED_QA_TV_NOW_MS = 1763503200000;
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+const GENERIC_LOGO_URL = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
 
 export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
+    {
+        id: 'generic-preview-intro',
+        roomCode: 'DEMOBR',
+        expectedTexts: ['Preview Mode', 'Intro', 'Welcome To BeauRocks'],
+    },
+    {
+        id: 'generic-live-announcement',
+        roomCode: 'DEMOBR',
+        expectedTexts: ['House Announcement', 'Karaoke Starts In Five', 'Show graphics live on Public TV'],
+    },
     {
         id: 'preview-intro',
         roomCode: 'DEMOAAHF',
@@ -25,7 +36,7 @@ export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
     },
 ]);
 
-const buildBaseRoom = (roomCode = 'DEMOAAHF') => ({
+const buildBaseRoom = (roomCode = 'DEMOAAHF', overrides = {}) => ({
     activeMode: 'karaoke',
     hostName: 'AAHF Host',
     roomCode,
@@ -39,11 +50,67 @@ const buildBaseRoom = (roomCode = 'DEMOAAHF') => ({
         secondaryColor: '#F4C94A',
         accentColor: '#8F2D2A',
     },
+    ...overrides,
 });
 
 export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_TV_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
     const room = buildBaseRoom(roomCode);
+    const genericRoom = buildBaseRoom(roomCode, {
+        hostName: 'BeauRocks Host',
+        roomCode,
+        eventProfileId: '',
+        eventProfileLabel: 'BeauRocks Night',
+        logoUrl: GENERIC_LOGO_URL,
+        audienceBrandTheme: {
+            appTitle: 'BeauRocks Karaoke',
+            primaryColor: '#00C4D9',
+            secondaryColor: '#FF7AC8',
+            accentColor: '#15091f',
+        },
+    });
+
+    if (safeId === 'generic-preview-intro') {
+        return {
+            started: true,
+            room: {
+                ...genericRoom,
+                tvPreviewOverlay: {
+                    active: true,
+                    preview: true,
+                    itemId: 'intro_generic_1',
+                    type: 'intro',
+                    title: 'Introductions',
+                    headline: 'Welcome To BeauRocks',
+                    subhead: 'Generic house open before any event-specific festival theming is applied.',
+                    summary: 'House intro | room rules | first singer up',
+                    accentTheme: 'cyan',
+                    takeoverScene: 'intro',
+                    durationSec: 12,
+                    startedAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 4000,
+                    options: ['Host intro', 'Crowd framing', 'First mic up'],
+                },
+            },
+        };
+    }
+
+    if (safeId === 'generic-live-announcement') {
+        return {
+            started: true,
+            room: {
+                ...genericRoom,
+                announcement: {
+                    active: true,
+                    type: 'announcement',
+                    takeoverScene: 'announcement',
+                    headline: 'Karaoke Starts In Five',
+                    subhead: 'Default BeauRocks announcement styling before a festival profile takes over the room.',
+                    accentTheme: 'cyan',
+                    startedAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 2000,
+                },
+            },
+        };
+    }
 
     if (safeId === 'preview-intro') {
         return {
@@ -57,8 +124,8 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                     type: 'intro',
                     title: 'Introductions',
                     headline: 'Welcome To AAHF',
-                    subhead: 'Introductions, room framing, and a clean handoff into the first performer.',
-                    summary: 'Host open | room rules | spotlight up',
+                    subhead: 'Festival welcome, first requests in motion, and a clean handoff into the first singer.',
+                    summary: 'Festival welcome | room cue | spotlight up',
                     accentTheme: 'amber',
                     takeoverScene: 'intro',
                     durationSec: 12,
@@ -103,7 +170,7 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                     type: 'announcement',
                     takeoverScene: 'announcement',
                     headline: 'Talent Showcase Starts In Five',
-                    subhead: 'Public TV takeover is active and background music should stay ducked until the host clears this block.',
+                    subhead: 'AAHF goes full-screen here while the next live moment gets set for the room.',
                     accentTheme: 'cyan',
                     startedAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 2000,
                 },
@@ -121,7 +188,7 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                     type: 'closing',
                     takeoverScene: 'closing',
                     headline: 'Thank You For Singing',
-                    subhead: 'Close the night with final thanks, links, and the next room callout.',
+                    subhead: 'Send the room out on a thank-you beat and point them to the next AAHF moment.',
                     accentTheme: 'amber',
                     startedAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1500,
                 },

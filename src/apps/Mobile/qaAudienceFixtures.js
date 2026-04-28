@@ -161,7 +161,10 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'classic-home',
     'streamlined-home',
     'streamlined-aahf-home',
+    'streamlined-aahf-browse',
+    'streamlined-aahf-queue',
     'streamlined-aahf-join',
+    'streamlined-aahf-rules',
     'streamlined-aahf-join-about',
     'streamlined-aahf-join-access',
     'cohost-song-faceoff',
@@ -201,8 +204,38 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
         };
     }
 
+    if (safeId === 'streamlined-aahf-browse') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            tab: 'request',
+            songsTab: 'browse',
+        };
+    }
+
+    if (safeId === 'streamlined-aahf-queue') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            tab: 'request',
+            songsTab: 'queue',
+        };
+    }
+
     if (safeId === 'streamlined-aahf-join') {
         return buildAahfJoinFixture({ roomCode });
+    }
+
+    if (safeId === 'streamlined-aahf-rules') {
+        return {
+            ...buildAahfJoinFixture({ roomCode }),
+            termsAccepted: false,
+            showRulesModal: true,
+            form: {
+                name: 'Taylor',
+                emoji: '🎤',
+            },
+        };
     }
 
     if (safeId === 'streamlined-aahf-join-about') {

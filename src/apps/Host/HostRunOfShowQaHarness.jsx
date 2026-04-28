@@ -60,6 +60,11 @@ export default function HostRunOfShowQaHarness({ fixtureId = 'run-of-show-consol
 
                 <RunOfShowDirectorPanel
                     enabled={enabled}
+                    roomCode={roomCode}
+                    eventProfileId={String(initialRoom.eventProfileId || '')}
+                    eventProfileLabel={String(initialRoom.eventProfileLabel || '')}
+                    logoUrl={String(initialRoom.logoUrl || '')}
+                    audienceBrandTheme={initialRoom.audienceBrandTheme || null}
                     programMode={programMode}
                     director={director}
                     runOfShowPolicy={runOfShowPolicy}

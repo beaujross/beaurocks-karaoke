@@ -4,6 +4,7 @@ import { normalizeAudienceBrandTheme } from '../../lib/audienceBrandTheme.js';
 export const FIXED_QA_HOST_NOW_MS = 1763503200000;
 export const QA_AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
+const GENERIC_LOGO_URL = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
 const QA_DREAMS_ART_URL = '/images/marketing/audience-surface-live.png';
 const QA_VALERIE_ART_URL = '/images/marketing/app-landing-live.png';
 const QA_SINCE_U_BEEN_GONE_ART_URL = '/images/marketing/tv-surface-live.png';
@@ -13,8 +14,19 @@ export const QA_AAHF_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
     secondaryColor: '#F4C94A',
     accentColor: '#8F2D2A',
 });
+export const QA_GENERIC_AUDIENCE_BRAND_THEME = normalizeAudienceBrandTheme({
+    appTitle: 'BeauRocks Karaoke',
+    primaryColor: '#00C4D9',
+    secondaryColor: '#FF7AC8',
+    accentColor: '#15091f',
+});
 
 export const QA_HOST_SCENARIOS = Object.freeze([
+    {
+        id: 'run-of-show-console-generic',
+        roomCode: 'DEMOBR',
+        expectedTexts: ['Run Of Show Director', 'Now', 'Next', 'Apply For A Slot']
+    },
     {
         id: 'run-of-show-console',
         roomCode: 'DEMOAAHF',
@@ -127,7 +139,7 @@ const buildDirector = (nowMs = FIXED_QA_HOST_NOW_MS) => createDefaultRunOfShowDi
     ]
 }, nowMs);
 
-const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS) => ({
+const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS, overrides = {}) => ({
     roomCode,
     settingsTab: 'general',
     room: {
@@ -171,7 +183,8 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS) =
         tvPreviewOverlay: {
             active: true,
             itemId: 'perf_next'
-        }
+        },
+        ...overrides,
     },
     songs: [
         { id: 'queue_1', title: 'Dreams', singer: 'Alex Rivers', status: 'queued' }
@@ -257,6 +270,20 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS) =
 
 export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
+    if (safeId === 'run-of-show-console-generic') {
+        return {
+            ...buildBaseFixture(roomCode, nowMs, {
+                hostName: 'BeauRocks Host',
+                eventProfileId: '',
+                eventProfileLabel: 'BeauRocks Night',
+                logoUrl: GENERIC_LOGO_URL,
+                lobbyOrbSkinUrl: GENERIC_LOGO_URL,
+                audienceBrandTheme: QA_GENERIC_AUDIENCE_BRAND_THEME,
+            }),
+            roomCode,
+            tab: 'run_of_show',
+        };
+    }
     if (safeId === 'run-of-show-console') {
         return {
             ...buildBaseFixture(roomCode, nowMs),

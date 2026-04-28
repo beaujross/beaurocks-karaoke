@@ -62,7 +62,7 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intro',
                 headline: 'AAHF Karaoke Kick-Off',
-                subhead: 'Doors at 7, phones out, first singers up, and explicit lyrics stay after 9 PM.',
+                subhead: 'AAHF opens at 7. Scan in, line up your first request, and keep explicit picks for after 9 PM.',
                 accentTheme: 'fuchsia'
             },
             audioPlan: {
@@ -81,8 +81,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'how_to_play',
-                headline: 'Phones out. Scan. Request.',
-                subhead: 'Quick onboarding pass before the early set, with explicit lyrics opening after 9 PM.',
+                headline: 'Scan in. Join AAHF. Sing next.',
+                subhead: 'Late arrivals can jump straight into the app and land on song search before the next singer starts.',
                 accentTheme: 'cyan'
             }
         }, now + 1),
@@ -105,8 +105,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'would_you_rather_break',
-                headline: 'Crowd vote break',
-                subhead: 'Reset the room between singers without falling back to pop-up trivia.',
+                headline: 'Pick the next room mood',
+                subhead: 'One fast room vote before the next singer hits.',
                 accentTheme: 'emerald'
             }
         }, now + 4),
@@ -134,8 +134,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'trivia_break',
-                headline: 'Full-screen trivia break',
-                subhead: 'Keep the room engaged while the next singer gets to the stage.',
+                headline: 'Quick crowd break',
+                subhead: 'Keep the room warm while the next singer steps up.',
                 accentTheme: 'violet'
             }
         }, now + 7),
@@ -146,8 +146,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'tipping',
-                headline: 'Support the AAHF kick-off',
-                subhead: 'Fuel the room before the next run starts.',
+                headline: 'Keep AAHF singing',
+                subhead: 'Back the kick-off while the next singer gets set.',
                 accentTheme: 'pink'
             },
             audioPlan: {
@@ -188,8 +188,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'selfie_cam',
-                headline: 'Selfie Cam goes live',
-                subhead: 'Turn the room into the spotlight before round two.',
+                headline: 'Selfie Cam spotlight',
+                subhead: 'Catch the room on camera before round two lifts off.',
                 accentTheme: 'amber'
             }
         }, now + 11),
@@ -200,8 +200,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intermission',
-                headline: 'Take five',
-                subhead: 'Refresh drinks, queue up, and get ready for round two.',
+                headline: 'Take five. Stay loud.',
+                subhead: 'Refresh, reload the queue, and come back ready for round two.',
                 accentTheme: 'violet'
             },
             audioPlan: {
@@ -243,8 +243,8 @@ export const buildAahfKickoffStarterTemplate = (now = Date.now()) => {
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'closing',
-                headline: 'Thanks for singing',
-                subhead: 'Wrap the room cleanly and point guests to the next AAHF beat.',
+                headline: 'AAHF, thank you',
+                subhead: 'One more cheer, then carry this energy to the next AAHF moment.',
                 accentTheme: 'fuchsia'
             },
             audioPlan: {

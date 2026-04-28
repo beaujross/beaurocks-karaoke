@@ -44,6 +44,7 @@ import {
     buildRunOfShowBufferPlan,
     buildRunOfShowGeneratorSeedFromMissionControl,
 } from '../runOfShowAutopilot';
+import { normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../../lib/audienceBrandTheme';
 
 const ITEM_TYPE_OPTIONS = RUN_OF_SHOW_ITEM_TYPES
     .filter((type) => type !== 'trivia_break')
@@ -314,7 +315,7 @@ const MOMENT_PACKS = Object.freeze([
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'intro',
                 headline: 'AAHF Karaoke Kick-Off',
-                subhead: 'Doors at 7, first singers up early, and explicit lyrics stay after 9 PM.',
+                subhead: 'AAHF opens at 7. Scan in, line up your first request, and keep explicit picks for after 9 PM.',
                 accentTheme: 'fuchsia'
             }
         }
@@ -386,7 +387,7 @@ const MOMENT_PACKS = Object.freeze([
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'selfie_cam',
-                headline: 'Selfie Cam goes live',
+                headline: 'Selfie Cam spotlight',
                 subhead: 'Hand the spotlight to the crowd before the next singer starts.',
                 accentTheme: 'amber'
             }
@@ -455,8 +456,8 @@ const MOMENT_PACKS = Object.freeze([
             presentationPlan: {
                 publicTvTakeoverEnabled: true,
                 takeoverScene: 'how_to_play',
-                headline: 'Phones out. Scan. Request.',
-                subhead: 'Quick onboarding beat for late arrivals before the next song.',
+                headline: 'Scan in. Join AAHF. Sing next.',
+                subhead: 'Late arrivals can jump straight into the app and land on song search before the next singer starts.',
                 accentTheme: 'cyan'
             }
         }
@@ -3538,6 +3539,10 @@ const MediaPickerOption = ({ option, onSelect }) => (
 export default function RunOfShowDirectorPanel({
     enabled = false,
     roomCode = '',
+    eventProfileId = '',
+    eventProfileLabel = '',
+    logoUrl = '',
+    audienceBrandTheme = null,
     programMode = 'standard_karaoke',
     director = null,
     runOfShowPolicy = null,
@@ -3589,6 +3594,60 @@ export default function RunOfShowDirectorPanel({
     onArchiveCurrent,
 }) {
     const items = useMemo(() => (Array.isArray(director?.items) ? director.items : []), [director?.items]);
+    const safeEventProfileId = String(eventProfileId || '').trim().toLowerCase();
+    const safeEventProfileLabel = String(eventProfileLabel || '').trim();
+    const safeLogoUrl = String(logoUrl || '').trim();
+    const normalizedBrandTheme = useMemo(
+        () => normalizeAudienceBrandTheme({
+            ...(audienceBrandTheme || {}),
+            appTitle: audienceBrandTheme?.appTitle || safeEventProfileLabel,
+        }),
+        [audienceBrandTheme, safeEventProfileLabel]
+    );
+    const safeBrandTitle = String(normalizedBrandTheme.appTitle || safeEventProfileLabel || '').trim();
+    const usesFestivalBranding = useMemo(() => {
+        const keywords = [
+            safeEventProfileId,
+            safeEventProfileLabel,
+            safeBrandTitle,
+            String(roomCode || '').trim(),
+        ].join(' ').toLowerCase();
+        return keywords.includes('aahf') || keywords.includes('festival');
+    }, [roomCode, safeBrandTitle, safeEventProfileId, safeEventProfileLabel]);
+    const boardShellStyle = useMemo(() => ({
+        borderColor: usesFestivalBranding
+            ? withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.3)
+            : withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.2),
+        backgroundImage: [
+            `radial-gradient(circle at top left, ${withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, usesFestivalBranding ? 0.18 : 0.08)} 0%, transparent 30%)`,
+            `radial-gradient(circle at top right, ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, usesFestivalBranding ? 0.18 : 0.08)} 0%, transparent 34%)`,
+            `linear-gradient(180deg, ${withAudienceBrandAlpha(normalizedBrandTheme.accentColor, usesFestivalBranding ? 0.24 : 0.1)} 0%, rgba(9,12,20,0.88) 18%, rgba(9,12,20,0.72) 100%)`,
+        ].join(', '),
+        boxShadow: `0 22px 56px ${withAudienceBrandAlpha(normalizedBrandTheme.accentColor, usesFestivalBranding ? 0.22 : 0.12)}`,
+    }), [normalizedBrandTheme.accentColor, normalizedBrandTheme.primaryColor, normalizedBrandTheme.secondaryColor, usesFestivalBranding]);
+    const boardHeaderStyle = useMemo(() => ({
+        borderColor: usesFestivalBranding
+            ? withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.36)
+            : withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.24),
+        backgroundImage: [
+            `linear-gradient(135deg, ${withAudienceBrandAlpha(normalizedBrandTheme.accentColor, usesFestivalBranding ? 0.4 : 0.18)} 0%, ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, usesFestivalBranding ? 0.24 : 0.16)} 50%, rgba(17,24,39,0.96) 100%)`,
+            `radial-gradient(circle at 100% 0%, ${withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, usesFestivalBranding ? 0.22 : 0.12)} 0%, transparent 42%)`,
+        ].join(', '),
+        boxShadow: `0 16px 42px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, usesFestivalBranding ? 0.24 : 0.14)}`,
+    }), [normalizedBrandTheme.accentColor, normalizedBrandTheme.primaryColor, normalizedBrandTheme.secondaryColor, usesFestivalBranding]);
+    const festivalBannerStyle = useMemo(() => ({
+        borderColor: usesFestivalBranding
+            ? withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.42)
+            : withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.3),
+        backgroundImage: `linear-gradient(90deg, ${withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, usesFestivalBranding ? 0.22 : 0.12)} 0%, ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.18)} 52%, ${withAudienceBrandAlpha(normalizedBrandTheme.accentColor, usesFestivalBranding ? 0.28 : 0.12)} 100%)`,
+        boxShadow: `0 14px 32px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, usesFestivalBranding ? 0.22 : 0.12)}`,
+    }), [normalizedBrandTheme.accentColor, normalizedBrandTheme.primaryColor, normalizedBrandTheme.secondaryColor, usesFestivalBranding]);
+    const festivalChipStyle = useMemo(() => ({
+        borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, usesFestivalBranding ? 0.44 : 0.24),
+        backgroundColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, usesFestivalBranding ? 0.16 : 0.08),
+        color: usesFestivalBranding ? '#FEF3C7' : '#F4F4F5',
+        boxShadow: `0 0 0 1px ${withAudienceBrandAlpha(normalizedBrandTheme.primaryColor, 0.12)}`,
+    }), [normalizedBrandTheme.primaryColor, normalizedBrandTheme.secondaryColor, usesFestivalBranding]);
     const automationPaused = !!director?.automationPaused;
     const currentItemId = String(director?.currentItemId || '').trim();
     const safePolicy = useMemo(() => (runOfShowPolicy || {}), [runOfShowPolicy]);
@@ -5234,9 +5293,65 @@ export default function RunOfShowDirectorPanel({
     };
 
     return (
-        <section className={`rounded-3xl border border-cyan-500/20 bg-zinc-950/70 ${compactViewport ? 'p-3.5 space-y-3.5' : 'p-4 space-y-4'}`} aria-label="Run of Show Director">
+        <section
+            data-run-of-show-director-surface="true"
+            className={`rounded-3xl border border-cyan-500/20 bg-zinc-950/70 ${compactViewport ? 'p-3.5 space-y-3.5' : 'p-4 space-y-4'}`}
+            style={boardShellStyle}
+            aria-label="Run of Show Director"
+        >
             <div className="z-20 space-y-3 rounded-[28px] bg-zinc-950/96 pb-3 md:sticky md:top-0 md:backdrop-blur-md">
-                <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(135deg,rgba(11,17,32,0.98),rgba(17,24,39,0.96))] px-3 py-3 shadow-[0_14px_40px_rgba(0,0,0,0.28)] sm:px-4 sm:py-4">
+                <div className="rounded-[24px] border border-white/10 px-3 py-3 sm:px-4 sm:py-4" style={boardHeaderStyle}>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-[20px] border px-3 py-3" style={festivalBannerStyle}>
+                        <div className="flex min-w-0 items-center gap-3">
+                            {safeLogoUrl ? (
+                                <div
+                                    className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border bg-black/20 p-2"
+                                    style={{ borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.4) }}
+                                >
+                                    <img
+                                        src={safeLogoUrl}
+                                        alt={safeEventProfileLabel || safeBrandTitle || 'Room brand'}
+                                        className="max-h-full max-w-full object-contain"
+                                    />
+                                </div>
+                            ) : (
+                                <div
+                                    className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] border bg-black/20 text-xl text-white"
+                                    style={{ borderColor: withAudienceBrandAlpha(normalizedBrandTheme.secondaryColor, 0.4) }}
+                                >
+                                    <i className="fa-solid fa-star"></i>
+                                </div>
+                            )}
+                            <div className="min-w-0">
+                                <div className="text-[10px] uppercase tracking-[0.28em] text-amber-50/80">
+                                    {usesFestivalBranding ? 'Festival Mode Live' : 'Branded Show Mode'}
+                                </div>
+                                <div className="mt-1 truncate text-lg font-black text-white sm:text-xl">
+                                    {safeEventProfileLabel || safeBrandTitle || 'Show Theme Active'}
+                                </div>
+                                <div className="mt-1 text-xs text-zinc-100/80 sm:text-sm">
+                                    {usesFestivalBranding
+                                        ? 'Host board, TV takeovers, and audience join flow are carrying the same event look.'
+                                        : 'This room theme is active on the host board and should stay aligned with the audience and TV surfaces.'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2 sm:justify-end">
+                            {roomCode ? (
+                                <span className="rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em]" style={festivalChipStyle}>
+                                    Room {roomCode}
+                                </span>
+                            ) : null}
+                            {safeBrandTitle ? (
+                                <span className="rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em]" style={festivalChipStyle}>
+                                    {safeBrandTitle}
+                                </span>
+                            ) : null}
+                            <span className="rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em]" style={festivalChipStyle}>
+                                {usesFestivalBranding ? 'Festival Takeover' : 'Theme Sync'}
+                            </span>
+                        </div>
+                    </div>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Show Conveyor</div>

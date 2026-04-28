@@ -3,89 +3,85 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BeauRocks Co-Host Guide</title>
+  <title>AAHF Co-Host Poster</title>
   <style>
     :root {
-      --bg: #f7f8fb;
-      --paper: #ffffff;
-      --ink: #141823;
-      --muted: #5a6477;
-      --line: #d9deea;
-      --primary: #00c4d9;
-      --secondary: #ff67b6;
-      --accent: #facc15;
-      --accent-deep: #0f1728;
-      --shadow: 0 20px 60px rgba(15, 23, 40, 0.12);
+      --paper: #fbfdff;
+      --ink: #101828;
+      --muted: #536175;
+      --line: rgba(16, 24, 40, 0.10);
+      --festival-red: #d95a3d;
+      --festival-gold: #f3c54b;
+      --festival-deep: #8d2d2a;
+      --cyan: #00c4d9;
+      --pink: #ff67b6;
+      --navy: #0f1728;
+      --shadow: 0 26px 60px rgba(16, 24, 40, 0.12);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      background:
-        radial-gradient(circle at top left, rgba(0, 196, 217, 0.10), transparent 26%),
-        radial-gradient(circle at top right, rgba(255, 103, 182, 0.10), transparent 24%),
-        linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
+      padding: 22px;
       color: var(--ink);
       font-family: "Aptos", "Segoe UI", "Trebuchet MS", Arial, sans-serif;
-      line-height: 1.35;
-      padding: 24px;
+      background:
+        radial-gradient(circle at top left, rgba(0, 196, 217, 0.12), transparent 30%),
+        radial-gradient(circle at top right, rgba(255, 103, 182, 0.12), transparent 28%),
+        linear-gradient(180deg, #f8fbfd 0%, #edf4fb 100%);
     }
 
     .page {
       width: 8.5in;
       min-height: 11in;
       margin: 0 auto;
-      background: var(--paper);
-      border: 1px solid rgba(20, 24, 35, 0.08);
-      border-radius: 24px;
-      box-shadow: var(--shadow);
+      border-radius: 28px;
       overflow: hidden;
+      background: var(--paper);
+      border: 1px solid rgba(16, 24, 40, 0.08);
+      box-shadow: var(--shadow);
+    }
+
+    .bar {
+      display: block;
+      width: 100%;
+      height: auto;
     }
 
     .hero {
-      position: relative;
-      padding: 28px 32px 24px;
+      padding: 24px 34px 18px;
       background:
-        linear-gradient(135deg, rgba(0, 196, 217, 0.16), rgba(255, 103, 182, 0.12)),
-        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+        linear-gradient(135deg, rgba(0, 196, 217, 0.10), rgba(255, 103, 182, 0.10)),
+        linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
       border-bottom: 1px solid var(--line);
     }
 
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: auto 0 0 0;
-      height: 6px;
-      background: linear-gradient(90deg, var(--primary), var(--secondary), var(--accent));
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 204px;
+      gap: 24px;
+      align-items: center;
     }
 
-    .brand-row {
+    .hero-lockup {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 20px;
+      gap: 22px;
     }
 
-    .brand-lockup {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-      min-width: 0;
-    }
-
-    .brand-lockup img {
-      width: 72px;
-      height: 72px;
+    .festival-badge {
+      width: 120px;
+      height: 120px;
       object-fit: contain;
-      filter: drop-shadow(0 10px 22px rgba(0, 196, 217, 0.18));
       flex-shrink: 0;
+      filter: drop-shadow(0 12px 24px rgba(141, 45, 42, 0.12));
     }
 
     .eyebrow {
-      margin: 0 0 8px;
-      color: var(--secondary);
-      font-size: 11px;
+      margin: 0 0 10px;
+      color: var(--festival-deep);
+      font-size: 13px;
       font-weight: 900;
       letter-spacing: 0.24em;
       text-transform: uppercase;
@@ -93,353 +89,347 @@
 
     h1 {
       margin: 0;
-      font-size: 32px;
-      line-height: 1;
-      letter-spacing: -0.03em;
+      font-size: 46px;
+      line-height: 0.96;
+      letter-spacing: -0.04em;
     }
 
     .subtitle {
-      margin: 10px 0 0;
+      margin: 14px 0 0;
       max-width: 560px;
       color: var(--muted);
-      font-size: 14px;
+      font-size: 21px;
+      line-height: 1.34;
       font-weight: 600;
     }
 
-    .meta {
-      display: grid;
-      gap: 8px;
-      min-width: 230px;
-    }
-
-    .meta-card {
+    .room-card {
+      border-radius: 22px;
       border: 1px solid var(--line);
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.75);
-      padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.80);
+      padding: 18px;
+      text-align: center;
     }
 
-    .meta-label {
+    .room-label {
       color: var(--muted);
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 900;
       letter-spacing: 0.18em;
       text-transform: uppercase;
-      margin-bottom: 6px;
     }
 
-    .meta-line {
-      min-height: 16px;
-      border-bottom: 1px dashed #bac3d6;
+    .room-value {
+      margin-top: 10px;
+      color: var(--navy);
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
     }
 
-    .summary-band {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      padding: 20px 32px 6px;
-    }
-
-    .pill {
-      border-radius: 18px;
-      padding: 14px 14px 13px;
-      color: #fff;
-      min-height: 110px;
-    }
-
-    .pill h2 {
-      margin: 0 0 8px;
+    .room-copy {
+      margin-top: 10px;
+      color: var(--muted);
       font-size: 14px;
-      letter-spacing: 0.02em;
-    }
-
-    .pill p {
-      margin: 0;
-      font-size: 13px;
       line-height: 1.4;
     }
 
-    .pill.primary { background: linear-gradient(135deg, #0d7e9a, var(--primary)); }
-    .pill.secondary { background: linear-gradient(135deg, #a92c72, var(--secondary)); }
-    .pill.accent { background: linear-gradient(135deg, #b88800, var(--accent)); color: #1f2430; }
-
-    .grid {
+    .main {
       display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
+      grid-template-columns: 1fr 1fr;
       gap: 20px;
-      padding: 16px 32px 18px;
+      padding: 22px 34px 18px;
     }
 
-    .card {
+    .panel {
+      border-radius: 24px;
       border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 18px 18px 16px;
-      background: linear-gradient(180deg, #ffffff 0%, #fcfdff 100%);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fcff 100%);
+      padding: 22px;
     }
 
-    .card h3 {
-      margin: 0 0 12px;
-      font-size: 16px;
-      letter-spacing: 0.01em;
+    .panel-title {
+      margin: 0 0 16px;
+      font-size: 30px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
     }
 
-    ul {
+    .list {
       margin: 0;
-      padding-left: 18px;
+      padding-left: 24px;
     }
 
-    li {
-      margin: 0 0 8px;
-      color: var(--ink);
-      font-size: 13px;
+    .list li {
+      margin-bottom: 14px;
+      font-size: 19px;
+      line-height: 1.4;
     }
 
-    strong {
-      color: var(--accent-deep);
-    }
-
-    .callout {
-      margin-top: 14px;
-      border-radius: 16px;
-      padding: 12px 14px;
-      background: rgba(15, 23, 40, 0.04);
-      border: 1px solid rgba(15, 23, 40, 0.08);
-      font-size: 12.5px;
-      color: var(--muted);
-    }
-
-    .steps {
+    .bottom {
       display: grid;
-      gap: 10px;
+      grid-template-columns: 1.02fr 0.98fr;
+      gap: 20px;
+      padding: 0 34px 18px;
     }
 
-    .step {
+    .helper-card,
+    .join-card {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.80);
+      padding: 22px;
+    }
+
+    .helper-title,
+    .join-title {
+      margin: 0 0 16px;
+      font-size: 28px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .helper-steps {
       display: grid;
-      grid-template-columns: 34px 1fr;
-      gap: 12px;
+      gap: 14px;
+    }
+
+    .helper-step {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 16px;
       align-items: start;
+      padding: 14px 0;
+      border-top: 1px solid rgba(16, 24, 40, 0.10);
     }
 
-    .step-num {
-      width: 34px;
-      height: 34px;
+    .helper-step:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .helper-num {
+      width: 58px;
+      height: 58px;
       border-radius: 999px;
-      display: inline-flex;
+      display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
-      font-weight: 900;
       color: #fff;
-      background: linear-gradient(135deg, var(--secondary), var(--primary));
-      box-shadow: 0 8px 18px rgba(0, 196, 217, 0.2);
+      font-size: 24px;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--pink), var(--cyan));
+      box-shadow: 0 10px 22px rgba(0, 196, 217, 0.18);
     }
 
-    .step-title {
-      margin: 2px 0 4px;
-      font-size: 13px;
-      font-weight: 800;
+    .helper-step-title {
+      margin: 0 0 4px;
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1.08;
     }
 
-    .step-copy {
-      font-size: 12.5px;
-      color: var(--muted);
+    .helper-step-copy {
       margin: 0;
-    }
-
-    .notes {
-      padding: 0 32px 28px;
-    }
-
-    .notes-card {
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 16px 18px 18px;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.96));
-    }
-
-    .notes-title {
-      margin: 0 0 10px;
-      font-size: 15px;
-    }
-
-    .note-line {
-      height: 28px;
-      border-bottom: 1px dashed #c7cfdf;
-      margin-bottom: 6px;
-    }
-
-    .footer {
-      padding: 0 32px 28px;
       color: var(--muted);
-      font-size: 11px;
+      font-size: 17px;
+      line-height: 1.46;
     }
 
-    .footer strong {
-      color: var(--ink);
+    .join-card {
+      text-align: center;
+      background:
+        linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    }
+
+    .join-kicker {
+      color: var(--festival-deep);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+    }
+
+    .join-qr {
+      width: 220px;
+      height: 220px;
+      max-width: 100%;
+      margin: 8px auto 16px;
+      display: block;
+      padding: 14px;
+      border-radius: 24px;
+      background: #fff;
+      border: 1px solid rgba(16, 24, 40, 0.10);
+      box-shadow: 0 16px 30px rgba(16, 24, 40, 0.08);
+    }
+
+    .join-url {
+      color: var(--navy);
+      font-size: 21px;
+      font-weight: 900;
+      line-height: 1.28;
+      word-break: break-word;
+    }
+
+    .join-copy {
+      margin: 12px auto 0;
+      max-width: 290px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .beau-logo {
+      width: 150px;
+      max-width: 100%;
+      margin: 18px auto 8px;
+      display: block;
+      object-fit: contain;
+      filter: drop-shadow(0 10px 20px rgba(16, 24, 40, 0.12));
+    }
+
+    .beau-note {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .helper-shot {
+      display: block;
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      object-position: top center;
+      margin-bottom: 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(16, 24, 40, 0.08);
+      background: #edf4fb;
+    }
+
+    .join-shot {
+      display: block;
+      width: 100%;
+      height: 132px;
+      object-fit: contain;
+      margin: 16px auto 0;
+      padding: 8px;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #101828 0%, #1f2937 100%);
     }
 
     @page {
       size: letter;
-      margin: 0.35in;
+      margin: 0.3in;
     }
 
     @media print {
       body {
-        background: #fff;
         padding: 0;
+        background: #fff;
       }
 
       .page {
         width: auto;
         min-height: auto;
-        margin: 0;
         border: none;
         border-radius: 0;
         box-shadow: none;
-      }
-
-      .card,
-      .meta-card,
-      .notes-card {
-        break-inside: avoid;
       }
     }
   </style>
 </head>
 <body>
   <main class="page">
-    <header class="hero">
-      <div class="brand-row">
-        <div class="brand-lockup">
-          <img src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="BeauRocks Karaoke" />
+    <img class="bar" src="./aahf-header-bar.png" alt="AAHF Festival header bar" />
+
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="hero-lockup">
+          <img class="festival-badge" src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
           <div>
-            <p class="eyebrow">BeauRocks Karaoke</p>
-            <h1>Co-Host Guide</h1>
+            <p class="eyebrow">AAHF Festival Co-Host Guide</p>
+            <h1>Keep the room moving. Help the host. Stay lightweight.</h1>
             <p class="subtitle">
-              Help shape the night, keep the queue healthy, and give the host fast audio feedback without becoming a second host deck.
+              Co-hosts should keep the helper catalog moving, use Tell Host only when it helps, and never turn into a second host deck.
             </p>
           </div>
         </div>
 
-        <div class="meta">
-          <div class="meta-card">
-            <div class="meta-label">Event</div>
-            <div class="meta-line"></div>
-          </div>
-          <div class="meta-card">
-            <div class="meta-label">Host</div>
-            <div class="meta-line"></div>
-          </div>
-          <div class="meta-card">
-            <div class="meta-label">Room / Helper Device</div>
-            <div class="meta-line"></div>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <section class="summary-band">
-      <div class="pill primary">
-        <h2>What A Co-Host Is</h2>
-        <p>
-          A trusted helper who helps the host read the room, fill the queue, and support pacing decisions.
-        </p>
-      </div>
-      <div class="pill secondary">
-        <h2>What A Co-Host Is Not</h2>
-        <p>
-          Not a replacement host. Co-hosts guide, suggest, and help. The host still makes the final call.
-        </p>
-      </div>
-      <div class="pill accent">
-        <h2>Rule Of Thumb</h2>
-        <p>
-          Keep things moving, keep things clear, and only send signals that actually help the room right now.
-        </p>
-      </div>
-    </section>
-
-    <section class="grid">
-      <div class="card">
-        <h3>What Co-Hosts Can Do</h3>
-        <ul>
-          <li><strong>Build the queue early.</strong> Use the authenticated helper catalog on an approved iPad or laptop to search, browse, assign a singer, and add songs on someone’s behalf.</li>
-          <li><strong>Fill out the night in advance.</strong> Add songs for upcoming singers so the room never feels thin or stalled.</li>
-          <li><strong>Send fast audio notes to the host.</strong> In the Singer app, use <strong>Tell Host</strong> for <strong>Track Up</strong>, <strong>Track Down</strong>, <strong>Vocal Up</strong>, <strong>Vocal Down</strong>, or <strong>Mix Issue</strong>.</li>
-          <li><strong>Help with guided decisions.</strong> When the host opens a co-host moment, co-hosts can vote on things like <strong>song face-offs</strong> or <strong>slot-fill choices</strong>.</li>
-          <li><strong>Help protect pacing.</strong> Watch for thin stretches, open slots, or energy drops and help the host stay ahead of them.</li>
-        </ul>
-        <div class="callout">
-          <strong>Important:</strong> Audio notes are automatically tied to the current performance when one is live, so the host can see which song the note came from and how fresh it is.
-        </div>
-      </div>
-
-      <div class="card">
-        <h3>What Co-Hosts Cannot Do</h3>
-        <ul>
-          <li><strong>No direct mixer control.</strong> Co-hosts can signal audio issues, but they do not directly change track or vocal levels.</li>
-          <li><strong>No forced queue control.</strong> Co-hosts do not directly reorder the whole queue or push a song live on their own.</li>
-          <li><strong>No host override.</strong> Co-hosts do not replace the host on approvals, launches, scene changes, or final decisions.</li>
-          <li><strong>No blind adds.</strong> Do not add a song unless you know exactly who it is for.</li>
-          <li><strong>No signal spam.</strong> If you send the host an audio note, let them react before repeating it.</li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="grid">
-      <div class="card">
-        <h3>Best Practices For A Great Co-Host</h3>
-        <ul>
-          <li><strong>Confirm the singer first.</strong> Before adding a song, make sure the guest, title, and artist are correct.</li>
-          <li><strong>Think ahead, not just next.</strong> The best co-hosts keep the queue healthy 20 to 60 minutes out, not only one song ahead.</li>
-          <li><strong>Use audio notes sparingly.</strong> Send a note when there is a real issue, not just a personal preference.</li>
-          <li><strong>Keep the room feeling intentional.</strong> Help spot holes, open slots, and awkward pacing before the host has to scramble.</li>
-          <li><strong>Escalate only when useful.</strong> If something is sensitive or unclear, talk to the host directly instead of guessing in the app.</li>
-        </ul>
-      </div>
-
-      <div class="card">
-        <h3>How To Work The Tools</h3>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div>
-              <div class="step-title">Helper Catalog</div>
-              <p class="step-copy">Pick the singer target first, then search or browse, then add the song for that person.</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">2</div>
-            <div>
-              <div class="step-title">Tell Host</div>
-              <p class="step-copy">Use it for immediate audio notes only. The host sees the note tied to the live performance.</p>
-            </div>
-          </div>
-          <div class="step">
-            <div class="step-num">3</div>
-            <div>
-              <div class="step-title">Co-Host Votes</div>
-              <p class="step-copy">When a vote card appears, make the quick call and move on. The host confirms the outcome.</p>
-            </div>
-          </div>
+        <div class="room-card">
+          <div class="room-label">Tonight's Room</div>
+          <div class="room-value">AAHF</div>
+          <div class="room-copy">When guests need help joining, use the same direct room path every time.</div>
         </div>
       </div>
     </section>
 
-    <section class="notes">
-      <div class="notes-card">
-        <h3 class="notes-title">Tonight’s House Rules / Notes</h3>
-        <div class="note-line"></div>
-        <div class="note-line"></div>
-        <div class="note-line"></div>
-        <div class="note-line"></div>
+    <section class="main">
+      <div class="panel">
+        <h2 class="panel-title">Do this</h2>
+        <ul class="list">
+          <li><strong>Build the queue early.</strong> Use the helper catalog to add songs for the right singer before the room feels thin.</li>
+          <li><strong>Use Tell Host for real signals.</strong> Keep audio or pacing notes short and useful.</li>
+          <li><strong>Think ahead.</strong> Watch for open slots, slow patches, and missing follow-ups.</li>
+          <li><strong>Keep guest instructions consistent.</strong> Point everyone to the same join path and room code.</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">Do not do this</h2>
+        <ul class="list">
+          <li><strong>Do not override the host.</strong> Final calls on approvals, launches, and scene changes stay with the host.</li>
+          <li><strong>Do not spam mix notes.</strong> Send one clear signal and let the host react.</li>
+          <li><strong>Do not add blind requests.</strong> Confirm the singer before you add anything.</li>
+          <li><strong>Do not invent a new join flow.</strong> Keep the room entry simple all night.</li>
+        </ul>
       </div>
     </section>
 
-    <footer class="footer">
-      <strong>BeauRocks Co-Host Standard:</strong> Help the host steer the room, keep future songs healthy, and only surface the signals that make the night better.
-    </footer>
+    <section class="bottom">
+      <div class="helper-card">
+        <img class="helper-shot" src="./screenshots/helper-catalog.png" alt="Co-host helper catalog screenshot" />
+        <h3 class="helper-title">Three-step helper flow</h3>
+        <div class="helper-steps">
+          <div class="helper-step">
+            <div class="helper-num">1</div>
+            <div>
+              <p class="helper-step-title">Find the right singer first</p>
+              <p class="helper-step-copy">Start with the person, then add the song. Never the other way around.</p>
+            </div>
+          </div>
+
+          <div class="helper-step">
+            <div class="helper-num">2</div>
+            <div>
+              <p class="helper-step-title">Use the helper catalog on the approved device</p>
+              <p class="helper-step-copy">Search, browse, and add from the helper iPad or laptop so the room stays fast and consistent.</p>
+            </div>
+          </div>
+
+          <div class="helper-step">
+            <div class="helper-num">3</div>
+            <div>
+              <p class="helper-step-title">Use Tell Host only when it helps</p>
+              <p class="helper-step-copy">If something is sensitive, urgent, or unclear, send one useful signal to the host instead of guessing in the app.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="join-card">
+        <div class="join-kicker">Guest Backup CTA</div>
+        <h3 class="join-title">Use this exact join path</h3>
+        <img class="join-qr" src="./aahf-kickoff-join-qr.svg" alt="QR code for the BeauRocks AAHF room join" />
+        <div class="join-url">app.beaurocks.app</div>
+        <p class="join-copy">If someone needs help joining, use the QR first. If the app asks for a room code, tell them to type <strong>AAHF</strong>, then point them toward search and queue.</p>
+        <img class="beau-logo" src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="Powered by BeauRocks" />
+        <div class="beau-note">Powered by BeauRocks</div>
+        <img class="join-shot" src="./screenshots/singer-browse.png" alt="Singer browse screen after join" />
+      </div>
+    </section>
+
+    <img class="bar" src="./aahf-footer-bar.png" alt="AAHF Festival footer bar" />
   </main>
 </body>
 </html>

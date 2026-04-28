@@ -1245,6 +1245,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof fixture.showReturningPrompt === 'boolean') setShowReturningPrompt(fixture.showReturningPrompt);
         if (fixture.returningProfile !== undefined) setReturningProfile(fixture.returningProfile || null);
         if (typeof fixture.termsAccepted === 'boolean') setTermsAccepted(fixture.termsAccepted);
+        if (typeof fixture.showRulesModal === 'boolean') setShowRulesModal(fixture.showRulesModal);
         if (typeof fixture.showPhoneModal === 'boolean') setShowPhoneModal(fixture.showPhoneModal);
         if (typeof fixture.showAbout === 'boolean') setShowAbout(fixture.showAbout);
         if (fixture.form && typeof fixture.form === 'object') {
@@ -1567,6 +1568,7 @@ const SingerApp = ({ roomCode, uid }) => {
         if (typeof fixture.showReturningPrompt === 'boolean') setShowReturningPrompt(fixture.showReturningPrompt);
         if (fixture.returningProfile !== undefined) setReturningProfile(fixture.returningProfile || null);
         if (typeof fixture.termsAccepted === 'boolean') setTermsAccepted(fixture.termsAccepted);
+        if (typeof fixture.showRulesModal === 'boolean') setShowRulesModal(fixture.showRulesModal);
         if (fixture.form && typeof fixture.form === 'object') {
             setForm((prev) => ({ ...prev, ...fixture.form }));
             setIsFormInitialized(true);
@@ -2896,6 +2898,17 @@ const SingerApp = ({ roomCode, uid }) => {
     const accessConnectedLabel = hasSupporterAccess && !isVipAccount
         ? `${supporterAccessLabel} Ready`
         : baseAccessConnectedLabel;
+    const joinEmailActionLabel = simpleEmailCaptureMode
+        ? 'Optional: Save With Email'
+        : 'Optional: Continue With Email';
+    const joinAccessHelperText = simplifyFestivalSupportAccess
+        ? 'Join now. Email save-in stays optional, and festival support happens later without slowing your first request.'
+        : allowsDonationAccess
+            ? 'Join now. Email save-in and room support stay available after you are inside.'
+            : 'Join now. Email save-in stays available after you are inside.';
+    const joinConnectedLabel = hasSupporterAccess && !isVipAccount
+        ? `${supporterAccessLabel} Access Ready`
+        : 'Email Sync Ready';
     useEffect(() => {
         if (!roomCode || !activeUid || !user) return undefined;
         if (!activeEventCredits.enabled || !activeEventCredits.timedLobbyEnabled) return undefined;
@@ -5176,6 +5189,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [songsTab]);
 
     useEffect(() => {
+        if (!isStreamlinedAudienceShell || songsTab !== 'requests') return;
+        if (catalogSearchOpen || manualRequestComposerOpen) return;
+        setSongsTab('browse');
+    }, [catalogSearchOpen, isStreamlinedAudienceShell, manualRequestComposerOpen, songsTab]);
+
+    useEffect(() => {
         if (tight15SearchQ.length < 3) { setTight15Results([]); return; }
         let canceled = false;
         const t = setTimeout(async () => {
@@ -5321,6 +5340,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
     };
 
+    const launchAudienceJoinExperience = useCallback(() => {
+        setTab('request');
+        setCatalogSearchOpen(false);
+        if (isStreamlinedAudienceShell) {
+            setSongsTab('browse');
+            return;
+        }
+        setSongsTab('requests');
+        setCatalogSearchMode(preferredCatalogSearchMode);
+    }, [isStreamlinedAudienceShell, preferredCatalogSearchMode]);
+
     const join = async (override = null) => {
         const rawName = override?.name ?? form.name;
         const rawEmoji = override?.emoji ?? form.emoji;
@@ -5398,6 +5428,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             }
             trackEvent('singer_join', { room_code: roomCode });
             logActivity('joined the party', EMOJI.wave);
+            launchAudienceJoinExperience();
             return true;
         } catch (error) {
             console.error('Audience join failed', error);
@@ -6724,10 +6755,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const openAudienceCatalogSearch = useCallback(() => {
         setTab('request');
-        setSongsTab('requests');
+        setSongsTab(isStreamlinedAudienceShell ? 'browse' : 'requests');
         setCatalogSearchMode(preferredCatalogSearchMode);
         setCatalogSearchOpen(true);
-    }, [preferredCatalogSearchMode]);
+    }, [isStreamlinedAudienceShell, preferredCatalogSearchMode]);
 
     const handleAudienceCatalogResultSelect = (result, requestOptions = null) => {
         if (!result) return;
@@ -7695,7 +7726,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (tab === 'request' && songsTab === 'tight15') {
             keys.push('tight15');
         }
-        if (tab === 'request' && songsTab === 'requests') {
+        if (tab === 'request' && (songsTab === 'requests' || (isStreamlinedAudienceShell && songsTab === 'browse'))) {
             keys.push('request_start');
         }
         keys.forEach((key) => {
@@ -7731,7 +7762,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 });
             }
         });
-    }, [roomCode, shellVariant, songsTab, socialTab, tab]);
+    }, [isStreamlinedAudienceShell, roomCode, shellVariant, songsTab, socialTab, tab]);
     const bracketSignupBracket = room?.activeMode === 'karaoke_bracket'
         ? (room?.karaokeBracket || room?.gameData || null)
         : null;
@@ -7747,7 +7778,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     useEffect(() => {
         if (!isStreamlinedAudienceShell || songsTab !== 'tight15' || bracketSignupActive) return;
-        setSongsTab('requests');
+        setSongsTab('browse');
     }, [bracketSignupActive, isStreamlinedAudienceShell, songsTab]);
 
     useEffect(() => {
@@ -7882,21 +7913,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 >
                     {activeUid ? 'JOIN THE PARTY' : 'CONNECTING...'}
                 </button>
-                <button
-                    type="button"
-                    onClick={() => openVipUpgrade()}
-                    className="mt-3 w-full max-w-sm rounded-xl border px-4 py-3 text-sm font-black uppercase tracking-[0.18em] shadow-[0_0_18px_rgba(0,196,217,0.18)]"
-                    style={audienceBrandPalette.primaryPillStyle}
-                >
-                    {isAnon ? accessActionLabel : accessConnectedLabel}
-                </button>
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
-                    {simplifyFestivalSupportAccess
-                        ? 'Use email here anytime to reconnect and keep your profile synced. Support moments for AAHF can stay on the main screen instead of blocking join.'
-                        : allowsDonationAccess
-                        ? 'Use support or email access here anytime to reconnect, unlock room perks, and keep your profile synced.'
-                        : `Use your email link here anytime to reconnect, unlock ${premiumPerksLabel}, and keep your profile synced.`}
+                    {joinAccessHelperText}
                 </div>
+                {isAnon ? (
+                    <button
+                        type="button"
+                        onClick={() => openVipUpgrade('email')}
+                        className="mt-3 text-sm font-bold text-cyan-100 underline decoration-cyan-300/60 underline-offset-4"
+                    >
+                        {joinEmailActionLabel}
+                    </button>
+                ) : (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                        <i className="fa-solid fa-circle-check"></i>
+                        {joinConnectedLabel}
+                    </div>
+                )}
                 {returningProfile && showReturningPrompt ? (
                     <button
                         onClick={() => {
@@ -7920,21 +7953,23 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             </div>
         </div>
         {showRulesModal ? (
-            <div className="fixed inset-0 bg-black/70 z-[170] flex items-center justify-center p-6 font-saira">
-                <div className="bg-gradient-to-br from-[#1b0b1a] via-[#241233] to-[#0f1118] border border-pink-400/40 rounded-3xl p-6 w-full max-w-md shadow-[0_24px_70px_rgba(0,0,0,0.65)]">
-                    <div className="flex items-center gap-3 mb-4">
-                        <img src={audienceBrandLogoUrl} className="h-12 w-12 object-contain" alt={audienceBrandTitle} />
+            <div className="fixed inset-0 bg-black/58 z-[170] flex items-center justify-center p-5 font-saira">
+                <div className="bg-gradient-to-br from-[#1a0f1f] via-[#23152f] to-[#11131a] border border-pink-300/28 rounded-[1.7rem] p-5 w-full max-w-sm shadow-[0_18px_44px_rgba(0,0,0,0.46)]">
+                    <div className="flex items-center gap-3 mb-3.5">
+                        <img src={audienceBrandLogoUrl} className="h-10 w-10 object-contain" alt={audienceBrandTitle} />
                         <div className="text-left">
-                            <div className="text-base uppercase tracking-[0.35em] text-pink-200">House Rules</div>
-                            <div className="text-3xl font-black text-white">Sing loud. Be kind.</div>
+                            <div className="text-[13px] uppercase tracking-[0.28em] text-pink-200">Quick Room Rules</div>
+                            <div className="text-[1.75rem] font-black leading-none text-white">Sing loud. Be kind.</div>
                         </div>
                     </div>
-                    <ul className="text-lg text-zinc-100 space-y-2 mb-4">
+                    <p className="text-[0.98rem] leading-6 text-zinc-100 mb-2.5">
+                        Keep the room welcoming, use songs and media you can share, and expect the host to clear anything that throws off the night.
+                    </p>
+                    <ul className="text-[0.92rem] text-zinc-200 space-y-1.5 mb-3.5">
                         <li>Be kind. No hate, threats, or harassment.</li>
-                        <li>Only share what you own or can use.</li>
-                        <li>We can remove content or users to keep it fun.</li>
+                        <li>Only request content you own or can use.</li>
                     </ul>
-                    <label className="flex items-center gap-2 mb-5 text-lg text-zinc-100">
+                    <label className="flex items-center gap-2 mb-4 text-[0.98rem] text-zinc-100">
                         <input
                             data-singer-rules-checkbox
                             type="checkbox"
@@ -7942,7 +7977,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             onChange={e => setTermsAccepted(e.target.checked)}
                             className="h-5 w-5 accent-pink-500"
                         />
-                        I agree to the party rules.
+                        I agree and I am ready to join.
                     </label>
                     <button
                         data-singer-rules-confirm
@@ -7972,9 +8007,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             setCrowdSelfieSetupOpen(false);
                             setShowRulesModal(false);
                         }}
-                        className={`w-full py-3 rounded-xl font-bold text-white shadow-lg text-lg transition-transform ${(termsAccepted && !crowdSelfieSubmitting) ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 active:scale-95' : 'bg-zinc-700 text-zinc-300 cursor-not-allowed'}`}
+                        className={`w-full py-2.5 rounded-xl font-bold text-white shadow-md text-base transition-transform ${(termsAccepted && !crowdSelfieSubmitting) ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 active:scale-95' : 'bg-zinc-700 text-zinc-300 cursor-not-allowed'}`}
                     >
-                        {crowdSelfieSubmitting ? 'Joining...' : 'Let\'s go'}
+                        {crowdSelfieSubmitting ? 'Joining...' : 'Agree and Continue'}
                     </button>
                     <button
                         onClick={() => {
@@ -7983,7 +8018,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             setCrowdSelfieSetupOpen(false);
                             setShowRulesModal(false);
                         }}
-                        className="w-full mt-3 bg-white/10 border border-white/15 text-white py-2.5 rounded-xl font-semibold text-base"
+                        className="w-full mt-2.5 border border-white/12 bg-white/6 text-white py-2.5 rounded-xl font-semibold text-[0.95rem]"
                     >
                         Not right now
                     </button>
@@ -7993,7 +8028,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 const termsUrl = `${window.location.origin}${base}karaoke/terms`;
                                 window.open(termsUrl, '_blank');
                             }}
-                            className="mt-3 text-xs text-pink-200/70 underline underline-offset-4 hover:text-pink-100"
+                            className="mt-2.5 text-[11px] text-pink-200/72 underline underline-offset-4 hover:text-pink-100"
                         >
                             View Terms of Service
                         </button>
@@ -10675,7 +10710,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         { key: 'request', label: 'Songs', icon: 'fa-music' }
     ];
     const streamlinedSongsNavItems = [
-        { key: 'requests', label: 'Add Song', icon: 'fa-plus' },
+        { key: 'browse', label: 'Browse', icon: 'fa-magnifying-glass' },
         { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
@@ -10932,6 +10967,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         pulseNativeUiFeedback();
         if (nextTab === 'request') {
             setTab('request');
+            if (!['browse', 'queue', 'tight15'].includes(songsTab)) {
+                setSongsTab('browse');
+            }
             return;
         }
         setTab('home');
@@ -11658,10 +11696,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <button
                                             type="button"
                                             data-feature-id="singer-request-song-cta"
-                                            onClick={() => {
-                                                setTab('request');
-                                                setSongsTab('requests');
-                                            }}
+                                            onClick={openAudienceCatalogSearch}
                                             className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_12px_30px_rgba(0,0,0,0.22)]"
                                             style={audienceBrandPalette.primaryPillStyle}
                                         >
@@ -13250,7 +13285,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                             </React.Fragment>
                         )}
-                        {manualRequestComposerOpen && songsTab === 'requests' && renderAudienceViewportSheet(
+                        {manualRequestComposerOpen && (songsTab === 'requests' || (isStreamlinedAudienceShell && songsTab === 'browse')) && renderAudienceViewportSheet(
                             <React.Fragment>
                                 <button
                                     type="button"
@@ -13521,7 +13556,96 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         )}
                         {songsTab === 'browse' && (
                             <div className="flex flex-col h-full gap-6 pt-2">
-                                {!isStreamlinedAudienceShell && (
+                                {isStreamlinedAudienceShell ? (
+                                    <div className="space-y-3">
+                                        <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Step 1</div>
+                                                    <div className="mt-1 text-[1.5rem] font-black leading-tight text-white">
+                                                        Search for your song
+                                                    </div>
+                                                    <div className="mt-2 text-sm leading-6 text-zinc-300">
+                                                        Start with search if you know it, or tap a category below to browse fast.
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
+                                                    <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Queue</div>
+                                                    <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={openAudienceCatalogSearch}
+                                                    disabled={audienceSongLimitState.hardBlocked}
+                                                    className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)] ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-70' : ''}`}
+                                                    style={audienceBrandPalette.primaryPillStyle}
+                                                >
+                                                    <i className="fa-solid fa-magnifying-glass"></i>
+                                                    {audienceRequestCtaLabel}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSongsTab('queue')}
+                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-zinc-100"
+                                                >
+                                                    <i className="fa-solid fa-list"></i>
+                                                    Watch Queue
+                                                </button>
+                                            </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setManualRequestComposerOpen(true)}
+                                                    disabled={audienceSongLimitState.hardBlocked}
+                                                    className={`inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/25 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-100 ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                                                >
+                                                    <i className="fa-solid fa-keyboard"></i>
+                                                    Type it manually
+                                                </button>
+                                                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                                    <i className="fa-solid fa-clock"></i>
+                                                    {formatWaitTime(queueWaitTimeSec)} estimated wait
+                                                </span>
+                                            </div>
+                                            <div className="mt-3 text-sm text-zinc-300">
+                                                {audienceRequestCtaDetail}
+                                            </div>
+                                        </div>
+                                        {latestMyRequest ? (
+                                            <div className="rounded-2xl border border-white/10 bg-black/25 p-3.5 text-left">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Latest request</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{latestMyRequest.songTitle}</div>
+                                                        <div className="text-sm text-zinc-400">{latestMyRequest.artist}</div>
+                                                    </div>
+                                                    {latestMyRequestStateMeta && (
+                                                        <div className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                                            <i className={`fa-solid ${latestMyRequestStateMeta.icon} mr-1`}></i>
+                                                            {latestMyRequestStateMeta.label}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSongsTab('queue')}
+                                                        className="rounded-full bg-[#00C4D9] px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black"
+                                                    >
+                                                        Open Queue
+                                                    </button>
+                                                    {latestMyRequest?.collabOpen && (
+                                                        <div className="rounded-full border border-pink-300/30 bg-pink-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-pink-100">
+                                                            Duet open
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : (
                                     <div className="text-left">
                                         <div className="text-sm uppercase tracking-[0.35em] text-zinc-400">Browse</div>
                                         <div className="text-2xl font-bebas text-cyan-400">Popular Categories</div>
@@ -13529,6 +13653,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                 )}
                                 <div className="space-y-2">
+                                    {!isStreamlinedAudienceShell && (
                                     <button
                                         type="button"
                                         onClick={openAudienceCatalogSearch}
@@ -13539,6 +13664,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             {searchQ || 'Search songs...'}
                                         </span>
                                     </button>
+                                    )}
                                     {!isStreamlinedAudienceShell && (
                                         <div className="text-sm text-zinc-500">
                                             Search by song and artist. Browse only shows songs that are already ready to play.
@@ -13559,7 +13685,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             </div>
                                         </label>
                                 )}
-                                {audienceManualBackingAllowed && (
+                                {audienceManualBackingAllowed && !isStreamlinedAudienceShell && (
                                     <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-500/5 px-4 py-4">
                                         <div className="flex items-start justify-between gap-3">
                                             <div>

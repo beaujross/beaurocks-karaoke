@@ -92,14 +92,14 @@ const JoinPage = ({ navigate, id = "" }) => {
       <article className="mk3-detail-card">
         {hasJoinCodeInRoute && !showManualEntry ? (
           <>
-            <div className="mk3-chip">join room</div>
-            <h2>{loading ? "Checking room..." : `Join ${heroTitle}`}</h2>
+            <div className="mk3-chip">live room</div>
+            <h2>{loading ? "Getting the room ready..." : `Join ${heroTitle}`}</h2>
             <p>
               {loading
-                ? "Confirming the room and getting the join path ready."
+                ? "Pulling up the room details and your direct join path."
                 : isActiveJoinTarget
-                  ? "This room is live. Move straight into the audience experience."
-                  : "We found a room code. If it is active, you can move straight into the audience experience."}
+                  ? "This room is live now. Step in and head straight to song search."
+                  : "This room code is ready. If the room is live, you can move straight into the audience experience."}
             </p>
             <div className="mk3-status">
               <strong>{heroTitle}</strong>
@@ -107,7 +107,7 @@ const JoinPage = ({ navigate, id = "" }) => {
               <span>{heroContextLabel}</span>
               <span>Room code {resolvedJoinCode}</span>
             </div>
-            {loading ? <div className="mk3-status">Checking that room code...</div> : null}
+            {loading ? <div className="mk3-status">Loading the room details...</div> : null}
             {status && !loading ? (
               <div className={statusTone === "warning" ? "mk3-status mk3-status-warning" : "mk3-status mk3-status-error"}>
                 {status}
@@ -115,7 +115,7 @@ const JoinPage = ({ navigate, id = "" }) => {
             ) : null}
             <div className="mk3-actions-block">
               <button type="button" onClick={joinOnMobile}>
-                Join Room Now
+                {resolvedJoinCode ? `Join ${resolvedJoinCode} Now` : "Join Room Now"}
               </button>
               <button type="button" onClick={() => setShowManualEntry(true)}>
                 Use Different Room Code

@@ -1,0 +1,43 @@
+{
+  "generatedAt": "2026-04-28T00:03:01.770Z",
+  "host": [
+    {
+      "fixtureId": "run-of-show-console-generic",
+      "outputName": "host-run-of-show-generic.png",
+      "boardHeadingPx": 10,
+      "issueHeadingPx": 12
+    },
+    {
+      "fixtureId": "run-of-show-console",
+      "outputName": "host-run-of-show-aahf.png",
+      "boardHeadingPx": 10,
+      "issueHeadingPx": 12
+    }
+  ],
+  "tv": [
+    {
+      "fixtureId": "generic-preview-intro",
+      "outputName": "tv-intro-generic.png",
+      "headlinePx": 256,
+      "subheadPx": 0
+    },
+    {
+      "fixtureId": "preview-intro",
+      "outputName": "tv-intro-aahf.png",
+      "headlinePx": 256,
+      "subheadPx": 0
+    },
+    {
+      "fixtureId": "generic-live-announcement",
+      "outputName": "tv-announcement-generic.png",
+      "headlinePx": 256,
+      "subheadPx": 0
+    },
+    {
+      "fixtureId": "live-announcement",
+      "outputName": "tv-announcement-aahf.png",
+      "headlinePx": 256,
+      "subheadPx": 0
+    }
+  ]
+}

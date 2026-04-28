@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AAHF Kick-Off Host Walkthrough</title>
+  <style>
+    :root {
+      --paper: #fffaf4;
+      --ink: #17181f;
+      --muted: #5c6474;
+      --line: rgba(23, 24, 31, 0.10);
+      --festival-red: #d95a3d;
+      --festival-gold: #f3c54b;
+      --festival-deep: #8d2d2a;
+      --beau-cyan: #00c4d9;
+      --beau-night: #0f1728;
+      --shadow: 0 26px 60px rgba(69, 43, 31, 0.14);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      color: var(--ink);
+      font-family: "Aptos", "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(217, 90, 61, 0.10), transparent 28%),
+        radial-gradient(circle at top right, rgba(0, 196, 217, 0.10), transparent 28%),
+        linear-gradient(180deg, #f9f4ea 0%, #f0e6d9 100%);
+    }
+
+    .sheet {
+      width: 8.5in;
+      min-height: 11in;
+      margin: 0 auto 28px;
+      border-radius: 28px;
+      overflow: hidden;
+      background: var(--paper);
+      border: 1px solid rgba(23, 24, 31, 0.08);
+      box-shadow: var(--shadow);
+      break-after: page;
+    }
+
+    .bar {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .sheet-body {
+      padding: 24px 34px 22px;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 220px;
+      gap: 22px;
+      align-items: center;
+    }
+
+    .hero-lockup {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+
+    .festival-badge {
+      width: 122px;
+      height: 122px;
+      object-fit: contain;
+      flex-shrink: 0;
+      filter: drop-shadow(0 14px 26px rgba(141, 45, 42, 0.14));
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--festival-deep);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 46px;
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .hero-copy {
+      margin: 14px 0 0;
+      max-width: 560px;
+      font-size: 20px;
+      line-height: 1.36;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .hero-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 18px;
+      text-align: center;
+    }
+
+    .hero-card-label {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hero-card-room {
+      margin-top: 10px;
+      font-size: 38px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      color: var(--beau-night);
+    }
+
+    .hero-card-copy {
+      margin-top: 10px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .section-title {
+      margin: 28px 0 14px;
+      font-size: 29px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .section-copy {
+      margin: 0 0 16px;
+      font-size: 17px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .story-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .story-card {
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      overflow: hidden;
+    }
+
+    .story-shot {
+      display: block;
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      object-position: top center;
+      background: #e8edf4;
+    }
+
+    .story-shot.mobile {
+      object-fit: contain;
+      background: linear-gradient(180deg, #0d1320 0%, #182032 100%);
+      padding: 10px;
+    }
+
+    .story-content {
+      padding: 16px 18px 18px;
+    }
+
+    .story-kicker {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--festival-deep);
+    }
+
+    .story-title {
+      margin: 8px 0 6px;
+      font-size: 23px;
+      line-height: 1.06;
+      letter-spacing: -0.02em;
+    }
+
+    .story-copy {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .two-up {
+      display: grid;
+      grid-template-columns: 1.02fr 0.98fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .panel {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.80);
+      overflow: hidden;
+    }
+
+    .panel img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: #eef3f9;
+    }
+
+    .panel img.mobile {
+      background: linear-gradient(180deg, #0d1320 0%, #182032 100%);
+      padding: 12px;
+    }
+
+    .panel-body {
+      padding: 18px 20px 20px;
+    }
+
+    .panel-title {
+      margin: 0 0 8px;
+      font-size: 25px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-copy {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    .step-list {
+      margin: 14px 0 0;
+      padding-left: 20px;
+    }
+
+    .step-list li {
+      margin-bottom: 10px;
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+
+    .mini-band {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 18px;
+    }
+
+    .mini-card {
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 18px 20px;
+    }
+
+    .mini-title {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 900;
+    }
+
+    .mini-copy {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    .beau-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 196, 217, 0.16);
+      background: rgba(0, 196, 217, 0.08);
+      color: var(--beau-night);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    @page {
+      size: letter;
+      margin: 0.3in;
+    }
+
+    @media print {
+      body {
+        padding: 0;
+        background: #fff;
+      }
+
+      .sheet {
+        width: auto;
+        min-height: auto;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section class="sheet">
+    <img class="bar" src="./aahf-header-bar.png" alt="AAHF Festival header bar" />
+    <div class="sheet-body">
+      <div class="hero-grid">
+        <div class="hero-lockup">
+          <img class="festival-badge" src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
+          <div>
+            <p class="eyebrow">AAHF Kick-Off Host Walkthrough</p>
+            <h1>What guests see, what helpers do, and what the host controls.</h1>
+            <p class="hero-copy">
+              This is the visual handoff pack for opening night. Use it to train hosts and co-hosts on the direct join flow, the quick rules step, the helper catalog flow, and the guest song-request journey.
+            </p>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-card-label">Primary Join Path</div>
+          <div class="hero-card-room">AAHF</div>
+          <div class="hero-card-copy">
+            QR and direct room join should both resolve to <strong>app.beaurocks.app/?room=AAHF</strong>.
+          </div>
+        </div>
+      </div>
+
+      <h2 class="section-title">The full room story in four views</h2>
+      <p class="section-copy">
+        Start with the guest journey, then show the helper tools, then finish on the host workspace that keeps approvals, pacing, and room state under control.
+      </p>
+
+      <div class="story-grid">
+        <article class="story-card">
+          <img class="story-shot mobile" src="./screenshots/singer-join.png" alt="Singer join view" />
+          <div class="story-content">
+            <div class="story-kicker">Singer Perspective</div>
+            <h3 class="story-title">Guests enter through one direct room join</h3>
+            <p class="story-copy">The join screen should feel immediate: pick an emoji, add a name, and move toward the room without extra account friction.</p>
+          </div>
+        </article>
+
+        <article class="story-card">
+          <img class="story-shot mobile" src="./screenshots/singer-browse.png" alt="Singer browse view" />
+          <div class="story-content">
+            <div class="story-kicker">Browse Perspective</div>
+            <h3 class="story-title">Guests browse songs from a visual catalog</h3>
+            <p class="story-copy">Browse now works best as a search-first request surface. Guests should be able to find a song fast without decoding the whole app.</p>
+          </div>
+        </article>
+
+        <article class="story-card">
+          <img class="story-shot" src="./screenshots/helper-catalog.png" alt="Helper catalog view" />
+          <div class="story-content">
+            <div class="story-kicker">Helper App Perspective</div>
+            <h3 class="story-title">Trusted helpers build the queue ahead</h3>
+            <p class="story-copy">The helper catalog is the lightweight operational tool. It is for assigning songs to the right singer and using Tell Host carefully, not for replacing host control.</p>
+          </div>
+        </article>
+
+        <article class="story-card">
+          <img class="story-shot" src="./screenshots/host-overview.png" alt="Host workspace view" />
+          <div class="story-content">
+            <div class="story-kicker">Host Perspective</div>
+            <h3 class="story-title">The host keeps approvals, timing, and room state coherent</h3>
+            <p class="story-copy">The host workspace is where launch order, live mode, approvals, and room setup stay coordinated instead of scattering across devices.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+    <img class="bar" src="./aahf-footer-bar.png" alt="AAHF Festival footer bar" />
+  </section>
+
+  <section class="sheet">
+    <img class="bar" src="./aahf-header-bar.png" alt="AAHF Festival header bar" />
+    <div class="sheet-body">
+      <p class="eyebrow">Guest Journey</p>
+      <h2 class="section-title" style="margin-top:0;">What the singer sees from first scan to active queue</h2>
+      <p class="section-copy">
+        This is the sequence you want hosts and co-hosts to memorize, because this is the path guests will ask about all night.
+      </p>
+
+      <div class="two-up">
+        <article class="panel">
+          <img class="mobile" src="./screenshots/singer-join.png" alt="Singer join screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Step 1: Join the room</h3>
+            <p class="panel-copy">Guests should arrive on a streamlined join screen that feels branded for the event but resolves directly into the live BeauRocks room.</p>
+            <ol class="step-list">
+              <li>If the event Wi-Fi is posted, connect to it first.</li>
+              <li>Scan the room QR or open <strong>app.beaurocks.app/?room=AAHF</strong>.</li>
+              <li>Pick an emoji and enter the display name the host will recognize.</li>
+            </ol>
+          </div>
+        </article>
+
+        <article class="panel">
+          <img class="mobile" src="./screenshots/singer-rules.png" alt="Singer rules screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Step 2: Clear the room rules fast</h3>
+            <p class="panel-copy">This should feel like a quick consent step, not a second onboarding funnel. Guests need one calm checkpoint and one obvious continue button.</p>
+            <ol class="step-list">
+              <li>Keep the copy short enough to scan in a few seconds.</li>
+              <li>Use one checkbox and one clear CTA: <strong>Agree and Continue</strong>.</li>
+              <li>Train staff to treat this as a quick yes-and-go moment.</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+
+      <div class="two-up" style="margin-top:20px;">
+        <article class="panel">
+          <img class="mobile" src="./screenshots/singer-browse.png" alt="Singer browse screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Step 3: Search or browse for a song</h3>
+            <p class="panel-copy">Guests do not need to understand the backing-track system. They just need a clear request surface that feels inviting and current.</p>
+            <ol class="step-list">
+              <li>Lead with search for guests who already know their song.</li>
+              <li>Keep browse available for casual guests who are deciding in the room.</li>
+              <li>The first screen should point attention at <strong>Search + Add Song</strong>.</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+
+      <div class="two-up" style="margin-top:20px;">
+        <article class="panel">
+          <img class="mobile" src="./screenshots/singer-queue.png" alt="Singer queue screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Step 4: Watch the queue and stay ready</h3>
+            <p class="panel-copy">After a request is sent, the guest needs confidence that it landed and a simple way to see what is coming next.</p>
+            <ol class="step-list">
+              <li>Queue view should show order, wait context, and request status at a glance.</li>
+              <li>Hosts can remind guests that moderated requests may wait for approval before going fully live.</li>
+              <li>Guests should keep the phone handy once they are near the top.</li>
+            </ol>
+          </div>
+        </article>
+
+        <article class="mini-card" style="align-self:stretch;">
+          <h3 class="mini-title">What the room staff should say out loud</h3>
+          <p class="mini-copy">"Scan the QR, join room AAHF, pick your emoji and name, clear the quick rules, then search your song. After you send it, watch the queue on your phone."</p>
+          <div class="beau-tag">One join path | One room code | One explanation</div>
+        </article>
+      </div>
+    </div>
+    <img class="bar" src="./aahf-footer-bar.png" alt="AAHF Festival footer bar" />
+  </section>
+
+  <section class="sheet">
+    <img class="bar" src="./aahf-header-bar.png" alt="AAHF Festival header bar" />
+    <div class="sheet-body">
+      <p class="eyebrow">Operations View</p>
+      <h2 class="section-title" style="margin-top:0;">What helpers and hosts do behind the scenes</h2>
+      <p class="section-copy">
+        The host and helper layers should feel coordinated, not duplicated. Helpers build momentum; the host confirms and steers the room.
+      </p>
+
+      <div class="two-up">
+        <article class="panel">
+          <img src="./screenshots/helper-catalog.png" alt="Helper catalog screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Helper catalog</h3>
+            <p class="panel-copy">This is the approved co-host tool for long-ahead queue building. It is the fastest way to help guests without handing them a second host dashboard.</p>
+            <ol class="step-list">
+              <li>Select the singer first, then search or browse the song.</li>
+              <li>Add songs on behalf of guests when the room needs help moving faster.</li>
+              <li>Use <strong>Tell Host</strong> only for useful signals about audio, pacing, or guest issues.</li>
+              <li>Keep this tool limited to trusted helpers on approved devices.</li>
+            </ol>
+          </div>
+        </article>
+
+        <article class="panel">
+          <img src="./screenshots/host-overview.png" alt="Host workspace screenshot" />
+          <div class="panel-body">
+            <h3 class="panel-title">Host workspace</h3>
+            <p class="panel-copy">This is where the night stays coherent: live mode, run of show, queue pressure, audience settings, and room launch all stay anchored here.</p>
+            <ol class="step-list">
+              <li>Use the host workspace as the source of truth for timing and approvals.</li>
+              <li>Keep the direct room join path visible and stable before doors open.</li>
+              <li>Let helpers assist with adds and signals, but keep final control here.</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+
+      <div class="mini-band">
+        <article class="mini-card">
+          <h3 class="mini-title">Helper rule of thumb</h3>
+          <p class="mini-copy">Helpful, fast, and narrow. Add the right songs, protect pacing, and use Tell Host only when the signal actually helps the room.</p>
+        </article>
+
+        <article class="mini-card">
+          <h3 class="mini-title">Host rule of thumb</h3>
+          <p class="mini-copy">One room, one join path, one final decision-maker. Keep the guest explanation short and the operational controls centralized.</p>
+        </article>
+      </div>
+    </div>
+    <img class="bar" src="./aahf-footer-bar.png" alt="AAHF Festival footer bar" />
+  </section>
+</body>
+</html>
