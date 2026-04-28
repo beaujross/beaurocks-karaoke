@@ -134,9 +134,9 @@
 
     .main {
       display: grid;
-      grid-template-columns: 1.04fr 0.96fr;
-      gap: 22px;
-      padding: 22px 34px 20px;
+      grid-template-columns: 1fr 0.98fr;
+      gap: 20px;
+      padding: 20px 34px 16px;
       align-items: start;
     }
 
@@ -148,15 +148,15 @@
     }
 
     .panel-title {
-      margin: 0 0 16px;
-      font-size: 31px;
+      margin: 0 0 14px;
+      font-size: 36px;
       line-height: 1.02;
       letter-spacing: -0.03em;
     }
 
     .steps {
       display: grid;
-      gap: 14px;
+      gap: 8px;
     }
 
     .step {
@@ -164,7 +164,7 @@
       grid-template-columns: 64px 1fr;
       gap: 16px;
       align-items: start;
-      padding: 14px 0;
+      padding: 10px 0;
       border-top: 1px solid rgba(122, 67, 46, 0.10);
     }
 
@@ -188,8 +188,8 @@
     }
 
     .step-title {
-      margin: 0 0 4px;
-      font-size: 22px;
+      margin: 0 0 3px;
+      font-size: 27px;
       font-weight: 900;
       line-height: 1.08;
     }
@@ -197,8 +197,8 @@
     .step-copy {
       margin: 0;
       color: var(--muted);
-      font-size: 17px;
-      line-height: 1.46;
+      font-size: 15px;
+      line-height: 1.32;
     }
 
     .qr-panel {
@@ -268,8 +268,8 @@
 
     .mini-band {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 18px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
       padding: 0 34px 16px;
     }
 
@@ -277,7 +277,7 @@
       border-radius: 20px;
       border: 1px solid var(--line);
       background: rgba(255, 255, 255, 0.76);
-      padding: 18px 20px;
+      padding: 16px 18px;
     }
 
     .mini-title {
@@ -303,7 +303,7 @@
     .visual-card img {
       display: block;
       width: 100%;
-      height: 200px;
+      height: 174px;
       object-fit: contain;
       background: linear-gradient(180deg, #101828 0%, #1f2937 100%);
       padding: 10px;
@@ -314,16 +314,16 @@
     }
 
     .visual-title {
-      margin: 0 0 6px;
-      font-size: 18px;
+      margin: 0 0 4px;
+      font-size: 22px;
       font-weight: 900;
     }
 
     .visual-copy {
       margin: 0;
       color: var(--muted);
-      font-size: 14px;
-      line-height: 1.45;
+      font-size: 12px;
+      line-height: 1.3;
     }
 
     @page {
@@ -357,9 +357,9 @@
           <img class="festival-badge" src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
           <div>
             <p class="eyebrow">AAHF Festival Karaoke Kick-Off</p>
-            <h1>Join the room. Pick your song. Watch the queue.</h1>
+            <h1>Scan. Join. Tap Songs.</h1>
             <p class="subtitle">
-              Start with the festival sign, then scan straight into the live room and move quickly into song search.
+              Direct to room AAHF. Fast to search. Clear to queue.
             </p>
           </div>
         </div>
@@ -374,37 +374,29 @@
 
     <section class="main">
       <div class="panel">
-        <h2 class="panel-title">How to join tonight</h2>
+        <h2 class="panel-title">Tonight's path</h2>
         <div class="steps">
           <div class="step">
             <div class="step-num">1</div>
             <div>
-              <p class="step-title">Connect to the event Wi-Fi</p>
-              <p class="step-copy">If the event Wi-Fi is posted, join it first so the room loads quickly and stays stable.</p>
+              <p class="step-title">Scan QR</p>
+              <p class="step-copy">It opens the live <strong>AAHF</strong> room directly.</p>
             </div>
           </div>
 
           <div class="step">
             <div class="step-num">2</div>
             <div>
-              <p class="step-title">Scan the QR code</p>
-              <p class="step-copy">This code opens the direct BeauRocks app room for <strong>AAHF</strong>. No marketing join detour.</p>
+              <p class="step-title">Pick emoji + name</p>
+              <p class="step-copy">Use the name the host will recognize. Clear the quick continue step.</p>
             </div>
           </div>
 
           <div class="step">
             <div class="step-num">3</div>
             <div>
-              <p class="step-title">Pick your emoji, name, and continue</p>
-              <p class="step-copy">Use the name the host will recognize, then clear the quick rules with <strong>Agree and Continue</strong>.</p>
-            </div>
-          </div>
-
-          <div class="step">
-            <div class="step-num">4</div>
-            <div>
-              <p class="step-title">Search, request, and stay ready</p>
-              <p class="step-copy">Send your song request, keep your phone nearby, and watch the queue as your turn gets closer.</p>
+              <p class="step-title">Tap Songs. Search.</p>
+              <p class="step-copy">Send the request, then watch the queue.</p>
             </div>
           </div>
         </div>
@@ -416,7 +408,7 @@
           <img src="./aahf-kickoff-join-qr.svg" alt="QR code for the BeauRocks AAHF room join" />
         </div>
         <div class="join-url">app.beaurocks.app</div>
-        <p class="sub-copy">This QR opens the BeauRocks app with room <strong>AAHF</strong> already loaded.</p>
+        <p class="sub-copy">If you see a code field, enter <strong>AAHF</strong>.</p>
         <img class="beau-logo" src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="Powered by BeauRocks" />
         <div class="beau-note">Powered by BeauRocks</div>
       </div>
@@ -426,16 +418,24 @@
       <div class="visual-card">
         <img src="./screenshots/singer-join.png" alt="AAHF room join screen" />
         <div class="visual-body">
-          <h3 class="visual-title">What guests see first</h3>
-          <p class="visual-copy">Guests pick an emoji and add a name on a lightweight join screen that gets them into the room without account setup friction.</p>
+          <h3 class="visual-title">Join</h3>
+          <p class="visual-copy">Emoji. Name. Go.</p>
+        </div>
+      </div>
+
+      <div class="visual-card">
+        <img src="./screenshots/singer-party.png" alt="AAHF party tab screen" />
+        <div class="visual-body">
+          <h3 class="visual-title">Party</h3>
+          <p class="visual-copy">Room status first.</p>
         </div>
       </div>
 
       <div class="visual-card">
         <img src="./screenshots/singer-browse.png" alt="AAHF browse and request screen" />
         <div class="visual-body">
-          <h3 class="visual-title">What guests do next</h3>
-          <p class="visual-copy">The first in-room screen leads with search, then browse, then queue so guests know exactly how to request a song fast.</p>
+          <h3 class="visual-title">Songs</h3>
+          <p class="visual-copy">Search. Add. Queue.</p>
         </div>
       </div>
     </section>
