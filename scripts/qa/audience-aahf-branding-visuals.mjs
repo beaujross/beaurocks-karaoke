@@ -27,7 +27,7 @@ const FIXTURES = Object.freeze([
     assertions: async (page, timeoutMs) => {
       await page.getByText("Powered by: BeauRocks Karaoke").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Pick the emoji that feels most you.").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Support or Continue").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("No BeauRocks email is required for AAHF tonight.").first().waitFor({ state: "visible", timeout: timeoutMs });
     },
   },
   {
@@ -44,7 +44,7 @@ const FIXTURES = Object.freeze([
     fixtureId: "streamlined-aahf-join-access",
     viewport: { width: 430, height: 932 },
     assertions: async (page, timeoutMs) => {
-      await page.getByText("Support AAHF Festival or continue with email").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Continue with Email").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Support AAHF Festival").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Send Email Link").first().waitFor({ state: "visible", timeout: timeoutMs });
     },

@@ -49,6 +49,12 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
     eventProfileVersion: 1,
     logoUrl: AAHF_LOGO_URL,
     audienceBrandTheme: AAHF_AUDIENCE_BRAND_THEME,
+    audienceFeatureAccess: normalizeAudienceFeatureAccess({
+        features: {
+            customEmoji: 'open',
+            premiumReactions: 'open',
+        },
+    }),
     eventCredits: {
         enabled: true,
         presetId: 'aahf_kickoff',
@@ -67,7 +73,13 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
             { id: 'stage_starter', label: 'Stage Starter', amount: 10, points: 3000, rewardScope: 'buyer', awardBadge: false, supportUrl: 'https://givebutter.com/aahf-kickoff', supportCampaignCode: 'aahf_kickoff' },
             { id: 'headliner', label: 'Headliner', amount: 20, points: 7500, rewardScope: 'buyer', awardBadge: false, supportUrl: 'https://givebutter.com/aahf-kickoff', supportCampaignCode: 'aahf_kickoff' },
         ],
-        audienceAccessMode: 'email_or_donation',
+        audienceAccessMode: 'account',
+        generalAdmissionPoints: 200,
+        creditEarningMode: 'friendly',
+        timedLobbyEnabled: true,
+        timedLobbyPoints: 25,
+        timedLobbyIntervalMin: 10,
+        timedLobbyMaxPerGuest: 150,
         coHostCreditPolicy: 'standard',
         reactionTapCooldownMs: 900,
         supportCelebrationStyle: 'moneybags_burst',
@@ -161,6 +173,7 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'classic-home',
     'streamlined-home',
     'streamlined-aahf-home',
+    'streamlined-aahf-party-ready',
     'streamlined-aahf-browse',
     'streamlined-aahf-queue',
     'streamlined-aahf-join',
@@ -201,6 +214,14 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
         return {
             ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
             room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+        };
+    }
+
+    if (safeId === 'streamlined-aahf-party-ready') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            room: buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'karaoke' }),
+            songs: buildBaseSongs().filter((song) => String(song?.status || '').trim().toLowerCase() !== 'performing'),
         };
     }
 

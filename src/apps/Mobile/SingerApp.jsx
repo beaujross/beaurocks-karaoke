@@ -2863,6 +2863,11 @@ const SingerApp = ({ roomCode, uid }) => {
         openPremiumReactions: audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open,
         audienceBrandTitle,
     });
+    const festivalGuestJoinNoEmail = isCustomAudienceBrand
+        && /aahf|festival/i.test(String(audienceBrandTitle || '').trim())
+        && audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account
+        && audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open
+        && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
     const hasSupporterAccess = allowsDonationAccess
         && (
             !!user?.roomBoostBadge
@@ -2901,7 +2906,9 @@ const SingerApp = ({ roomCode, uid }) => {
     const joinEmailActionLabel = simpleEmailCaptureMode
         ? 'Optional: Save With Email'
         : 'Optional: Continue With Email';
-    const joinAccessHelperText = simplifyFestivalSupportAccess
+    const joinAccessHelperText = festivalGuestJoinNoEmail
+        ? 'Join now. No BeauRocks email is required for AAHF tonight. Any festival updates should come from AAHF, not from BeauRocks.'
+        : simplifyFestivalSupportAccess
         ? 'Join now. Email save-in stays optional, and festival support happens later without slowing your first request.'
         : allowsDonationAccess
             ? 'Join now. Email save-in and room support stay available after you are inside.'
@@ -7916,7 +7923,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
                     {joinAccessHelperText}
                 </div>
-                {isAnon ? (
+                {isAnon && !festivalGuestJoinNoEmail ? (
                     <button
                         type="button"
                         onClick={() => openVipUpgrade('email')}
@@ -7927,7 +7934,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 ) : (
                     <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
                         <i className="fa-solid fa-circle-check"></i>
-                        {joinConnectedLabel}
+                        {festivalGuestJoinNoEmail ? 'Festival Join Ready' : joinConnectedLabel}
                     </div>
                 )}
                 {returningProfile && showReturningPrompt ? (
@@ -9982,21 +9989,31 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
                                     <span className="text-2xl">{EMOJI.star}</span>
-                                    {allowsDonationAccess
+                                    {festivalGuestJoinNoEmail
+                                        ? 'No BeauRocks account is needed tonight. If AAHF wants follow-up, that should come from the festival directly.'
+                                        : allowsDonationAccess
                                         ? 'Support the fundraiser or link your email to keep tonight&apos;s event perks moving with you.'
                                         : 'Link your email later to keep tonight&apos;s event perks, profile, and future bonuses.'}
                                 </div>
-                                <button
-                                    onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
-                                    className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
-                                >
-                                    {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
-                                </button>
+                                {festivalGuestJoinNoEmail ? (
+                                    <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+                                        Festival updates should come from AAHF, not from a BeauRocks account flow.
+                                    </div>
+                                ) : (
+                                    <button
+                                        onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
+                                        className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
+                                    >
+                                        {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
+                                    </button>
+                                )}
                             </div>
                             <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
                                 <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
                                 <div className="text-lg text-zinc-100">
-                                    {allowsDonationAccess
+                                    {festivalGuestJoinNoEmail
+                                        ? 'Room points are for tonight&apos;s live AAHF session. No BeauRocks email is required to join or use them.'
+                                        : allowsDonationAccess
                                         ? 'Room points power tonight&apos;s session. Supporter unlocks light up this room right away, and email access keeps your identity, history, and future bonuses tied together.'
                                         : `Room points power tonight&apos;s session. Linking your email later keeps your identity, event bonuses, ${premiumPerksLabel}, and history tied together.`}
                                 </div>
@@ -10136,7 +10153,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     Open support page
                                                 </button>
                                             )}
-                                            {allowsEmailFallbackAccess && allowsDonationAccess && (
+                                            {allowsEmailFallbackAccess && allowsDonationAccess && !festivalGuestJoinNoEmail && (
                                                 <button
                                                     onClick={() => openVipUpgrade('email')}
                                                     className="w-full rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-4 py-3 font-bold text-cyan-100"
@@ -10838,7 +10855,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         >
             <div className="space-y-2">
                 <div
-                    className="grid gap-2"
+                    role="tablist"
+                    aria-label="Primary audience sections"
+                    className="grid gap-1 rounded-full border border-white/10 bg-black/25 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                     style={{ gridTemplateColumns: `repeat(${streamlinedPrimaryNavItems.length}, minmax(0, 1fr))` }}
                 >
                     {streamlinedPrimaryNavItems.map((item) => {
@@ -10849,19 +10868,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button
                                 key={item.key}
                                 type="button"
+                                role="tab"
+                                aria-selected={isActive}
                                 onClick={() => openStreamlinedPrimaryStageTab(item.key)}
-                                className={`rounded-2xl border px-3 py-2.5 text-left transition-all ${
+                                className={`rounded-full px-3 py-1.5 text-center transition-all ${
                                     isActive
-                                        ? ''
-                                        : 'border-white/18 bg-white/[0.07] text-zinc-100 shadow-[0_10px_24px_rgba(0,0,0,0.18)] hover:border-white/30 hover:bg-white/10'
+                                        ? 'text-white shadow-[0_8px_20px_rgba(0,0,0,0.18)]'
+                                        : 'text-zinc-300 hover:bg-white/[0.06] hover:text-white'
                                 }`}
-                                style={isActive ? audienceBrandPalette.primaryPillStyle : undefined}
+                                style={isActive ? {
+                                    ...audienceBrandPalette.primaryPillStyle,
+                                    backgroundColor: 'rgba(255,255,255,0.16)',
+                                    borderColor: 'rgba(255,255,255,0.12)',
+                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+                                } : undefined}
                             >
-                                <div className="flex items-center justify-center gap-2">
-                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-black/35 text-sm">
-                                        <i className={`fa-solid ${item.icon}`}></i>
-                                    </span>
-                                    <div className="text-xs font-black uppercase tracking-[0.16em]">
+                                <div className="flex items-center justify-center gap-1.5">
+                                    <i className={`fa-solid ${item.icon} text-[10px] ${isActive ? 'opacity-100' : 'opacity-70'}`}></i>
+                                    <div className="text-[11px] font-black uppercase tracking-[0.16em]">
                                         {item.label}
                                     </div>
                                 </div>
@@ -12129,12 +12153,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Ready to Sing</div>
+                                        <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Room Ready</div>
                                         <div className="mt-1 text-[1.4rem] font-black leading-tight text-white">
-                                            Request your song before the next slot opens
+                                            The room is open and the next singer slot is coming up
                                         </div>
                                         <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                            Search + add song. The host matches the backing and drops it into the live queue.
+                                            Use the Songs tab when you are ready to search. From here, just keep an eye on the queue and room activity.
                                         </div>
                                     </div>
                                     <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
@@ -12156,12 +12180,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button
                                         type="button"
                                         data-feature-id="singer-streamlined-idle-request-cta"
-                                        onClick={openAudienceCatalogSearch}
+                                        onClick={() => openStreamlinedPrimaryStageTab('request')}
                                         className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)]"
                                         style={audienceBrandPalette.primaryPillStyle}
                                     >
-                                        <i className="fa-solid fa-plus"></i>
-                                        Request a Song
+                                        <i className="fa-solid fa-music"></i>
+                                        Open Songs
                                     </button>
                                     <button
                                         type="button"
@@ -14198,7 +14222,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     ))}
                                 </div>
 
-                                {!canSaveTight15 && (
+                                {!canSaveTight15 && !festivalGuestJoinNoEmail && (
                                     <button onClick={()=>openVipUpgrade('email')} className="w-full bg-[#00C4D9] text-black py-3 rounded-xl font-bold mt-4">Continue with Email to Save Across Rooms</button>
                                 )}
                             </div>

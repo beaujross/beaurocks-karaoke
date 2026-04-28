@@ -94,8 +94,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const streamlinedSongsNavItems = \[\s*\{ key: 'requests', label: 'Add Song', icon: 'fa-plus' \},/,
-    "SingerApp should label the streamlined request tab as Add Song so the primary action is obvious",
+    /const streamlinedSongsNavItems = \[\s*\{ key: 'browse', label: 'Browse', icon: 'fa-magnifying-glass' \},/,
+    "SingerApp should keep streamlined song tabs focused on browse and queue instead of generic button actions",
   );
   assert.match(
     source,
@@ -144,18 +144,23 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /Request your song before the next slot opens/,
-    "SingerApp streamlined idle home should lead with a simple request-first headline before the stage goes live",
+    /Room Ready/,
+    "SingerApp streamlined idle home should read as room status instead of a duplicate request funnel",
   );
   assert.match(
     source,
-    /Search \+ add song\. The host matches the backing and drops it into the live queue\./,
-    "SingerApp streamlined idle home should explain the request path in one short sentence",
+    /The room is open and the next singer slot is coming up/,
+    "SingerApp streamlined idle home should keep the copy focused on room status and pacing",
   );
   assert.match(
     source,
     /data-feature-id="singer-streamlined-idle-request-cta"/,
     "SingerApp streamlined idle home should expose a dedicated request CTA for QA and regression coverage",
+  );
+  assert.match(
+    source,
+    /Open Songs/,
+    "SingerApp streamlined idle home should route guests into the Songs tab instead of duplicating request language",
   );
   assert.match(
     source,
@@ -166,6 +171,11 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /Open search, pick a song, and it goes straight to the queue\./,
     "SingerApp should explain the streamlined search flow directly under the primary action",
+  );
+  assert.match(
+    source,
+    /Use the Songs tab when you are ready to search\. From here, just keep an eye on the queue and room activity\./,
+    "SingerApp streamlined idle home should explain that the Party view is status-first while Songs owns search",
   );
   assert.match(
     source,
@@ -236,7 +246,7 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
-    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setTab\('request'\);\s*setSongsTab\('requests'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[preferredCatalogSearchMode\]\);/,
+    /const openAudienceCatalogSearch = useCallback\(\(\) => \{\s*setTab\('request'\);\s*setSongsTab\(isStreamlinedAudienceShell \? 'browse' : 'requests'\);\s*setCatalogSearchMode\(preferredCatalogSearchMode\);\s*setCatalogSearchOpen\(true\);\s*\}, \[isStreamlinedAudienceShell, preferredCatalogSearchMode\]\);/,
     "SingerApp should move broken empty-stage search entry points to the request tab and open in the preferred mode",
   );
   assert.match(

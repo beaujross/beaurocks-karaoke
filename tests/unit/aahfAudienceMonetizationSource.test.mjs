@@ -8,33 +8,28 @@ const source = readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8');
 test('AAHF-style rooms simplify audience access and keep support out of the primary join path', () => {
   assert.match(
     source,
-    /const simplifyFestivalSupportAccess = allowsDonationAccess/,
-    'Singer app should explicitly detect festival rooms that already open the core audience perks',
+    /const festivalGuestJoinNoEmail = isCustomAudienceBrand/,
+    'Singer app should explicitly detect festival rooms that should not ask for BeauRocks email on join',
   );
   assert.match(
     source,
     /audienceFeatureAccess\?\.features\?\.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS\.open[\s\S]*audienceFeatureAccess\?\.features\?\.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS\.open/,
-    'Festival simplification should key off open audience perks instead of inventing a separate access system',
+    'Festival join behavior should key off open audience perks instead of inventing a separate access system',
   );
   assert.match(
     source,
-    /const accessActionLabel = simplifyFestivalSupportAccess\s*\n\s*\? 'Continue with Email'/,
-    'Simplified festival access should default the primary CTA back to email instead of support-first language',
+    /No BeauRocks email is required for AAHF tonight\./,
+    'Festival join helper copy should say that BeauRocks email is not required',
   );
   assert.match(
     source,
-    /AAHF support moments can stay separate from your karaoke join flow\./,
-    'Audience access copy should explicitly separate fundraising from the core karaoke join experience',
+    /Any festival updates should come from AAHF, not from BeauRocks\./,
+    'Festival join helper copy should make it clear that follow-up communication belongs to the festival',
   );
   assert.match(
     source,
-    /const wantsEmail = preferredPath === 'email' \|\| \(preferredPath === 'auto' && simplifyFestivalSupportAccess\);/,
-    'Auto-upgrade routing should prefer the existing email flow for simplified festival rooms',
-  );
-  assert.match(
-    source,
-    /Support moments for AAHF can stay on the main screen instead of blocking join\./,
-    'Join helper copy should reinforce that support appears on the main screen instead of interrupting entry',
+    /isAnon && !festivalGuestJoinNoEmail \?/,
+    'Festival no-email rooms should suppress the join-time BeauRocks email CTA for anonymous guests',
   );
 });
 
@@ -53,6 +48,11 @@ test('AAHF-style rooms keep support optional inside access and points flows', ()
     source,
     /Support AAHF separately without slowing down your karaoke join\./,
     'Access modal should keep fundraiser support available but clearly secondary to joining',
+  );
+  assert.match(
+    source,
+    /Festival Join Ready/,
+    'Festival no-email rooms should show a ready state instead of a BeauRocks email CTA on the join screen',
   );
   assert.match(
     source,

@@ -177,11 +177,28 @@ const run = async () => {
     const room = await loadAahfRoomDoc();
     summary.room = {
       audienceShellVariant: room?.audienceShellVariant || "",
+      audienceAccessMode: room?.eventCredits?.audienceAccessMode || "",
+      timedLobbyEnabled: !!room?.eventCredits?.timedLobbyEnabled,
+      timedLobbyPoints: Number(room?.eventCredits?.timedLobbyPoints || 0) || 0,
+      timedLobbyIntervalMin: Number(room?.eventCredits?.timedLobbyIntervalMin || 0) || 0,
+      timedLobbyMaxPerGuest: Number(room?.eventCredits?.timedLobbyMaxPerGuest || 0) || 0,
+      generalAdmissionPoints: Number(room?.eventCredits?.generalAdmissionPoints || 0) || 0,
+      customEmojiAccess: room?.audienceFeatureAccess?.features?.customEmoji || "",
+      premiumReactionsAccess: room?.audienceFeatureAccess?.features?.premiumReactions || "",
       introHeadline: room?.runOfShowDirector?.items?.[0]?.presentationPlan?.headline || "",
       joinHeadline: room?.runOfShowDirector?.items?.find?.((item) => item?.title === "How To Join In")?.presentationPlan?.headline || "",
     };
     if (room?.audienceShellVariant !== "streamlined") {
       throw new Error(`Expected audienceShellVariant "streamlined", received ${JSON.stringify(room?.audienceShellVariant)}`);
+    }
+    if (room?.eventCredits?.audienceAccessMode !== "account") {
+      throw new Error(`Expected audienceAccessMode "account", received ${JSON.stringify(room?.eventCredits?.audienceAccessMode)}`);
+    }
+    if (room?.audienceFeatureAccess?.features?.customEmoji !== "open" || room?.audienceFeatureAccess?.features?.premiumReactions !== "open") {
+      throw new Error("Expected AAHF audience feature access to keep custom emoji and premium reactions open.");
+    }
+    if (room?.eventCredits?.timedLobbyEnabled !== true) {
+      throw new Error("Expected AAHF timed lobby credits to be enabled.");
     }
     return `variant=${room.audienceShellVariant}`;
   });

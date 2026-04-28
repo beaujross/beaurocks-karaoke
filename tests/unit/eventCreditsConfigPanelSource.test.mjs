@@ -14,3 +14,13 @@ test('event credits config panel exposes co-host credit policy and reaction cool
   assert.match(source, /Shared by emoji reactions and the applause clap button/);
   assert.match(source, /normalizeReactionTapCooldownMs\(Number\(e\.target\.value \|\| 0\) \* 1000\)/);
 });
+
+test('event credits config panel exposes join credits and timed refill controls', () => {
+  assert.match(source, /Join credits/);
+  assert.match(source, /Lobby refill/);
+  assert.match(source, /Every minutes/);
+  assert.match(source, /Refill cap/);
+  assert.match(source, /Award capped lobby refill credits while guests stay active/);
+  assert.match(source, /timedLobbyIntervalMin/);
+  assert.match(source, /timedLobbyMaxPerGuest/);
+});

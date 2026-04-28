@@ -56,9 +56,10 @@ test('roomEventProfiles exposes AAHF setup highlights and seeded break scenes', 
     const template = buildAahfKickoffStarterTemplate(Date.parse('2026-05-01T19:00:00-07:00'));
     assert.equal(template.runOfShowPolicy?.defaultAutomationMode, 'auto');
 
-    const items = Array.isArray(template.runOfShowDirector?.items) ? template.runOfShowDirector.items : [];
+    const rawItems = template.runOfShowDirector?.items;
+    const items = Array.isArray(rawItems) ? rawItems : Object.values(rawItems || {});
     assert.equal(items[0]?.type, 'intro');
-    assert.ok(items.some((item) => item.type === 'trivia_break' && /Keep the room engaged/i.test(item?.presentationPlan?.subhead || '')));
-    assert.ok(items.some((item) => item.type === 'would_you_rather_break' && /Crowd vote break/i.test(item?.presentationPlan?.headline || '')));
+    assert.ok(items.some((item) => item.type === 'trivia_break' && /Keep the room warm/i.test(item?.presentationPlan?.subhead || '')));
+    assert.ok(items.some((item) => item.type === 'would_you_rather_break' && /Pick the next room mood|Encore vote/i.test(item?.presentationPlan?.headline || '')));
     assert.ok(items.some((item) => item.type === 'winner_declaration' && /door prize/i.test(item?.notes || '')));
 });
