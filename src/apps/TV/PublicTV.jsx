@@ -15,8 +15,10 @@ import { emoji, EMOJI } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
+import { resolveRoomUserUid } from '../../lib/gameLaunchSupport';
 import { createLogger } from '../../lib/logger';
 import groupChatMessages from '../../lib/chatGrouping';
+import { buildPerformanceSessionPlaybackWrite } from '../../lib/performanceSessionPlayback';
 import useTvVisualizerSettings from './hooks/useTvVisualizerSettings';
 import {
     DEFAULT_POP_TRIVIA_ROUND_SEC,
@@ -245,15 +247,6 @@ const decodeUriComponentLoop = (value = '', maxPasses = 3) => {
         current = decoded;
     }
     return current;
-};
-
-const resolveRoomUserUid = (roomUser = {}, fallbackId = '') => {
-    const directUid = String(roomUser?.uid || '').trim();
-    if (directUid) return directUid;
-    const safeId = String(fallbackId || roomUser?.id || '').trim();
-    const underscoreIndex = safeId.indexOf('_');
-    if (underscoreIndex === -1) return safeId;
-    return safeId.slice(underscoreIndex + 1).trim();
 };
 
 const normalizeLobbyOrbPathname = (pathname = '') => {
@@ -1926,69 +1919,19 @@ const PublicTV = ({ roomCode }) => {
 
     const reportPerformanceSessionPlayback = useCallback(async (event = {}) => {
         if (!roomCode) return;
-        const session = room?.currentPerformanceSession || null;
-        const sessionId = String(session?.sessionId || '').trim();
-        if (!sessionId) return;
-
-        const eventType = String(event?.type || '').trim().toLowerCase();
-        const playbackState = eventType === 'heartbeat'
-            ? String(session?.playbackState || '').trim().toLowerCase() || 'playing'
-            : eventType;
-        const nowValue = nowMs();
-        const currentTimeSec = Math.max(0, Number(event?.currentTimeSec || 0));
-        const durationSec = Math.max(0, Number(event?.durationSec || 0));
-        const dedupeSuffix = eventType === 'heartbeat'
-            ? `heartbeat:${Math.floor(currentTimeSec / 5)}`
-            : `${playbackState}:${Math.floor(currentTimeSec)}:${Math.floor(durationSec)}:${String(event?.completionReason || '').trim().toLowerCase()}`;
-        const dedupeKey = `${sessionId}:${dedupeSuffix}`;
-        if (performanceSessionWriteKeyRef.current === dedupeKey) return;
-        performanceSessionWriteKeyRef.current = dedupeKey;
-
-        const patch = {
-            'currentPerformanceSession.lastReportedAtMs': nowValue,
-            ...(durationSec > 0 ? { 'currentPerformanceSession.playerReportedDurationSec': durationSec } : {}),
-            ...(currentTimeSec > 0 ? { 'currentPerformanceSession.playerPositionSec': currentTimeSec } : {})
-        };
-        if (playbackState) {
-            patch['currentPerformanceSession.playbackState'] = playbackState;
-        }
-        if (eventType === 'playing' || eventType === 'heartbeat') {
-            patch['currentPerformanceSession.lastHeartbeatAtMs'] = nowValue;
-            if (!Number(session?.playbackStartedAtMs || 0)) {
-                patch['currentPerformanceSession.playbackStartedAtMs'] = nowValue;
-            }
-        }
-        if (eventType === 'paused') {
-            patch['currentPerformanceSession.pausedAtMs'] = nowValue;
-        }
-        if (eventType === 'ended') {
-            patch['currentPerformanceSession.lastHeartbeatAtMs'] = nowValue;
-            patch['currentPerformanceSession.endedAtMs'] = nowValue;
-            patch['currentPerformanceSession.completionReason'] = String(event?.completionReason || 'player_ended').trim().toLowerCase();
-        }
-        if (eventType === 'error') {
-            patch['currentPerformanceSession.completionReason'] = String(event?.completionReason || 'player_error').trim().toLowerCase();
-            patch['currentPerformanceSession.error'] = String(event?.error || 'player_error').trim().toLowerCase();
-        }
-        if (
-            durationSec > 0
-            && String(room?.currentPerformanceMeta?.songId || '').trim() === String(session?.songId || '').trim()
-        ) {
-            patch['currentPerformanceMeta.durationSec'] = Math.max(
-                durationSec,
-                Number(room?.currentPerformanceMeta?.durationSec || 0)
-            );
-            patch['currentPerformanceMeta.backingDurationSec'] = Math.max(
-                durationSec,
-                Number(room?.currentPerformanceMeta?.backingDurationSec || 0)
-            );
-            patch['currentPerformanceMeta.durationSource'] = 'player_reported';
-            patch['currentPerformanceMeta.durationConfidence'] = 'high';
-            patch['currentPerformanceMeta.autoEndSafe'] = true;
-        }
+        const nextWrite = buildPerformanceSessionPlaybackWrite({
+            event,
+            session: room?.currentPerformanceSession,
+            currentPerformanceMeta: room?.currentPerformanceMeta,
+            mediaUrl: room?.mediaUrl,
+            now: nowMs()
+        });
+        if (!nextWrite) return;
+        if (performanceSessionWriteKeyRef.current === nextWrite.dedupeKey) return;
+        performanceSessionWriteKeyRef.current = nextWrite.dedupeKey;
 
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), patch);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), nextWrite.patch);
         } catch (error) {
             console.warn('Failed to report performance session playback', error);
             performanceSessionWriteKeyRef.current = '';
@@ -3369,7 +3312,7 @@ const PublicTV = ({ roomCode }) => {
                 return {
                     id: docSnap.id,
                     ...data,
-                    uid: resolveRoomUserUid(data, docSnap.id)
+                    uid: resolveRoomUserUid({ ...data, id: docSnap.id })
                 };
             });
             setRoomUsers(raw);
@@ -4721,7 +4664,7 @@ const PublicTV = ({ roomCode }) => {
         return !!match?.isVip || (match?.vipLevel || 0) > 0;
     };
     const spotlightUser = room?.spotlightUser?.id
-        ? roomUsers.find(u => u.uid === room.spotlightUser.id || u.id?.split('_')[1] === room.spotlightUser.id)
+        ? roomUsers.find((u) => resolveRoomUserUid(u) === room.spotlightUser.id)
         : null;
     const spotlightTopTight15 = extractTopTight15({
         spotlightPayload: room?.spotlightUser || null,
@@ -8640,7 +8583,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
-                {showAmbientFx && reactions.map(r => (
+                {reactions.map(r => (
                     <div
                         key={r.id}
                         className={`absolute bottom-0 flex flex-col items-center reaction-stack reaction-stack-${r.motionVariant || 'drift-right'}`}
@@ -8663,21 +8606,27 @@ const PublicTV = ({ roomCode }) => {
                                     <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                 )}
                             </div>
-                            <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
-                                <div className={`px-4 py-2 md:px-6 md:py-3 rounded-[1.5rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/76 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/68 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
-                                    <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
-                                    <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
-                                    {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
+                            {isSimpleTvProfile ? (
+                                <div className="mt-2 inline-flex items-center rounded-full border border-white/18 bg-black/68 px-3 py-1.5 text-sm font-black text-white shadow-[0_0_16px_rgba(255,255,255,0.08)]">
+                                    <span className="text-lg leading-none">{r.avatar || EMOJI.sparkle}</span>
                                 </div>
-                                <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
-                                    {r.labelOverride || getLobbyReactionLabel(r.type)}
-                                </div>
-                                {Number(r.points || 0) > 0 && (
-                                    <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
-                                        +{r.points || 0} pts
+                            ) : (
+                                <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
+                                    <div className={`px-4 py-2 md:px-6 md:py-3 rounded-[1.5rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/76 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/68 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
+                                        <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
+                                        <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
+                                        {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
                                     </div>
-                                )}
-                            </div>
+                                    <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
+                                        {r.labelOverride || getLobbyReactionLabel(r.type)}
+                                    </div>
+                                    {Number(r.points || 0) > 0 && (
+                                        <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
+                                            +{r.points || 0} pts
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}

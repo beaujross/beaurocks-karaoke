@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { castKaraokeBracketVote } from '../../lib/firebase';
+import { resolveRoomUserUid } from '../../lib/gameLaunchSupport';
 import {
     BRACKET_SIGNUP_MIN_READY_COUNT,
     isBracketSignupOpen,
@@ -16,8 +17,6 @@ const songLabel = (song = null) => {
     if (!song?.artist) return song.songTitle;
     return `${song.songTitle} - ${song.artist}`;
 };
-
-const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
 
 const buildMatchVoteSummary = ({ users = [], bracketId = '', match = null }) => {
     const summary = {

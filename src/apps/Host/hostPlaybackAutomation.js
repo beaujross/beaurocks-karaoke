@@ -41,6 +41,7 @@ export const getAutoEndSchedule = ({
     videoStartTimestamp = 0,
     pausedAt = 0,
     performanceMetaSongId = '',
+    performanceSessionSongId = '',
     performanceSessionState = '',
     performanceSessionSourceType = '',
     performanceSessionLastHeartbeatAtMs = 0,
@@ -58,6 +59,8 @@ export const getAutoEndSchedule = ({
     if (String(activeMode || '').trim().toLowerCase() !== 'karaoke') return null;
     const normalizedMetaSongId = String(performanceMetaSongId || '').trim();
     if (normalizedMetaSongId && normalizedMetaSongId !== normalizedCurrentId) return null;
+    const normalizedSessionSongId = String(performanceSessionSongId || '').trim();
+    if (normalizedSessionSongId && normalizedSessionSongId !== normalizedCurrentId) return null;
     const normalizedSessionState = String(performanceSessionState || '').trim().toLowerCase();
     if (normalizedSessionState === 'ended' || Number(performanceSessionEndedAtMs || 0) > 0) return null;
 

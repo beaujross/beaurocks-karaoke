@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import AppleLyricsRenderer from './AppleLyricsRenderer';
 import { EMOJI } from '../lib/emoji';
+import { attachPerformancePlaybackContext } from '../lib/performanceSessionPlayback';
 
 const nowMs = () => Date.now();
 
@@ -56,8 +57,8 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const youtubeEndedEventRef = useRef('');
     const reportPlaybackEvent = useCallback((event = {}) => {
         if (typeof onPlaybackEvent !== 'function') return;
-        onPlaybackEvent(event);
-    }, [onPlaybackEvent]);
+        onPlaybackEvent(attachPerformancePlaybackContext(event, { room, current }));
+    }, [current, onPlaybackEvent, room]);
     const idleMicSizeClass = fitToWindow ? 'text-[clamp(4.5rem,15vw,8.5rem)]' : 'text-[12rem]';
     const idleHeadingSizeClass = fitToWindow ? 'text-[clamp(2.75rem,8vw,6rem)]' : 'text-8xl';
     const idleCtaSizeClass = fitToWindow ? 'text-[clamp(1rem,3vw,2rem)] px-5 py-2 md:px-7' : 'text-4xl px-8 py-2';
@@ -166,6 +167,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         const handleMessage = (event) => {
             const origin = String(event?.origin || '').toLowerCase();
             if (!origin.includes('youtube.com')) return;
+            if (iframeRef.current?.contentWindow && event?.source !== iframeRef.current.contentWindow) return;
             let payload = event?.data;
             if (typeof payload === 'string') {
                 try {

@@ -118,6 +118,22 @@ test('getAutoEndSchedule ignores stale room playback metadata from a previous pe
     expect(schedule).toBeNull();
 });
 
+test('getAutoEndSchedule ignores a stale performance session from a previous singer even when the room clock is still populated', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'fresh_song',
+        activeMode: 'karaoke',
+        performanceSessionSongId: 'previous_song',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        now: 240000,
+    });
+
+    expect(schedule).toBeNull();
+});
+
 test('getAutoEndSchedule defers auto-end when authoritative player heartbeat is still fresh past the estimate', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
