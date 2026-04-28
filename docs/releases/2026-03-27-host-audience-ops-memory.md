@@ -84,6 +84,17 @@ This note captures product and engineering lessons that should outlive the immed
   - promo campaign records with limits, scope, and redemption auditing
   - shared/manual codes only as a low-risk fallback for non-scarce promo points
 
+## Event Promo Language Should Match What The System Actually Knows
+
+- `Website check-in` and `social promo` messaging should not imply proof of an external action if the product only knows the join source.
+- Durable product direction:
+  - automatic bonus from official event website links
+  - automatic bonus from official social links
+  - automatic donation recognition from Givebutter webhook data
+  - no host verification step
+  - no guest-facing “claim your bonus” friction unless there is a real secure reason
+- Preferred language is `automatic bonus` or `official-link bonus`, not `claim code`, `check-in proof`, or `follow us and claim`.
+
 ## Operational Playback Confidence Tiers
 
 - Treat playback reliability in tiers:
@@ -94,6 +105,15 @@ This note captures product and engineering lessons that should outlive the immed
   - YouTube Premium downloads may be useful operationally for the host as an emergency crate
   - they are not a clean system-level BeauRocks offline library integration path
 
+## Host Communications Should Converge, Not Multiply
+
+- Requiring a live host to monitor separate `Chat`, `Tell Host`, `Inbox`, and moderation surfaces is a product smell.
+- Durable product direction:
+  - one primary live communication destination for the host
+  - source badges and source-specific actions can remain
+  - the operator should not need multiple places just to stay aware of the room
+- If different communication models exist temporarily, the product copy should still present a single clear primary place to look first.
+
 ## Run Of Show Direction
 
 - The `Show` workspace should keep moving toward a studio shell:
@@ -102,6 +122,12 @@ This note captures product and engineering lessons that should outlive the immed
   - focused inspector
 - The product should feel closer to a sequence editor than a settings form.
 - `Build / Run / Review` separation is the right direction; continuing to stack forms and dropdowns will keep failing the intuition test.
+
+## Post-Performance Moments Should Be Explicit Show Beats
+
+- `Next Up`, leaderboard reveals, applause, donation, and support beats are not just visual leftovers after a song; they are programmable room moments.
+- Hosts should be able to stage or trigger these moments intentionally, with detailed timing living in settings/admin rather than cluttering the live rail.
+- The live host surface should keep simple pacing controls; exact per-beat timing belongs in the deeper settings layer.
 
 ## Live Event Room Contract (AAHF / May 1)
 
@@ -114,6 +140,23 @@ This note captures product and engineering lessons that should outlive the immed
   - one join path
   - one host
   - no blank stage
+
+## Room Browser Truthfulness Matters
+
+- A room browser labeled `All rooms` should not silently mean `the recent capped subset`.
+- If rooms are filtered, capped, pinned, or bucketed by recency/upcoming state, the product should expose that honestly.
+- Durable direction:
+  - no misleading fake-all lists
+  - important rooms can be pinned
+  - switching folders should keep the results surface obvious and nearby rather than hidden far down the page
+
+## Host Responsive Design Should Reprioritize, Not Just Shrink
+
+- The smallest host breakpoints fail when too many regions stay bulky, but that does not automatically mean the answer is to hide critical surfaces early.
+- Durable direction:
+  - preserve trust surfaces like preview in a compact form before removing them
+  - tighten density and proportions at medium widths before forcing single-column collapse
+  - do not assume fewer visible regions is always better for operator software
 
 ## Continuity Rule
 

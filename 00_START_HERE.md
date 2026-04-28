@@ -13,6 +13,14 @@ Current live-event context:
 - user-facing `cue` language should be avoided where it collides with `queue`; prefer `sting` for short audio punctuation
 - pre-event priority is hardening continuity and simplifying host flow, not expanding co-host features
 
+Working conventions worth preserving:
+
+- when referencing local files back to Beau, prefer plain repo-relative paths over inline markdown file links; the chat renderer tends to open `file+.vscode-resource...` wrappers instead of the real file
+- AAHF website/social bonuses should be framed and implemented as automatic official-link attribution bonuses, not manual guest claims and not host-verified proofs
+- host communication surfaces should keep converging toward one primary inbox/workspace destination instead of making the operator monitor separate left-rail chat, tell-host, and inbox lanes
+- on smaller host screens, preserve operator trust surfaces before hiding them; compact and rebalance first, collapse later
+- room browser UX should behave like a real browser: avoid misleading caps on “all rooms,” surface upcoming/pinned rooms clearly, and keep the results list visible without deep scrolling
+
 Relevant docs for current work:
 
 - `docs/HOST_OPERATOR_UI_SIMPLIFICATION_SPEC.md`
