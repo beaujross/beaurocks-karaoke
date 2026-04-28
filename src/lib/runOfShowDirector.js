@@ -1,4 +1,4 @@
-import { TRIVIA_BANK, WYR_BANK } from './gameDataConstants';
+import { TRIVIA_BANK, WYR_BANK } from './gameDataConstants.js';
 
 export const RUN_OF_SHOW_PROGRAM_MODES = Object.freeze({
     standard: 'standard_karaoke',

@@ -153,8 +153,18 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     topChromeSource,
-    /Launching\.\.\.' : 'Launch'/,
-    'Top chrome should provide one direct launch action for the room package',
+    /Launch TV/,
+    'Top chrome should keep launch targets inside the quick-launch menu',
+  );
+  assert.match(
+    topChromeSource,
+    /Launch Mobile/,
+    'Top chrome should keep the audience launch target inside the quick-launch menu',
+  );
+  assert.doesNotMatch(
+    topChromeSource,
+    /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/,
+    'Top chrome should not duplicate the quick-launch menu with a second standalone launch button',
   );
   assert.match(
     hostAppSource,
@@ -190,11 +200,6 @@ test('host panel presents readiness and one launch action before deeper setup', 
     hostAppSource,
     /openAdminWorkspace\('ops\.room_setup'\)/,
     'Night setup should route full-admin handoff through the workspace navigation helper',
-  );
-  assert.match(
-    hostAppSource,
-    /onLaunchRoom=\{handleRoomReadinessLaunch\}/,
-    'Host app should wire the chrome launch action into the shared launch package',
   );
 });
 

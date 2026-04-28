@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import groupChatMessages from '../../../lib/chatGrouping';
+import { resolveRoomUserUid } from '../../../lib/gameLaunchSupport';
 
 const HostChatPanel = ({
     chatOpen,
@@ -32,6 +33,7 @@ const HostChatPanel = ({
     showSettingsButton = true,
     showPopoutButton = true
 }) => {
+    if (!chatOpen) return null;
     const resolvedHostBase = hostBase || appBase;
     const displayedMessages = chatViewMode === 'room' ? roomChatMessages : hostDmMessages;
     const groupedMessages = groupChatMessages(displayedMessages.slice(-6), { mergeWindowMs: 12 * 60 * 1000 });
@@ -40,7 +42,7 @@ const HostChatPanel = ({
     const userNameByUid = useMemo(() => {
         const next = {};
         users.forEach((entry) => {
-            const uid = String(entry?.uid || entry?.id?.split('_')[1] || '').trim();
+            const uid = resolveRoomUserUid(entry);
             if (!uid) return;
             next[uid] = entry?.name || 'Guest';
         });
@@ -56,7 +58,7 @@ const HostChatPanel = ({
     }, [groupedMessages, chatViewMode]);
 
     return (
-    <div className={chatOpen ? 'block' : 'hidden'}>
+    <div>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Host chat</div>
@@ -133,7 +135,7 @@ const HostChatPanel = ({
                             >
                                 <option value="">Select guest</option>
                                 {users.map((u) => {
-                                    const id = u.uid || u.id?.split('_')[1] || '';
+                                    const id = resolveRoomUserUid(u);
                                     return (
                                         <option key={u.id || id} value={id}>
                                             {u.name || 'Guest'}

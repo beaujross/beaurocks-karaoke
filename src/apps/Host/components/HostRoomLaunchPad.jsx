@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import HostRoomLaunchPadBrowser from './HostRoomLaunchPadBrowser';
 
+const ROOM_BROWSER_PIN_STORAGE_KEY = 'bross_host_room_browser_pins_v1';
+
 const PRESET_UI_META = {
     casual: {
         eyebrow: 'Open karaoke',
@@ -541,13 +543,43 @@ const HostRoomLaunchPad = ({
     const [roomBrowserFilter, setRoomBrowserFilter] = useState('ready');
     const [roomBrowserSearch, setRoomBrowserSearch] = useState('');
     const [selectedRoomCode, setSelectedRoomCode] = useState('');
+    const [pinnedRoomCodes, setPinnedRoomCodes] = useState(() => {
+        if (typeof window === 'undefined') return [];
+        try {
+            const parsed = JSON.parse(window.localStorage.getItem(ROOM_BROWSER_PIN_STORAGE_KEY) || '[]');
+            return Array.isArray(parsed)
+                ? parsed.map((entry) => String(entry || '').trim().toUpperCase()).filter(Boolean)
+                : [];
+        } catch {
+            return [];
+        }
+    });
+    const pinnedRoomCodeSet = new Set(pinnedRoomCodes);
+    React.useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            window.localStorage.setItem(ROOM_BROWSER_PIN_STORAGE_KEY, JSON.stringify(pinnedRoomCodes));
+        } catch {
+            // Ignore local pin persistence failures.
+        }
+    }, [pinnedRoomCodes]);
+    const togglePinnedRoom = (roomCode = '') => {
+        const normalizedCode = String(roomCode || '').trim().toUpperCase();
+        if (!normalizedCode) return;
+        setPinnedRoomCodes((prev) => (
+            prev.includes(normalizedCode)
+                ? prev.filter((entry) => entry !== normalizedCode)
+                : [normalizedCode, ...prev]
+        ));
+    };
     const activeRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) <= 0);
     const cleanupRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) > 0);
     const archivedRooms = recentHostRooms.filter((roomItem) => roomItem.archived);
     const pastRooms = [...cleanupRooms, ...archivedRooms];
     const upcomingRooms = activeRooms.filter((roomItem) => Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000));
     const tonightRooms = activeRooms.filter((roomItem) => !upcomingRooms.some((entry) => entry.code === roomItem.code));
-    const featuredRoom = [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom)
+    const featuredRoom = [...recentHostRooms].find((roomItem) => pinnedRoomCodeSet.has(String(roomItem.code || '').trim().toUpperCase()))
+        || [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom)
         || tonightRooms[0]
         || upcomingRooms[0]
         || cleanupRooms[0]
@@ -573,6 +605,9 @@ const HostRoomLaunchPad = ({
     const normalizedRoomBrowserSearch = normalizeLaunchSearchToken(roomBrowserSearch);
     const roomBrowserResults = [...(activeRoomBucket?.rooms || [])]
         .sort((left, right) => {
+            const leftPinned = pinnedRoomCodeSet.has(String(left.code || '').trim().toUpperCase());
+            const rightPinned = pinnedRoomCodeSet.has(String(right.code || '').trim().toUpperCase());
+            if (leftPinned !== rightPinned) return Number(rightPinned) - Number(leftPinned);
             if (activeRoomBucket?.id === 'upcoming') {
                 const leftScheduled = Number(left.roomStartsAtMs || left.discoverStartsAtMs || Number.MAX_SAFE_INTEGER);
                 const rightScheduled = Number(right.roomStartsAtMs || right.discoverStartsAtMs || Number.MAX_SAFE_INTEGER);
@@ -674,6 +709,8 @@ const HostRoomLaunchPad = ({
             runFeaturedAction={runFeaturedAction}
             roomManagerBusyCode={roomManagerBusyCode}
             roomManagerBusyAction={roomManagerBusyAction}
+            pinnedRoomCodeSet={pinnedRoomCodeSet}
+            togglePinnedRoom={togglePinnedRoom}
             setRoomArchivedState={setRoomArchivedState}
             setRoomDiscoverability={setRoomDiscoverability}
             runLandingRoomCleanup={runLandingRoomCleanup}

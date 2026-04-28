@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ASSETS } from '../../../lib/assets';
 import { REQUEST_MODES } from '../../../lib/requestModes';
 import { AUDIENCE_FEATURE_ACCESS_LEVELS } from '../../../lib/audienceFeatureAccess.js';
@@ -66,6 +66,8 @@ const HostRoomLaunchPadBrowser = ({
     runFeaturedAction,
     roomManagerBusyCode,
     roomManagerBusyAction,
+    pinnedRoomCodeSet,
+    togglePinnedRoom,
     setRoomArchivedState,
     setRoomDiscoverability,
     runLandingRoomCleanup,
@@ -107,6 +109,8 @@ const HostRoomLaunchPadBrowser = ({
     const [presetEditorMode, setPresetEditorMode] = useState('copy');
     const [presetDraft, setPresetDraft] = useState(() => createHostNightPresetDraft(selectedLaunchPreset));
     const [joinPosterRoom, setJoinPosterRoom] = useState(null);
+    const [roomSetupMode, setRoomSetupMode] = useState('manage');
+    const roomBrowserResultsRef = useRef(null);
     const selectedPresetIsCustom = !!selectedLaunchPreset && !selectedLaunchPreset.isBuiltIn;
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetRequestMode = String(presetDraft?.settings?.requestMode || REQUEST_MODES.canonicalOpen);
@@ -196,6 +200,22 @@ const HostRoomLaunchPadBrowser = ({
                 : '',
         };
     }, [audienceBase, joinPosterRoom]);
+    useEffect(() => {
+        if (!roomBrowserResultsRef.current) return;
+        roomBrowserResultsRef.current.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, [activeRoomBucket?.id]);
+    useEffect(() => {
+        if (selectedRoom?.code) return;
+        if (!roomBrowserResults.length) setRoomSetupMode('create');
+    }, [roomBrowserResults.length, selectedRoom?.code]);
+    const handleSelectRoom = (roomCode = '') => {
+        setSelectedRoomCode(roomCode);
+        setRoomSetupMode('manage');
+    };
+    const selectedRoomPinned = pinnedRoomCodeSet?.has?.(String(selectedRoom?.code || '').trim().toUpperCase());
+    const selectedRoomSchedule = selectedRoom ? formatRoomSchedule(selectedRoom) : '';
+    const manageModeActive = roomSetupMode === 'manage';
+    const createModeActive = roomSetupMode === 'create';
 
     return (
     <div className="relative z-10 w-full max-w-[1600px]">
@@ -217,6 +237,7 @@ const HostRoomLaunchPadBrowser = ({
                     <div className="flex flex-wrap items-center gap-2">
                         <a
                             href="#launchpad-create-room"
+                            onClick={() => setRoomSetupMode('create')}
                             className="inline-flex items-center rounded-full border border-cyan-300/35 bg-cyan-500/14 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-100"
                         >
                             Create New Room
@@ -258,6 +279,7 @@ const HostRoomLaunchPadBrowser = ({
                                     key={bucket.id}
                                     type="button"
                                     onClick={() => setRoomBrowserFilter(bucket.id)}
+                                    data-room-browser-bucket={bucket.id}
                                     className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition ${selected
                                         ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
                                         : 'border-transparent bg-white/[0.03] text-cyan-100/76 hover:border-white/10 hover:bg-white/[0.05]'}`}
@@ -275,7 +297,7 @@ const HostRoomLaunchPadBrowser = ({
                     </div>
                 </aside>
 
-                <section className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-2 xl:row-start-2">
+                <section ref={roomBrowserResultsRef} className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-2 xl:row-start-1">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
                         <div>
                             <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{activeRoomBucket?.label || 'Rooms'}</div>
@@ -321,15 +343,21 @@ const HostRoomLaunchPadBrowser = ({
                             const roomSchedule = formatRoomSchedule(roomItem) || formatRecentRoomTime(roomItem.updatedAtMs || roomItem.createdAtMs) || 'No recent activity';
                             const selected = selectedRoom?.code === roomItem.code;
                             const roomBusy = roomManagerBusyCode === roomItem.code;
+                            const roomPinned = pinnedRoomCodeSet?.has?.(String(roomItem.code || '').trim().toUpperCase());
                             return (
                                 <div
                                     key={roomItem.code}
-                                    onClick={() => setSelectedRoomCode(roomItem.code)}
+                                    onClick={() => handleSelectRoom(roomItem.code)}
                                     className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(0,1.5fr)_120px_120px_180px_minmax(170px,1fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
                                 >
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
                                             <div className="truncate text-sm font-semibold text-white">{roomItem.roomName || roomItem.code}</div>
+                                            {roomPinned ? (
+                                                <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                                    Pinned
+                                                </span>
+                                            ) : null}
                                             {isAahfRoom(roomItem) ? (
                                                 <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
                                                     AAHF
@@ -368,6 +396,16 @@ const HostRoomLaunchPadBrowser = ({
                                             type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation();
+                                                togglePinnedRoom?.(roomItem.code);
+                                            }}
+                                            className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${roomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                        >
+                                            {roomPinned ? 'Pinned' : 'Pin'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
                                                 setRoomArchivedState?.(roomItem.code, !roomItem.archived);
                                             }}
                                             disabled={joiningRoom || roomBusy}
@@ -386,9 +424,47 @@ const HostRoomLaunchPadBrowser = ({
                     </div>
                 </section>
 
-                <aside className="space-y-4 xl:col-start-2 xl:row-start-1">
-                    <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-4">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Existing room</div>
+                <aside className="space-y-4 self-start xl:col-start-2 xl:row-start-2 xl:sticky xl:top-4">
+                    <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Workspace</div>
+                        <div className="mt-3 inline-flex w-full rounded-xl border border-white/10 bg-black/25 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setRoomSetupMode('manage')}
+                                className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${manageModeActive ? 'bg-white text-black' : 'text-cyan-100/72'}`}
+                            >
+                                Manage Selected Room
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRoomSetupMode('create')}
+                                className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${createModeActive ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black' : 'text-cyan-100/72'}`}
+                            >
+                                Create Room
+                            </button>
+                        </div>
+                        <div className="mt-3 text-sm text-cyan-100/66">
+                            Keep one workspace open at a time so the browser stays visible and this screen does not turn into a long stacked form.
+                        </div>
+                    </div>
+                    <div className={`rounded-[1.4rem] border p-4 transition ${manageModeActive ? 'border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(12,21,34,0.92))] shadow-[0_20px_48px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-black/22'}`}>
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Existing room</div>
+                                <div className="mt-1 text-xl font-black text-white">Manage Selected Room</div>
+                            </div>
+                            {!manageModeActive ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setRoomSetupMode('manage')}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em]`}
+                                >
+                                    Open
+                                </button>
+                            ) : null}
+                        </div>
+                        {manageModeActive ? (
+                            <>
                         <div className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</div>
                             <div className="mt-1 text-sm text-cyan-100/72">Use this when you already know the room code and want the live host panel immediately.</div>
@@ -414,6 +490,22 @@ const HostRoomLaunchPadBrowser = ({
                                 </button>
                             </div>
                         </div>
+                        </>
+                        ) : (
+                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Current selection</div>
+                                {selectedRoom ? (
+                                    <>
+                                        <div className="mt-1 text-base font-semibold text-white">{selectedRoom.roomName || selectedRoom.code}</div>
+                                        <div className="mt-1 text-sm text-cyan-100/68">{selectedRoomAction?.label || 'Open Host Panel'} when you reopen this workspace.</div>
+                                    </>
+                                ) : (
+                                    <div className="mt-1 text-sm text-cyan-100/68">Select a room from the browser, then open this workspace when you need deeper controls.</div>
+                                )}
+                            </div>
+                        )}
+                        {manageModeActive ? (
+                            <>
                         {selectedRoom ? (
                             <>
                                 <div className="mt-1 text-xl font-black text-white">{selectedRoom.roomName || selectedRoom.code}</div>
@@ -421,14 +513,19 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="mt-2 text-sm text-cyan-100/68">Open it, update it, or remove it from the active list here.</div>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${selectedRoomLifecycle?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
-                                        {selectedRoomLifecycle?.label || 'Room'}
-                                    </span>
+                                    {selectedRoomLifecycle?.label || 'Room'}
+                                </span>
+                                    {selectedRoomPinned ? (
+                                        <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                            Pinned
+                                        </span>
+                                    ) : null}
                                     <span className={`rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${selectedRoomVisibility?.chipClass || 'border-white/10 bg-white/5 text-cyan-100/70'}`}>
                                         {selectedRoomVisibility?.label || 'Private'}
                                     </span>
-                                    {formatRoomSchedule(selectedRoom) ? (
+                                    {selectedRoomSchedule ? (
                                         <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/70">
-                                            {formatRoomSchedule(selectedRoom)}
+                                            {selectedRoomSchedule}
                                         </span>
                                     ) : null}
                                 </div>
@@ -479,6 +576,13 @@ const HostRoomLaunchPadBrowser = ({
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[11px] uppercase tracking-[0.18em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                     >
                                         Show Plan
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => togglePinnedRoom?.(selectedRoom.code)}
+                                        className={`${STYLES.btnStd} ${selectedRoomPinned ? STYLES.btnHighlight : STYLES.btnNeutral} px-4 py-2 text-[11px] uppercase tracking-[0.18em]`}
+                                    >
+                                        {selectedRoomPinned ? 'Pinned Room' : 'Pin Room'}
                                     </button>
                                 </div>
 
@@ -568,21 +672,43 @@ const HostRoomLaunchPadBrowser = ({
                         ) : (
                             <div className="mt-3 text-sm text-cyan-100/68">Select a room from the browser below to open it, archive it, restore it, or clean it up.</div>
                         )}
+                        </>
+                        ) : null}
                     </div>
 
-                    <div id="launchpad-create-room" className="rounded-[1.4rem] border border-cyan-300/20 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(24,11,31,0.9))] p-4 shadow-[0_20px_48px_rgba(0,0,0,0.24)]">
+                    <div id="launchpad-create-room" className={`rounded-[1.4rem] border p-4 transition ${createModeActive ? 'border-cyan-300/20 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(24,11,31,0.9))] shadow-[0_20px_48px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-black/22'}`}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Primary action</div>
                                 <div className="mt-1 text-xl font-black text-white">Create New Room</div>
                             </div>
-                            <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
-                                {launchDisabled ? 'Needs input' : 'Ready'}
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
+                                    {launchDisabled ? 'Needs input' : 'Ready'}
+                                </span>
+                                {!createModeActive ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setRoomSetupMode('create')}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em]`}
+                                    >
+                                        Open
+                                    </button>
+                                ) : null}
+                            </div>
                         </div>
                         <div className="mt-2 text-sm text-cyan-100/68">Pick the night preset here, then open the host panel with the room already preconfigured.</div>
 
-                        {shouldShowSetupCard ? (
+                        {!createModeActive ? (
+                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-cyan-100/72">
+                                <div className="font-semibold text-white">{String(launchRoomName || '').trim() || 'Untitled room'}</div>
+                                <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
+                                <div className="mt-1">Starts {launchStartSummary}</div>
+                                <div className="mt-1">{selectedLaunchPreset?.label || 'No preset selected'} preset ready.</div>
+                            </div>
+                        ) : null}
+
+                        {createModeActive && shouldShowSetupCard ? (
                             <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-500/10 px-3 py-3">
                                 <div className="text-sm font-semibold text-amber-50">Finish host setup first.</div>
                                 <div className="mt-1 text-sm text-amber-100/78">
@@ -599,6 +725,7 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         ) : null}
 
+                        {createModeActive ? (
                         <div className="mt-4 space-y-3">
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <label className="block">
@@ -952,6 +1079,7 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                             </div>
                         </div>
+                        ) : null}
                     </div>
                 </aside>
             </div>

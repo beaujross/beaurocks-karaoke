@@ -4,6 +4,7 @@ import {
   buildDefaultBingoBoard,
   buildParticipantPayload,
   buildRunOfShowGameLaunchRoomUpdates,
+  extractRoomUserUidFromDocId,
   findRoomUserByUid,
   getResolvedRoomUserUids,
   resolveRoomUserUid,
@@ -14,19 +15,24 @@ describe('game launch support', () => {
   it('resolves room user ids from current and legacy room user shapes', () => {
     expect(resolveRoomUserUid({ uid: 'uid-123', id: 'room_old' })).toBe('uid-123');
     expect(resolveRoomUserUid({ id: 'room_uid-456' })).toBe('uid-456');
+    expect(resolveRoomUserUid({ id: 'room_uid_with_under_scores' })).toBe('uid_with_under_scores');
+    expect(extractRoomUserUidFromDocId('room_uid_with_under_scores')).toBe('uid_with_under_scores');
     expect(resolveRoomUserUid({})).toBe('');
     expect(getResolvedRoomUserUids([
       { uid: 'alpha' },
       { id: 'room_bravo' },
+      { id: 'room_charlie_delta' },
       { id: 'invalid' },
       null,
-    ])).toEqual(['alpha', 'bravo']);
+    ])).toEqual(['alpha', 'bravo', 'charlie_delta']);
 
     const roomUsers = [
       { uid: 'host-1', name: 'Host' },
       { id: 'room_guest-2', name: 'Guest' },
+      { id: 'room_guest_with_under_scores', name: 'Guest 2' },
     ];
     expect(findRoomUserByUid(roomUsers, 'guest-2')?.name).toBe('Guest');
+    expect(findRoomUserByUid(roomUsers, 'guest_with_under_scores')?.name).toBe('Guest 2');
     expect(findRoomUserByUid(roomUsers, 'missing')).toBeNull();
   });
 

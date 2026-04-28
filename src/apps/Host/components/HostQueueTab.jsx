@@ -3981,39 +3981,41 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     onToggle={() => setChatOpen(v => !v)}
                                     featureId="panel-chat"
                                 />
-                                <HostChatPanel
-                                    chatOpen={chatOpen}
-                                    chatUnread={chatUnread}
-                                    openChatSettings={openChatSettings}
-                                    styles={STYLES}
-                                    appBase={hostBase}
-                                    hostBase={hostBase}
-                                    roomCode={roomCode}
-                                    chatEnabled={chatEnabled}
-                                    setChatEnabled={setChatEnabled}
-                                    updateRoom={updateRoom}
-                                    chatShowOnTv={chatShowOnTv}
-                                    setChatShowOnTv={setChatShowOnTv}
-                                    chatAudienceMode={chatAudienceMode}
-                                    setChatAudienceMode={setChatAudienceMode}
-                                    handleChatViewMode={handleChatViewMode}
-                                    chatViewMode={chatViewMode}
-                                    dmUnread={dmUnread}
-                                    dmTargetUid={dmTargetUid}
-                                    setDmTargetUid={setDmTargetUid}
-                                    users={users}
-                                    dmDraft={dmDraft}
-                                    setDmDraft={setDmDraft}
-                                    sendHostDmMessage={sendHostDmMessage}
-                                    roomChatMessages={roomChatMessages}
-                                    hostDmMessages={hostDmMessages}
-                                    pinnedChatIds={pinnedChatIds}
-                                    setPinnedChatIds={setPinnedChatIds}
-                                    emoji={EMOJI}
-                                    chatDraft={chatDraft}
-                                    setChatDraft={setChatDraft}
-                                    sendHostChat={sendHostChat}
-                                />
+                                {chatOpen ? (
+                                    <HostChatPanel
+                                        chatOpen={chatOpen}
+                                        chatUnread={chatUnread}
+                                        openChatSettings={openChatSettings}
+                                        styles={STYLES}
+                                        appBase={hostBase}
+                                        hostBase={hostBase}
+                                        roomCode={roomCode}
+                                        chatEnabled={chatEnabled}
+                                        setChatEnabled={setChatEnabled}
+                                        updateRoom={updateRoom}
+                                        chatShowOnTv={chatShowOnTv}
+                                        setChatShowOnTv={setChatShowOnTv}
+                                        chatAudienceMode={chatAudienceMode}
+                                        setChatAudienceMode={setChatAudienceMode}
+                                        handleChatViewMode={handleChatViewMode}
+                                        chatViewMode={chatViewMode}
+                                        dmUnread={dmUnread}
+                                        dmTargetUid={dmTargetUid}
+                                        setDmTargetUid={setDmTargetUid}
+                                        users={users}
+                                        dmDraft={dmDraft}
+                                        setDmDraft={setDmDraft}
+                                        sendHostDmMessage={sendHostDmMessage}
+                                        roomChatMessages={roomChatMessages}
+                                        hostDmMessages={hostDmMessages}
+                                        pinnedChatIds={pinnedChatIds}
+                                        setPinnedChatIds={setPinnedChatIds}
+                                        emoji={EMOJI}
+                                        chatDraft={chatDraft}
+                                        setChatDraft={setChatDraft}
+                                        sendHostChat={sendHostChat}
+                                    />
+                                ) : null}
                                 </section>
                             </>
                         )}

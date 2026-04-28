@@ -51,6 +51,12 @@ const ensureStageWorkspace = async (page, timeoutMs) => {
   await page.getByText("Live Stage").first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
+const ensureLobbyWorkspace = async (page, timeoutMs) => {
+  await clickHostTab(page, "lobby", timeoutMs);
+  await waitForHostState(page, { tab: "lobby", timeoutMs });
+  await page.getByText("Lobby Lineup").first().waitFor({ state: "visible", timeout: timeoutMs });
+};
+
 const gotoHostFixture = async (page, server, fixtureId, timeoutMs) => {
   await page.goto(`${server.baseUrl}/?mode=host&room=DEMOAAHF&mkDemoEmbed=1&qaHostFixture=${encodeURIComponent(fixtureId)}`, {
     waitUntil: "domcontentloaded",
@@ -226,6 +232,31 @@ const main = async () => {
       await customizeButton.click({ force: true });
       await page.getByText("Leaderboard beat").first().waitFor({ state: "visible", timeout: timeoutMs });
       return "stage timing exposes the pace slider with optional advanced controls";
+    });
+
+    await runCheck(checks, "host_app_lobby_can_promote_and_remove_cohost", async () => {
+      await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);
+      await ensureLobbyWorkspace(page, timeoutMs);
+      const lineupButton = page.getByRole("button", { name: /Taylor/i }).first();
+      await lineupButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await lineupButton.click({ force: true });
+
+      const selectedStrip = page.locator("div").filter({
+        has: page.getByText(/Selected:\s*Taylor/i).first(),
+      }).first();
+      await selectedStrip.waitFor({ state: "visible", timeout: timeoutMs });
+
+      const makeCoHostButton = selectedStrip.getByRole("button", { name: /Make Co-Host/i }).first();
+      await makeCoHostButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await makeCoHostButton.click({ force: true });
+
+      const removeCoHostButton = selectedStrip.getByRole("button", { name: /Remove Co-Host/i }).first();
+      await removeCoHostButton.waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("CO-HOST", { exact: true }).first().waitFor({ state: "visible", timeout: timeoutMs });
+
+      await removeCoHostButton.click({ force: true });
+      await selectedStrip.getByRole("button", { name: /Make Co-Host/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "lobby audience selection can promote and remove a co-host";
     });
 
     await gotoHostFixture(page, server, "run-of-show-console", timeoutMs);

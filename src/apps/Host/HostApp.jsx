@@ -116,7 +116,9 @@ import {
 } from '../../lib/appCheckErrors';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
-    buildRunOfShowGameLaunchRoomUpdates
+    buildRunOfShowGameLaunchRoomUpdates,
+    findRoomUserByUid,
+    resolveRoomUserUid
 } from '../../lib/gameLaunchSupport';
 import {
     DEFAULT_LOGO_PRESETS,
@@ -1809,8 +1811,7 @@ const sanitizeTight15List = (list = []) => {
     return cleaned.slice(0, TIGHT15_MAX);
 };
 
-const resolveBracketVoterUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
-const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+const resolveBracketVoterUid = (roomUser = {}) => resolveRoomUserUid(roomUser);
 const resolveLobbyUserToken = (roomUser = {}) => {
     const uid = resolveRoomUserUid(roomUser);
     if (uid) return uid;
@@ -2077,7 +2078,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
     const selectRandom = (count) => {
         if (!sortedUsers.length) return;
         const shuffled = [...sortedUsers].sort(() => Math.random() - 0.5);
-        setSelectedParticipants(shuffled.slice(0, count).map(u => u.id.split('_')[1]));
+        setSelectedParticipants(shuffled.slice(0, count).map((u) => resolveRoomUserUid(u)).filter(Boolean));
     };
     const toggleSubmissionApproval = async (submission) => {
         if (!roomCode || !submission?.id) return;
@@ -2232,7 +2233,7 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                 <div className="space-y-3">
                     <div className="text-sm uppercase tracking-widest text-zinc-500">Participants</div>
                     <div className="flex gap-2">
-                        <button onClick={() => setSelectedParticipants(sortedUsers.map(u => u.id.split('_')[1]))} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>Select all</button>
+                        <button onClick={() => setSelectedParticipants(sortedUsers.map((u) => resolveRoomUserUid(u)).filter(Boolean))} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>Select all</button>
                         <button onClick={() => selectRandom(3)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>Random 3</button>
                         <button onClick={() => selectRandom(5)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1`}>Random 5</button>
                     </div>
@@ -2247,9 +2248,10 @@ const SelfieChallengePanel = ({ roomCode, room, updateRoom, users, seedParticipa
                         </label>
                     </div>
                     <div className="grid grid-cols-3 gap-2 max-h-40 overflow-y-auto custom-scrollbar pr-1">
-                        {sortedUsers.map(u => {
-                            const uid = u.id.split('_')[1];
+                        {sortedUsers.map((u) => {
+                            const uid = resolveRoomUserUid(u);
                             const selected = selectedParticipants.includes(uid);
+                            if (!uid) return null;
                             return (
                                 <button key={u.id} onClick={() => toggleParticipant(uid)} className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left ${selected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}>
                                     <span className="text-xl">{u.avatar || 'O'}</span>
@@ -9917,7 +9919,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || !targetUid || !points) return;
         const amount = Math.max(1, Math.round(points));
         try {
-            const target = users.find(u => (u.uid || u.id?.split('_')[1]) === targetUid);
+            const target = findRoomUserByUid(users, targetUid);
             await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: targetUid, points: amount }] });
             await logActivity(roomCode, target?.name || 'Guest', `received ${amount} pts from ${hostName || 'Host'}`, EMOJI.sparkle);
             toast(`Gifted ${amount} pts`);
@@ -10251,7 +10253,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!tipUserId || !amount || amount <= 0) return;
         const points = Math.round(amount * TIP_POINTS_PER_DOLLAR);
         try {
-            const target = users.find(u => (u.uid || u.id?.split('_')[1]) === tipUserId);
+            const target = findRoomUserByUid(users, tipUserId);
             await callFunction('awardRoomPoints', { roomCode, awards: [{ uid: tipUserId, points }] });
             await logActivity(roomCode, target?.name || 'Guest', `received ${points} pts for a $${amount.toFixed(2)} tip`, EMOJI.tip);
             toast(`Awarded ${points} pts`);
@@ -11921,10 +11923,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         const providedTight15 = sanitizeTight15List(Array.isArray(options?.tight15List) ? options.tight15List : []);
         const challengeSong = normalizeTight15Entry(options?.challengeEntry || null);
-        const roomUser = users.find((u) => {
-            const userUid = u.uid || u.id?.split('_')[1];
-            return userUid === uid;
-        });
+        const roomUser = findRoomUserByUid(users, uid);
         let spotlightTight15 = providedTight15.slice(0, 3);
         if (!spotlightTight15.length && roomUser) {
             try {
@@ -12606,7 +12605,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const userStats = useMemo(() => {
         const stats = new Map();
         users.forEach(u => {
-            const uid = u.uid || u.id?.split('_')[1] || u.name;
+            const uid = resolveRoomUserUid(u) || u.name;
             stats.set(uid, {
                 uid,
                 name: u.name,
@@ -12648,6 +12647,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     );
     const selectedLobbyUserUid = selectedLobbyUser ? resolveRoomUserUid(selectedLobbyUser) : '';
     const selectedLobbyUserIsSpotlight = !!(selectedLobbyUserUid && room?.spotlightUser?.id === selectedLobbyUserUid);
+    const selectedLobbyUserIsCoHost = !!(selectedLobbyUserUid && (runOfShowRoles?.coHosts || []).includes(selectedLobbyUserUid));
     const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
     const selectedLobbyUserQueueBusy = !!(selectedLobbyUserUid && tight15QueueBusyUid === selectedLobbyUserUid);
     const selectedLobbyUserProfileBusy = !!(selectedLobbyUserUid && tight15ProfileBusyUid === selectedLobbyUserUid);
@@ -12663,6 +12663,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [users, selectedLobbyUserToken, lockedLobbyUserToken]);
     const sampleArt = SAMPLE_ART;
     const top100Seed = TOP100_SEED;
+    const toggleLobbyUserCoHost = useCallback(async (roomUser = {}) => {
+        const safeUid = resolveRoomUserUid(roomUser);
+        if (!safeUid) return;
+        const currentCoHosts = Array.isArray(runOfShowRoles?.coHosts) ? runOfShowRoles.coHosts : [];
+        const nextCoHosts = currentCoHosts.includes(safeUid)
+            ? currentCoHosts.filter((entry) => entry !== safeUid)
+            : [...currentCoHosts, safeUid];
+        try {
+            await updateRunOfShowRolesState({ coHosts: nextCoHosts });
+            toast(currentCoHosts.includes(safeUid)
+                ? `${roomUser?.name || 'Guest'} removed from co-hosts.`
+                : `${roomUser?.name || 'Guest'} promoted to co-host.`);
+        } catch (error) {
+            hostLogger.error('Toggle co-host from lobby failed', error);
+            toast('Could not update co-host access.');
+        }
+    }, [hostLogger, runOfShowRoles, updateRunOfShowRolesState]);
 
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
@@ -13485,8 +13502,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const resolveCatalogueSingerSelection = (selectedUserId = catalogueUserId, typedSingerName = catalogueName) => {
         if (selectedUserId) {
-            const matched = users.find(u => u.id?.split('_')[1] === selectedUserId || u.uid === selectedUserId);
-            const singerUid = String(matched?.uid || selectedUserId || '').trim();
+            const matched = users.find((u) => resolveRoomUserUid(u) === selectedUserId);
+            const singerUid = String(resolveRoomUserUid(matched) || selectedUserId || '').trim();
             return {
                 name: String(matched?.name || typedSingerName || '').trim(),
                 uid: singerUid
@@ -13684,7 +13701,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 const nextUid = event.target.value;
                                                 setCatalogueUserId(nextUid);
                                                 if (nextUid) {
-                                                    const matched = users.find(u => u.id?.split('_')[1] === nextUid || u.uid === nextUid);
+                                                    const matched = users.find((u) => resolveRoomUserUid(u) === nextUid);
                                                     setCatalogueName(matched?.name || '');
                                                 }
                                             }}
@@ -13692,7 +13709,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         >
                                             <option value="">Pick someone already checked in</option>
                                             {users.map((user) => {
-                                                const uidValue = user.uid || user.id?.split('_')[1] || user.id || '';
+                                                const uidValue = resolveRoomUserUid(user) || user.id || '';
                                                 if (!uidValue) return null;
                                                 return (
                                                     <option key={uidValue} value={uidValue}>
@@ -14072,16 +14089,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     const nextUid = event.target.value;
                                                     setCatalogueUserId(nextUid);
                                                     if (nextUid) {
-                                                        const matched = users.find(u => u.id?.split('_')[1] === nextUid || u.uid === nextUid);
+                                                        const matched = users.find((u) => resolveRoomUserUid(u) === nextUid);
                                                         setCatalogueName(matched?.name || '');
                                                     }
                                                 }}
                                                 className={`${STYLES.input} bg-zinc-950 border-cyan-300/25`}
-                                                disabled={cataloguePromptBusy}
-                                            >
-                                                <option value="">Type a singer name or pick someone already in the room</option>
-                                                {users.map((user) => {
-                                                    const uidValue = user.uid || user.id?.split('_')[1] || user.id || '';
+                                            disabled={cataloguePromptBusy}
+                                        >
+                                            <option value="">Type a singer name or pick someone already in the room</option>
+                                            {users.map((user) => {
+                                                    const uidValue = resolveRoomUserUid(user) || user.id || '';
                                                     if (!uidValue) return null;
                                                     return (
                                                         <option key={uidValue} value={uidValue}>
@@ -16399,6 +16416,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     {selectedLobbyUserIsSpotlight ? 'Unspotlight' : 'Spotlight'}
                                                 </button>
                                                 <button
+                                                    onClick={() => toggleLobbyUserCoHost(selectedLobbyUser)}
+                                                    disabled={!selectedLobbyUserUid}
+                                                    className={`${STYLES.btnStd} ${selectedLobbyUserIsCoHost ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-1 text-xs ${!selectedLobbyUserUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    {selectedLobbyUserIsCoHost ? 'Remove Co-Host' : 'Make Co-Host'}
+                                                </button>
+                                                <button
                                                     onClick={() => queueRandomTight15ForUser(selectedLobbyUser, {
                                                         sourceLabel: selectedLobbyUserNeedsFirstSongAssist ? 'host_pick_tight15' : 'tight15_random',
                                                         successMessage: selectedLobbyUserNeedsFirstSongAssist
@@ -16427,6 +16451,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         const userToken = resolveLobbyUserToken(u);
                                         const cardAnchorId = getLobbyCardAnchorId(userToken);
                                         const isSpotlight = room?.spotlightUser?.id === userUid;
+                                        const isCoHost = !!(userUid && (runOfShowRoles?.coHosts || []).includes(userUid));
                                         const isSelected = selectedLobbyUserToken === userToken;
                                         const stats = userStats.get(userUid || userToken || u.name) || {};
                                         const isVip = u.isVip || (u.vipLevel || 0) > 0;
@@ -16503,6 +16528,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         {queueBusy ? 'QUEUE...' : (needsFirstSongAssist ? 'HOST PICK' : 'RANDOM TIGHT15')}
                                                     </button>
                                                     <button
+                                                        onClick={() => toggleLobbyUserCoHost(u)}
+                                                        disabled={!userUid}
+                                                        className={`${STYLES.btnStd} ${isCoHost ? STYLES.btnHighlight : STYLES.btnNeutral} px-3 py-1 text-xs ${!userUid ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {isCoHost ? 'REMOVE CO-HOST' : 'MAKE CO-HOST'}
+                                                    </button>
+                                                    <button
                                                         onClick={() => launchSpotlightTight15Challenge(u)}
                                                         disabled={queueBusy}
                                                         className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -16528,6 +16560,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {isVip && (
                                                     <div className="absolute bottom-2 right-2 text-sm text-yellow-200 font-bold bg-yellow-900/40 px-2 py-0.5 rounded-full flex items-center gap-1">
                                                         <i className="fa-solid fa-crown text-xs"></i> VIP
+                                                    </div>
+                                                )}
+                                                {isCoHost && (
+                                                    <div className="absolute top-2 left-2 text-[10px] text-cyan-100 font-bold bg-cyan-500/20 border border-cyan-300/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                        <i className="fa-solid fa-user-shield text-[9px]"></i> CO-HOST
                                                     </div>
                                                 )}
                                             </div>
@@ -16565,7 +16602,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="space-y-2 overflow-y-auto flex-1 pr-2 custom-scrollbar">
                                     {contacts.map((c,i) => {
                                         const u = users.find(user => user.name === c.name);
-                                        const uid = u?.id.split('_')[1];
+                                        const uid = resolveRoomUserUid(u);
                                         const isSpotlight = uid && room?.spotlightUser?.id === uid;
                                         
                                         return (
@@ -16590,9 +16627,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="space-y-2">
                                         <select value={tipUserId} onChange={e=>setTipUserId(e.target.value)} className={`${STYLES.input} w-full`}>
                                             <option value="">Select guest</option>
-                                            {users.map(u => (
-                                                <option key={u.id} value={u.id.split('_')[1] || u.uid || ''}>{u.name}</option>
-                                            ))}
+                                            {users.map((u) => {
+                                                const uid = resolveRoomUserUid(u);
+                                                if (!uid) return null;
+                                                return <option key={u.id || uid} value={uid}>{u.name}</option>;
+                                            })}
                                         </select>
                                         <div className="flex items-center gap-2">
                                             <input value={tipAmount} onChange={e=>setTipAmount(e.target.value)} className={`${STYLES.input} w-full`} placeholder="$ Amount" />
@@ -16613,7 +16652,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             >
                                                 <option value="">Select member...</option>
                                                 {users.map((u) => (
-                                                    <option key={u.uid || u.id} value={u.uid || u.id?.split('_')[1]}>
+                                                    <option key={u.uid || u.id} value={resolveRoomUserUid(u)}>
                                                         {u.name || 'Guest'}
                                                     </option>
                                                 ))}

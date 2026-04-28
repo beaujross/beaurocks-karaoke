@@ -206,6 +206,33 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
   assert.match(markup, />3</);
 });
 
+test('HostQueueTab renders one unified desktop content rail with add queue and run-of-show tabs', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    runOfShowEnabled: true,
+    runOfShowDirector: {
+      items: [
+        {
+          id: 'ros-1',
+          type: 'announcement',
+          title: 'Sponsor Beat',
+          status: 'ready',
+          sequence: 1,
+          plannedDurationSec: 30,
+        },
+      ],
+    },
+  });
+
+  assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
+  assert.match(markup, /Add To Queue/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
+  assert.match(markup, /Current Queue/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
+  assert.match(markup, /Run Of Show/);
+});
+
 test('HostQueueTab renders compact co-host signal summaries in the live lane', async () => {
   mockHostQueueTabDependencies();
 
@@ -226,8 +253,33 @@ test('HostQueueTab renders compact co-host signal summaries in the live lane', a
   });
 
   assert.match(markup, /Tell Host/);
-  assert.match(markup, /Context-rich audio notes from trusted co-hosts/);
+  assert.match(markup, /Trusted co-host notes tied to the live performance/);
   assert.match(markup, /Track needs a bump/);
   assert.match(markup, /Jordan - Valerie/);
   assert.match(markup, /2 co-hosts flagged this/);
+});
+
+test('HostQueueTab can fully collapse chat and stage sections from the left rail', async () => {
+  mockHostQueueTabDependencies();
+  vi.doMock('../../src/apps/Host/hooks/useQueueTabState.js', async () => {
+    const actual = await vi.importActual('../../src/apps/Host/hooks/useQueueTabState.js');
+    return {
+      ...actual,
+      default: (args) => {
+        const state = actual.default(args);
+        return {
+          ...state,
+          stagePanelOpen: false,
+          chatOpen: false,
+        };
+      },
+    };
+  });
+
+  const markup = await renderQueueTabMarkup();
+
+  assert.match(markup, /data-feature-id="panel-now-playing"/);
+  assert.match(markup, /data-feature-id="panel-chat"/);
+  assert.doesNotMatch(markup, /Host chat/);
+  assert.doesNotMatch(markup, /Transport/);
 });

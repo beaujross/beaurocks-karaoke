@@ -142,6 +142,21 @@ test("HostApp keeps the queue runtime mounted when the host leaves the queue vie
   );
 });
 
+test("Audience tab can promote and remove co-hosts directly from lobby selection", () => {
+  const hostSource = readFileSync(hostAppPath, "utf8");
+
+  assert.match(hostSource, /const selectedLobbyUserIsCoHost = !!\(selectedLobbyUserUid && \(runOfShowRoles\?\.coHosts \|\| \[\]\)\.includes\(selectedLobbyUserUid\)\);/);
+  assert.match(hostSource, /const toggleLobbyUserCoHost = useCallback\(async \(roomUser = \{\}\) => \{/);
+  assert.match(hostSource, /await updateRunOfShowRolesState\(\{ coHosts: nextCoHosts \}\);/);
+  assert.match(hostSource, /promoted to co-host/);
+  assert.match(hostSource, /removed from co-hosts/);
+  assert.match(hostSource, /Make Co-Host/);
+  assert.match(hostSource, /Remove Co-Host/);
+  assert.match(hostSource, /MAKE CO-HOST/);
+  assert.match(hostSource, /REMOVE CO-HOST/);
+  assert.match(hostSource, /CO-HOST/);
+});
+
 test("HostApp keeps Auto DJ queue advance independent from TV display mode changes", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
@@ -223,7 +238,7 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   const queueHudSource = readFileSync(runOfShowQueueHudPath, "utf8");
   const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
-  assert.match(hostSource, /import \{\s*buildRunOfShowGameLaunchRoomUpdates\s*\} from '..\/..\/lib\/gameLaunchSupport';/);
+  assert.match(hostSource, /import \{[\s\S]*buildRunOfShowGameLaunchRoomUpdates[\s\S]*\} from '..\/..\/lib\/gameLaunchSupport';/);
   assert.match(
     hostSource,
     /buildRunOfShowGameLaunchRoomUpdates\(\{\s*item,\s*room: roomRef\.current \|\| \{\},\s*roomUsers: users,\s*startedAtMs\s*\}\)/s,

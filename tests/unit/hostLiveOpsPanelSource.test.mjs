@@ -42,13 +42,26 @@ test('live lane panel collapses host runtime into now next and conveyor cards', 
   const source = readFileSync(liveOpsPanelPath, 'utf8');
 
   assert.match(source, /data-feature-id="host-live-ops-panel"/);
+  assert.match(source, /const getSongArtworkUrl = \(entry = \{\}\) => String\(/);
+  assert.match(source, /const getScenePlaceholderMeta = \(item = \{\}\) => \{/);
+  assert.match(source, /artworkUrl \? \(/);
+  assert.match(source, /placeholderIcon = 'fa-microphone-lines'/);
+  assert.match(source, /placeholderLabel = 'Live'/);
+  assert.match(source, /bg-gradient-to-br/);
+  assert.match(source, /flex flex-col gap-1\.5 sm:flex-row sm:items-start sm:justify-between/);
+  assert.match(source, /line-clamp-2 text-\[12px\] font-semibold leading-tight text-white sm:text-\[13px\]/);
+  assert.match(source, /line-clamp-2 text-\[10px\] leading-snug text-zinc-400 sm:text-\[11px\]/);
+  assert.match(source, /mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3/);
   assert.match(source, /Live Lane/);
   assert.match(source, /Now/);
   assert.match(source, /Next Singer/);
   assert.match(source, /Conveyor/);
-  assert.match(source, /Crowd Pulse/);
+  assert.match(source, /fa-bullhorn/);
+  assert.match(source, /fa-gamepad/);
+  assert.match(source, /fa-user-music/);
   assert.match(source, /Tell Host/);
-  assert.match(source, /Context-rich audio notes from trusted co-hosts/);
+  assert.match(source, /Trusted co-host notes tied to the live performance/);
+  assert.match(source, /coHostSignals\.slice\(0, 3\)/);
   assert.match(source, /No recent co-host audio notes\./);
   assert.match(source, /Start Next Singer/);
   assert.match(source, /Open Conveyor/);

@@ -3,7 +3,6 @@ import { APP_ID } from '../../../lib/assets';
 import {
     db,
     collection,
-    limit,
     onSnapshot,
     query,
     where,
@@ -58,8 +57,7 @@ const useHostRoomManager = ({
         try {
             const recentRoomsQuery = query(
                 collection(db, 'artifacts', APP_ID, 'public', 'data', 'rooms'),
-                where('hostUids', 'array-contains', activeUid),
-                limit(20)
+                where('hostUids', 'array-contains', activeUid)
             );
             unsub = onSnapshot(
                 recentRoomsQuery,
@@ -106,7 +104,7 @@ const useHostRoomManager = ({
                             };
                         })
                         .sort((a, b) => (b.updatedAtMs || b.createdAtMs || 0) - (a.updatedAtMs || a.createdAtMs || 0))
-                        .slice(0, 8);
+                        ;
                     setRecentHostRoomsState({
                         hostUid: activeUid,
                         items: nextRooms,

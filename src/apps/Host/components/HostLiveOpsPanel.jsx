@@ -29,7 +29,29 @@ const getRunOfShowSceneSummary = (item = {}) => {
     return String(item?.notes || '').trim() || 'Show scene';
 };
 
-const cardBaseClass = 'rounded-2xl border px-3 py-3';
+const getSongArtworkUrl = (entry = {}) => String(
+    entry?.albumArtUrl
+    || entry?.artworkUrl100
+    || entry?.artworkUrl
+    || entry?.art
+    || entry?.thumbnail
+    || entry?.imageUrl
+    || entry?.backingPlan?.artworkUrl
+    || entry?.backingPlan?.artworkUrl100
+    || entry?.presentationPlan?.imageUrl
+    || ''
+).trim();
+
+const getScenePlaceholderMeta = (item = {}) => {
+    const type = String(item?.type || '').trim().toLowerCase();
+    if (type === 'performance') return { icon: 'fa-microphone-lines', label: 'Song', toneClass: 'from-emerald-500/40 to-cyan-500/30' };
+    if (type === 'announcement' || type === 'intro' || type === 'closing') return { icon: 'fa-bullhorn', label: 'Info', toneClass: 'from-fuchsia-500/38 to-violet-500/28' };
+    if (type === 'intermission' || type === 'buffer') return { icon: 'fa-mug-hot', label: 'Break', toneClass: 'from-amber-500/38 to-orange-500/28' };
+    if (type === 'trivia_break' || type === 'would_you_rather_break' || type === 'game_break') return { icon: 'fa-gamepad', label: 'Play', toneClass: 'from-sky-500/38 to-cyan-500/28' };
+    return { icon: 'fa-shapes', label: 'Scene', toneClass: 'from-zinc-500/30 to-slate-500/24' };
+};
+
+const cardBaseClass = 'rounded-2xl border px-3 py-2.5';
 const actionButtonClass = 'inline-flex min-h-[38px] items-center justify-center rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] transition';
 
 const getCoHostSignalToneClass = (tone = 'zinc') => {
@@ -41,16 +63,39 @@ const getCoHostSignalToneClass = (tone = 'zinc') => {
     return 'border-white/10 bg-black/20 text-zinc-200';
 };
 
-const LaneCard = ({ label, title, detail, toneClass = '', meta = '', metaToneClass = '' }) => (
+const LaneCard = ({
+    label,
+    title,
+    detail,
+    toneClass = '',
+    meta = '',
+    metaToneClass = '',
+    artworkUrl = '',
+    placeholderIcon = 'fa-microphone-lines',
+    placeholderLabel = 'Live',
+    placeholderToneClass = 'from-zinc-500/30 to-slate-500/24',
+}) => (
     <div className={`${cardBaseClass} ${toneClass || 'border-white/10 bg-black/25'}`}>
-        <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-                <div className="mt-1 truncate text-sm font-semibold text-white">{title}</div>
-                <div className="mt-1 text-xs text-zinc-400">{detail}</div>
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex flex-1 items-start gap-2">
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-10 sm:w-10 sm:rounded-2xl">
+                    {artworkUrl ? (
+                        <img src={artworkUrl} alt={title} className="h-full w-full object-cover" />
+                    ) : (
+                        <div className={`flex h-full w-full flex-col items-center justify-center bg-gradient-to-br ${placeholderToneClass} text-white/88`}>
+                            <i className={`fa-solid ${placeholderIcon} text-[10px] sm:text-[11px]`}></i>
+                            <span className="mt-0.5 text-[8px] font-black uppercase tracking-[0.14em]">{placeholderLabel}</span>
+                        </div>
+                    )}
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
+                    <div className="mt-0.5 line-clamp-2 text-[12px] font-semibold leading-tight text-white sm:text-[13px]">{title}</div>
+                    <div className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-zinc-400 sm:text-[11px]">{detail}</div>
+                </div>
             </div>
             {meta ? (
-                <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${metaToneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
+                <span className={`inline-flex shrink-0 self-start rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] sm:ml-2 ${metaToneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
                     {meta}
                 </span>
             ) : null}
@@ -92,25 +137,39 @@ export default function HostLiveOpsPanel({
             detail: currentSourcePlaying ? 'Backing is live on stage.' : 'Performance is staged and ready to roll.',
             toneClass: 'border-emerald-300/22 bg-emerald-500/8',
             meta: currentSourcePlaying ? 'Playing' : 'Paused',
+            artworkUrl: getSongArtworkUrl(current),
+            placeholderIcon: 'fa-microphone-lines',
+            placeholderLabel: 'Now',
+            placeholderToneClass: 'from-emerald-500/42 to-cyan-500/32',
             metaToneClass: currentSourcePlaying
                 ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100'
                 : 'border-amber-300/30 bg-amber-500/12 text-amber-100'
         }
         : hasLiveScene
-            ? {
-                label: 'Now',
-                title: getRunOfShowSceneTitle(runOfShowLiveItem),
-                detail: getRunOfShowSceneSummary(runOfShowLiveItem),
-                toneClass: 'border-fuchsia-300/20 bg-fuchsia-500/8',
-                meta: 'Live Scene',
-                metaToneClass: 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
-            }
+            ? (() => {
+                const placeholder = getScenePlaceholderMeta(runOfShowLiveItem);
+                return {
+                    label: 'Now',
+                    title: getRunOfShowSceneTitle(runOfShowLiveItem),
+                    detail: getRunOfShowSceneSummary(runOfShowLiveItem),
+                    toneClass: 'border-fuchsia-300/20 bg-fuchsia-500/8',
+                    meta: 'Live Scene',
+                    artworkUrl: getSongArtworkUrl(runOfShowLiveItem),
+                    placeholderIcon: placeholder.icon,
+                    placeholderLabel: placeholder.label,
+                    placeholderToneClass: placeholder.toneClass,
+                    metaToneClass: 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
+                };
+            })()
             : {
                 label: 'Now',
                 title: 'Room idle',
                 detail: 'No performance or show scene currently owns the room.',
                 toneClass: 'border-white/10 bg-black/25',
-                meta: 'Waiting'
+                meta: 'Waiting',
+                placeholderIcon: 'fa-moon',
+                placeholderLabel: 'Idle',
+                placeholderToneClass: 'from-zinc-500/30 to-slate-500/24'
             };
 
     const nextSingerLabel = String(nextQueueText || '').trim() || (nextQueueSong ? buildQueueSongLabel(nextQueueSong) : 'No singer ready');
@@ -122,12 +181,17 @@ export default function HostLiveOpsPanel({
             : 'Queue is empty or still waiting on approvals.',
         toneClass: nextQueueSong ? 'border-cyan-300/22 bg-cyan-500/8' : 'border-white/10 bg-black/25',
         meta: nextQueueSong ? 'Ready' : 'Open',
+        artworkUrl: getSongArtworkUrl(nextQueueSong),
+        placeholderIcon: 'fa-user-music',
+        placeholderLabel: 'Next',
+        placeholderToneClass: 'from-cyan-500/40 to-sky-500/28',
         metaToneClass: nextQueueSong
             ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
             : 'border-white/10 bg-black/20 text-zinc-200'
     };
 
     const conveyorTarget = flightedScene || onDeckScene || null;
+    const conveyorPlaceholder = getScenePlaceholderMeta(conveyorTarget || {});
     const conveyorCard = {
         label: 'Conveyor',
         title: conveyorTarget ? getRunOfShowSceneTitle(conveyorTarget) : (runOfShowEnabled ? 'No scene armed' : 'Run of Show is off'),
@@ -138,6 +202,10 @@ export default function HostLiveOpsPanel({
                 : 'Queue is currently the only live lane.',
         toneClass: conveyorTarget ? 'border-violet-300/22 bg-violet-500/8' : 'border-white/10 bg-black/25',
         meta: flightedScene ? 'Flighted' : onDeckScene ? 'On Deck' : (runOfShowEnabled ? 'Waiting' : 'Off'),
+        artworkUrl: getSongArtworkUrl(conveyorTarget),
+        placeholderIcon: conveyorPlaceholder.icon,
+        placeholderLabel: conveyorTarget ? conveyorPlaceholder.label : 'Show',
+        placeholderToneClass: conveyorTarget ? conveyorPlaceholder.toneClass : 'from-zinc-500/30 to-slate-500/24',
         metaToneClass: flightedScene
             ? 'border-violet-300/30 bg-violet-500/12 text-violet-100'
             : onDeckScene
@@ -148,12 +216,12 @@ export default function HostLiveOpsPanel({
     return (
         <section
             data-feature-id="host-live-ops-panel"
-            className="border-b border-white/10 px-4 py-4"
+            className="border-b border-white/10 px-4 py-3"
         >
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                     <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-300">Live Lane</div>
-                    <div className="mt-1 text-sm text-zinc-300">Run the room from one lane: now, next singer, and the next conveyor scene.</div>
+                    <div className="mt-1 text-xs text-zinc-300">Now, next singer, and the next conveyor scene in one lane.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]">
                     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{queueCount} queued</span>
@@ -163,18 +231,17 @@ export default function HostLiveOpsPanel({
                 </div>
             </div>
 
-            <div className="mt-3 grid gap-2 lg:grid-cols-3">
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                 <LaneCard {...nowCard} />
                 <LaneCard {...nextCard} />
                 <LaneCard {...conveyorCard} />
             </div>
 
-            <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+            <div className="mt-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                         <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Tell Host</div>
-                        <div className="mt-1 text-sm font-semibold text-white">Context-rich audio notes from trusted co-hosts</div>
-                        <div className="mt-1 text-xs text-zinc-400">Each note stays tied to the performance it came from, so the host gets one clean read without another inbox.</div>
+                        <div className="mt-0.5 text-[12px] font-semibold text-white">Trusted co-host notes tied to the live performance</div>
                     </div>
                     {coHostSignals.length ? (
                         <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
@@ -183,30 +250,30 @@ export default function HostLiveOpsPanel({
                     ) : null}
                 </div>
                 {coHostSignals.length ? (
-                    <div className="mt-3 grid gap-2 lg:grid-cols-2">
-                        {coHostSignals.slice(0, 4).map((signal) => (
-                            <div key={signal.id} className={`rounded-2xl border px-3 py-3 ${getCoHostSignalToneClass(signal.tone)}`}>
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 flex flex-1 items-start gap-3">
-                                        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+                    <div className="mt-2 grid max-h-[180px] gap-1.5 overflow-y-auto pr-1 custom-scrollbar lg:grid-cols-2">
+                        {coHostSignals.slice(0, 3).map((signal) => (
+                            <div key={signal.id} className={`rounded-2xl border px-2.5 py-2 ${getCoHostSignalToneClass(signal.tone)}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex flex-1 items-start gap-2">
+                                        <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20">
                                             {signal.artworkUrl ? (
                                                 <img src={signal.artworkUrl} alt={signal.contextTitle || signal.label} className="h-full w-full object-cover" />
                                             ) : (
-                                                <div className="flex h-full w-full items-center justify-center text-sm text-white/70">
+                                                <div className="flex h-full w-full items-center justify-center text-[11px] text-white/70">
                                                     <i className={`fa-solid ${signal.icon || 'fa-bullhorn'}`}></i>
                                                 </div>
                                             )}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <i className={`fa-solid ${signal.icon || 'fa-bullhorn'} text-[12px]`}></i>
-                                                <div className="truncate text-sm font-semibold text-white">{signal.hostLabel || signal.label}</div>
+                                            <div className="flex items-center gap-1.5">
+                                                <i className={`fa-solid ${signal.icon || 'fa-bullhorn'} text-[11px]`}></i>
+                                                <div className="truncate text-[12px] font-semibold text-white">{signal.hostLabel || signal.label}</div>
                                             </div>
-                                            <div className="mt-1 truncate text-xs font-black uppercase tracking-[0.12em] text-white/90">
+                                            <div className="mt-0.5 truncate text-[10px] font-black uppercase tracking-[0.1em] text-white/90">
                                                 {signal.contextTitle || 'General room note'}
                                             </div>
-                                            <div className="mt-1 text-xs text-zinc-200">{signal.summary}</div>
-                                            <div className="mt-2 text-[10px] uppercase tracking-[0.16em] text-zinc-300">{signal.contextMeta || signal.latestAgeLabel || 'recently'}</div>
+                                            <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-zinc-200">{signal.summary}</div>
+                                            <div className="mt-0.5 truncate text-[10px] uppercase tracking-[0.12em] text-zinc-300">{signal.contextMeta || signal.latestAgeLabel || 'recently'}</div>
                                         </div>
                                     </div>
                                     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-white">
@@ -217,7 +284,7 @@ export default function HostLiveOpsPanel({
                         ))}
                     </div>
                 ) : (
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3 text-xs text-zinc-400">
+                    <div className="mt-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-zinc-400">
                         No recent co-host audio notes.
                     </div>
                 )}

@@ -1,4 +1,16 @@
-export const resolveRoomUserUid = (roomUser = {}) => roomUser?.uid || roomUser?.id?.split('_')[1] || '';
+export const extractRoomUserUidFromDocId = (docId = '') => {
+    const safeId = String(docId || '').trim();
+    if (!safeId) return '';
+    const separatorIndex = safeId.indexOf('_');
+    if (separatorIndex < 0 || separatorIndex === safeId.length - 1) return '';
+    return safeId.slice(separatorIndex + 1);
+};
+
+export const resolveRoomUserUid = (roomUser = {}) => (
+    String(roomUser?.uid || '').trim()
+    || extractRoomUserUidFromDocId(roomUser?.id)
+    || ''
+);
 
 export const getResolvedRoomUserUids = (roomUsers = []) => (
     Array.isArray(roomUsers)
