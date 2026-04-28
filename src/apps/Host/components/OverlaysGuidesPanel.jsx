@@ -27,8 +27,9 @@ const OverlaysGuidesPanel = ({
     const SectionHeader = sectionHeader;
     return (
     <>
-        <div className={overlaysOpen && !vibeSyncOnly ? 'grid grid-cols-2 gap-2' : 'hidden'}>
+        <div className={overlaysOpen && !vibeSyncOnly ? 'grid grid-cols-2 lg:grid-cols-3 gap-2' : 'hidden'}>
             <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'leaderboard' ? 'stage' : 'leaderboard' })} className={`${styles.btnStd} ${room?.activeScreen === 'leaderboard' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-trophy mr-2"></i>Leaderboard</button>
+            <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'leaderboard_stack' ? 'stage' : 'leaderboard_stack' })} className={`${styles.btnStd} ${room?.activeScreen === 'leaderboard_stack' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-layer-group mr-2"></i>Leaderboard Stack</button>
             <button onClick={() => updateRoom({ activeScreen: room?.activeScreen === 'tipping' ? 'stage' : 'tipping' })} className={`${styles.btnStd} ${room?.activeScreen === 'tipping' ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-money-bill-wave mr-2"></i>Tip CTA</button>
             <button onClick={toggleHowToPlay} className={`${styles.btnStd} ${room?.howToPlay?.active ? styles.btnHighlight : styles.btnNeutral} flex-1`}><i className="fa-solid fa-circle-question mr-2"></i>How to Play</button>
             <button onClick={startReadyCheck} className={`${styles.btnStd} ${room?.readyCheck?.active ? styles.btnHighlight : styles.btnPrimary} flex-1`}><i className="fa-solid fa-check mr-2"></i>Ready Check</button>

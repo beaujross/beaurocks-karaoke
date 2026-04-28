@@ -74,6 +74,36 @@ test("SingerApp declares bracket signup state before streamlined tight15 effects
   );
 });
 
+test("SingerApp keeps event bonus messaging automatic and renders reaction cooldown inside the button shell", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /Official event links, QR drops, and ticket-matched perks can add more automatically without slowing down the room\./,
+    "SingerApp should describe event bonuses as automatic instead of manual claims",
+  );
+  assert.match(
+    source,
+    /Official event links and ticket-matched perks can unlock bonuses automatically\. Only use a promo code here when the event explicitly shares one\./,
+    "SingerApp should steer guests away from claim-step language in the event credits drawer",
+  );
+  assert.match(
+    source,
+    /const renderReactionCooldownFill = useCallback\(/,
+    "SingerApp should centralize the cooldown overlay so reaction buttons do not resize when cooling down",
+  );
+  assert.match(
+    source,
+    /pointer-events-none absolute inset-0 overflow-hidden/,
+    "SingerApp cooldown treatment should stay inside the button bounds",
+  );
+  assert.match(
+    source,
+    /Tap to push the applause meter/,
+    "SingerApp applause takeover should keep stable helper copy instead of swapping layout around a cooldown badge",
+  );
+});
+
 test("SingerApp keeps streamlined audience shell inside party and songs flows", () => {
   const source = readFileSync(singerAppPath, "utf8");
 
@@ -416,13 +446,13 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
   );
   assert.match(
     source,
-    /renderReactionCooldownBadge/,
-    "SingerApp should render a visible countdown badge on cooled-down reaction controls",
+    /renderReactionCooldownFill/,
+    "SingerApp should render the cooldown countdown inside cooled-down reaction controls",
   );
   assert.match(
     source,
-    /Clap cooldown \{getReactionCooldownLabel\('clap'\)\}/,
-    "SingerApp applause mode should show the cooldown timer on the clap experience",
+    /Tap to push the applause meter/,
+    "SingerApp applause mode should keep the helper copy stable while the cooldown lives inside the clap button",
   );
   assert.match(
     source,

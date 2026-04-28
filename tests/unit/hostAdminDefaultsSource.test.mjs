@@ -26,3 +26,12 @@ test('admin automation labels distinguish defaults from live actions', () => {
   assert.match(hostAppSource, /Default Pop Trivia On|Default Pop Trivia Off/);
   assert.match(hostAppSource, /Default Auto Party On|Default Auto Party Off/);
 });
+
+test('admin room settings own the detailed post-performance timing controls', () => {
+  assert.match(hostAppSource, /Post-performance sequence/);
+  assert.match(hostAppSource, /The live stage rail only controls the overall pace slider\./);
+  assert.match(hostAppSource, /Applause warm-up/);
+  assert.match(hostAppSource, /Leaderboard beat/);
+  assert.match(hostAppSource, /Next up beat/);
+  assert.match(hostAppSource, /Show post-performance recap sequence on TV/);
+});

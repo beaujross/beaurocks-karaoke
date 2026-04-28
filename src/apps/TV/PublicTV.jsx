@@ -72,6 +72,7 @@ import {
 } from '../../lib/volleyOrbUiState';
 import { buildQaTvFixture } from './qaTvFixtures';
 import {
+    buildGivebutterSupportLaunchUrl,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     normalizePurchaseCelebration,
@@ -1237,8 +1238,34 @@ const RunOfShowStatusHud = ({ hud = null, fixed = true }) => {
 // --- SUB-COMPONENTS ---
 const getRoomSupportSurface = (room = {}) => ({
     label: String(room?.eventCredits?.supportLabel || '').trim(),
-    url: String(room?.eventCredits?.supportEmbedUrl || room?.eventCredits?.supportUrl || '').trim(),
+    url: (() => {
+        const baseUrl = String(room?.eventCredits?.supportEmbedUrl || room?.eventCredits?.supportUrl || '').trim();
+        if (!baseUrl) return '';
+        return String(room?.eventCredits?.supportProvider || '').trim().toLowerCase() === 'givebutter'
+            ? buildGivebutterSupportLaunchUrl(baseUrl)
+            : baseUrl;
+    })(),
 });
+
+const getTipOverlaySurface = (room = {}) => {
+    const supportSurface = getRoomSupportSurface(room);
+    if (supportSurface.url) {
+        return {
+            headline: supportSurface.label || 'Support the fundraiser',
+            subhead: 'Scan to donate to the cause',
+            qrImageUrl: '',
+            qrValue: supportSurface.url,
+            usesFundraiserSupport: true,
+        };
+    }
+    return {
+        headline: 'Show Some Love!',
+        subhead: `Scan to tip the host ${EMOJI.tip}`,
+        qrImageUrl: String(room?.tipQrUrl || '').trim(),
+        qrValue: String(room?.tipUrl || '').trim(),
+        usesFundraiserSupport: false,
+    };
+};
 
 const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     const [src, setSrc] = useState('');
@@ -1540,6 +1567,7 @@ const LeaderboardOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) => {
 
 const DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
 const DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
+const DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS = 6000;
 const DEFAULT_APPLAUSE_WARMUP_SEC = 5;
 const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 5;
 const DEFAULT_APPLAUSE_MEASURE_SEC = 5;
@@ -1585,12 +1613,11 @@ const buildRoomLeaderboardStats = (users = [], songs = []) => {
 };
 
 const TipOverlay = ({ room }) => {
-    const supportSurface = getRoomSupportSurface(room);
-    const qrImageUrl = String(room?.tipQrUrl || '').trim();
-    const qrValue = String(room?.tipUrl || supportSurface.url || '').trim();
-    const usesSupportFallback = !String(room?.tipUrl || '').trim() && !!supportSurface.url;
-    const overlayHeadline = usesSupportFallback ? (supportSurface.label || 'Support the Room') : 'Show Some Love!';
-    const overlaySubhead = usesSupportFallback ? 'Scan to support the fundraiser' : `Scan to tip the host ${EMOJI.tip}`;
+    const overlaySurface = getTipOverlaySurface(room);
+    const qrImageUrl = overlaySurface.qrImageUrl;
+    const qrValue = overlaySurface.qrValue;
+    const overlayHeadline = overlaySurface.headline;
+    const overlaySubhead = overlaySurface.subhead;
     return (
         <div className="public-tv fixed inset-0 z-[200] bg-gradient-to-br from-green-900 to-emerald-950 flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center animate-in zoom-in">
             <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/money.png')] opacity-10"></div>
@@ -1608,6 +1635,146 @@ const TipOverlay = ({ room }) => {
                 )}
             </div>
             <div className="text-lg md:text-3xl 2xl:text-5xl text-green-200 font-bold bg-black/40 px-5 py-3 md:px-8 md:py-4 2xl:px-12 2xl:py-6 rounded-full border border-green-500/30 backdrop-blur-md">{overlaySubhead}</div>
+        </div>
+    );
+};
+
+const LeaderboardStackOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) => {
+    const [modeIndex, setModeIndex] = useState(0);
+
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setModeIndex((prev) => (prev + 1) % LEADERBOARD_MODE_DEFS.length);
+        }, 9000);
+        return () => clearInterval(timer);
+    }, []);
+
+    const leaderboardStats = useMemo(() => buildRoomLeaderboardStats(users, songs), [users, songs]);
+    const activeMode = LEADERBOARD_MODE_DEFS[modeIndex];
+    const leaderboard = sortLeaderboardEntriesForMode(leaderboardStats, activeMode).slice(0, 7);
+
+    return (
+        <div className="public-tv fixed inset-0 z-[200] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_26%),radial-gradient(circle_at_82%_18%,rgba(250,204,21,0.14),transparent_22%),linear-gradient(180deg,#050816,#02040a)] p-4 md:p-8 2xl:p-12 text-center animate-in fade-in duration-500">
+            <div className="mx-auto flex h-full w-full max-w-[1700px] flex-col justify-center">
+                <div className="mb-6 md:mb-10 2xl:mb-12">
+                    <div className="text-sm md:text-xl 2xl:text-2xl font-black uppercase tracking-[0.34em] text-cyan-100/80">Room Standings</div>
+                    <h1 className="mt-3 text-[clamp(2.8rem,11vw,7rem)] 2xl:text-[9rem] font-bebas text-white tracking-[0.1em] drop-shadow-[0_0_55px_rgba(34,211,238,0.25)]">LEADERBOARD STACK</h1>
+                    <div className="mt-2 text-sm md:text-2xl 2xl:text-3xl text-zinc-300 uppercase tracking-[0.24em] md:tracking-[0.38em]">{activeMode.label}</div>
+                </div>
+                <LeaderboardCardStack entries={leaderboard} mode={activeMode} premiumBadgeLabel={premiumBadgeLabel} />
+            </div>
+        </div>
+    );
+};
+
+const PerformanceNextUpOverlay = ({
+    nextUp = [],
+    queueCount = 0,
+    queueWaitSec = 0,
+    brandTheme = null,
+    logoUrl = '',
+    brandTitle = '',
+    premiumBadgeLabel = 'VIP'
+}) => {
+    const theme = useMemo(() => getRunOfShowTakeoverTheme('cyan', brandTheme), [brandTheme]);
+    const lineup = Array.isArray(nextUp) ? nextUp.slice(0, 3) : [];
+    const displayLogoUrl = String(logoUrl || ASSETS.logo || '').trim() || ASSETS.logo;
+    const totalQueueCount = Math.max(lineup.length, Number(queueCount || 0));
+    const shellStyle = {
+        background: `radial-gradient(circle at 16% 18%, ${withAudienceBrandAlpha(theme.primaryColor, 0.24)} 0%, transparent 24%), radial-gradient(circle at 82% 18%, ${withAudienceBrandAlpha(theme.secondaryColor, 0.2)} 0%, transparent 22%), radial-gradient(circle at 52% 100%, ${withAudienceBrandAlpha(theme.accentColor, 0.16)} 0%, transparent 30%), linear-gradient(180deg, rgba(5,8,22,0.98), rgba(2,6,18,1))`
+    };
+
+    return (
+        <div className="public-tv fixed inset-0 z-[200] overflow-hidden text-white animate-in fade-in duration-500" style={shellStyle}>
+            <div className="absolute inset-x-[8%] top-[12%] h-px opacity-90" style={theme.lineStyle}></div>
+            <div className="absolute inset-x-[10%] bottom-[12%] h-px opacity-65" style={theme.lineStyle}></div>
+            <div className="absolute left-[7%] top-[18%] h-56 w-56 rounded-full blur-3xl" style={theme.spotlightStyle}></div>
+            <div className="absolute right-[7%] top-[14%] h-72 w-72 rounded-full blur-3xl" style={theme.spotlightStyle}></div>
+
+            <div className="relative z-10 flex min-h-full flex-col justify-center px-6 py-8 md:px-10 2xl:px-14">
+                <div className="mx-auto w-full max-w-[1820px]">
+                    <div className="flex flex-wrap items-start justify-between gap-6">
+                        <div className="max-w-[68rem]">
+                            <div className="inline-flex items-center gap-3 rounded-full border px-4 py-2 text-[12px] uppercase tracking-[0.34em] text-slate-50" style={theme.chipStyle}>
+                                <i className="fa-solid fa-microphone-lines" />
+                                Next Up On Stage
+                            </div>
+                            <div className="mt-5 text-5xl font-black uppercase leading-[0.88] text-transparent bg-clip-text md:text-7xl 2xl:text-[7rem]" style={theme.headlineStyle}>
+                                {lineup.length > 0 ? 'Queue keeps moving' : 'The next singer is loading'}
+                            </div>
+                            <div className="mt-4 text-xl uppercase tracking-[0.24em] text-zinc-200 md:text-2xl 2xl:text-[2rem]">
+                                {lineup.length > 0
+                                    ? `Showing the next ${lineup.length} singer${lineup.length === 1 ? '' : 's'} on deck`
+                                    : 'Scan in and request a song to keep the stage hot'}
+                            </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-4">
+                            <div className="rounded-[2rem] border border-white/12 bg-white/6 px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                                <img src={displayLogoUrl} alt={brandTitle || 'Room brand'} className="h-14 object-contain md:h-20 2xl:h-24" />
+                            </div>
+                            <div className="grid min-w-[18rem] grid-cols-2 gap-3">
+                                <div className="rounded-[1.5rem] border border-white/10 bg-white/6 px-4 py-3 text-right shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-300">Queue</div>
+                                    <div className="mt-1 text-4xl font-black leading-none text-white md:text-5xl">{totalQueueCount}</div>
+                                </div>
+                                <div className="rounded-[1.5rem] border border-white/10 bg-white/6 px-4 py-3 text-right shadow-[0_18px_50px_rgba(0,0,0,0.22)]">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-300">Est Wait</div>
+                                    <div className="mt-1 text-2xl font-black leading-none text-white md:text-3xl">{formatWaitTime(queueWaitSec)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-10 grid gap-4 md:grid-cols-3 2xl:gap-6">
+                        {lineup.length > 0 ? lineup.map((song, index) => {
+                            const isVip = isVipSong(song);
+                            const accentStyle = index === 0
+                                ? theme.progressStyle
+                                : { backgroundImage: `linear-gradient(90deg, ${withAudienceBrandAlpha(theme.primaryColor, 0.4)} 0%, ${withAudienceBrandAlpha(theme.secondaryColor, 0.22)} 100%)` };
+                            return (
+                                <div
+                                    key={song.id || `${song.songTitle}-${song.singerName}-${index}`}
+                                    className="relative overflow-hidden rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(10,14,28,0.94),rgba(7,10,18,0.94))] px-5 py-5 shadow-[0_26px_80px_rgba(0,0,0,0.42)]"
+                                >
+                                    <div className="absolute inset-x-0 top-0 h-1.5" style={accentStyle}></div>
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-400">
+                                                {index === 0 ? 'Now loading' : index === 1 ? 'On deck' : 'Then after'}
+                                            </div>
+                                            <div className="mt-3 text-4xl font-black leading-none text-white md:text-5xl">#{index + 1}</div>
+                                        </div>
+                                        {isVip && (
+                                            <span className="rounded-full bg-yellow-300 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black shadow-[0_0_20px_rgba(253,224,71,0.5)]">
+                                                {premiumBadgeLabel}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mt-5 min-w-0">
+                                        <div className="text-2xl font-black leading-tight text-white md:text-3xl 2xl:text-4xl">
+                                            {song.singerName || 'Next singer'}
+                                        </div>
+                                        <div className="mt-2 text-lg font-semibold leading-tight text-zinc-100 md:text-2xl 2xl:text-3xl">
+                                            {song.songTitle || 'Song loading'}
+                                        </div>
+                                        {!!song.artist && (
+                                            <div className="mt-2 text-sm uppercase tracking-[0.2em] text-zinc-400 md:text-base">
+                                                {song.artist}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }) : (
+                            <div className="md:col-span-3 rounded-[2rem] border border-white/12 bg-[linear-gradient(145deg,rgba(10,14,28,0.94),rgba(7,10,18,0.94))] px-6 py-8 text-center shadow-[0_26px_80px_rgba(0,0,0,0.42)]">
+                                <div className="text-[12px] uppercase tracking-[0.3em] text-zinc-400">Queue is open</div>
+                                <div className="mt-4 text-3xl font-black text-white md:text-5xl">No singers queued right now</div>
+                                <div className="mt-3 text-lg text-zinc-200 md:text-2xl">Scan the room code and request a song to keep the lineup moving.</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -3702,7 +3869,7 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         const activeScreen = room?.activeScreen;
         if (!activeScreen || activeScreen === 'stage') return undefined;
-        if (!['leaderboard', 'tipping'].includes(activeScreen)) return undefined;
+        if (!['leaderboard', 'leaderboard_stack', 'tipping'].includes(activeScreen)) return undefined;
         const timer = setTimeout(() => {
             updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeScreen: 'stage' })
                 .catch((err) => tvLogger.debug('[TV] auto close activeScreen failed', err));
@@ -4008,6 +4175,7 @@ const PublicTV = ({ roomCode }) => {
         if (!value) return '';
         const labelMap = {
             leaderboard: 'Leaderboard',
+            leaderboard_stack: 'Leaderboard Stack',
             tipping: 'Tip CTA',
             selfie_cam: 'Selfie Cam',
             selfie_challenge: 'Selfie Challenge',
@@ -4046,7 +4214,14 @@ const PublicTV = ({ roomCode }) => {
             Math.round(Number(room?.performanceRecapLeaderboardMs ?? DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS) || DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS)
         )
     );
-    const performanceRecapTotalMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs;
+    const performanceRecapNextUpMs = Math.max(
+        3000,
+        Math.min(
+            12000,
+            Math.round(Number(room?.performanceRecapNextUpMs ?? DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS) || DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS)
+        )
+    );
+    const performanceRecapTotalMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
     const applauseWarmupSec = Math.max(
         0,
         Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? DEFAULT_APPLAUSE_WARMUP_SEC) || DEFAULT_APPLAUSE_WARMUP_SEC))
@@ -4104,7 +4279,8 @@ const PublicTV = ({ roomCode }) => {
     }, [recap]);
 
     const triggerTipPulse = useCallback((key) => {
-        if (!room?.tipUrl && !room?.tipQrUrl && !getRoomSupportSurface(room).url) return;
+        const tipSurface = getTipOverlaySurface(room);
+        if (!tipSurface.qrValue && !tipSurface.qrImageUrl) return;
         if (lastTipKey.current === key) return;
         lastTipKey.current = key;
         setTipPulse(true);
@@ -5579,6 +5755,14 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
+    if (room?.activeScreen === 'leaderboard_stack') {
+        return (
+            <>
+                <RunOfShowStatusHud hud={runOfShowHud} />
+                <LeaderboardStackOverlay users={roomUsers} songs={songs} premiumBadgeLabel={tvPremiumBadgeLabel} />
+            </>
+        );
+    }
     if (room?.activeScreen === 'tipping') {
         return (
             <>
@@ -5970,7 +6154,10 @@ const PublicTV = ({ roomCode }) => {
         ].filter(Boolean).slice(0, 3);
         const recapStartMs = getTimestampMs(recap.timestamp) || recapNowMs;
         const recapAgeMs = Math.max(0, recapNowMs - recapStartMs);
-        const recapLeaderboardPhase = recapAgeMs >= performanceRecapBreakdownMs;
+        const recapLeaderboardPhaseStartMs = performanceRecapBreakdownMs;
+        const recapNextUpPhaseStartMs = performanceRecapBreakdownMs + performanceRecapLeaderboardMs;
+        const recapLeaderboardPhase = recapAgeMs >= recapLeaderboardPhaseStartMs && recapAgeMs < recapNextUpPhaseStartMs;
+        const recapNextUpPhase = recapAgeMs >= recapNextUpPhaseStartMs;
         const rankedPerformanceLeaderboard = buildPerformanceLeaderboardStats(songs, roomUsers, recap);
         const recapLeaderboardMode = LEADERBOARD_MODE_DEFS.find((mode) => mode.key === 'totalPoints') || LEADERBOARD_MODE_DEFS[3];
         const rankedPerformanceLeaderboardWithRanks = sortLeaderboardEntriesForMode(rankedPerformanceLeaderboard, recapLeaderboardMode);
@@ -5998,6 +6185,19 @@ const PublicTV = ({ roomCode }) => {
             acc[entryKey] = previousRank - Number(entry.rank || 0);
             return acc;
         }, {});
+        if (recapNextUpPhase) {
+            return (
+                <PerformanceNextUpOverlay
+                    nextUp={nextUp.slice(0, 3)}
+                    queueCount={allQueue.length}
+                    queueWaitSec={queueWaitSec}
+                    brandTheme={tvAudienceBrandTheme}
+                    logoUrl={room?.logoUrl || ASSETS.logo}
+                    brandTitle={tvBrandTitle}
+                    premiumBadgeLabel={tvPremiumBadgeLabel}
+                />
+            );
+        }
         if (recapLeaderboardPhase) {
             return (
                 <div className="fixed inset-0 z-[200] overflow-hidden bg-[#04060e] text-white animate-in fade-in duration-500">
@@ -6423,13 +6623,16 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {showAmbientFx && tipPulse && (room?.tipUrl || room?.tipQrUrl || getRoomSupportSurface(room).url) && (
+            {showAmbientFx && tipPulse && (() => {
+                const tipSurface = getTipOverlaySurface(room);
+                return !!(tipSurface.qrValue || tipSurface.qrImageUrl);
+            })() && (
                 <div className="absolute bottom-3 right-3 md:bottom-6 md:right-6 z-[120] bg-emerald-500/90 text-black px-3 py-2 md:px-6 md:py-4 rounded-2xl border-2 border-white shadow-[0_0_30px_rgba(16,185,129,0.6)] animate-pulse backdrop-blur">
                     <div className="text-xs md:text-sm font-bold uppercase tracking-[0.12em] md:tracking-widest">
-                        {room?.tipUrl || room?.tipQrUrl ? 'Show some love' : (getRoomSupportSurface(room).label || 'Support the room')}
+                        {getTipOverlaySurface(room).usesFundraiserSupport ? (getRoomSupportSurface(room).label || 'Support the room') : 'Show some love'}
                     </div>
                     <div className="text-sm md:text-2xl font-black">
-                        {room?.tipUrl || room?.tipQrUrl ? `Tip the host ${EMOJI.tip}` : 'Scan to support the fundraiser'}
+                        {getTipOverlaySurface(room).usesFundraiserSupport ? 'Scan to donate to the cause' : `Tip the host ${EMOJI.tip}`}
                     </div>
                 </div>
             )}

@@ -5,7 +5,7 @@ import { test } from 'vitest';
 
 const source = readFileSync('src/apps/TV/PublicTV.jsx', 'utf8');
 
-test('PublicTV reuses the existing tip overlay and pulse for fundraiser support fallback', () => {
+test('PublicTV promotes Givebutter support URLs ahead of legacy personal tip links when fundraiser support is configured', () => {
   assert.match(
     source,
     /const getRoomSupportSurface = \(room = \{\}\) => \(\{/,
@@ -13,37 +13,53 @@ test('PublicTV reuses the existing tip overlay and pulse for fundraiser support 
   );
   assert.match(
     source,
-    /const qrValue = String\(room\?\.tipUrl \|\| supportSurface\.url \|\| ''\)\.trim\(\);/,
-    'Support fallback should reuse the overlay QR flow when the host has no dedicated tip URL',
+    /buildGivebutterSupportLaunchUrl\(baseUrl\)/,
+    'Givebutter support surfaces should be normalized to a donate-ready URL before QR generation',
   );
   assert.match(
     source,
-    /const overlayHeadline = usesSupportFallback \? \(supportSurface\.label \|\| 'Support the Room'\) : 'Show Some Love!';/,
-    'Support fallback should keep the overlay copy contextual instead of pretending it is always a tip prompt',
+    /const getTipOverlaySurface = \(room = \{\}\) => \{/,
+    'PublicTV should route QR selection through one helper so fundraiser support can override stale personal tip links',
   );
   assert.match(
     source,
-    /Scan to support the fundraiser/,
-    'Overlay copy should explain the fundraiser fallback clearly',
+    /headline: supportSurface\.label \|\| 'Support the fundraiser'/,
+    'Fundraiser support should keep the overlay headline contextual',
   );
   assert.match(
     source,
-    /if \(!room\?\.tipUrl && !room\?\.tipQrUrl && !getRoomSupportSurface\(room\)\.url\) return;/,
+    /subhead: 'Scan to donate to the cause'/,
+    'Fundraiser support should use generic donation copy instead of personal tip copy',
+  );
+  assert.match(
+    source,
+    /if \(!tipSurface\.qrValue && !tipSurface\.qrImageUrl\) return;/,
     'Tip pulse trigger should still work when a room only has fundraiser support configured',
   );
   assert.match(
     source,
-    /showAmbientFx && tipPulse && \(room\?\.tipUrl \|\| room\?\.tipQrUrl \|\| getRoomSupportSurface\(room\)\.url\)/,
-    'The small pulse badge should render for fundraiser-only rooms as well',
+    /getTipOverlaySurface\(room\)\.usesFundraiserSupport \? \(getRoomSupportSurface\(room\)\.label \|\| 'Support the room'\) : 'Show some love'/,
+    'Pulse badge headline should reuse the support label when fundraiser support is active',
   );
   assert.match(
     source,
-    /room\?\.tipUrl \|\| room\?\.tipQrUrl \? 'Show some love' : \(getRoomSupportSurface\(room\)\.label \|\| 'Support the room'\)/,
-    'Pulse badge headline should reuse the support label when there is no tip surface',
+    /getTipOverlaySurface\(room\)\.usesFundraiserSupport \? 'Scan to donate to the cause' : `Tip the host \$\{EMOJI\.tip\}`/,
+    'Pulse badge body should switch to donation guidance when using fundraiser support',
   );
-  assert.match(
-    source,
-    /room\?\.tipUrl \|\| room\?\.tipQrUrl \? `Tip the host \$\{EMOJI\.tip\}` : 'Scan to support the fundraiser'/,
-    'Pulse badge body should switch to fundraiser guidance when using the support fallback',
-  );
+});
+
+test('PublicTV exposes a standalone leaderboard stack overlay state', () => {
+  assert.match(source, /const LeaderboardStackOverlay = \(\{ users, songs, premiumBadgeLabel = 'VIP' \}\) => \{/);
+  assert.match(source, /LEADERBOARD STACK/);
+  assert.match(source, /room\?\.activeScreen === 'leaderboard_stack'/);
+  assert.match(source, /leaderboard_stack: 'Leaderboard Stack'/);
+});
+
+test('PublicTV extends the post-performance flow with a branded next-up beat', () => {
+  assert.match(source, /const PerformanceNextUpOverlay = \(\{/);
+  assert.match(source, /Next Up On Stage/);
+  assert.match(source, /performanceRecapNextUpMs/);
+  assert.match(source, /<PerformanceNextUpOverlay/);
+  assert.match(source, /brandTheme=\{tvAudienceBrandTheme\}/);
+  assert.match(source, /logoUrl=\{room\?\.logoUrl \|\| ASSETS\.logo\}/);
 });

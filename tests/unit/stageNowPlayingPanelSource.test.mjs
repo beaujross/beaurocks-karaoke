@@ -31,4 +31,19 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     /Performance Controls/,
     "The old lower performance-control section should not push end controls below the fold",
   );
+  assert.match(
+    source,
+    /performanceRecapNextUpMs/,
+    "Post-performance timing controls should include the new Next Up beat field",
+  );
+  assert.match(
+    source,
+    /Exact beat lengths live in Admin room settings/,
+    "Live stage timing should point hosts to Admin for exact beat lengths instead of expanding into a settings surface",
+  );
+  assert.doesNotMatch(
+    source,
+    /Customize Timing|Next up beat/,
+    "The live stage rail should keep only the overall pace control and not the advanced per-beat settings",
+  );
 });

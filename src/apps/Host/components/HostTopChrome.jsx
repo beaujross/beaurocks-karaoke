@@ -168,6 +168,7 @@ const HostTopChrome = ({
     publicTvPreviewVisible = false,
     setPublicTvPreviewVisible,
     tabletTouchViewport = false,
+    mediumViewport = false,
     runOfShowEnabled = false,
     runOfShowDirector = null,
     runOfShowLiveItem = null,
@@ -309,6 +310,7 @@ const HostTopChrome = ({
     const popTriviaActive = !!popTriviaEnabled;
     const chatFullscreenActive = chatTvActive && chatTvMode === 'fullscreen';
     const leaderboardActive = room?.activeScreen === 'leaderboard';
+    const leaderboardStackActive = room?.activeScreen === 'leaderboard_stack';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
     const activeAutomationCount = Number(!!autoPlayMedia)
@@ -319,7 +321,8 @@ const HostTopChrome = ({
         + Number(!!autoLyricsOnQueue)
         + Number(!!autoPartyEnabled)
         + Number(!!room?.bouncerMode);
-    const overlaysActiveCount = Number(leaderboardActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
+    const overlaysActiveCount = Number(leaderboardActive) + Number(leaderboardStackActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
+    const denseChrome = !!tabletTouchViewport || !!mediumViewport;
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -327,7 +330,7 @@ const HostTopChrome = ({
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : tabletTouchViewport ? 'h-11 px-3.5 py-2 text-[13px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : denseChrome ? 'h-10 px-3 py-1.5 text-[12px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const anyTopMenuOpen = audioPanelOpen
         || showTvQuickMenu
@@ -1033,7 +1036,7 @@ const HostTopChrome = ({
         closeAllTopMenus();
     };
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
         <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between w-full">
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
@@ -1041,7 +1044,7 @@ const HostTopChrome = ({
                     className={`${runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
                     alt="Beaurocks Karaoke"
                 />
-                <div data-host-room-code className="text-[14px] sm:text-[16px] lg:text-[18px] font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30">{roomCode}</div>
+                <div data-host-room-code className={`${denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px]' : 'text-[14px] sm:text-[16px] lg:text-[18px]'} font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
                 {typeof onOpenHostDashboard === 'function' && (
                     <button
                         onClick={() => {
@@ -1150,7 +1153,7 @@ const HostTopChrome = ({
                     )}
                 </div>
                 {showTimeClockEnabled && (
-                    <div className={`ml-1 flex min-w-[168px] items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] ${runOfShowFocusMode ? 'px-3 py-1.5' : 'px-3 py-1.5'}`}>
+                    <div className={`ml-1 flex ${denseChrome ? 'min-w-[146px]' : 'min-w-[168px]'} items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-3 py-1.5`}>
                         <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-9 w-9' : 'h-9 w-9'}`}>
                             <i className="fa-solid fa-clock"></i>
                         </div>
@@ -1203,7 +1206,7 @@ const HostTopChrome = ({
                                 }
                                 setTab(t.key);
                             }}
-                            className={`px-3 py-1.5 text-sm font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                            className={`${denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
                         >
                             {t.label}
                         </button>
@@ -1313,8 +1316,8 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : 'px-3 py-2.5'}`}>
-                <div className={`host-top-quick-strip flex min-w-0 gap-2 custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
+        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
+                <div className={`host-top-quick-strip flex min-w-0 ${denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 <div className={quickStripItemClass}>
                     <button
                         data-feature-id="deck-open-queue-controls"
@@ -1830,6 +1833,19 @@ const HostTopChrome = ({
                                         </span>
                                     </span>
                                     <span className="text-[11px] uppercase tracking-widest">{leaderboardActive ? 'On' : 'Off'}</span>
+                                </button>
+                                <button
+                                    onClick={() => toggleOverlayScreen('leaderboard_stack')}
+                                    className={`${styles.btnStd} ${leaderboardStackActive ? styles.btnHighlight : styles.btnNeutral} w-full min-h-[52px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <span className="inline-flex items-center gap-2 text-left">
+                                        <i className="fa-solid fa-layer-group"></i>
+                                        <span className="flex flex-col">
+                                            <span>Leaderboard Stack</span>
+                                            <span className="text-[10px] text-zinc-400 normal-case tracking-normal">Show the stacked standings board</span>
+                                        </span>
+                                    </span>
+                                    <span className="text-[11px] uppercase tracking-widest">{leaderboardStackActive ? 'On' : 'Off'}</span>
                                 </button>
                                 <button
                                     onClick={() => toggleOverlayScreen('tipping')}

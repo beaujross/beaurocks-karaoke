@@ -101,6 +101,12 @@ const buildHostQueueTabProps = (overrides = {}) => ({
   onDeleteScenePreset: noop,
   crowdPulse: null,
   coHostSignals: [],
+  moderationQueueItems: [],
+  moderationCounts: {},
+  moderationActions: {},
+  moderationBusyAction: '',
+  moderationNeedsAttention: false,
+  onOpenModerationInbox: noop,
   ytDiagnosticsMap: {},
   fetchYtDiagnostics: async () => null,
   getYtDiagnosticsKey: () => '',
@@ -145,6 +151,38 @@ const renderQueueTabMarkup = async (overrides = {}) => {
   const { default: HostQueueTab } = await import('../../src/apps/Host/components/HostQueueTab.jsx');
   return renderToStaticMarkup(
     React.createElement(HostQueueTab, buildHostQueueTabProps(overrides)),
+  );
+};
+
+const renderInboxMarkup = async (overrides = {}) => {
+  const { default: HostInboxPanel } = await import('../../src/apps/Host/components/HostInboxPanel.jsx');
+  return renderToStaticMarkup(
+    React.createElement(HostInboxPanel, {
+      roomCode: 'TEST',
+      hostBase: 'https://host.example',
+      coHostSignals: [],
+      roomChatMessages: [],
+      hostDmMessages: [],
+      moderationQueueItems: [],
+      moderationCounts: {},
+      moderationActions: {},
+      moderationBusyAction: '',
+      moderationNeedsAttention: false,
+      chatUnread: 0,
+      dmUnread: 0,
+      users: [],
+      handleChatViewMode: noop,
+      openChatSettings: noop,
+      onOpenModerationInbox: noop,
+      dmTargetUid: '',
+      setDmTargetUid: noop,
+      dmDraft: '',
+      setDmDraft: noop,
+      sendHostDmMessage: noop,
+      styles,
+      emoji,
+      ...overrides,
+    }),
   );
 };
 
@@ -206,7 +244,7 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
   assert.match(markup, />3</);
 });
 
-test('HostQueueTab renders one unified desktop content rail with add queue and run-of-show tabs', async () => {
+test('HostQueueTab renders one unified desktop content rail with queue add inbox and run-of-show tabs', async () => {
   mockHostQueueTabDependencies();
 
   const markup = await renderQueueTabMarkup({
@@ -229,14 +267,14 @@ test('HostQueueTab renders one unified desktop content rail with add queue and r
   assert.match(markup, /Add To Queue/);
   assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
   assert.match(markup, /Current Queue/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
+  assert.match(markup, />Inbox</);
   assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
   assert.match(markup, /Run Of Show/);
 });
 
-test('HostQueueTab renders compact co-host signal summaries in the live lane', async () => {
-  mockHostQueueTabDependencies();
-
-  const markup = await renderQueueTabMarkup({
+test('HostInboxPanel renders a consolidated inbox for co-host notes moderation and chat', async () => {
+  const markup = await renderInboxMarkup({
     coHostSignals: [
       {
         id: 'track_up',
@@ -250,16 +288,54 @@ test('HostQueueTab renders compact co-host signal summaries in the live lane', a
         latestAgeLabel: '1m ago',
       },
     ],
+    moderationQueueItems: [
+      {
+        key: 'crowd-selfie-1',
+        type: 'crowd_selfie',
+        title: 'Guest selfie',
+        subtitle: 'Crowd selfie awaiting approval for TV moments and recap',
+        timestamp: Date.now(),
+        submission: { id: 'crowd-selfie-1' },
+      },
+    ],
+    moderationCounts: {
+      totalPending: 1,
+    },
+    roomChatMessages: [
+      {
+        id: 'dm-1',
+        user: 'Taylor',
+        text: 'Love the energy tonight.',
+        fromUid: 'guest-1',
+        channel: 'room',
+        timestamp: Date.now(),
+      },
+    ],
+    hostDmMessages: [
+      {
+        id: 'dm-2',
+        user: 'Taylor',
+        text: 'Can you bump my helper access?',
+        fromUid: 'guest-1',
+        toUid: 'host-1',
+        channel: 'dm',
+        timestamp: Date.now(),
+      },
+    ],
   });
 
-  assert.match(markup, /Tell Host/);
-  assert.match(markup, /Trusted co-host notes tied to the live performance/);
+  assert.match(markup, /data-feature-id="host-inbox-panel"/);
+  assert.match(markup, /Host Inbox/);
+  assert.match(markup, /Needs Host/);
+  assert.match(markup, /Everything Else/);
   assert.match(markup, /Track needs a bump/);
+  assert.match(markup, /Guest selfie/);
+  assert.match(markup, /Taylor/);
   assert.match(markup, /Jordan - Valerie/);
-  assert.match(markup, /2 co-hosts flagged this/);
+  assert.match(markup, /1 moderation/);
 });
 
-test('HostQueueTab can fully collapse chat and stage sections from the left rail', async () => {
+test('HostQueueTab keeps inbox out of the left rail and exposes it as a workspace tab', async () => {
   mockHostQueueTabDependencies();
   vi.doMock('../../src/apps/Host/hooks/useQueueTabState.js', async () => {
     const actual = await vi.importActual('../../src/apps/Host/hooks/useQueueTabState.js');
@@ -270,7 +346,6 @@ test('HostQueueTab can fully collapse chat and stage sections from the left rail
         return {
           ...state,
           stagePanelOpen: false,
-          chatOpen: false,
         };
       },
     };
@@ -279,7 +354,7 @@ test('HostQueueTab can fully collapse chat and stage sections from the left rail
   const markup = await renderQueueTabMarkup();
 
   assert.match(markup, /data-feature-id="panel-now-playing"/);
-  assert.match(markup, /data-feature-id="panel-chat"/);
-  assert.doesNotMatch(markup, /Host chat/);
+  assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
+  assert.doesNotMatch(markup, /Host Inbox/);
   assert.doesNotMatch(markup, /Transport/);
 });

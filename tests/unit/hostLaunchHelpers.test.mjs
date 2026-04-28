@@ -143,8 +143,10 @@ test("hostLaunchHelpers applies AAHF preset defaults for generalized donation CT
   assert.equal(draft.supportProvider, "givebutter");
   assert.equal(draft.supportUrl, "https://givebutter.com/aahf-kickoff");
   assert.equal(draft.supportCampaignCode, "aahf_kickoff");
+  assert.equal(draft.supportPoints, 25);
   assert.equal(draft.supportBadge, false);
   assert.equal(draft.supportOffers.length, 0);
+  assert.equal(draft.supportCelebrationStyle, "moneybags_burst");
   assert.equal(draft.audienceAccessMode, "account");
   assert.equal(draft.timedLobbyPoints, 12);
   assert.equal(draft.timedLobbyIntervalMin, 8);
@@ -158,7 +160,9 @@ test("hostLaunchHelpers applies AAHF preset defaults for generalized donation CT
   assert.equal(payload.sourceCampaignCode, "");
   assert.equal(payload.supportUrl, "https://givebutter.com/aahf-kickoff");
   assert.equal(payload.supportCampaignCode, "aahf_kickoff");
+  assert.equal(payload.supportPoints, 25);
   assert.equal(payload.supportBadge, false);
+  assert.equal(payload.supportCelebrationStyle, "moneybags_burst");
   assert.equal(payload.promoCampaigns.length, draft.promoCampaigns.length);
   assert.equal(payload.supportOffers.length, draft.supportOffers.length);
   assert.equal(payload.audienceAccessMode, "account");

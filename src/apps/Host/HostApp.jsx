@@ -3359,6 +3359,7 @@ const AudienceMiniPreview = ({
     collapsed = false,
     previewMode = 'thumbnail',
     previewSize = 'md',
+    compactDock = false,
     onSetPreviewMode,
     onSetPreviewSize,
     onToggleCollapsed,
@@ -3389,70 +3390,92 @@ const AudienceMiniPreview = ({
     const viewHref = String(audienceLaunchUrl || '').trim() || `${audienceBase}?room=${encodeURIComponent(roomCode)}`;
     const liveViewportHref = useMemo(() => viewHref, [viewHref]);
     const liveViewportEnabled = normalizedPreviewMode === 'live_audience';
-    const resolvedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const requestedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const resolvedPreviewSize = compactDock
+        ? 'sm'
+        : requestedPreviewSize;
     const previewWidthClass = liveViewportEnabled
         ? ({
-            sm: 'w-[190px]',
-            md: 'w-[240px]',
-            lg: 'w-[300px]'
+            sm: compactDock ? 'w-[156px]' : 'w-[190px]',
+            md: compactDock ? 'w-[156px]' : 'w-[240px]',
+            lg: compactDock ? 'w-[168px]' : 'w-[300px]'
         })[resolvedPreviewSize] || 'w-[240px]'
         : ({
-            sm: 'w-[340px]',
-            md: 'w-[420px]',
-            lg: 'w-[520px]'
+            sm: compactDock ? 'w-[220px]' : 'w-[340px]',
+            md: compactDock ? 'w-[220px]' : 'w-[420px]',
+            lg: compactDock ? 'w-[240px]' : 'w-[520px]'
         })[resolvedPreviewSize] || 'w-[420px]';
+    const shellClass = compactDock
+        ? 'bg-zinc-950/96 border border-cyan-300/18 rounded-[20px] shadow-[0_18px_38px_rgba(0,0,0,0.48)] overflow-hidden backdrop-blur-sm'
+        : 'bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm';
+    const previewCanvasClass = liveViewportEnabled
+        ? `${compactDock ? 'mx-auto aspect-[390/844] rounded-[1.15rem] border border-cyan-400/18 bg-black p-1' : 'mx-auto aspect-[390/844] rounded-[1.4rem] border border-cyan-400/18 bg-black p-1.5'} shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)]`
+        : `${compactDock ? 'aspect-[10/13] rounded-[18px]' : 'aspect-video rounded-xl'} border border-white/10 bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]'`;
+    const liveViewportFrameClass = compactDock
+        ? 'absolute pointer-events-none border border-white/8 inset-[4px] rounded-[0.92rem]'
+        : 'absolute pointer-events-none border border-white/8 inset-[6px] rounded-[1.08rem]';
+    const liveViewportTopChromeClass = compactDock
+        ? 'pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/12 top-[8px] h-1 w-12'
+        : 'pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/12 top-[10px] h-1.5 w-16';
+    const liveViewportIframeClass = compactDock
+        ? 'absolute bg-black inset-[4px] h-[calc(100%-8px)] w-[calc(100%-8px)] rounded-[0.9rem]'
+        : 'absolute bg-black inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[1.05rem]';
     return (
         <div className={`fixed right-3 bottom-3 z-[35] max-w-[calc(100vw-24px)] ${previewWidthClass}`}>
-            <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 border-b border-white/10 bg-black/45">
+            <div className={shellClass}>
+                <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/45 ${compactDock ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}>
                     <div className="min-w-0 flex items-center gap-2">
-                        <div className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100">
+                        <div className={`rounded-full border border-white/10 bg-white/[0.03] font-black uppercase tracking-[0.22em] text-zinc-100 ${compactDock ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]'}`}>
                             Audience
                         </div>
                         <div className="min-w-0">
                             <div className="truncate text-[10px] uppercase tracking-[0.18em] text-zinc-500">Preview</div>
                             <div className="truncate text-[11px] font-semibold text-cyan-200">{liveViewportEnabled ? 'Singer App' : modeLabel}</div>
                         </div>
-                        <div className="flex shrink-0 items-center rounded-full border border-white/10 bg-black/35 p-0.5">
-                            <button
-                                type="button"
-                                onClick={() => onSetPreviewMode?.('thumbnail')}
-                                className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${normalizedPreviewMode === 'thumbnail' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
-                                title="Use the lightweight summary preview"
-                            >
-                                Thumb
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onSetPreviewMode?.('live_audience')}
-                                className={`min-w-[72px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${liveViewportEnabled ? 'bg-violet-500/18 text-violet-100' : 'text-zinc-400'}`}
-                                title="Mount the live audience app preview"
-                            >
-                                Live App
-                            </button>
-                        </div>
+                        {!compactDock && (
+                            <div className="flex shrink-0 items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => onSetPreviewMode?.('thumbnail')}
+                                    className={`min-w-[64px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${normalizedPreviewMode === 'thumbnail' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
+                                    title="Use the lightweight summary preview"
+                                >
+                                    Thumb
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onSetPreviewMode?.('live_audience')}
+                                    className={`min-w-[72px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${liveViewportEnabled ? 'bg-violet-500/18 text-violet-100' : 'text-zinc-400'}`}
+                                    title="Mount the live audience app preview"
+                                >
+                                    Live App
+                                </button>
+                            </div>
+                        )}
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                        <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
-                            {[
-                                ['sm', 'S'],
-                                ['md', 'M'],
-                                ['lg', 'L']
-                            ].map(([key, label]) => (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => onSetPreviewSize?.(key)}
-                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
-                                    title={`Set preview size ${label}`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
+                        {!compactDock && (
+                            <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                                {[
+                                    ['sm', 'S'],
+                                    ['md', 'M'],
+                                    ['lg', 'L']
+                                ].map(([key, label]) => (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        onClick={() => onSetPreviewSize?.(key)}
+                                        className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${requestedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
+                                        title={`Set preview size ${label}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <button
                             onClick={onToggleCollapsed}
-                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px] ${compactDock ? 'min-h-[30px]' : ''}`}
                             title={collapsed ? 'Expand preview' : 'Collapse preview'}
                         >
                             <i className={`fa-solid ${collapsed ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
@@ -3476,28 +3499,28 @@ const AudienceMiniPreview = ({
                     </div>
                 </div>
                 {!collapsed && (
-                    <div className="p-2">
-                        <div className={`relative overflow-hidden ${liveViewportEnabled ? 'mx-auto aspect-[390/844] rounded-[1.4rem] border border-cyan-400/18 bg-black p-1.5 shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)]' : 'aspect-video rounded-xl border border-white/10 bg-gradient-to-br from-zinc-900 via-[#141d2b] to-[#0b1020]'}`}>
+                    <div className={compactDock ? 'p-1.5' : 'p-2'}>
+                        <div className={`relative overflow-hidden ${previewCanvasClass}`}>
                             {liveViewportEnabled ? (
                                 <>
-                                    <div className="absolute inset-[6px] pointer-events-none rounded-[1.08rem] border border-white/8" />
-                                    <div className="pointer-events-none absolute left-1/2 top-[10px] z-10 h-1.5 w-16 -translate-x-1/2 rounded-full bg-white/12" />
+                                    <div className={liveViewportFrameClass} />
+                                    <div className={liveViewportTopChromeClass} />
                                 </>
                             ) : null}
                             {liveViewportEnabled ? (
                                 <iframe
                                     src={liveViewportHref}
                                     title="Audience app live preview"
-                                    className={`absolute bg-black ${liveViewportEnabled ? 'inset-[6px] h-[calc(100%-12px)] w-[calc(100%-12px)] rounded-[1.05rem]' : 'inset-0 h-full w-full'}`}
+                                    className={liveViewportIframeClass}
                                     loading="lazy"
                                     referrerPolicy="strict-origin-when-cross-origin"
                                     allow="autoplay; fullscreen"
                                 />
                             ) : room?.activeMode && room.activeMode !== 'karaoke' ? (
                                 <div className="absolute inset-0 p-3 flex flex-col justify-between">
-                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Audience Experience</div>
-                                    <div className="text-lg font-bebas text-cyan-300 leading-none">{modeLabel}</div>
-                                    <div className="text-[11px] text-zinc-200">
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-400">Audience</div>
+                                    <div className={`${compactDock ? 'text-base' : 'text-lg'} font-bebas text-cyan-300 leading-none`}>{modeLabel}</div>
+                                    <div className={`${compactDock ? 'text-[10px]' : 'text-[11px]'} text-zinc-200`}>
                                         {room?.activeMode === 'trivia_pop' && room?.triviaQuestion?.q ? room.triviaQuestion.q : null}
                                         {room?.activeMode === 'wyr' && room?.wyrData?.question ? room.wyrData.question : null}
                                         {room?.activeMode === 'bingo'
@@ -3508,35 +3531,35 @@ const AudienceMiniPreview = ({
                                 </div>
                             ) : currentSong ? (
                                 <div data-feature-id="host-now-performing-card" className="absolute inset-0 p-3 flex flex-col justify-between">
-                                    <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-400">Audience Live View</div>
+                                    <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-400">Audience Live</div>
                                     <div className="flex items-center gap-2 min-w-0">
                                         {currentSong.albumArtUrl ? (
-                                            <img src={currentSong.albumArtUrl} alt="Now playing art" className="w-10 h-10 rounded-lg object-cover border border-white/10" />
+                                            <img src={currentSong.albumArtUrl} alt="Now playing art" className={`${compactDock ? 'w-8 h-8 rounded-md' : 'w-10 h-10 rounded-lg'} object-cover border border-white/10`} />
                                         ) : (
-                                            <div className="w-10 h-10 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center text-lg">{currentSong.emoji || EMOJI.mic}</div>
+                                            <div className={`${compactDock ? 'w-8 h-8 rounded-md text-base' : 'w-10 h-10 rounded-lg text-lg'} bg-black/40 border border-white/10 flex items-center justify-center`}>{currentSong.emoji || EMOJI.mic}</div>
                                         )}
                                         <div className="min-w-0">
-                                            <div className="text-sm font-bold text-white truncate">{currentSong.songTitle || 'Song'}</div>
-                                            <div className="text-[11px] text-zinc-300 truncate">{currentSong.singerName || 'Singer'}</div>
+                                            <div className={`${compactDock ? 'text-xs' : 'text-sm'} font-bold text-white truncate`}>{currentSong.songTitle || 'Song'}</div>
+                                            <div className={`${compactDock ? 'text-[10px]' : 'text-[11px]'} text-zinc-300 truncate`}>{currentSong.singerName || 'Singer'}</div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                                    <div className={`flex items-center gap-2 uppercase tracking-[0.2em] text-zinc-400 ${compactDock ? 'text-[9px] flex-wrap' : 'text-[10px]'}`}>
                                         <span className="px-2 py-1 rounded-full border border-cyan-400/40 text-cyan-200 bg-cyan-500/10">Request</span>
                                         <span className="px-2 py-1 rounded-full border border-violet-400/40 text-violet-200 bg-violet-500/10">Vote</span>
                                         <span className="px-2 py-1 rounded-full border border-white/15 text-zinc-300">Queue {queueCount}</span>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="absolute inset-0 p-3 flex flex-col items-center justify-center text-center">
+                                <div className={`absolute inset-0 flex flex-col items-center justify-center text-center ${compactDock ? 'p-2.5' : 'p-3'}`}>
                                     <div className="text-2xl">{EMOJI.mic}</div>
-                                    <div className="text-sm text-zinc-200 mt-2 font-bold">Audience App Ready</div>
+                                    <div className={`${compactDock ? 'text-xs' : 'text-sm'} text-zinc-200 mt-2 font-bold`}>Audience App Ready</div>
                                     <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 mt-1">{roomCode}</div>
                                 </div>
                             )}
                         </div>
-                        <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                        <div className={`flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500 ${compactDock ? 'mt-1' : 'mt-1.5'}`}>
                             <span>{liveViewportEnabled ? 'Interactive audience app' : 'Audience summary'}</span>
-                            <span>{liveViewportEnabled ? `${resolvedPreviewSize.toUpperCase()} mobile viewport` : `Queue ${queueCount}`}</span>
+                            <span>{liveViewportEnabled ? `${compactDock ? 'Dock' : resolvedPreviewSize.toUpperCase()} viewport` : `Queue ${queueCount}`}</span>
                         </div>
                     </div>
                 )}
@@ -3552,24 +3575,26 @@ const PublicTvMiniPreview = ({
     tvLaunchUrl = '',
     collapsed = false,
     previewSize = 'md',
+    compactDock = false,
     onSetPreviewSize,
     onToggleCollapsed,
     onHide
 }) => {
     const viewHref = String(tvLaunchUrl || '').trim() || `${tvBase}?room=${encodeURIComponent(roomCode)}&mode=tv`;
     const liveViewportHref = useMemo(() => viewHref, [viewHref]);
-    const resolvedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const requestedPreviewSize = ['sm', 'md', 'lg'].includes(previewSize) ? previewSize : 'md';
+    const resolvedPreviewSize = compactDock ? 'sm' : requestedPreviewSize;
     const previewWidthClass = ({
-        sm: 'w-[320px]',
-        md: 'w-[430px]',
-        lg: 'w-[560px]'
+        sm: compactDock ? 'w-[240px]' : 'w-[320px]',
+        md: compactDock ? 'w-[240px]' : 'w-[430px]',
+        lg: compactDock ? 'w-[260px]' : 'w-[560px]'
     })[resolvedPreviewSize] || 'w-[430px]';
     const layoutLabel = room?.layoutMode || 'standard';
 
     return (
         <div className={`fixed left-3 bottom-3 z-[35] max-w-[calc(100vw-24px)] ${previewWidthClass}`}>
-            <div className="bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)] overflow-hidden backdrop-blur-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 border-b border-white/10 bg-black/45">
+            <div className={`${compactDock ? 'bg-zinc-950/96 border border-cyan-300/18 rounded-[20px] shadow-[0_18px_38px_rgba(0,0,0,0.48)]' : 'bg-zinc-950/95 border border-white/15 rounded-2xl shadow-[0_20px_45px_rgba(0,0,0,0.55)]'} overflow-hidden backdrop-blur-sm`}>
+                <div className={`flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/45 ${compactDock ? 'px-2 py-1.5' : 'px-2.5 py-2'}`}>
                     <div className="min-w-0 flex items-center gap-2">
                         <div className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.22em] text-zinc-100">
                             Public TV
@@ -3580,23 +3605,25 @@ const PublicTvMiniPreview = ({
                         </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
-                        <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
-                            {[
-                                ['sm', 'S'],
-                                ['md', 'M'],
-                                ['lg', 'L']
-                            ].map(([key, label]) => (
-                                <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => onSetPreviewSize?.(key)}
-                                    className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${resolvedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
-                                    title={`Set Public TV preview size ${label}`}
-                                >
-                                    {label}
-                                </button>
-                            ))}
-                        </div>
+                        {!compactDock && (
+                            <div className="flex items-center rounded-full border border-white/10 bg-black/35 p-0.5">
+                                {[
+                                    ['sm', 'S'],
+                                    ['md', 'M'],
+                                    ['lg', 'L']
+                                ].map(([key, label]) => (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        onClick={() => onSetPreviewSize?.(key)}
+                                        className={`min-w-[32px] rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em] ${requestedPreviewSize === key ? 'bg-white/12 text-white' : 'text-zinc-500'}`}
+                                        title={`Set Public TV preview size ${label}`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <button
                             onClick={onToggleCollapsed}
                             className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-[10px]`}
@@ -3623,8 +3650,8 @@ const PublicTvMiniPreview = ({
                     </div>
                 </div>
                 {!collapsed && (
-                    <div className="p-2">
-                        <div className="relative overflow-hidden aspect-video rounded-xl border border-cyan-400/18 bg-black shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    <div className={compactDock ? 'p-1.5' : 'p-2'}>
+                        <div className={`relative overflow-hidden aspect-video border border-cyan-400/18 bg-black shadow-[0_18px_36px_rgba(0,0,0,0.44),inset_0_1px_0_rgba(255,255,255,0.04)] ${compactDock ? 'rounded-[16px]' : 'rounded-xl'}`}>
                             <iframe
                                 src={liveViewportHref}
                                 title="Public TV live preview"
@@ -3634,9 +3661,9 @@ const PublicTvMiniPreview = ({
                                 allow="autoplay; fullscreen"
                             />
                         </div>
-                        <div className="mt-1.5 flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500">
+                        <div className={`flex items-center justify-between px-1 text-[9px] uppercase tracking-[0.18em] text-zinc-500 ${compactDock ? 'mt-1' : 'mt-1.5'}`}>
                             <span>Live Public TV</span>
-                            <span>{resolvedPreviewSize.toUpperCase()} widescreen viewport</span>
+                            <span>{compactDock ? 'Dock viewport' : `${resolvedPreviewSize.toUpperCase()} widescreen viewport`}</span>
                         </div>
                     </div>
                 )}
@@ -4113,9 +4140,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [viewportHeight, setViewportHeight] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 1080));
     const [viewportWidth, setViewportWidth] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
     const [tabletTouchViewport, setTabletTouchViewport] = useState(() => detectTabletTouchViewport());
-    const compactHostViewport = tabletTouchViewport || viewportWidth <= 860;
-    const tightHostViewport = !compactHostViewport && (viewportWidth <= 1180 || viewportHeight <= 900);
+    const compactHostViewport = tabletTouchViewport || viewportWidth <= 760;
+    const mediumHostViewport = !compactHostViewport && (viewportWidth <= 1100 || viewportHeight <= 900);
+    const tightHostViewport = !compactHostViewport && mediumHostViewport;
     const hostStageLayoutMode = compactHostViewport ? 'mobile' : (tightHostViewport ? 'laptop-tight' : 'desktop');
+    const compactPreviewDock = viewportWidth <= 1100;
+    const slimAdminRail = viewportWidth <= 900;
     const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
         if (typeof window === 'undefined') return true;
         return window.innerHeight > 900;
@@ -15504,7 +15534,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
-                <div className="px-3 py-2 text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900">Sections In {activeWorkspaceMeta?.label || 'Workspace'}</div>
+                <div className={`text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900 ${slimAdminRail ? 'px-2 py-2 text-center' : 'px-3 py-2'}`}>
+                    {slimAdminRail ? 'Sections' : `Sections In ${activeWorkspaceMeta?.label || 'Workspace'}`}
+                </div>
                 <div className="divide-y divide-zinc-900">
                     {navigationItemsForRail.map((item) => {
                         const isActive = settingsTab === item.key;
@@ -15514,33 +15546,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 key={`settings-item-${item.key}`}
                                 data-admin-section-item={item.key}
                                 onClick={() => handleSettingsNavSelect(item.key)}
-                                className={`w-full px-3 py-3 text-left transition-colors ${
+                                className={`w-full transition-colors ${slimAdminRail ? 'px-2 py-2.5 text-center' : 'px-3 py-3 text-left'} ${
                                     isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-200 hover:bg-zinc-900/80 hover:text-white'
                                 }`}
                             >
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0 flex items-start gap-2">
-                                        <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
-                                        <div className="min-w-0">
-                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{item.sectionLabel || 'Host Settings'}</div>
-                                            <div className="flex items-center gap-2">
-                                                <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
-                                                <span className="truncate text-[15px] leading-5 font-semibold">{item.label}</span>
-                                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] ${
-                                                    (SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).className
-                                                }`}>
-                                                    {(SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).label}
-                                                </span>
-                                            </div>
-                                            {!!item.description && (
-                                                <div className="mt-0.5 text-xs text-zinc-400 leading-snug">{item.description}</div>
-                                            )}
+                                {slimAdminRail ? (
+                                    <div className="flex flex-col items-center gap-1.5">
+                                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isActive ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'}`}>
+                                            <i className={`fa-solid ${item.icon} text-sm`}></i>
                                         </div>
+                                        <div className="text-[11px] font-semibold leading-tight text-center">{item.label}</div>
+                                        {badge ? (
+                                            <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-100">{badge}</span>
+                                        ) : null}
                                     </div>
-                                    {badge ? (
-                                        <span className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-100">{badge}</span>
-                                    ) : null}
-                                </div>
+                                ) : (
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0 flex items-start gap-2">
+                                            <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
+                                            <div className="min-w-0">
+                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{item.sectionLabel || 'Host Settings'}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                                    <span className="truncate text-[15px] leading-5 font-semibold">{item.label}</span>
+                                                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] ${
+                                                        (SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).className
+                                                    }`}>
+                                                        {(SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).label}
+                                                    </span>
+                                                </div>
+                                                {!!item.description && (
+                                                    <div className="mt-0.5 text-xs text-zinc-400 leading-snug">{item.description}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        {badge ? (
+                                            <span className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-100">{badge}</span>
+                                        ) : null}
+                                    </div>
+                                )}
                             </button>
                         );
                     })}
@@ -15743,6 +15787,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onDeleteScenePreset: deleteScenePreset,
         crowdPulse,
         coHostSignals: recentCoHostSignals,
+        moderationQueueItems: moderationInbox.queueItems,
+        moderationCounts: moderationInbox.counts,
+        moderationActions: moderationInbox.actions,
+        moderationBusyAction: moderationInbox.meta?.busyAction || '',
+        moderationNeedsAttention: !!moderationInbox.meta?.needsAttention,
+        onOpenModerationInbox: openModerationInbox,
+        mediumViewport: mediumHostViewport,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
         getYtDiagnosticsKey,
@@ -16028,6 +16079,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     publicTvPreviewVisible={publicTvPreviewVisible}
                     setPublicTvPreviewVisible={setPublicTvPreviewVisible}
                     tabletTouchViewport={tabletTouchViewport}
+                    mediumViewport={mediumHostViewport}
                     runOfShowEnabled={isRunOfShowRoom}
                     runOfShowDirector={runOfShowDirector}
                     runOfShowLiveItem={runOfShowLiveItem}
@@ -16082,7 +16134,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
@@ -16286,29 +16338,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         </div>
                         {lobbyTab === 'users' && (
                             <div className="flex flex-col gap-6">
-                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
+                                <div className={`grid grid-cols-2 lg:grid-cols-4 ${mediumHostViewport ? 'gap-3' : 'gap-4'}`}>
+                                    <div className={`bg-zinc-900/70 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3' : 'p-4'}`}>
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby guests</div>
                                         <div className="text-3xl font-bold text-white mt-2">{users.length}</div>
                                         <div className="text-sm text-zinc-500 mt-1">Active: {lobbyActiveCount}</div>
                                     </div>
-                                    <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
+                                    <div className={`bg-zinc-900/70 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3' : 'p-4'}`}>
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">VIPs</div>
                                         <div className="text-3xl font-bold text-yellow-300 mt-2">{lobbyVipCount}</div>
                                         <div className="text-sm text-zinc-500 mt-1">Premium guests</div>
                                     </div>
-                                    <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
+                                    <div className={`bg-zinc-900/70 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3' : 'p-4'}`}>
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">Points in play</div>
                                         <div className="text-3xl font-bold text-cyan-300 mt-2">{lobbyTotalPoints}</div>
                                         <div className="text-sm text-zinc-500 mt-1">Room total</div>
                                     </div>
-                                    <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
+                                    <div className={`bg-zinc-900/70 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3' : 'p-4'}`}>
                                         <div className="text-sm uppercase tracking-widest text-zinc-500">Emojis sent</div>
                                         <div className="text-3xl font-bold text-pink-400 mt-2">{lobbyTotalEmojis}</div>
                                         <div className="text-sm text-zinc-500 mt-1">Session total</div>
                                     </div>
                                 </div>
-                                <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-4">
+                                <div className={`bg-zinc-900/70 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3' : 'p-4'}`}>
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
                                             <div className="text-sm uppercase tracking-widest text-zinc-500">Lobby Lineup</div>
@@ -16445,7 +16497,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     )}
                                 </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <div className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 ${mediumHostViewport ? 'gap-3' : 'gap-4'}`}>
                                     {users.map(u => {
                                         const userUid = resolveRoomUserUid(u);
                                         const userToken = resolveLobbyUserToken(u);
@@ -16472,7 +16524,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     if (lockedLobbyUserToken) return;
                                                     setSelectedLobbyUserToken('');
                                                 }}
-                                                className={`relative overflow-hidden bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 group transition-colors ${isSelected ? 'border-cyan-300/60 ring-1 ring-cyan-300/40' : ''} ${isSpotlight ? 'border-yellow-500/80 shadow-[0_0_25px_rgba(234,179,8,0.2)]' : ''}`}
+                                                className={`relative overflow-hidden bg-zinc-900/80 border border-white/10 rounded-2xl ${mediumHostViewport ? 'p-3 gap-2.5' : 'p-4 gap-3'} flex flex-col group transition-colors ${isSelected ? 'border-cyan-300/60 ring-1 ring-cyan-300/40' : ''} ${isSpotlight ? 'border-yellow-500/80 shadow-[0_0_25px_rgba(234,179,8,0.2)]' : ''}`}
                                             >
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-12 h-12 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-3xl">
@@ -16724,6 +16776,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         collapsed={audiencePreviewCollapsed}
                         previewMode={audiencePreviewMode}
                         previewSize={audiencePreviewSize}
+                        compactDock={compactPreviewDock}
                         onSetPreviewMode={setAudiencePreviewMode}
                         onSetPreviewSize={setAudiencePreviewSize}
                         onToggleCollapsed={() => setAudiencePreviewCollapsed(prev => !prev)}
@@ -16740,6 +16793,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         tvLaunchUrl={activeRoomLaunchUrls.tvUrl}
                         collapsed={publicTvPreviewCollapsed}
                         previewSize={publicTvPreviewSize}
+                        compactDock={compactPreviewDock}
                         onSetPreviewSize={setPublicTvPreviewSize}
                         onToggleCollapsed={() => setPublicTvPreviewCollapsed(prev => !prev)}
                         onHide={() => setPublicTvPreviewVisible(false)}
@@ -16876,14 +16930,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             showContext={!inAdminWorkspace}
                             fullBleed={inAdminWorkspace}
                         >
-                            <div className="h-full min-h-0 grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]">
-                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar p-3 md:p-4`}>
+                            <div className={`h-full min-h-0 grid grid-cols-1 ${slimAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
+                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar ${slimAdminRail ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
                                     <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
                                         <button onClick={() => setSettingsNavOpen(false)} className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}>Close</button>
                                     </div>
-                                    {inAdminWorkspace && (
+                                    {inAdminWorkspace && !slimAdminRail && (
                                         <div className="mb-3">
                                             <label className="relative block">
                                                 <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
@@ -17483,6 +17537,112 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="host-form-helper">Lower = more stage audio during songs.</div>
                             </div>
                         </div>
+
+                          <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div>
+                                      <div className="text-sm uppercase tracking-widest text-zinc-300">Post-performance sequence</div>
+                                      <div className="host-form-helper mt-1">Exact applause and recap beat lengths live here. The live stage rail only controls the overall pace slider.</div>
+                                  </div>
+                                  <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                      Advanced timing
+                                  </span>
+                              </div>
+                              <div className="mt-4 space-y-2">
+                                  <label className="flex items-center gap-2 text-sm text-zinc-300">
+                                      <input
+                                          type="checkbox"
+                                          checked={room?.showPerformanceRecap !== false}
+                                          onChange={async (e) => {
+                                              await updateRoom({ showPerformanceRecap: e.target.checked });
+                                          }}
+                                          className="accent-[#00C4D9]"
+                                      />
+                                      Show post-performance recap sequence on TV
+                                  </label>
+                                  <div className="host-form-helper">Turns the full post-song TV sequence on or off.</div>
+                              </div>
+                              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Applause warm-up</div>
+                                      <select
+                                          value={Math.max(0, Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? 5) || 5)))}
+                                          onChange={async (e) => { await updateRoom({ applauseWarmupSec: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                              <option key={`admin-applause-warmup-${value}`} value={value}>{value}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">Delay before the applause countdown starts.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Applause countdown</div>
+                                      <select
+                                          value={Math.max(1, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? 5) || 5)))}
+                                          onChange={async (e) => { await updateRoom({ applauseCountdownSec: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
+                                              <option key={`admin-applause-countdown-${value}`} value={value}>{value}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">Countdown length before the applause meter goes live.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Applause meter live</div>
+                                      <select
+                                          value={Math.max(2, Math.min(10, Math.round(Number(room?.applauseMeasureSec ?? 5) || 5)))}
+                                          onChange={async (e) => { await updateRoom({ applauseMeasureSec: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
+                                              <option key={`admin-applause-measure-${value}`} value={value}>{value}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">How long the applause meter listens after the countdown.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Recap beat</div>
+                                      <select
+                                          value={Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)))}
+                                          onChange={async (e) => { await updateRoom({ performanceRecapBreakdownMs: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
+                                              <option key={`admin-recap-breakdown-${value}`} value={value}>{Math.round(value / 1000)}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">How long the first recap card stays up before the leaderboard phase.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Leaderboard beat</div>
+                                      <select
+                                          value={Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)))}
+                                          onChange={async (e) => { await updateRoom({ performanceRecapLeaderboardMs: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
+                                              <option key={`admin-recap-leaderboard-${value}`} value={value}>{Math.round(value / 1000)}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">How long the performance leaderboard moment stays up.</div>
+                                  </label>
+                                  <label className="space-y-2">
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Next up beat</div>
+                                      <select
+                                          value={Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapNextUpMs ?? 6000) || 6000)))}
+                                          onChange={async (e) => { await updateRoom({ performanceRecapNextUpMs: Number(e.target.value) }); }}
+                                          className={STYLES.input}
+                                      >
+                                          {[3000, 4000, 5000, 6000, 8000, 10000, 12000].map((value) => (
+                                              <option key={`admin-recap-next-up-${value}`} value={value}>{Math.round(value / 1000)}s</option>
+                                          ))}
+                                      </select>
+                                      <div className="host-form-helper">How long the branded next-up screen stays on TV before normal stage view returns.</div>
+                                  </label>
+                              </div>
+                          </div>
 
                           <div className="mt-6 space-y-2">
                               <div className="text-sm uppercase tracking-widest text-zinc-400">Room tools</div>

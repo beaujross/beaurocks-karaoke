@@ -417,6 +417,29 @@ const MOMENT_PACKS = Object.freeze([
         }
     },
     {
+        id: 'leaderboard_stack',
+        label: 'Leaderboard Stack',
+        subtitle: 'Hold the stacked standings board on TV',
+        icon: 'fa-layer-group',
+        tone: 'cyan',
+        type: 'announcement',
+        chips: ['Leaderboard', 'Stack view'],
+        overrides: {
+            title: 'Leaderboard Stack',
+            plannedDurationSec: 35,
+            roomMomentPlan: {
+                activeScreen: 'leaderboard_stack'
+            },
+            presentationPlan: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'leaderboard_stack',
+                headline: 'Room standings',
+                subhead: 'Use the stacked board when you want the full room snapshot on deck.',
+                accentTheme: 'cyan'
+            }
+        }
+    },
+    {
         id: 'tip_burst',
         label: 'Tip Burst',
         subtitle: 'Put the support CTA on the big screen',
@@ -1275,6 +1298,7 @@ const getTakeoverSoundtrackSourceMeta = (sourceType = '') => (
 const ROOM_OVERLAY_OPTIONS = Object.freeze([
     { value: 'stage', label: 'Stage' },
     { value: 'leaderboard', label: 'Leaderboard' },
+    { value: 'leaderboard_stack', label: 'Leaderboard Stack' },
     { value: 'tipping', label: 'Tip CTA' }
 ]);
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import AddToQueueFormBody from './AddToQueueFormBody';
 import SoundboardControls from './SoundboardControls';
-import HostChatPanel from './HostChatPanel';
+import HostInboxPanel from './HostInboxPanel';
 import QueueListPanel from './QueueListPanel';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
@@ -556,7 +556,7 @@ const isDirectChatMessage = (message = {}) => (
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, coHostSignals = [], ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -565,8 +565,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         setStagePanelOpen,
         soundboardOpen,
         setSoundboardOpen,
-        chatOpen,
-        setChatOpen,
         applyWorkspacePreset,
         searchQ,
         setSearchQ,
@@ -673,6 +671,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
+    const inboxNeedsHostCount = (
+        (Array.isArray(coHostSignals) ? coHostSignals.length : 0)
+        + Math.max(
+            Array.isArray(moderationQueueItems) ? moderationQueueItems.length : 0,
+            Number(moderationCounts?.totalPending || 0),
+        )
+        + Math.max(0, Number(dmUnread || 0))
+    );
+    const inboxFeedCount = Math.max(0, Number(chatUnread || 0));
+    const inboxTotalCount = inboxNeedsHostCount + inboxFeedCount;
     const {
         current,
         hasLyrics,
@@ -2796,6 +2804,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     };
     const isMobileLayout = layoutMode === 'mobile';
     const isTightLayout = layoutMode === 'laptop-tight';
+    const isDenseLayout = mediumViewport || isTightLayout;
+    const sectionPaddingClass = isDenseLayout ? 'px-3 py-3' : 'px-4 py-4';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
     const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
     const hasRunOfShowQueueHud = runOfShowEnabled || hasRunOfShowPlan;
@@ -2811,6 +2821,70 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             setDesktopQueueSurfaceTab('queue');
         }
     }, [desktopQueueSurfaceTab, hasRunOfShowQueueHud]);
+    const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
+    const getQueueWorkspaceTabButtonClass = (active = false) => (
+        `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+            active
+                ? 'border-cyan-300/30 border-b-transparent bg-[linear-gradient(180deg,rgba(20,28,42,0.98),rgba(11,17,27,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.12)]'
+                : 'border-transparent bg-white/[0.03] text-zinc-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white'
+        }`
+    );
+    const renderQueueWorkspaceTabButton = ({
+        id = '',
+        label = '',
+        icon = '',
+        badge = 0,
+        active = false,
+        onClick = null,
+        featureId = '',
+        badgeToneClass = 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+    } = {}) => (
+        <button
+            key={id}
+            type="button"
+            onClick={onClick}
+            data-feature-id={featureId || undefined}
+            aria-pressed={active}
+            className={getQueueWorkspaceTabButtonClass(active)}
+        >
+            {icon ? <i className={`fa-solid ${icon} text-[10px]`}></i> : null}
+            <span>{label}</span>
+            {badge > 0 ? (
+                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${badgeToneClass}`}>
+                    {badge}
+                </span>
+            ) : null}
+        </button>
+    );
+    const inboxWorkspaceSection = (
+        <div data-feature-id="panel-inbox" className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
+            <HostInboxPanel
+                roomCode={roomCode}
+                hostBase={hostBase}
+                coHostSignals={coHostSignals}
+                roomChatMessages={roomChatMessages}
+                hostDmMessages={hostDmMessages}
+                moderationQueueItems={moderationQueueItems}
+                moderationCounts={moderationCounts}
+                moderationActions={moderationActions}
+                moderationBusyAction={moderationBusyAction}
+                moderationNeedsAttention={moderationNeedsAttention}
+                chatUnread={chatUnread}
+                dmUnread={dmUnread}
+                users={users}
+                handleChatViewMode={handleChatViewMode}
+                openChatSettings={openChatSettings}
+                onOpenModerationInbox={onOpenModerationInbox}
+                dmTargetUid={dmTargetUid}
+                setDmTargetUid={setDmTargetUid}
+                dmDraft={dmDraft}
+                setDmDraft={setDmDraft}
+                sendHostDmMessage={sendHostDmMessage}
+                styles={STYLES}
+                emoji={EMOJI}
+            />
+        </div>
+    );
     useEffect(() => {
         if (queueSurface.isCompactQueueSurface) {
             autoCollapsedRunOfShowAddFormRef.current = false;
@@ -3568,55 +3642,51 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
         <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
-            <div className="border-b border-white/10 bg-black/20 px-3 py-3">
-                <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
-                    <button
-                        type="button"
-                        onClick={() => setDesktopQueueSurfaceTab('add')}
-                        data-feature-id="queue-surface-tab-add-desktop"
-                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                            desktopQueueSurfaceTab === 'add'
-                                ? 'bg-cyan-500/15 text-cyan-100'
-                                : 'text-zinc-300 hover:text-white'
-                        }`}
-                    >
-                        Add To Queue
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setDesktopQueueSurfaceTab('queue')}
-                        data-feature-id="queue-surface-tab-queue-desktop"
-                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                            desktopQueueSurfaceTab === 'queue'
-                                ? 'bg-cyan-500/15 text-cyan-100'
-                                : 'text-zinc-300 hover:text-white'
-                        }`}
-                    >
-                        Current Queue
-                    </button>
-                    {hasRunOfShowQueueHud ? (
-                        <button
-                            type="button"
-                            onClick={() => setDesktopQueueSurfaceTab('show')}
-                            data-feature-id="queue-surface-tab-show-desktop"
-                            className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                                desktopQueueSurfaceTab === 'show'
-                                    ? 'bg-cyan-500/15 text-cyan-100'
-                                    : 'text-zinc-300 hover:text-white'
-                            }`}
-                        >
-                            Run Of Show
-                            {runOfShowNeedsAttentionCount > 0 ? (
-                                <span className="ml-2 rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
-                                    {runOfShowNeedsAttentionCount}
-                                </span>
-                            ) : null}
-                        </button>
-                    ) : null}
-                </div>
+            <div className={queueWorkspaceTabListClass}>
+                {renderQueueWorkspaceTabButton({
+                    id: 'queue',
+                    label: 'Current Queue',
+                    icon: 'fa-list-ol',
+                    active: desktopQueueSurfaceTab === 'queue',
+                    onClick: () => setDesktopQueueSurfaceTab('queue'),
+                    featureId: 'queue-surface-tab-queue-desktop',
+                    badge: queueSurface.counts.ready,
+                })}
+                {renderQueueWorkspaceTabButton({
+                    id: 'add',
+                    label: 'Add To Queue',
+                    icon: 'fa-plus',
+                    active: desktopQueueSurfaceTab === 'add',
+                    onClick: () => setDesktopQueueSurfaceTab('add'),
+                    featureId: 'queue-surface-tab-add-desktop',
+                })}
+                {renderQueueWorkspaceTabButton({
+                    id: 'inbox',
+                    label: 'Inbox',
+                    icon: 'fa-inbox',
+                    active: desktopQueueSurfaceTab === 'inbox',
+                    onClick: () => setDesktopQueueSurfaceTab('inbox'),
+                    featureId: 'queue-surface-tab-inbox-desktop',
+                    badge: inboxTotalCount,
+                    badgeToneClass: inboxNeedsHostCount > 0
+                        ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
+                        : 'border-white/10 bg-black/20 text-zinc-200',
+                })}
+                {hasRunOfShowQueueHud ? renderQueueWorkspaceTabButton({
+                    id: 'show',
+                    label: 'Run Of Show',
+                    icon: 'fa-clapperboard',
+                    active: desktopQueueSurfaceTab === 'show',
+                    onClick: () => setDesktopQueueSurfaceTab('show'),
+                    featureId: 'queue-surface-tab-show-desktop',
+                    badge: runOfShowNeedsAttentionCount,
+                    badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+                }) : null}
             </div>
             {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud
                 ? runOfShowQueueHudSection
+                : desktopQueueSurfaceTab === 'inbox'
+                    ? inboxWorkspaceSection
                 : desktopQueueSurfaceTab === 'add'
                     ? <div className="flex-1 overflow-y-auto custom-scrollbar">{addToQueueSection}</div>
                     : queueListSection}
@@ -3656,31 +3726,36 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
             ) : null}
             <div className={`${showCompactQueueStatusChips ? 'mt-3 ' : ''}flex flex-wrap items-center gap-2`}>
-                <div className="inline-flex rounded-xl border border-white/10 bg-black/30 p-1">
-                    <button
-                        type="button"
-                        onClick={() => queueSurface.activateCompactTab('queue')}
-                        data-feature-id="queue-surface-tab-queue"
-                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                            queueSurface.activeCompactTab === 'queue'
-                                ? 'bg-cyan-500/15 text-cyan-100'
-                                : 'text-zinc-300 hover:text-white'
-                        }`}
-                    >
-                        Queue
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => queueSurface.activateCompactTab('add')}
-                        data-feature-id="queue-surface-tab-add"
-                        className={`min-h-[36px] rounded-lg px-3 text-[11px] font-black uppercase tracking-[0.16em] transition ${
-                            queueSurface.activeCompactTab === 'add'
-                                ? 'bg-cyan-500/15 text-cyan-100'
-                                : 'text-zinc-300 hover:text-white'
-                        }`}
-                    >
-                        Add
-                    </button>
+                <div className="flex flex-wrap items-end gap-1.5">
+                    {renderQueueWorkspaceTabButton({
+                        id: 'queue-mobile',
+                        label: 'Queue',
+                        icon: 'fa-list-ol',
+                        active: queueSurface.activeCompactTab === 'queue',
+                        onClick: () => queueSurface.activateCompactTab('queue'),
+                        featureId: 'queue-surface-tab-queue',
+                        badge: queueSurface.counts.ready,
+                    })}
+                    {renderQueueWorkspaceTabButton({
+                        id: 'add-mobile',
+                        label: 'Add',
+                        icon: 'fa-plus',
+                        active: queueSurface.activeCompactTab === 'add',
+                        onClick: () => queueSurface.activateCompactTab('add'),
+                        featureId: 'queue-surface-tab-add',
+                    })}
+                    {renderQueueWorkspaceTabButton({
+                        id: 'inbox-mobile',
+                        label: 'Inbox',
+                        icon: 'fa-inbox',
+                        active: queueSurface.activeCompactTab === 'inbox',
+                        onClick: () => queueSurface.activateCompactTab('inbox'),
+                        featureId: 'queue-surface-tab-inbox',
+                        badge: inboxTotalCount,
+                        badgeToneClass: inboxNeedsHostCount > 0
+                            ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
+                            : 'border-white/10 bg-black/20 text-zinc-200',
+                    })}
                 </div>
                 {touchReorderAvailable && queueSurface.activeCompactTab === 'queue' ? (
                     <button
@@ -3702,7 +3777,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const compactQueueSurfacePanel = queueSurface.isCompactQueueSurface ? (
         <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
             {compactQueueSurfaceControls}
-            {queueSurface.activeCompactTab === 'add' ? (
+            {queueSurface.activeCompactTab === 'inbox' ? (
+                inboxWorkspaceSection
+            ) : queueSurface.activeCompactTab === 'add' ? (
                 <div className="min-h-0 overflow-y-auto custom-scrollbar">
                     {addToQueueSection}
                 </div>
@@ -3855,7 +3932,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 isMobileLayout
                     ? 'flex flex-col gap-3'
                     : isTightLayout
-                        ? 'grid grid-cols-[minmax(280px,1.02fr)_minmax(360px,1fr)] gap-5'
+                        ? 'grid grid-cols-[minmax(236px,0.9fr)_minmax(0,1.15fr)] gap-3.5'
                         : 'grid grid-cols-[minmax(280px,0.9fr)_minmax(760px,1.75fr)] gap-5'
             } overflow-hidden`}>
             {/* LEFT CONTROLS */}
@@ -3891,7 +3968,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             onOpenRunOfShow={onOpenRunOfShow}
                             styles={STYLES}
                         />
-                        <section className="px-4 py-4 border-b border-white/10">
+                        <section className={`${sectionPaddingClass} border-b border-white/10`}>
                         <SectionHeader
                             label="Stage"
                             open={stagePanelOpen}
@@ -3946,7 +4023,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         )}
                         </section>
                         {!essentialsMode && showLegacyLiveEffects && (
-                            <section className="px-4 py-4 border-b border-white/10">
+                            <section className={`${sectionPaddingClass} border-b border-white/10`}>
                             <SectionHeader
                                 label="Soundboard"
                                 open={soundboardOpen}
@@ -3969,56 +4046,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </section>
                         )}
 
-                        {!essentialsMode && (
-                            <>
-                                <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-[0.25em] text-[#00C4D9]/80">
-                                    Audience Controls
-                                </div>
-                                <section className="px-4 py-4 border-b border-white/10">
-                                <SectionHeader
-                                    label="Chat"
-                                    open={chatOpen}
-                                    onToggle={() => setChatOpen(v => !v)}
-                                    featureId="panel-chat"
-                                />
-                                {chatOpen ? (
-                                    <HostChatPanel
-                                        chatOpen={chatOpen}
-                                        chatUnread={chatUnread}
-                                        openChatSettings={openChatSettings}
-                                        styles={STYLES}
-                                        appBase={hostBase}
-                                        hostBase={hostBase}
-                                        roomCode={roomCode}
-                                        chatEnabled={chatEnabled}
-                                        setChatEnabled={setChatEnabled}
-                                        updateRoom={updateRoom}
-                                        chatShowOnTv={chatShowOnTv}
-                                        setChatShowOnTv={setChatShowOnTv}
-                                        chatAudienceMode={chatAudienceMode}
-                                        setChatAudienceMode={setChatAudienceMode}
-                                        handleChatViewMode={handleChatViewMode}
-                                        chatViewMode={chatViewMode}
-                                        dmUnread={dmUnread}
-                                        dmTargetUid={dmTargetUid}
-                                        setDmTargetUid={setDmTargetUid}
-                                        users={users}
-                                        dmDraft={dmDraft}
-                                        setDmDraft={setDmDraft}
-                                        sendHostDmMessage={sendHostDmMessage}
-                                        roomChatMessages={roomChatMessages}
-                                        hostDmMessages={hostDmMessages}
-                                        pinnedChatIds={pinnedChatIds}
-                                        setPinnedChatIds={setPinnedChatIds}
-                                        emoji={EMOJI}
-                                        chatDraft={chatDraft}
-                                        setChatDraft={setChatDraft}
-                                        sendHostChat={sendHostChat}
-                                    />
-                                ) : null}
-                                </section>
-                            </>
-                        )}
                     </div>
                 </div>
             </div>

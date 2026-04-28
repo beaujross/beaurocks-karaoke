@@ -286,6 +286,7 @@ async function run() {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         performanceRecapBreakdownMs: 6000,
         performanceRecapLeaderboardMs: 8000,
+        performanceRecapNextUpMs: 5000,
       }));
 
       assert.equal(result.ok, true);
@@ -294,12 +295,14 @@ async function run() {
         new Set([
           "performanceRecapBreakdownMs",
           "performanceRecapLeaderboardMs",
+          "performanceRecapNextUpMs",
         ])
       );
 
       const snap = await roomRef.get();
       assert.equal(snap.get("performanceRecapBreakdownMs"), 6000);
       assert.equal(snap.get("performanceRecapLeaderboardMs"), 8000);
+      assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
     }],
 
     ["approved-only backing mode coerces unknown policy to block unknown", async () => {

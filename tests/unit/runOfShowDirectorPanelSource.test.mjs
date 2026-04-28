@@ -32,6 +32,14 @@ test('run-of-show generator avoids placeholder trivia and WYR copy', () => {
   assert.match(source, /modeKey: interactiveType === 'trivia_break' \? 'trivia_pop' : interactiveType === 'would_you_rather_break' \? 'wyr' : 'crowd_play'/);
 });
 
+test('run-of-show presets include a standalone leaderboard stack moment', () => {
+  assert.match(source, /id: 'leaderboard_stack'/);
+  assert.match(source, /label: 'Leaderboard Stack'/);
+  assert.match(source, /activeScreen: 'leaderboard_stack'/);
+  assert.match(source, /takeoverScene: 'leaderboard_stack'/);
+  assert.match(source, /\{ value: 'leaderboard_stack', label: 'Leaderboard Stack' \}/);
+});
+
 test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance', () => {
   assert.match(source, /Conveyor status/);
   assert.match(source, /Crowd Pulse/);

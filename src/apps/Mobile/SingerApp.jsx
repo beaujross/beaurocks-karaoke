@@ -157,7 +157,6 @@ import {
 } from './lib/coHostSignalPayload.js';
 import {
     applyReactionCooldown,
-    getReactionCooldownLabel as getReactionCooldownLabelForMap,
     getReactionCooldownRemainingMs as getReactionCooldownRemainingMsForMap
 } from './lib/reactionCooldowns.js';
 import { shouldShowStreamlinedIdleRequestCard } from './lib/singerHomeState.js';
@@ -3005,8 +3004,8 @@ const SingerApp = ({ roomCode, uid }) => {
         return {
             title: activeEventCredits.eventLabel || 'Tonight\'s event credits',
             body: activeEventCredits.generalAdmissionPoints > 0
-                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Promo links, QR drops, and ticket-matched perks can add more without slowing down the room.`
-                : 'This room has optional promo campaigns and linked event perks available below.',
+                ? `Guests in this room start with +${activeEventCredits.generalAdmissionPoints} credits. Official event links, QR drops, and ticket-matched perks can add more automatically without slowing down the room.`
+                : 'This room has optional automatic event bonuses and linked perks available below.',
             tone: 'amber',
             showClaims: true,
         };
@@ -4539,9 +4538,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const isReactionCoolingDown = useCallback((reactionKey = '') => (
         getReactionCooldownRemainingMs(reactionKey) > 0
     ), [getReactionCooldownRemainingMs]);
-    const getReactionCooldownLabel = useCallback((reactionKey = '') => (
-        getReactionCooldownLabelForMap(reactionCooldownByType, reactionKey, Number(reactionCooldownNowMs || Date.now()))
-    ), [reactionCooldownByType, reactionCooldownNowMs]);
+    const getReactionCooldownSeconds = useCallback((reactionKey = '') => (
+        Math.max(1, Math.ceil(getReactionCooldownRemainingMs(reactionKey) / 1000))
+    ), [getReactionCooldownRemainingMs]);
+    const getReactionCooldownProgressPct = useCallback((reactionKey = '') => {
+        const remainingMs = getReactionCooldownRemainingMs(reactionKey);
+        const totalMs = Math.max(0, Number(reactionTapCooldownMs || 0) || 0);
+        if (remainingMs <= 0 || totalMs <= 0) return 100;
+        return Math.max(0, Math.min(100, 100 - ((remainingMs / totalMs) * 100)));
+    }, [getReactionCooldownRemainingMs, reactionTapCooldownMs]);
     const spendRoomPoints = useCallback((cost = 0) => {
         const safeCost = Math.max(0, Number(cost || 0) || 0);
         if (!safeCost || coHostUnlimitedCredits) return;
@@ -4551,15 +4556,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (coHostFreeReactions) return 'FREE';
         return `${Math.max(0, Number(cost || 0) || 0)} PTS`;
     }, [coHostFreeReactions]);
-    const renderReactionCooldownBadge = useCallback((reactionKey = '', className = 'border-white/20 bg-black/55 text-white') => {
+    const renderReactionCooldownFill = useCallback((
+        reactionKey = '',
+        fillClass = 'bg-white/20',
+        labelClass = 'border-white/20 bg-black/55 text-white',
+    ) => {
         if (!isReactionCoolingDown(reactionKey)) return null;
+        const remainingSec = getReactionCooldownSeconds(reactionKey);
+        const progressPct = getReactionCooldownProgressPct(reactionKey);
         return (
-            <div className={`pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] shadow-[0_10px_24px_rgba(0,0,0,0.35)] ${className}`}>
-                <i className="fa-regular fa-clock"></i>
-                {getReactionCooldownLabel(reactionKey)}
+            <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ borderRadius: 'inherit' }}>
+                <div className="absolute inset-0 bg-black/30" />
+                <div
+                    className={`absolute inset-x-0 bottom-0 transition-[height] duration-100 ease-linear ${fillClass}`}
+                    style={{ height: `${progressPct}%` }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className={`inline-flex min-w-[3.5rem] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-black tabular-nums shadow-[0_10px_24px_rgba(0,0,0,0.35)] ${labelClass}`}>
+                        {remainingSec}s
+                    </div>
+                </div>
             </div>
         );
-    }, [getReactionCooldownLabel, isReactionCoolingDown]);
+    }, [getReactionCooldownProgressPct, getReactionCooldownSeconds, isReactionCoolingDown]);
 
     useEffect(() => {
         if (!lobbyPlayUsageCount) return undefined;
@@ -9943,7 +9962,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 {eventCreditsSummary.showClaims && (
                                     <>
                                         <div className="mt-3 text-sm text-zinc-300">
-                                            Redeem promo drops, QR links, or claim links here. Paid ticket perks should land automatically when your signed-in email matches the event attendee record.
+                                            Official event links and ticket-matched perks can unlock bonuses automatically. Only use a promo code here when the event explicitly shares one.
                                         </div>
                                         {eventPromoSummary.usesGivebutter && (
                                             <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
@@ -9962,11 +9981,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         )}
                                         <div className="mt-3 grid gap-2">
                                             <label className="block">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Promo code or claim link token</div>
+                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Event promo code</div>
                                                 <input
                                                     value={eventGrantCode}
                                                     onChange={(e) => setEventGrantCode(e.target.value)}
-                                                    placeholder="Enter promo code"
+                                                    placeholder="Enter event promo code"
                                                     className="mt-2 w-full rounded-xl border border-amber-400/20 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-300/45"
                                                 />
                                             </label>
@@ -9975,7 +9994,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 disabled={eventGrantBusy || !String(eventGrantCode || '').trim()}
                                                 className={`w-full rounded-xl border border-amber-300/40 bg-amber-500/12 px-4 py-2.5 font-bold text-amber-100 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                             >
-                                                {eventGrantBusy ? 'Redeeming promo...' : 'Redeem promo'}
+                                                {eventGrantBusy ? 'Applying promo...' : 'Apply promo code'}
                                             </button>
                                         </div>
                                     </>
@@ -10321,12 +10340,6 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             />
                         ))}
                     </div>
-                    {isReactionCoolingDown('clap') ? (
-                        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-cyan-200/30 bg-cyan-400/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-50">
-                            <i className="fa-regular fa-clock"></i>
-                            Clap cooldown {getReactionCooldownLabel('clap')}
-                        </div>
-                    ) : null}
                 </div>
                 <button
                     data-feature-id="applause-clap-button"
@@ -10334,11 +10347,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     disabled={isReactionCoolingDown('clap')}
                     className={`relative w-full h-64 rounded-full flex items-center justify-center border-8 border-[#00C4D9]/60 bg-[#00C4D9] shadow-2xl transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-80' : 'active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-4 ring-red-300 animate-pulse' : ''}`}
                 >
-                    {renderReactionCooldownBadge('clap', 'border-cyan-100/40 bg-black/50 text-cyan-50')}
+                    {renderReactionCooldownFill('clap', 'bg-cyan-100/30', 'border-cyan-100/40 bg-black/55 text-cyan-50')}
                     <span className="text-8xl">{String.fromCodePoint(0x1F44F)}</span>
                 </button>
                 <p className="mt-8 text-center font-bold">
-                    {isReactionCoolingDown('clap') ? `Ready again in ${getReactionCooldownLabel('clap')}` : 'Tap to push the applause meter'}
+                    Tap to push the applause meter
                 </p>
             </div>
         );
@@ -10428,17 +10441,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button
                                 disabled={isReactionCoolingDown('heart')}
                                 onClick={() => react('heart', REACTION_COSTS.heart)}
-                                className={`relative rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                className={`relative overflow-hidden rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
-                                {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
+                                {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                 {getEmojiChar('heart')} Love
                             </button>
                             <button
                                 disabled={isReactionCoolingDown('drink')}
                                 onClick={() => react('drink', REACTION_COSTS.drink)}
-                                className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                className={`relative overflow-hidden rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
-                                {renderReactionCooldownBadge('drink', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
+                                {renderReactionCooldownFill('drink', 'bg-cyan-300/25', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                 {getEmojiChar('drink')} Cheers
                             </button>
                             <button
@@ -10469,17 +10482,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <button
                                 disabled={isReactionCoolingDown('fire')}
                                 onClick={() => react('fire', REACTION_COSTS.fire)}
-                                className={`relative rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                className={`relative overflow-hidden rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
-                                {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
+                                {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                 {getEmojiChar('fire')} Hype
                             </button>
                             <button
                                 disabled={isReactionCoolingDown('clap')}
                                 onClick={() => react('clap', REACTION_COSTS.clap)}
-                                className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                className={`relative overflow-hidden rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                             >
-                                {renderReactionCooldownBadge('clap', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
+                                {renderReactionCooldownFill('clap', 'bg-cyan-300/25', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                 {getEmojiChar('clap')} Clap
                             </button>
                             <button
@@ -11449,17 +11462,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <button
                                     disabled={isReactionCoolingDown('heart')}
                                     onClick={() => react('heart', REACTION_COSTS.heart)}
-                                    className={`relative rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                    className={`relative overflow-hidden rounded-xl border border-pink-300/40 bg-pink-500/20 px-2 py-2 text-[11px] font-bold text-pink-100 transition-transform ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
-                                    {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
+                                    {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                     {getEmojiChar('heart')} Love
                                 </button>
                                 <button
                                     disabled={isReactionCoolingDown('drink')}
                                     onClick={() => react('drink', REACTION_COSTS.drink)}
-                                    className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                    className={`relative overflow-hidden rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
-                                    {renderReactionCooldownBadge('drink', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
+                                    {renderReactionCooldownFill('drink', 'bg-cyan-300/25', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                     {getEmojiChar('drink')} Cheers
                                 </button>
                             {!isStreamlinedAudienceShell && (
@@ -11488,17 +11501,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <button
                                     disabled={isReactionCoolingDown('fire')}
                                     onClick={() => react('fire', REACTION_COSTS.fire)}
-                                    className={`relative rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                    className={`relative overflow-hidden rounded-xl border border-orange-300/40 bg-orange-500/20 px-2 py-2 text-[11px] font-bold text-orange-100 transition-transform ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
-                                    {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
+                                    {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                     {getEmojiChar('fire')} Hype
                                 </button>
                                 <button
                                     disabled={isReactionCoolingDown('clap')}
                                     onClick={() => react('clap', REACTION_COSTS.clap)}
-                                    className={`relative rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
+                                    className={`relative overflow-hidden rounded-xl border border-cyan-300/40 bg-cyan-500/20 px-2 py-2 text-[11px] font-bold text-cyan-100 transition-transform ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}
                                 >
-                                    {renderReactionCooldownBadge('clap', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
+                                    {renderReactionCooldownFill('clap', 'bg-cyan-300/25', 'border-cyan-300/35 bg-black/55 text-cyan-50')}
                                     {getEmojiChar('clap')} Clap
                                 </button>
                             {!isStreamlinedAudienceShell && (
@@ -12372,25 +12385,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                              <>
                                  <div className="grid grid-cols-2 gap-4">
                                      <button data-feature-id="reaction-fire-button" disabled={isReactionCoolingDown('fire')} onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden rounded-2xl border-2 border-orange-500/80 bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:bg-orange-500 active:scale-95'} ${cooldownFlashKey === 'fire' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownBadge('fire', 'border-orange-300/35 bg-black/55 text-orange-50')}
+                                         {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('fire')}</span>
                                          <span className="font-bold text-orange-200 text-base">HYPE</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{reactionCostLabel(REACTION_COSTS.fire)}</div>
                                      </button>
                                      <button data-feature-id="reaction-heart-button" disabled={isReactionCoolingDown('heart')} onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden rounded-2xl border-2 border-pink-500/80 bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:bg-pink-500 active:scale-95'} ${cooldownFlashKey === 'heart' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownBadge('heart', 'border-pink-300/35 bg-black/55 text-pink-50')}
+                                         {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('heart')}</span>
                                          <span className="font-bold text-pink-200 text-base">LOVE</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{reactionCostLabel(REACTION_COSTS.heart)}</div>
                                      </button>
                                      <button data-feature-id="reaction-clap-button" disabled={isReactionCoolingDown('clap')} onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownBadge('clap', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
+                                         {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('clap')}</span>
                                          <span className="font-bold text-cyan-200 text-base">CLAP</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{reactionCostLabel(REACTION_COSTS.clap)}</div>
                                      </button>
                                      <button data-feature-id="reaction-drink-button" disabled={isReactionCoolingDown('drink')} onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden rounded-2xl border-2 border-blue-400/80 bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:bg-blue-500 active:scale-95'} ${cooldownFlashKey === 'drink' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownBadge('drink', 'border-blue-300/35 bg-black/55 text-blue-50')}
+                                         {renderReactionCooldownFill('drink', 'bg-blue-300/25', 'border-blue-300/35 bg-black/55 text-blue-50')}
                                          <span className="text-5xl mb-2">{getEmojiChar('drink')}</span>
                                          <span className="font-bold text-blue-200 text-base">CHEERS</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{reactionCostLabel(REACTION_COSTS.drink)}</div>
@@ -12411,7 +12424,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      const cost = REACTION_COSTS[t];
                                      return (
                                      <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
-                                            {premiumReactionsUnlocked ? renderReactionCooldownBadge(t, 'border-white/15 bg-black/55 text-cyan-50') : null}
+                                            {premiumReactionsUnlocked ? renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50') : null}
                                             <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
                                             <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>

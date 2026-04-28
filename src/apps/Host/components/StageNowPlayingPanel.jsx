@@ -46,7 +46,6 @@ const StageNowPlayingPanel = ({
     emoji
 }) => {
     const [showStageDetails, setShowStageDetails] = React.useState(false);
-    const [showTimingAdvanced, setShowTimingAdvanced] = React.useState(false);
     const [postPerformancePaceDraft, setPostPerformancePaceDraft] = React.useState(50);
     const [postPerformancePaceDragging, setPostPerformancePaceDragging] = React.useState(false);
     const [pendingPostPerformancePace, setPendingPostPerformancePace] = React.useState(null);
@@ -68,6 +67,7 @@ const StageNowPlayingPanel = ({
     const applauseMeasureSec = normalizeTimingValue(room?.applauseMeasureSec, { fallback: 5, min: 2, max: 10 });
     const recapBreakdownMs = normalizeTimingValue(room?.performanceRecapBreakdownMs, { fallback: 7000, min: 3000, max: 12000 });
     const recapLeaderboardMs = normalizeTimingValue(room?.performanceRecapLeaderboardMs, { fallback: 7000, min: 3000, max: 12000 });
+    const recapNextUpMs = normalizeTimingValue(room?.performanceRecapNextUpMs, { fallback: 6000, min: 3000, max: 12000 });
     const normalizeSpeedPercent = (value, { min, max }) => {
         if (max <= min) return 50;
         const ratio = (max - value) / (max - min);
@@ -79,7 +79,8 @@ const StageNowPlayingPanel = ({
         + normalizeSpeedPercent(applauseMeasureSec, { min: 2, max: 10 })
         + normalizeSpeedPercent(recapBreakdownMs, { min: 3000, max: 12000 })
         + normalizeSpeedPercent(recapLeaderboardMs, { min: 3000, max: 12000 })
-    ) / 5);
+        + normalizeSpeedPercent(recapNextUpMs, { min: 3000, max: 12000 })
+    ) / 6);
     const buildPostPerformanceTimingPatch = React.useCallback((rawValue, fallback = postPerformancePace) => {
         const pace = normalizeTimingValue(rawValue, { fallback, min: 0, max: 100 });
         const scaleRange = (min, max, step = 1) => {
@@ -93,6 +94,7 @@ const StageNowPlayingPanel = ({
             applauseMeasureSec: scaleRange(2, 10),
             performanceRecapBreakdownMs: scaleRange(3000, 12000, 1000),
             performanceRecapLeaderboardMs: scaleRange(3000, 12000, 1000),
+            performanceRecapNextUpMs: scaleRange(3000, 12000, 1000),
         };
     }, [postPerformancePace]);
     const usingDraftPace = postPerformancePaceDragging || pendingPostPerformancePace !== null;
@@ -107,6 +109,7 @@ const StageNowPlayingPanel = ({
     const effectiveApplauseMeasureSec = effectiveTimingPatch?.applauseMeasureSec ?? applauseMeasureSec;
     const effectiveRecapBreakdownMs = effectiveTimingPatch?.performanceRecapBreakdownMs ?? recapBreakdownMs;
     const effectiveRecapLeaderboardMs = effectiveTimingPatch?.performanceRecapLeaderboardMs ?? recapLeaderboardMs;
+    const effectiveRecapNextUpMs = effectiveTimingPatch?.performanceRecapNextUpMs ?? recapNextUpMs;
     const postPerformancePaceLabel = effectivePostPerformancePace >= 68
         ? 'Fast'
         : effectivePostPerformancePace <= 32
@@ -121,6 +124,7 @@ const StageNowPlayingPanel = ({
                 && applauseMeasureSec === pendingPatch.applauseMeasureSec
                 && recapBreakdownMs === pendingPatch.performanceRecapBreakdownMs
                 && recapLeaderboardMs === pendingPatch.performanceRecapLeaderboardMs
+                && recapNextUpMs === pendingPatch.performanceRecapNextUpMs
             );
             if (pendingPatchApplied) {
                 setPendingPostPerformancePace(null);
@@ -140,7 +144,8 @@ const StageNowPlayingPanel = ({
         postPerformancePace,
         postPerformancePaceDragging,
         recapBreakdownMs,
-        recapLeaderboardMs
+        recapLeaderboardMs,
+        recapNextUpMs
     ]);
     const commitPostPerformancePace = React.useCallback(async (rawValue) => {
         const nextPace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
@@ -160,7 +165,7 @@ const StageNowPlayingPanel = ({
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Post-Performance Timing</div>
-                    <div className="mt-1 text-[11px] text-zinc-500">Control the overall pace first, then fine-tune only if the default curve needs help.</div>
+                    <div className="mt-1 text-[11px] text-zinc-500">Control the overall pace here. Exact beat lengths live in Admin room settings.</div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                     <button
@@ -170,20 +175,13 @@ const StageNowPlayingPanel = ({
                     >
                         {room?.showPerformanceRecap === false ? 'Recap Off' : 'Recap On'}
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setShowTimingAdvanced((prev) => !prev)}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] whitespace-nowrap`}
-                    >
-                        {showTimingAdvanced ? 'Hide Advanced' : 'Customize Timing'}
-                    </button>
                 </div>
             </div>
             <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3">
                 <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                     <div className="min-w-0">
                         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Post-song Timing</div>
-                        <div className="mt-1 text-xs text-zinc-300">Set how quickly applause, recap, and leaderboard beats move.</div>
+                        <div className="mt-1 text-xs text-zinc-300">Set the overall speed for applause, recap, leaderboard, and next-up beats. Exact durations are in Admin.</div>
                     </div>
                     <span className="inline-flex min-w-[96px] items-center justify-center rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         {postPerformancePaceLabel}
@@ -215,78 +213,15 @@ const StageNowPlayingPanel = ({
                         <span>Fast</span>
                     </div>
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.16em] lg:grid-cols-5">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.16em] lg:grid-cols-6">
                     <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Warm-up {effectiveApplauseWarmupSec}s</span>
                     <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Countdown {effectiveApplauseCountdownSec}s</span>
                     <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Meter {effectiveApplauseMeasureSec}s</span>
                     <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Recap {Math.round(effectiveRecapBreakdownMs / 1000)}s</span>
                     <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Leaderboard {Math.round(effectiveRecapLeaderboardMs / 1000)}s</span>
+                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Next Up {Math.round(effectiveRecapNextUpMs / 1000)}s</span>
                 </div>
             </div>
-            {showTimingAdvanced ? (
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                        Warm-up
-                        <select
-                            value={applauseWarmupSec}
-                            onChange={(event) => updateRoom({ applauseWarmupSec: Number(event.target.value) })}
-                            className={`${styles.input} mt-1`}
-                        >
-                            {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
-                                <option key={`applause-warmup-${value}`} value={value}>{value}s</option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                        Meter countdown
-                        <select
-                            value={applauseCountdownSec}
-                            onChange={(event) => updateRoom({ applauseCountdownSec: Number(event.target.value) })}
-                            className={`${styles.input} mt-1`}
-                        >
-                            {[1, 2, 3, 4, 5, 6, 7, 8].map((value) => (
-                                <option key={`applause-countdown-${value}`} value={value}>{value}s</option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                        Meter live
-                        <select
-                            value={applauseMeasureSec}
-                            onChange={(event) => updateRoom({ applauseMeasureSec: Number(event.target.value) })}
-                            className={`${styles.input} mt-1`}
-                        >
-                            {[2, 3, 4, 5, 6, 7, 8, 9, 10].map((value) => (
-                                <option key={`applause-measure-${value}`} value={value}>{value}s</option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400">
-                        Recap beat
-                        <select
-                            value={recapBreakdownMs}
-                            onChange={(event) => updateRoom({ performanceRecapBreakdownMs: Number(event.target.value) })}
-                            className={`${styles.input} mt-1`}
-                        >
-                            {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
-                                <option key={`recap-breakdown-${value}`} value={value}>{Math.round(value / 1000)}s</option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-[11px] uppercase tracking-[0.16em] text-zinc-400 sm:col-span-2">
-                        Leaderboard beat
-                        <select
-                            value={recapLeaderboardMs}
-                            onChange={(event) => updateRoom({ performanceRecapLeaderboardMs: Number(event.target.value) })}
-                            className={`${styles.input} mt-1`}
-                        >
-                            {[3000, 4000, 5000, 7000, 9000, 12000].map((value) => (
-                                <option key={`recap-leaderboard-${value}`} value={value}>{Math.round(value / 1000)}s</option>
-                            ))}
-                        </select>
-                    </label>
-                </div>
-            ) : null}
         </div>
     );
 
