@@ -25,6 +25,10 @@ import useHostRoomManager from './hooks/useHostRoomManager';
 import useHostWorkspaceNavigation from './hooks/useHostWorkspaceNavigation';
 import useHostWorkspaceState from './hooks/useHostWorkspaceState';
 import { getCrowdPulseSnapshot } from './crowdPulse';
+import {
+    buildIndexedYouTubeAutocompleteEntries,
+    buildLocalLibraryAutocompleteEntries
+} from './queueAutocomplete';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
     addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
@@ -4164,6 +4168,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [scenePresets, setScenePresets] = useState([]);
     const [scenePresetUploading, setScenePresetUploading] = useState(false);
     const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
+    const [sceneLibraryModalOpen, setSceneLibraryModalOpen] = useState(false);
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
@@ -5168,20 +5173,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const normalizedQuery = String(catalogueSearchQ || '').trim();
             const shouldUseYouTubeFallback = !!searchSources.itunes && !appleMusicAuthorized;
             const localMatches = annotateQueueSearchResults(searchSources.local
-                ? localLibrary.filter(s =>
-                    s.title.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    s.artist.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    (s.fileName || '').toLowerCase().includes(normalizedQuery.toLowerCase())
-                ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
+                ? buildLocalLibraryAutocompleteEntries(localLibrary, normalizedQuery)
                 : [], {
                     sourceReason: 'local_library',
                     sourceDetail: 'Room media library match.'
                 });
             const ytMatches = annotateQueueSearchResults(searchSources.youtube
-                ? ytIndex.filter(s =>
-                    s.trackName.toLowerCase().includes(normalizedQuery.toLowerCase()) ||
-                    s.artistName.toLowerCase().includes(normalizedQuery.toLowerCase())
-                ).filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true))
+                ? buildIndexedYouTubeAutocompleteEntries(ytIndex, normalizedQuery)
+                    .filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true))
                 : [], {
                     sourceReason: 'youtube_index',
                     sourceDetail: hideNonEmbeddableYouTube
@@ -11551,6 +11550,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not delete scene preset.');
         }
     };
+    const updateScenePreset = async (preset = {}, updates = {}) => {
+        if (!preset?.id) return null;
+        const nextTitle = String(updates?.title ?? preset?.title ?? '').trim();
+        const nextDurationSec = Math.max(5, Math.min(600, Number(updates?.durationSec ?? preset?.durationSec ?? 20) || 20));
+        const payload = {
+            title: nextTitle || (String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'Video Scene' : 'Image Scene'),
+            durationSec: nextDurationSec,
+            updatedAt: serverTimestamp(),
+            updatedAtMs: nowMs(),
+        };
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id), payload);
+            toast('Scene preset updated.');
+            return { ...preset, ...payload };
+        } catch (error) {
+            hostLogger.error('Could not update scene preset', error);
+            toast('Could not update scene preset.');
+            return null;
+        }
+    };
     const deleteOfflineBackup = async (item) => {
         if (!item?.id || !item?._local) return;
         const confirmed = window.confirm(`Remove offline backup "${item.title}" from this device?`);
@@ -15780,11 +15799,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         scenePresetUploading,
         scenePresetUploadProgress,
         onCreateScenePreset: createScenePresetFromFile,
+        onUpdateScenePreset: updateScenePreset,
         onLaunchScenePreset: launchScenePreset,
         onQueueScenePreset: (preset) => queueScenePresetAsMoment(preset, { placement: 'next', activateShow: true }),
         onAddScenePresetToRunOfShow: (preset) => queueScenePresetAsMoment(preset, { placement: 'append' }),
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
+        onSceneLibraryModalChange: setSceneLibraryModalOpen,
         crowdPulse,
         coHostSignals: recentCoHostSignals,
         moderationQueueItems: moderationInbox.queueItems,
@@ -16765,7 +16786,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
             </div>
             {roomCode && (
-                audiencePreviewVisible && tab !== 'run_of_show' ? (
+                audiencePreviewVisible && tab !== 'run_of_show' && !sceneLibraryModalOpen ? (
                     <AudienceMiniPreview
                         room={room}
                         roomCode={roomCode}
@@ -16785,7 +16806,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ) : null
             )}
             {roomCode && (
-                publicTvPreviewVisible ? (
+                publicTvPreviewVisible && !sceneLibraryModalOpen ? (
                     <PublicTvMiniPreview
                         room={room}
                         roomCode={roomCode}

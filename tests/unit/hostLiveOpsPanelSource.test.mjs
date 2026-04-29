@@ -21,6 +21,10 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostAppSource, /isCoHostSignalActivity\(entry\)/);
   assert.match(hostAppSource, /coHostSignals: recentCoHostSignals/);
   assert.match(hostAppSource, /const coHostSignalToastStateRef = useRef/);
+  assert.match(hostAppSource, /const \[sceneLibraryModalOpen, setSceneLibraryModalOpen\] = useState\(false\)/);
+  assert.match(hostAppSource, /onSceneLibraryModalChange: setSceneLibraryModalOpen/);
+  assert.match(hostAppSource, /audiencePreviewVisible && tab !== 'run_of_show' && !sceneLibraryModalOpen/);
+  assert.match(hostAppSource, /publicTvPreviewVisible && !sceneLibraryModalOpen/);
   assert.match(hostAppSource, /contextTitle/);
   assert.match(hostAppSource, /contextMeta/);
   assert.match(hostAppSource, /performanceSongTitle/);
@@ -42,6 +46,11 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-inbox-desktop'/);
   assert.match(hostQueueTabSource, /data-feature-id="panel-inbox"/);
   assert.match(hostQueueTabSource, /<HostInboxPanel[\s\S]*moderationQueueItems=\{moderationQueueItems\}/);
+  assert.match(hostQueueTabSource, /data-feature-id="open-tv-library"/);
+  assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
+  assert.match(hostQueueTabSource, /onSceneLibraryModalChange\?\.\(sceneLibraryOpen\)/);
+  assert.match(hostQueueTabSource, /multiple/);
+  assert.match(hostQueueTabSource, /Upload Scenes/);
 });
 
 test('live lane panel collapses host runtime into now next and conveyor cards', () => {
@@ -54,10 +63,10 @@ test('live lane panel collapses host runtime into now next and conveyor cards', 
   assert.match(source, /placeholderIcon = 'fa-microphone-lines'/);
   assert.match(source, /placeholderLabel = 'Live'/);
   assert.match(source, /bg-gradient-to-br/);
-  assert.match(source, /flex flex-col gap-1\.5 sm:flex-row sm:items-start sm:justify-between/);
-  assert.match(source, /line-clamp-2 text-\[12px\] font-semibold leading-tight text-white sm:text-\[13px\]/);
-  assert.match(source, /line-clamp-2 text-\[10px\] leading-snug text-zinc-400 sm:text-\[11px\]/);
-  assert.match(source, /mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3/);
+  assert.match(source, /flex items-start gap-2\.5/);
+  assert.match(source, /break-words text-\[12px\] font-semibold leading-tight text-white sm:text-\[13px\]/);
+  assert.match(source, /break-words text-\[10px\] leading-snug text-zinc-400 sm:text-\[11px\]/);
+  assert.match(source, /mt-3 grid gap-2 \[grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)\)\]/);
   assert.match(source, /Live Lane/);
   assert.match(source, /Now/);
   assert.match(source, /Next Singer/);

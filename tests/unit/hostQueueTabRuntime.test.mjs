@@ -94,11 +94,13 @@ const buildHostQueueTabProps = (overrides = {}) => ({
   scenePresetUploading: false,
   scenePresetUploadProgress: 0,
   onCreateScenePreset: noop,
+  onUpdateScenePreset: noop,
   onLaunchScenePreset: noop,
   onQueueScenePreset: noop,
   onAddScenePresetToRunOfShow: noop,
   onClearScenePreset: noop,
   onDeleteScenePreset: noop,
+  onSceneLibraryModalChange: noop,
   crowdPulse: null,
   coHostSignals: [],
   moderationQueueItems: [],
@@ -190,7 +192,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-test('HostQueueTab renders the extracted queue runtime shell with live controls and TV moments', async () => {
+test('HostQueueTab renders the extracted queue runtime shell with a TV library launcher', async () => {
   mockHostQueueTabDependencies();
 
   const markup = await renderQueueTabMarkup();
@@ -199,6 +201,8 @@ test('HostQueueTab renders the extracted queue runtime shell with live controls 
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
   assert.match(markup, /TV Moments/);
+  assert.match(markup, /data-feature-id="open-tv-library"/);
+  assert.match(markup, /Open TV Library/);
 });
 
 test('HostQueueTab still renders the runtime shell when its UI is hidden', async () => {
@@ -213,6 +217,7 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
   assert.match(markup, /TV Moments/);
+  assert.match(markup, /Open TV Library/);
 });
 
 test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', async () => {

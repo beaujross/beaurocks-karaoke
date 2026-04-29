@@ -12,6 +12,10 @@ import useQueueSurfaceController from '../hooks/useQueueSurfaceController';
 import useQueueReorder from '../hooks/useQueueReorder';
 import useQueueMediaTools from '../hooks/useQueueMediaTools';
 import useQueueSongActions from '../hooks/useQueueSongActions';
+import {
+  buildIndexedYouTubeAutocompleteEntries,
+  buildLocalLibraryAutocompleteEntries,
+} from '../queueAutocomplete';
 import { useToast } from '../../../context/ToastContext';
 import {
   db,
@@ -93,6 +97,16 @@ const buildQueueFaceOffSongArtwork = (song = {}) =>
   String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || song?.art || '').trim();
 
 const buildVoteCountLabel = (count = 0) => `${count} vote${count === 1 ? '' : 's'}`;
+
+const buildScenePresetFallbackTitle = (value = '', mediaType = 'image') => {
+    const cleaned = String(value || '')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    if (cleaned) return cleaned;
+    return mediaType === 'video' ? 'Video Scene' : 'Image Scene';
+};
 
 const parseDecoratedSongTitle = (value = '') => {
   const raw = String(value || '').trim();
@@ -556,7 +570,7 @@ const isDirectChatMessage = (message = {}) => (
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, crowdPulse = null, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatShowOnTv, setChatShowOnTv, chatUnread, dmUnread, chatEnabled, setChatEnabled, chatAudienceMode, setChatAudienceMode, chatDraft, setChatDraft, chatMessages, sendHostChat, sendHostDmMessage, itunesBackoffRemaining, pinnedChatIds, setPinnedChatIds, chatViewMode, handleChatViewMode, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSceneLibraryModalChange, crowdPulse = null, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -627,7 +641,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     } = useQueueTabState({ hostName, roomCode });
     const [scenePresetTitle, setScenePresetTitle] = useState('');
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
-    const [showScenePresets, setShowScenePresets] = useState(true);
+    const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
+    const [sceneLibraryView, setSceneLibraryView] = useState('grid');
+    const [scenePresetDrafts, setScenePresetDrafts] = useState({});
+    const [scenePresetSavingId, setScenePresetSavingId] = useState('');
+    useEffect(() => {
+        onSceneLibraryModalChange?.(sceneLibraryOpen);
+        return () => {
+            onSceneLibraryModalChange?.(false);
+        };
+    }, [onSceneLibraryModalChange, sceneLibraryOpen]);
 
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
@@ -644,6 +667,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </button>
     );
     const toast = useToast() || console.log;
+    useEffect(() => {
+        setScenePresetDrafts((prev) => {
+            const next = {};
+            (Array.isArray(scenePresets) ? scenePresets : []).forEach((preset) => {
+                const existing = prev[preset.id];
+                next[preset.id] = {
+                    title: existing?.title ?? String(preset?.title || '').trim(),
+                    durationSec: existing?.durationSec ?? Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
+                };
+            });
+            return next;
+        });
+    }, [scenePresets]);
     const hallOfFameTimerRef = useRef(null);
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
@@ -681,6 +717,60 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const inboxFeedCount = Math.max(0, Number(chatUnread || 0));
     const inboxTotalCount = inboxNeedsHostCount + inboxFeedCount;
+    const scenePresetCount = Array.isArray(scenePresets) ? scenePresets.length : 0;
+    const recentScenePresetTitles = (Array.isArray(scenePresets) ? scenePresets : [])
+        .slice(0, 3)
+        .map((preset) => String(preset?.title || '').trim())
+        .filter(Boolean);
+    const sceneLibraryGridClass = sceneLibraryView === 'list'
+        ? 'grid gap-3'
+        : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]';
+    const setScenePresetDraftField = useCallback((presetId, field, value) => {
+        setScenePresetDrafts((prev) => ({
+            ...prev,
+            [presetId]: {
+                title: prev[presetId]?.title ?? '',
+                durationSec: prev[presetId]?.durationSec ?? 20,
+                [field]: value,
+            },
+        }));
+    }, []);
+    const handleScenePresetFileSelection = useCallback(async (fileList) => {
+        const files = Array.from(fileList || []).filter(Boolean);
+        if (!files.length || typeof onCreateScenePreset !== 'function') return;
+        const safeDurationSec = Math.max(5, Math.min(600, Number(scenePresetDurationSec || 20) || 20));
+        let successCount = 0;
+        for (const file of files) {
+            const mediaType = String(file?.type || '').trim().startsWith('video/') ? 'video' : 'image';
+            const title = files.length === 1
+                ? String(scenePresetTitle || '').trim()
+                : buildScenePresetFallbackTitle(file?.name || '', mediaType);
+            const saved = await onCreateScenePreset(file, {
+                title,
+                durationSec: safeDurationSec,
+            });
+            if (saved) successCount += 1;
+        }
+        if (successCount > 0) {
+            setScenePresetTitle('');
+            if (files.length > 1) {
+                toast(`${successCount} TV scene${successCount === 1 ? '' : 's'} added to the library.`);
+            }
+        }
+    }, [onCreateScenePreset, scenePresetDurationSec, scenePresetTitle, toast]);
+    const saveScenePresetDraft = useCallback(async (preset = {}) => {
+        if (!preset?.id || typeof onUpdateScenePreset !== 'function') return;
+        const draft = scenePresetDrafts[preset.id] || {};
+        setScenePresetSavingId(preset.id);
+        try {
+            await onUpdateScenePreset(preset, {
+                title: String(draft.title ?? preset?.title ?? '').trim(),
+                durationSec: Math.max(5, Math.min(600, Number(draft.durationSec ?? preset?.durationSec ?? 20) || 20)),
+            });
+        } finally {
+            setScenePresetSavingId('');
+        }
+    }, [onUpdateScenePreset, scenePresetDrafts]);
     const {
         current,
         hasLyrics,
@@ -1254,16 +1344,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         let cancelled = false;
         const t = setTimeout(async () => { 
             const normalizedQuery = String(searchQ || '').trim();
-            const normalizedLower = normalizedQuery.toLowerCase();
             const preferredAutocompleteSource = String(autocompleteProvider || 'youtube').toLowerCase();
 
             // 1. Local Search
             const localMatchesRaw = searchSources.local
-                ? localLibrary.filter(s =>
-                    s.title.toLowerCase().includes(normalizedLower) ||
-                    s.artist.toLowerCase().includes(normalizedLower) ||
-                    (s.fileName || '').toLowerCase().includes(normalizedLower)
-                ).map(s => ({ ...s, source: 'local', trackName: s.title, artistName: s.artist, artworkUrl100: '' }))
+                ? buildLocalLibraryAutocompleteEntries(localLibrary, normalizedQuery)
                 : [];
             const localMatches = annotateQueueSearchResults(localMatchesRaw, {
                 sourceReason: 'local_library',
@@ -1321,10 +1406,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 return;
             }
 
-            const ytMatchesRaw = ytIndex.filter(s =>
-                s.trackName.toLowerCase().includes(normalizedLower) ||
-                s.artistName.toLowerCase().includes(normalizedLower)
-            );
+            const ytMatchesRaw = buildIndexedYouTubeAutocompleteEntries(ytIndex, normalizedQuery);
             const ytMatches = annotateQueueSearchResults(ytMatchesRaw.filter((entry) => (
                 hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true
             )), {
@@ -2982,81 +3064,210 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
         : null;
-    const scenePresetsSection = (
-        <div className="rounded-2xl border border-white/10 bg-black/25 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Moments</div>
-                    <div className="mt-1 text-xs text-zinc-400">Upload image or video scenes, run them now, or slot them into the show conveyor as moments.</div>
+    const scenePresetLibrarySection = (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(9,16,28,0.96),rgba(18,12,27,0.94))] shadow-[0_24px_60px_rgba(0,0,0,0.42)]">
+            <div className="border-b border-white/10 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">TV Moments Library</div>
+                        <div className="mt-1 max-w-2xl text-sm text-zinc-300">Build a reusable slide library here, then send scenes live or slot them into the conveyor at the right beat.</div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                        <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
+                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-200">{Math.max(5, Math.min(600, Number(scenePresetDurationSec || 20) || 20))}s default</span>
+                        {activeMediaScene ? (
+                            <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">Live on TV</span>
+                        ) : null}
+                    </div>
+                </div>
+                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
+                    <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/6 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Batch Upload</div>
+                        <div className="mt-1 text-xs text-zinc-400">Drop in one file or a whole set of sponsor cards, donation prompts, or next-up slides at once.</div>
+                        <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
+                            <input value={scenePresetTitle} onChange={(event) => setScenePresetTitle(event.target.value)} className={STYLES.input} placeholder="Optional custom title for a single upload" />
+                            <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
+                                <input
+                                    type="file"
+                                    accept="image/*,video/*"
+                                    multiple
+                                    className="hidden"
+                                    disabled={scenePresetUploading}
+                                    onChange={async (event) => {
+                                        await handleScenePresetFileSelection(event.target.files);
+                                        event.target.value = '';
+                                    }}
+                                />
+                                {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scenes'}
+                            </label>
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200">Defaults + View</div>
+                                <div className="mt-1 text-xs text-zinc-500">Default seconds apply to every file in the upload batch. Adjust individual slides after upload.</div>
+                            </div>
+                            <div className="inline-flex rounded-full border border-white/10 bg-black/25 p-1 text-[10px] font-black uppercase tracking-[0.14em]">
+                                <button
+                                    type="button"
+                                    onClick={() => setSceneLibraryView('grid')}
+                                    className={`rounded-full px-2.5 py-1 transition ${sceneLibraryView === 'grid' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
+                                >
+                                    Grid
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSceneLibraryView('list')}
+                                    className={`rounded-full px-2.5 py-1 transition ${sceneLibraryView === 'list' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
+                                >
+                                    List
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                            <input type="number" min="5" max="600" value={scenePresetDurationSec} onChange={(event) => setScenePresetDurationSec(event.target.value)} className={`${STYLES.input} h-10 w-28 px-3 text-sm font-black`} title="Default duration in seconds" />
+                            <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">seconds</span>
+                        </div>
+                    </div>
                 </div>
                 {activeMediaScene ? (
-                    <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
-                        End Scene
-                    </button>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                        <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
+                        <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                            End Scene
+                        </button>
+                    </div>
                 ) : null}
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_7rem_auto]">
-                <input value={scenePresetTitle} onChange={(event) => setScenePresetTitle(event.target.value)} className={STYLES.input} placeholder="Scene title" />
-                <input type="number" min="5" max="600" value={scenePresetDurationSec} onChange={(event) => setScenePresetDurationSec(event.target.value)} className={STYLES.input} title="Duration in seconds" />
-                <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
-                    <input
-                        type="file"
-                        accept="image/*,video/*"
-                        className="hidden"
-                        disabled={scenePresetUploading}
-                        onChange={async (event) => {
-                            const file = event.target.files?.[0] || null;
-                            if (file && typeof onCreateScenePreset === 'function') {
-                                const saved = await onCreateScenePreset(file, { title: scenePresetTitle, durationSec: scenePresetDurationSec });
-                                if (saved) setScenePresetTitle('');
-                            }
-                            event.target.value = '';
-                        }}
-                    />
-                    {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scene'}
-                </label>
-            </div>
-            {activeMediaScene ? (
-                <div className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-                    Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}
-                </div>
-            ) : null}
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {(scenePresets || []).slice(0, 6).map((preset) => (
-                    <div key={preset.id || preset.mediaUrl} className="rounded-xl border border-white/10 bg-zinc-950/55 p-3">
-                        <div className="flex gap-3">
-                            <div className="h-14 w-20 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-black/35">
-                                {preset.mediaType === 'video'
-                                    ? <video src={preset.mediaUrl} className="h-full w-full object-cover" muted playsInline />
-                                    : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover" />}
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
+                <div className={sceneLibraryGridClass}>
+                    {(scenePresets || []).map((preset) => {
+                        const draft = scenePresetDrafts[preset.id] || {
+                            title: String(preset?.title || '').trim(),
+                            durationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
+                        };
+                        const saveDisabled = scenePresetSavingId === preset.id;
+                        return (
+                            <div key={preset.id || preset.mediaUrl} className={`rounded-2xl border border-white/10 bg-zinc-950/55 p-3 ${sceneLibraryView === 'list' ? 'lg:flex lg:items-start lg:gap-4' : ''}`}>
+                                <div className={`flex gap-3 ${sceneLibraryView === 'list' ? 'lg:min-w-0 lg:flex-1' : ''}`}>
+                                    <div className={`shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${sceneLibraryView === 'list' ? 'h-24 w-36' : 'h-20 w-28'}`}>
+                                        {preset.mediaType === 'video'
+                                            ? <video src={preset.mediaUrl} className="h-full w-full object-cover" muted playsInline />
+                                            : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                            {preset.mediaType === 'video' ? 'Video' : 'Image'} scene
+                                        </div>
+                                        <input
+                                            value={draft.title}
+                                            onChange={(event) => setScenePresetDraftField(preset.id, 'title', event.target.value)}
+                                            className={`${STYLES.input} mt-2 h-10 px-3 text-sm font-black`}
+                                            placeholder="Scene title"
+                                        />
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <input
+                                                type="number"
+                                                min="5"
+                                                max="600"
+                                                value={draft.durationSec}
+                                                onChange={(event) => setScenePresetDraftField(preset.id, 'durationSec', event.target.value)}
+                                                className={`${STYLES.input} h-10 w-24 px-3 text-sm font-black`}
+                                                title="Duration in seconds"
+                                            />
+                                            <span className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">seconds</span>
+                                            <button type="button" disabled={saveDisabled} onClick={() => saveScenePresetDraft(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto px-3 py-1 text-[10px] ${saveDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                                {saveDisabled ? 'Saving...' : 'Save'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`mt-3 flex flex-wrap gap-2 ${sceneLibraryView === 'list' ? 'lg:mt-0 lg:w-[17rem] lg:shrink-0 lg:justify-end' : ''}`}>
+                                    <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>
+                                        Run Now
+                                    </button>
+                                    <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
+                                        Queue Next Moment
+                                    </button>
+                                    <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
+                                        Add To Run Of Show
+                                    </button>
+                                    <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                                        Delete
+                                    </button>
+                                </div>
                             </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-black text-white">{preset.title || 'Media Scene'}</div>
-                                <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                                    {preset.mediaType === 'video' ? 'Video' : 'Image'} / {Math.max(5, Number(preset.durationSec || 20))}s
+                        );
+                    })}
+                    {!scenePresets?.length ? (
+                        <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
+                            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="max-w-xl">
+                                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                        <i className="fa-solid fa-photo-film text-lg"></i>
+                                    </div>
+                                    <div className="mt-4 text-xl font-black text-white">Start a real TV slide library</div>
+                                    <div className="mt-2 text-sm leading-6 text-zinc-400">Upload a batch once, set the timing, then reuse those scenes all night instead of rebuilding ad cards, donation prompts, and transition art on the fly.</div>
+                                </div>
+                                <div className="grid gap-2 text-sm text-zinc-300 lg:w-[22rem]">
+                                    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Sponsor + House Slides</div>
+                                        <div className="mt-1 text-xs text-zinc-500">Poster art, thank-you cards, branded interstitials, and room reset graphics.</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Donation + Support Beats</div>
+                                        <div className="mt-1 text-xs text-zinc-500">Givebutter prompts, cause slides, and quick moments you can fire between performances.</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Next-Up Boards</div>
+                                        <div className="mt-1 text-xs text-zinc-500">Static next-up or leaderboard cards that can slot into the conveyor when the room needs a beat.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>
-                                Run Now
-                            </button>
-                            <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
-                                Queue Next Moment
-                            </button>
-                            <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
-                                Add To Run Of Show
-                            </button>
-                            <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                ))}
-                {!scenePresets?.length ? (
-                    <div className="rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-4 text-xs text-zinc-500">No scene presets yet.</div>
-                ) : null}
+                    ) : null}
+                </div>
             </div>
+        </div>
+    );
+    const scenePresetsSection = (
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Moments</div>
+                    <div className="mt-1 text-xs text-zinc-400">Keep scene building out of the queue flow. Open the library when you want to upload, time, or slot slides.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                        {scenePresetCount} saved
+                    </span>
+                    <button type="button" data-feature-id="open-tv-library" onClick={() => setSceneLibraryOpen(true)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
+                        Open TV Library
+                    </button>
+                </div>
+            </div>
+            {activeMediaScene ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                    <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
+                    <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                        End Scene
+                    </button>
+                </div>
+            ) : null}
+            {recentScenePresetTitles.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {recentScenePresetTitles.map((title) => (
+                        <span key={title} className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
+                            {title}
+                        </span>
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-3 text-xs text-zinc-500">
+                    No TV slides saved yet. Start a library for sponsor cards, hype art, donation prompts, and next-up boards.
+                </div>
+            )}
         </div>
     );
     const queueListSection = (
@@ -3624,19 +3835,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
             />
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-2">
-                <SectionHeader
-                    label="TV Moments"
-                    open={showScenePresets}
-                    onToggle={() => setShowScenePresets((value) => !value)}
-                    toneClass="text-sm font-black text-cyan-100 px-1"
-                    featureId="panel-tv-moments"
-                />
-                {showScenePresets ? (
-                    <div className="mt-2">
-                        {scenePresetsSection}
-                    </div>
-                ) : null}
+            <div data-feature-id="panel-tv-moments">
+                {scenePresetsSection}
             </div>
         </div>
     );
@@ -3829,6 +4029,33 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         emoji={EMOJI}
                     />
                 </React.Suspense>
+            ) : null}
+            {sceneLibraryOpen ? (
+                <div
+                    data-feature-id="tv-moments-library-modal"
+                    className="fixed inset-0 z-[140] bg-black/78 backdrop-blur-sm p-4 md:p-6 flex items-start justify-center"
+                    onClick={() => setSceneLibraryOpen(false)}
+                >
+                    <div
+                        className="mt-6 flex h-[min(92vh,64rem)] w-full max-w-6xl min-h-0 flex-col"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/20 bg-zinc-950/92 px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.42)] backdrop-blur-sm">
+                            <div>
+                                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">TV Moments Library</div>
+                                <div className="mt-1 text-sm text-zinc-400">Upload, time, edit, and deploy reusable Public TV slides without keeping this workbench open in the main queue layout.</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSceneLibraryOpen(false)}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                            >
+                                Close Library
+                            </button>
+                        </div>
+                        {scenePresetLibrarySection}
+                    </div>
+                </div>
             ) : null}
             {commandOpen && (
                 <div

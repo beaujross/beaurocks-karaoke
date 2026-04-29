@@ -67,8 +67,8 @@ const LaneCard = ({
     placeholderToneClass = 'from-zinc-500/30 to-slate-500/24',
 }) => (
     <div className={`${cardBaseClass} ${toneClass || 'border-white/10 bg-black/25'}`}>
-        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 flex flex-1 items-start gap-2">
+        <div className="flex items-start gap-2.5">
+            <div className="min-w-0 flex flex-1 items-start gap-2.5">
                 <div className="h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/20 sm:h-10 sm:w-10 sm:rounded-2xl">
                     {artworkUrl ? (
                         <img src={artworkUrl} alt={title} className="h-full w-full object-cover" />
@@ -80,16 +80,18 @@ const LaneCard = ({
                     )}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-                    <div className="mt-0.5 line-clamp-2 text-[12px] font-semibold leading-tight text-white sm:text-[13px]">{title}</div>
-                    <div className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-zinc-400 sm:text-[11px]">{detail}</div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
+                        {meta ? (
+                            <span className={`inline-flex shrink-0 self-start rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${metaToneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
+                                {meta}
+                            </span>
+                        ) : null}
+                    </div>
+                    <div className="mt-1 break-words text-[12px] font-semibold leading-tight text-white sm:text-[13px]">{title}</div>
+                    <div className="mt-1 break-words text-[10px] leading-snug text-zinc-400 sm:text-[11px]">{detail}</div>
                 </div>
             </div>
-            {meta ? (
-                <span className={`inline-flex shrink-0 self-start rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] sm:ml-2 ${metaToneClass || 'border-white/10 bg-black/20 text-zinc-200'}`}>
-                    {meta}
-                </span>
-            ) : null}
         </div>
     </div>
 );
@@ -221,39 +223,39 @@ export default function HostLiveOpsPanel({
                 </div>
             </div>
 
-            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
                 <LaneCard {...nowCard} />
                 <LaneCard {...nextCard} />
                 <LaneCard {...conveyorCard} />
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(132px,1fr))]">
                 {hasCurrentPerformance ? (
                     <>
                         <button
                             type="button"
                             onClick={() => onTogglePlay?.()}
-                            className={`${actionButtonClass} border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:border-cyan-200/55 hover:bg-cyan-500/18`}
+                            className={`${actionButtonClass} w-full border-cyan-300/30 bg-cyan-500/10 text-cyan-100 hover:border-cyan-200/55 hover:bg-cyan-500/18`}
                         >
                             {currentSourcePlaying ? 'Pause Current' : 'Play Current'}
                         </button>
                         <button
                             type="button"
                             onClick={() => onEndPerformance?.(current.id)}
-                            className={`${actionButtonClass} border-rose-300/30 bg-rose-500/10 text-rose-100 hover:border-rose-200/55 hover:bg-rose-500/18`}
+                            className={`${actionButtonClass} w-full border-rose-300/30 bg-rose-500/10 text-rose-100 hover:border-rose-200/55 hover:bg-rose-500/18`}
                         >
                             End Current
                         </button>
                         <button
                             type="button"
                             onClick={() => onEditCurrent?.(current)}
-                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[38px] px-3 py-2 text-[11px]`}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[38px] w-full px-3 py-2 text-[11px]`}
                         >
                             Edit Current
                         </button>
                         <button
                             type="button"
                             onClick={() => onReturnCurrentToQueue?.(current.id)}
-                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[38px] px-3 py-2 text-[11px]`}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[38px] w-full px-3 py-2 text-[11px]`}
                         >
                             Re-Queue Current
                         </button>
@@ -262,7 +264,7 @@ export default function HostLiveOpsPanel({
                     <button
                         type="button"
                         onClick={() => onProgressStageToNext?.()}
-                        className={`${actionButtonClass} border-emerald-300/30 bg-emerald-500/10 text-emerald-100 hover:border-emerald-200/55 hover:bg-emerald-500/18`}
+                        className={`${actionButtonClass} w-full border-emerald-300/30 bg-emerald-500/10 text-emerald-100 hover:border-emerald-200/55 hover:bg-emerald-500/18`}
                     >
                         Start Next Singer
                     </button>
@@ -272,7 +274,7 @@ export default function HostLiveOpsPanel({
                     <button
                         type="button"
                         onClick={() => onProgressStageToNext?.()}
-                        className={`${styles?.btnStd || ''} ${styles?.btnHighlight || ''} min-h-[38px] px-3 py-2 text-[11px]`}
+                        className={`${styles?.btnStd || ''} ${styles?.btnHighlight || ''} min-h-[38px] w-full px-3 py-2 text-[11px]`}
                     >
                         Roll To Next Singer
                     </button>
@@ -282,7 +284,7 @@ export default function HostLiveOpsPanel({
                     <button
                         type="button"
                         onClick={() => onOpenRunOfShow?.()}
-                        className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} min-h-[38px] px-3 py-2 text-[11px]`}
+                        className={`${styles?.btnStd || ''} ${styles?.btnSecondary || ''} min-h-[38px] w-full px-3 py-2 text-[11px]`}
                     >
                         Open Conveyor
                     </button>

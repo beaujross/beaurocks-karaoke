@@ -65,6 +65,8 @@ test('room browser keeps results adjacent to folders, supports pinning, and does
   assert.match(browserSource, /Pin Room/);
   assert.match(launchPadSource, /ROOM_BROWSER_PIN_STORAGE_KEY/);
   assert.match(launchPadSource, /pinnedRoomCodeSet\.has/);
+  assert.match(launchPadSource, /const \[browserNowMs, setBrowserNowMs\] = useState\(\(\) => Date\.now\(\)\);/);
+  assert.match(launchPadSource, /window\.setInterval\(\(\) => \{\s*setBrowserNowMs\(Date\.now\(\)\);\s*\}, 60000\);/);
   assert.doesNotMatch(roomManagerSource, /limit\(20\)/);
   assert.doesNotMatch(roomManagerSource, /\.slice\(0, 8\)/);
 });

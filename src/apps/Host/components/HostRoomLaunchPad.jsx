@@ -539,7 +539,7 @@ const HostRoomLaunchPad = ({
     audienceBase = '',
     canPermanentlyDeleteRooms = false,
 }) => {
-    const [browserNowMs] = useState(() => Date.now());
+    const [browserNowMs, setBrowserNowMs] = useState(() => Date.now());
     const [roomBrowserFilter, setRoomBrowserFilter] = useState('ready');
     const [roomBrowserSearch, setRoomBrowserSearch] = useState('');
     const [selectedRoomCode, setSelectedRoomCode] = useState('');
@@ -563,6 +563,12 @@ const HostRoomLaunchPad = ({
             // Ignore local pin persistence failures.
         }
     }, [pinnedRoomCodes]);
+    React.useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setBrowserNowMs(Date.now());
+        }, 60000);
+        return () => window.clearInterval(intervalId);
+    }, []);
     const togglePinnedRoom = (roomCode = '') => {
         const normalizedCode = String(roomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
