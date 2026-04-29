@@ -305,6 +305,64 @@ async function run() {
       assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
     }],
 
+    ["host can persist stage-start session payloads", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        activeMode: "karaoke",
+        mediaUrl: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+        videoPlaying: true,
+        videoStartTimestamp: 1714411111000,
+        currentPerformanceMeta: {
+          songId: "song_123",
+          startedAtMs: 1714411111000,
+          durationSec: 30,
+          backingDurationSec: 5,
+          durationSource: "backing_media",
+          durationConfidence: "high",
+          autoEndSafe: true,
+          source: "backing_media",
+          mediaUrl: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+        },
+        currentPerformanceSession: {
+          sessionId: "perf_song_123_1714411111000",
+          songId: "song_123",
+          sourceType: "native_video",
+          mediaUrl: "https://samplelib.com/lib/preview/mp4/sample-5s.mp4",
+          startedAtMs: 1714411111000,
+          playbackState: "starting",
+          playerReportedDurationSec: 30,
+          expectedDurationSec: 30,
+          lastHeartbeatAtMs: 1714411111000,
+          lastReportedAtMs: 1714411111000,
+          completionReason: "",
+          watchdogDeadlineMs: 1714411231000,
+        },
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "activeMode",
+          "mediaUrl",
+          "videoPlaying",
+          "videoStartTimestamp",
+          "currentPerformanceMeta",
+          "currentPerformanceSession",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("activeMode"), "karaoke");
+      assert.equal(snap.get("mediaUrl"), "https://samplelib.com/lib/preview/mp4/sample-5s.mp4");
+      assert.equal(snap.get("videoPlaying"), true);
+      assert.equal(snap.get("videoStartTimestamp"), 1714411111000);
+      assert.equal(snap.get("currentPerformanceMeta.songId"), "song_123");
+      assert.equal(snap.get("currentPerformanceMeta.durationSource"), "backing_media");
+      assert.equal(snap.get("currentPerformanceSession.sessionId"), "perf_song_123_1714411111000");
+      assert.equal(snap.get("currentPerformanceSession.playbackState"), "starting");
+      assert.equal(snap.get("currentPerformanceSession.expectedDurationSec"), 30);
+    }],
+
     ["approved-only backing mode coerces unknown policy to block unknown", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         audienceBackingMode: "canonical_plus_approved_backings",

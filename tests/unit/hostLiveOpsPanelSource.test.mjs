@@ -32,6 +32,8 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostAppSource, /performanceAlbumArtUrl/);
   assert.match(hostAppSource, /performanceElapsedSec/);
   assert.match(hostAppSource, /toast\(`Co-host: \$\{freshSignal\.hostLabel\}/);
+  assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-queue-live-controls'\)\)/);
+  assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-host-inbox'\)\)/);
   assert.match(hostQueueTabSource, /import HostLiveOpsPanel from '\.\/HostLiveOpsPanel';/);
   assert.match(hostQueueTabSource, /import HostInboxPanel from '\.\/HostInboxPanel';/);
   assert.match(hostQueueTabSource, /<HostLiveOpsPanel[\s\S]*current=\{current\}/);
@@ -45,6 +47,8 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostQueueTabSource, /renderQueueWorkspaceTabButton/);
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-inbox-desktop'/);
   assert.match(hostQueueTabSource, /data-feature-id="panel-inbox"/);
+  assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-queue-live-controls', focusQueueControls\)/);
+  assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-host-inbox', focusInbox\)/);
   assert.match(hostQueueTabSource, /<HostInboxPanel[\s\S]*moderationQueueItems=\{moderationQueueItems\}/);
   assert.match(hostQueueTabSource, /data-feature-id="open-tv-library"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);

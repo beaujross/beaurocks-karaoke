@@ -144,6 +144,21 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
+    /duration: durationSec \|\| null,\s*durationSec: durationSec \|\| null,\s*mediaDurationSec: durationSec \|\| null,\s*backingDurationSec: durationSec \|\| null,\s*autoEndSafe: durationSec > 0,/,
+    'Helper YouTube queue writes should preserve duration in the auto-end-safe fields',
+  );
+  assert.match(
+    hostAppSource,
+    /backingAudioOnly,\s*audioOnly: backingAudioOnly/,
+    'Helper YouTube queue writes should preserve external-window playback flags',
+  );
+  assert.match(
+    hostAppSource,
+    /durationSec: durationSec > 0 \? durationSec : null,\s*mediaDurationSec: durationSec > 0 \? durationSec : null,\s*backingDurationSec: durationSec > 0 \? durationSec : null,/,
+    'Browse helper queue writes should also persist duration into the playback-safe fields',
+  );
+  assert.match(
+    hostAppSource,
     /window\.__qaLastHelperQueuePayload = nextEvent;/,
     'QA helper flows should capture the real queue payload for Playwright release gates',
   );

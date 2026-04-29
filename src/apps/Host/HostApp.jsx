@@ -31,7 +31,7 @@ import {
 } from './queueAutocomplete';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
-    addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
+    addDoc, deleteDoc, serverTimestamp, limit, orderBy, getDocs, getDoc, setDoc, writeBatch,
     storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject,
     auth,
     initAuth,
@@ -242,7 +242,6 @@ const HostQueueTab = React.lazy(() => import('./components/HostQueueTab'));
 const HostLogoManager = React.lazy(() => import('./components/HostLogoManager'));
 const HostOrbSkinManager = React.lazy(() => import('./components/HostOrbSkinManager'));
 const ChatSettingsPanel = React.lazy(() => import('./components/ChatSettingsPanel'));
-const ModerationInboxDrawer = React.lazy(() => import('./components/ModerationInboxDrawer'));
 const HostQaDebugPanel = React.lazy(() => import('./components/HostQaDebugPanel'));
 const RunOfShowDirectorPanel = React.lazy(() => import('./components/RunOfShowDirectorPanel'));
 const HostRoomLaunchPad = React.lazy(() => import('./components/HostRoomLaunchPad'));
@@ -737,7 +736,8 @@ const getAssociatedBackingDurationSec = (song = {}) => {
         song?.mediaDurationSec,
         song?.backingDurationSec,
         song?.trackDurationSec,
-        song?.durationSec
+        song?.durationSec,
+        song?.duration
     ];
     for (const candidate of candidates) {
         const durationSec = normalizeDurationSec(candidate);
@@ -1352,7 +1352,6 @@ const HOST_SETTINGS_SECTIONS = [
                 label: 'Automation',
                 icon: 'fa-bolt',
                 ownership: 'config',
-                hiddenInAdminNav: true,
                 description: 'Auto-DJ, host assist, auto-advance, and other room automation rules.',
                 keywords: 'automation auto dj host assist auto advance profiles'
             }
@@ -1405,7 +1404,6 @@ const HOST_SETTINGS_SECTIONS = [
                 label: 'Overlays',
                 icon: 'fa-panorama',
                 ownership: 'config',
-                hiddenInAdminNav: true,
                 description: 'Marquee timing, overlay messaging, and idle-screen content.',
                 keywords: 'marquee overlays idle messages screen'
             }
@@ -4156,7 +4154,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     });
     const [showLaunchMenu, setShowLaunchMenu] = useState(false);
     const [showNavMenu, setShowNavMenu] = useState(false);
-    const [showModerationInbox, setShowModerationInbox] = useState(false);
     const [roundWinnersEditorOpen, setRoundWinnersEditorOpen] = useState(false);
     const [roundWinnersDraft, setRoundWinnersDraft] = useState({ gold: '', silver: '', bronze: '' });
     const [roundWinnersMetricKey, setRoundWinnersMetricKey] = useState('totalPoints');
@@ -5328,8 +5325,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [activeMomentFeedback, setActiveMomentFeedback] = useState(null);
     const moderationNudgeAtRef = useRef(0);
     const coHostSignalToastStateRef = useRef({ hydrated: false, latestById: {} });
-    const openModerationInbox = useCallback(() => setShowModerationInbox(true), []);
-    const closeModerationInbox = useCallback(() => setShowModerationInbox(false), []);
     const getCurrentRunOfShowDirector = useCallback(
         () => normalizeRunOfShowDirector(runOfShowDirectorState || roomRef.current?.runOfShowDirector || {}),
         [runOfShowDirectorState]
@@ -7212,7 +7207,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         hostUpdateWarningToastedRef.current = true;
     }, [hostUpdateDeploymentWarning, toast]);
     useEffect(() => {
-        if (showModerationInbox) return;
         if (!moderationInbox.meta?.needsAttention) return;
         const pending = Number(moderationInbox.counts?.totalPending || 0);
         if (!pending) return;
@@ -7223,7 +7217,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast(`Moderation inbox: ${pending} pending item${pending === 1 ? '' : 's'}.`);
         }
     }, [
-        showModerationInbox,
         moderationInbox.meta?.needsAttention,
         moderationInbox.counts?.totalPending,
         toast
@@ -8495,9 +8488,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         const unsubSongs = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), where('roomCode', '==', roomCode)), s => setSongs(s.docs.map(d => ({id:d.id, ...d.data()}))));
         const unsubUsers = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_users'), where('roomCode', '==', roomCode)), s => setUsers(s.docs.map(d => ({id:d.id, ...d.data()}))));
-        const unsubActivity = onSnapshot(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), where('roomCode', '==', roomCode), limit(50)), s => {
-             const sorted = s.docs.map(d => d.data()).sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-             setActivities(sorted);
+        const unsubActivity = onSnapshot(query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'),
+            where('roomCode', '==', roomCode),
+            orderBy('timestamp', 'desc'),
+            limit(200)
+        ), s => {
+             setActivities(s.docs.map(d => d.data()));
         });
         const unsubUploads = onSnapshot(
             query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)),
@@ -8780,6 +8777,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setEntryError,
         toast,
     });
+    const openHostInboxFromBootstrap = useCallback(() => {
+        setTab('stage');
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent('beaurocks:focus-host-inbox'));
+            const inboxPanel = document.querySelector('[data-feature-id="panel-inbox"]');
+            inboxPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, [setTab]);
     useHostEntryBootstrap({
         createQuickLaunchDiscoveryDraft,
         getViewDefaultSection,
@@ -8788,7 +8794,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         legacyTabRedirects: LEGACY_TAB_REDIRECTS,
         normalizeGameParam,
         normalizeLaunchRoomCode,
-        openModerationInbox,
+        openHostInbox: openHostInboxFromBootstrap,
         openOnboardingWizard,
         parseLaunchBoolParam,
         qaHostFixtureId,
@@ -12214,8 +12220,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         handleTopChromeTabChange('stage');
         if (typeof window === 'undefined') return;
         window.requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent('beaurocks:focus-queue-live-controls'));
             const queueControls = document.querySelector('[data-feature-id="queue-live-controls"]');
-            queueControls?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            queueControls?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, [handleTopChromeTabChange]);
+    const focusHostInbox = useCallback(() => {
+        handleTopChromeTabChange('stage');
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            window.dispatchEvent(new CustomEvent('beaurocks:focus-host-inbox'));
+            const inboxPanel = document.querySelector('[data-feature-id="panel-inbox"]');
+            inboxPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     }, [handleTopChromeTabChange]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
@@ -12355,7 +12371,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
                 await startReadyCheck();
             } else if (action === 'review_moderation') {
-                openModerationInbox();
+                focusHostInbox();
             } else if (action === 'more') {
                 handleTopChromeTabChange('stage');
                 setCommandPaletteRequestToken((prev) => prev + 1);
@@ -12881,6 +12897,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             lyricsTimed: null,
             appleMusicId,
             duration: durationSec > 0 ? durationSec : null,
+            durationSec: durationSec > 0 ? durationSec : null,
+            mediaDurationSec: durationSec > 0 ? durationSec : null,
+            backingDurationSec: durationSec > 0 ? durationSec : null,
             musicSource: '',
             lyricsSource: '',
             lyricsGenerationStatus: room?.autoLyricsOnQueue ? 'pending' : 'disabled',
@@ -12890,6 +12909,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             mediaResolutionStatus,
             resolutionStatus,
             resolutionLayer,
+            autoEndSafe: durationSec > 0,
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -13496,6 +13516,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!item?.trackName) return;
         const singerIdentity = resolveQueueSingerIdentity(singerOverride);
         const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
+        const durationSec = Math.max(0, Math.round(Number(item?.durationSec || 0) || 0));
+        const backingAudioOnly = item?.backingAudioOnly === true;
         if (isMarketingDemoFixture) {
             appendQaHelperQueueSong({
                 songTitle: item.trackName,
@@ -13505,8 +13527,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mediaUrl: item.url,
                 albumArtUrl: item.artworkUrl100 || '',
                 trackSource: 'youtube',
-                backingAudioOnly: false,
-                audioOnly: false
+                duration: durationSec || null,
+                backingAudioOnly,
+                audioOnly: backingAudioOnly
             }, { source: 'youtube_helper' });
             toast('Added to queue');
             return;
@@ -13523,9 +13546,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             songId,
             source: 'youtube',
             mediaUrl: item.url,
-            duration: null,
-            audioOnly: false,
-            backingOnly: false,
+            duration: durationSec || null,
+            audioOnly: backingAudioOnly,
+            backingOnly: backingAudioOnly,
             addedBy: hostName || 'Host'
         });
         await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
@@ -13539,12 +13562,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             singerName,
             mediaUrl: item.url,
             albumArtUrl: item.artworkUrl100 || '',
+            duration: durationSec || null,
+            durationSec: durationSec || null,
+            mediaDurationSec: durationSec || null,
+            backingDurationSec: durationSec || null,
+            autoEndSafe: durationSec > 0,
+            playbackReady: true,
+            mediaResolutionStatus: 'browse_ready',
+            resolutionStatus: 'resolved',
+            resolutionLayer: 'helper_catalog_youtube',
+            youtubePlaybackStatus: item?.youtubePlaybackStatus || '',
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
             emoji: EMOJI.mic,
-            backingAudioOnly: false,
-            audioOnly: false
+            backingAudioOnly,
+            audioOnly: backingAudioOnly
         });
         toast('Added to queue');
     };
@@ -15813,7 +15846,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         moderationActions: moderationInbox.actions,
         moderationBusyAction: moderationInbox.meta?.busyAction || '',
         moderationNeedsAttention: !!moderationInbox.meta?.needsAttention,
-        onOpenModerationInbox: openModerationInbox,
+        onOpenModerationInbox: focusHostInbox,
         mediumViewport: mediumHostViewport,
         ytDiagnosticsMap,
         fetchYtDiagnostics,
@@ -16055,7 +16088,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
-                    onOpenModerationInbox={openModerationInbox}
+                    onOpenModerationInbox={focusHostInbox}
                     onOpenAppleMusicSettings={() => {
                         if (typeof openAdminWorkspace === 'function') {
                             openAdminWorkspace('media.playback');
@@ -16127,26 +16160,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     crowdPulse={crowdPulse}
                     activeMomentFeedback={activeMomentFeedback}
                 />
-                {showModerationInbox ? (
-                    <React.Suspense fallback={null}>
-                        <ModerationInboxDrawer
-                            open={showModerationInbox}
-                            onClose={closeModerationInbox}
-                            pendingCount={moderationQueueState.totalPending}
-                            severity={moderationInbox.meta?.severity || 'idle'}
-                            needsAttention={!!moderationInbox.meta?.needsAttention}
-                        >
-                            <IncomingModerationQueuePanel
-                                queueItems={moderationInbox.queueItems}
-                                counts={moderationInbox.counts}
-                                actions={moderationInbox.actions}
-                                busyAction={moderationInbox.meta?.busyAction}
-                                loading={moderationInbox.meta?.loading}
-                            />
-                        </ModerationInboxDrawer>
-                    </React.Suspense>
-                ) : null}
-
             {hostUpdateDeploymentBanner && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
                     {hostUpdateDeploymentBanner}
@@ -17847,6 +17860,33 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     ? 'Guests can queue a new YouTube track right away. It will be marked so you can judge it quickly.'
                                                     : 'Guests only see tracks that are already known or approved for this room.'}
                                         </div>
+                                        <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/45 px-4 py-3">
+                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Guest search surface</div>
+                                                    <div className="host-form-helper mt-1">Lock the audience search sheet to YouTube only so guests cannot switch back to song catalog / Apple-style lookup for this room.</div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        const next = room?.audienceYoutubeOnlySearch !== true;
+                                                        try {
+                                                            await updateRoom({ audienceYoutubeOnlySearch: next });
+                                                        } catch (error) {
+                                                            hostLogger.error('audienceYoutubeOnlySearch update failed', error);
+                                                            toast('Could not update the guest search mode.');
+                                                        }
+                                                    }}
+                                                    className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                        room?.audienceYoutubeOnlySearch === true
+                                                            ? 'bg-emerald-500/15 text-emerald-100 border-emerald-300/45'
+                                                            : 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                                                    }`}
+                                                >
+                                                    {room?.audienceYoutubeOnlySearch === true ? 'YouTube Only' : 'Catalog + YouTube'}
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -18700,11 +18740,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             Review and resolve queue items from the global inbox without leaving your current screen.
                                         </div>
                                         <button
-                                            onClick={openModerationInbox}
+                                            onClick={focusHostInbox}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                         >
                                             <i className="fa-solid fa-inbox"></i>
-                                            Open moderation inbox
+                                            Open main inbox
                                         </button>
                                     </div>
                                 </div>

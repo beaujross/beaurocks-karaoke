@@ -8,14 +8,19 @@ const cohostGuideSource = readFileSync("public/print/cohost-guide.html", "utf8")
 const hostWalkthroughSource = readFileSync("public/print/aahf-host-walkthrough.html", "utf8");
 
 test("AAHF audience poster explains the live room format and night flow", () => {
-  assert.match(audienceGuideSource, /Join fast\. Request your song\. Stay ready\./);
-  assert.match(audienceGuideSource, /How tonight unfolds/);
-  assert.match(audienceGuideSource, /Request a song/);
+  assert.match(audienceGuideSource, /Sing\. Cheer\. Earn room credits\./);
+  assert.match(audienceGuideSource, /How tonight works/);
+  assert.match(audienceGuideSource, /Open karaoke queue/);
+  assert.match(audienceGuideSource, /Guests start with <strong>200<\/strong> room credits\./);
+  assert.match(audienceGuideSource, /\+25 every 10 minutes/);
+  assert.match(audienceGuideSource, /up to <strong>\+150<\/strong> extra\./);
+  assert.match(audienceGuideSource, /website check-in and <strong>\+250<\/strong> for social promo moments\./);
+  assert.match(audienceGuideSource, /This is a fundraiser\./);
   assert.match(audienceGuideSource, /No BeauRocks email is required tonight\./);
   assert.match(audienceGuideSource, /Support and donations are optional and never block karaoke join\./);
   assert.match(audienceGuideSource, /There is no always-on crowd vote\./);
-  assert.match(audienceGuideSource, /Votes \+ winners appear live/);
-  assert.match(audienceGuideSource, /Scan the QR, join AAHF, tap Songs, then watch your queue\./);
+  assert.match(audienceGuideSource, /top-of-hour awards appear live on your phone and the big screen\./);
+  assert.match(audienceGuideSource, /request a song, and stay for the boosts, games, and hourly awards\./);
 });
 
 test("AAHF co-host poster explains role boundaries and the run of night", () => {

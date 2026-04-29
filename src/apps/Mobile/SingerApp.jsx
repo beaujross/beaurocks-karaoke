@@ -666,6 +666,10 @@ const AVATAR_CATALOG = [
     { id: 'party', emoji: emoji(0x1F389), label: 'Party Popper', flavor: 'Confetti chorus.', unlock: { type: 'points', cost: 120 } },
     { id: 'sparkheart', emoji: emoji(0x1F496), label: 'Spark Heart', flavor: 'Crowd favorite.', unlock: { type: 'points', cost: 180 } },
     { id: 'rainbow', emoji: emoji(0x1F308), label: 'Rainbow', flavor: 'Bright refrains.', unlock: { type: 'points', cost: 220 } },
+    { id: 'cherry_blossom', emoji: emoji(0x1F338), label: 'Cherry Blossom', flavor: 'Soft bloom, sharp chorus.', unlock: { type: 'points', cost: 140 } },
+    { id: 'lantern', emoji: emoji(0x1F3EE), label: 'Lantern', flavor: 'Warm glow on the hook.', unlock: { type: 'points', cost: 160 } },
+    { id: 'carp_streamer', emoji: emoji(0x1F38F), label: 'Carp Banner', flavor: 'Festival energy in full color.', unlock: { type: 'points', cost: 180 } },
+    { id: 'rice_ball', emoji: emoji(0x1F359), label: 'Rice Ball', flavor: 'Comfort anthem energy.', unlock: { type: 'points', cost: 120 } },
     { id: 'dragon', emoji: emoji(0x1F409), label: 'Dragon', flavor: 'Fire-breath hook.', unlock: { type: 'points', cost: 200 } },
     { id: 'phoenix', emoji: emoji(0x1F986), label: 'Phoenix', flavor: 'Rise for the chorus.', unlock: { type: 'points', cost: 250 } },
     { id: 'twilight_bat', emoji: emoji(0x1F987), label: 'Bat', flavor: 'Echo power.', unlock: { type: 'points', cost: 100 } },
@@ -1446,11 +1450,11 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showProfile, setShowProfile] = useState(false);
     const [showAccount, setShowAccount] = useState(false);
     const [showPoints, setShowPoints] = useState(false);
-    const [showPointsShop, setShowPointsShop] = useState(false);
     const [supportEmbedOpen, setSupportEmbedOpen] = useState(false);
     const [eventGrantCode, setEventGrantCode] = useState('');
     const [eventGrantBusy, setEventGrantBusy] = useState(false);
     const eventGrantAutoClaimRef = useRef('');
+    const [avatarPreviewEmoji, setAvatarPreviewEmoji] = useState('');
     const [showHowToPlay, setShowHowToPlay] = useState(false);
     const [howToPlayIndex, setHowToPlayIndex] = useState(0);
     const howToPlayTouchStart = useRef(null);
@@ -2262,6 +2266,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const guestBackingAllowed = allowsGuestBackingSelection(roomRequestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode);
     const audienceBackingPickerAllowed = audienceBackingMode !== AUDIENCE_BACKING_MODES.canonicalOnly;
     const audienceManualBackingAllowed = guestBackingAllowed && unknownBackingPolicy !== UNKNOWN_BACKING_POLICIES.blockUnknown;
+    const audienceYouTubeOnlySearch = audienceManualBackingAllowed && room?.audienceYoutubeOnlySearch === true;
     const preferredCatalogSearchMode = audienceManualBackingAllowed ? 'youtube' : 'catalog';
     const getAudienceRequestStateMeta = (request = {}) => {
         const normalizedResolutionStatus = String(request?.resolutionStatus || '').trim().toLowerCase();
@@ -2491,21 +2496,17 @@ const SingerApp = ({ roomCode, uid }) => {
 
         if (pointsStatus === 'success') {
             setShowPoints(true);
-            setShowPointsShop(true);
             toast('Points checkout complete. Your room points should land in a moment.');
         } else if (pointsStatus === 'cancel') {
             setShowPoints(true);
-            setShowPointsShop(true);
             toast('Points checkout canceled.');
         }
 
         if (tipStatus === 'success') {
             setShowPoints(true);
-            setShowPointsShop(true);
             toast('Room boost complete. The room should light up in a moment.');
         } else if (tipStatus === 'cancel') {
             setShowPoints(true);
-            setShowPointsShop(true);
             toast('Room boost canceled.');
         }
 
@@ -2966,7 +2967,6 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!wantsEmail && allowsDonationAccess) {
             setSupportEmbedOpen(!!roomSupportOffer?.supportEmbedUrl);
             setShowPoints(true);
-            setShowPointsShop(true);
             if (!roomSupportOffer?.supportEmbedUrl && roomSupportOffer?.supportUrl) {
                 window.open(roomSupportOffer.supportUrl, '_blank', 'noopener,noreferrer');
             }
@@ -3010,6 +3010,310 @@ const SingerApp = ({ roomCode, uid }) => {
             showClaims: true,
         };
     }, [activeEventCredits, eventPromoSummary, roomCode]);
+    const formatPointsLabel = (value = 0) => `${Math.max(0, Math.round(Number(value) || 0))} pts`;
+    const formatDollarLabel = (value = 0) => {
+        const amount = Math.max(0, Number(value) || 0);
+        return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
+    };
+    const timedLobbyIntervalLabel = activeEventCredits.timedLobbyEnabled
+        ? `Every ${Math.max(1, Number(activeEventCredits.timedLobbyIntervalMin || 10))} min`
+        : 'Not recharging tonight';
+    const timedLobbyBankLabel = activeEventCredits.timedLobbyEnabled
+        ? activeEventCredits.timedLobbyMaxPerGuest > 0
+            ? `${formatPointsLabel(activeEventCredits.timedLobbyMaxPerGuest)} max from auto refills`
+            : 'No refill cap published'
+        : 'No auto-refill bank tonight';
+    const roomWideSupportOffers = useMemo(() => (
+        donationPointOffers.filter((offer) => ['room', 'buyer_and_room'].includes(String(offer.rewardScope || '').trim().toLowerCase()))
+    ), [donationPointOffers]);
+    const roomWideSupportRate = useMemo(() => {
+        const rates = roomWideSupportOffers
+            .map((offer) => {
+                const amount = Math.max(0, Number(offer?.amount || 0) || 0);
+                const points = Math.max(0, Number(offer?.points || 0) || 0);
+                if (amount <= 0 || points <= 0) return 0;
+                return Math.round(points / amount);
+            })
+            .filter((rate) => rate > 0);
+        if (!rates.length) return 0;
+        const baseline = rates[0];
+        return rates.every((rate) => Math.abs(rate - baseline) <= 1) ? baseline : 0;
+    }, [roomWideSupportOffers]);
+    const supportAwardsMoneybags = roomWideSupportOffers.some((offer) => offer.awardBadge !== false)
+        || roomSupportOffer?.supportBadge === true;
+    const questLogItems = useMemo(() => {
+        const items = [];
+        if (activeEventCredits.websiteCheckInPoints > 0) {
+            items.push({
+                id: 'website_checkin',
+                icon: 'fa-globe',
+                label: 'Visit the festival website',
+                detail: 'Grab the posted promo code there, then redeem it below.',
+                points: activeEventCredits.websiteCheckInPoints,
+            });
+        }
+        if (activeEventCredits.socialPromoPoints > 0) {
+            items.push({
+                id: 'social_promo',
+                icon: 'fa-hashtag',
+                label: 'Check the social profile',
+                detail: 'Look for tonight’s social promo code and redeem it here.',
+                points: activeEventCredits.socialPromoPoints,
+            });
+        }
+        (eventPromoSummary.promoCampaigns || []).forEach((campaign, index) => {
+            const rawLabel = String(campaign?.label || campaign?.id || `Quest ${index + 1}`).trim();
+            const lowerLabel = rawLabel.toLowerCase();
+            let detail = 'Use the code shared for this quest, then redeem it below.';
+            if (lowerLabel.includes('website') || lowerLabel.includes('site') || lowerLabel.includes('web')) {
+                detail = 'Grab the website code for this quest, then redeem it below.';
+            } else if (lowerLabel.includes('social') || lowerLabel.includes('instagram') || lowerLabel.includes('tiktok')) {
+                detail = 'Find the social post or profile clue, then redeem it below.';
+            } else if (lowerLabel.includes('flyer') || lowerLabel.includes('poster') || lowerLabel.includes('street')) {
+                detail = 'This quest is host-verified. Use the code or instructions shared for the flyer task.';
+            }
+            items.push({
+                id: campaign.id || `promo_campaign_${index + 1}`,
+                icon: lowerLabel.includes('flyer') || lowerLabel.includes('poster') ? 'fa-bullhorn' : 'fa-list-check',
+                label: rawLabel || `Quest ${index + 1}`,
+                detail,
+                points: Math.max(0, Number(campaign?.pointsReward || 0) || 0),
+            });
+        });
+        return items;
+    }, [activeEventCredits.socialPromoPoints, activeEventCredits.websiteCheckInPoints, eventPromoSummary.promoCampaigns]);
+    const pointsDrawerContent = (
+        <>
+            <div className="space-y-4">
+                <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
+                    <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
+                        Tonight&apos;s Points
+                    </div>
+                    <div className="text-base text-zinc-100">
+                        {eventCreditsSummary.body}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">You Have</div>
+                            <div className="mt-1 text-2xl font-black text-cyan-200">{formatPointsLabel(getEffectivePoints())}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Start Tonight</div>
+                            <div className="mt-1 text-2xl font-black text-white">{formatPointsLabel(activeEventCredits.generalAdmissionPoints)}</div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Recharge</div>
+                            <div className="mt-1 text-sm font-bold text-white">
+                                {activeEventCredits.timedLobbyEnabled
+                                    ? `${formatPointsLabel(activeEventCredits.timedLobbyPoints)} ${timedLobbyIntervalLabel.toLowerCase()}`
+                                    : 'No timed refill'}
+                            </div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Bank</div>
+                            <div className="mt-1 text-sm font-bold text-white">{timedLobbyBankLabel}</div>
+                        </div>
+                    </div>
+                    {(activeEventCredits.vipBonusPoints > 0 || activeEventCredits.skipLineBonusPoints > 0 || eventPromoSummary.usesGivebutter) && (
+                        <div className="mt-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100">
+                            {activeEventCredits.vipBonusPoints > 0 ? `VIP match: ${formatPointsLabel(activeEventCredits.vipBonusPoints)}. ` : ''}
+                            {activeEventCredits.skipLineBonusPoints > 0 ? `Skip-line match: ${formatPointsLabel(activeEventCredits.skipLineBonusPoints)}. ` : ''}
+                            {eventPromoSummary.usesGivebutter ? `Givebutter attendee matching can still attach automatically if your ticket email matches your sign-in email.` : ''}
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-2xl border border-pink-400/35 bg-black/30 p-4">
+                    <div className="text-base uppercase tracking-widest text-pink-200 mb-2">How To Earn More</div>
+                    <div className="text-sm text-zinc-300">
+                        Win crowd moments, catch bonus drops, or knock out a quest from the festival list below.
+                    </div>
+                    <div className="mt-4">
+                        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400 mb-2">Quest Log</div>
+                        <div className="grid gap-2">
+                            {questLogItems.length > 0 ? questLogItems.map((item) => (
+                                <div key={item.id} className="rounded-2xl border border-amber-300/20 bg-amber-500/8 px-3 py-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2 text-sm font-bold text-white">
+                                                <i className={`fa-solid ${item.icon} text-amber-200`}></i>
+                                                <span>{item.label}</span>
+                                            </div>
+                                            <div className="mt-1 text-sm text-zinc-300">{item.detail}</div>
+                                        </div>
+                                        <span className="shrink-0 rounded-full border border-amber-300/30 bg-amber-500/14 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                            +{Math.max(0, Number(item.points || 0) || 0)}
+                                        </span>
+                                    </div>
+                                </div>
+                            )) : (
+                                <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-300">
+                                    No festival quests are posted yet. Keep an eye on the room feed for drops and game moments.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {eventCreditsSummary.showClaims && (
+                        <div className="mt-4 rounded-2xl border border-amber-300/20 bg-black/20 px-3 py-3">
+                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Redeem A Promo</div>
+                            <div className="mt-1 text-sm text-zinc-300">
+                                Official event links and ticket-matched perks can unlock bonuses automatically. Only use a promo code here when the event explicitly shares one.
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                                <label className="block">
+                                    <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Event promo code</div>
+                                    <input
+                                        value={eventGrantCode}
+                                        onChange={(e) => setEventGrantCode(e.target.value)}
+                                        placeholder="Enter event promo code"
+                                        className="mt-2 w-full rounded-xl border border-amber-400/20 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-300/45"
+                                    />
+                                </label>
+                                <button
+                                    onClick={() => claimEventCredit({ claimCode: eventGrantCode })}
+                                    disabled={eventGrantBusy || !String(eventGrantCode || '').trim()}
+                                    className={`w-full rounded-xl border border-amber-300/40 bg-amber-500/12 px-4 py-2.5 font-bold text-amber-100 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                                    {eventGrantBusy ? 'Applying promo...' : 'Apply promo code'}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4">
+                    <div className="text-base uppercase tracking-widest text-emerald-200 mb-2">Support the Festival</div>
+                    <div className="text-base text-zinc-100">
+                        {roomWideSupportRate > 0
+                            ? `Every $1 donated tonight via Givebutter credits the entire room with about ${roomWideSupportRate} points.`
+                            : roomShopOffers.length > 0
+                                ? 'Givebutter donations can trigger room-wide point bursts. The exact room reward is shown on each support tier below.'
+                                : roomSupportOffer?.supportPoints > 0
+                                    ? `Completed Givebutter support can trigger +${roomSupportOffer.supportPoints} room points tonight.`
+                                    : 'Use Givebutter to support the festival without leaving the karaoke flow.'}
+                    </div>
+                    <div className="mt-2 text-sm text-emerald-100/90">
+                        {supportAwardsMoneybags
+                            ? `${MONEYBAGS_BADGE_LABEL} marks the guest who triggered the latest room-wide support burst.`
+                            : `${MONEYBAGS_BADGE_LABEL} appears when the room is configured to spotlight a supporter after a room-wide donation burst.`}
+                    </div>
+                    {allowsDonationAccess ? (
+                        <div className="mt-2 text-sm text-zinc-200">
+                            {supporterAccessLabel} perks can unlock here too.
+                        </div>
+                    ) : null}
+                    {roomSupportOffer ? (
+                        <button
+                            onClick={() => {
+                                if (roomSupportOffer?.supportEmbedUrl) {
+                                    setSupportEmbedOpen(true);
+                                    return;
+                                }
+                                startGivebutterSupportCheckout(roomSupportOffer);
+                            }}
+                            className="mt-3 w-full rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 font-bold text-emerald-100"
+                        >
+                            Donate with Givebutter
+                        </button>
+                    ) : null}
+                    {personalShopOffers.length > 0 && (
+                        <div className="mt-4">
+                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400 mb-2">Supporter Boosts</div>
+                            <div className="grid gap-2">
+                                {personalShopOffers.map((pack, idx) => {
+                                    const isRoomOffer = pack.offerType === 'tip_crate';
+                                    const isDonationOffer = pack.offerType === 'support_offer';
+                                    return (
+                                        <button
+                                            key={pack.id || `${pack.label}-${idx}`}
+                                            onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
+                                            className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 px-4 py-3 text-left hover:border-zinc-500/60"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-sm font-bold text-white">{pack.label}</div>
+                                                    <div className="mt-1 text-sm text-zinc-300">
+                                                        {isDonationOffer
+                                                            ? `You get ${formatPointsLabel(pack.points)} after the Givebutter donation clears.`
+                                                            : `Add ${formatPointsLabel(pack.points)} to your wallet now.`}
+                                                    </div>
+                                                </div>
+                                                <span className="shrink-0 text-base font-black text-pink-200">{formatDollarLabel(pack.amount)}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    {roomShopOffers.length > 0 && (
+                        <div className="mt-4 grid gap-2">
+                            {roomShopOffers.map((crate, idx) => {
+                                const label = crate.label || `Room Boost ${idx + 1}`;
+                                const earnsBadge = crate.awardBadge !== false;
+                                return (
+                                    <button
+                                        key={crate.id || `${label}-${idx}`}
+                                        onClick={() => startTipCrateCheckout(crate)}
+                                        className="w-full rounded-2xl border border-cyan-300/35 bg-cyan-500/12 px-4 py-3 text-left hover:border-cyan-200/60"
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-bold text-white">{label}</div>
+                                                <div className="mt-1 text-sm text-zinc-200">
+                                                    Everyone gets {formatPointsLabel(crate.points)}
+                                                    {earnsBadge ? ` + ${MONEYBAGS_BADGE_LABEL}` : ''}
+                                                </div>
+                                            </div>
+                                            <span className="shrink-0 text-base font-black text-cyan-200">{formatDollarLabel(crate.amount)}</span>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                    {supportEmbedOpen && roomSupportOffer?.supportEmbedUrl && (
+                        <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                            <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                <span>Givebutter Donation Form</span>
+                                <button
+                                    onClick={() => setSupportEmbedOpen(false)}
+                                    className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-100 hover:border-white/20 hover:text-white"
+                                >
+                                    Hide
+                                </button>
+                            </div>
+                            <iframe
+                                src={roomSupportOffer.supportEmbedUrl}
+                                title="Givebutter support"
+                                className="h-[480px] w-full bg-white"
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {!festivalGuestJoinNoEmail && (
+                    <div className="rounded-2xl border border-cyan-400/25 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-100">
+                        {allowsDonationAccess
+                            ? 'Room points power tonight’s session. Supporter unlocks light up this room right away, and email access keeps your identity and future bonuses tied together.'
+                            : `Room points power tonight’s session. Link email later to keep your identity, ${premiumPerksLabel}, and future bonuses tied together.`}
+                    </div>
+                )}
+            </div>
+            <div className="flex flex-col gap-2 mt-4">
+                {!festivalGuestJoinNoEmail && (
+                    <button
+                        onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
+                        className="bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base min-h-[44px]"
+                    >
+                        {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
+                    </button>
+                )}
+                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
+                <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
+            </div>
+        </>
+    );
     const claimEventCredit = useCallback(async ({ campaignId = '', claimCode = '' } = {}) => {
         const safeClaimCode = String(claimCode || '').trim();
         const safeCampaignId = String(campaignId || '').trim();
@@ -3709,10 +4013,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }, 1000);
         return () => clearInterval(syncTimer);
     }, [showAudienceVideoActive, isNativeVideo, room?.videoPlaying, room?.videoStartTimestamp]);
+    const activeAvatarPreviewEmoji = avatarPreviewEmoji || form.emoji || user?.avatar || DEFAULT_EMOJI;
     const selectedAvatar = useMemo(() => {
-        const selected = form.emoji || user?.avatar || DEFAULT_EMOJI;
+        const selected = activeAvatarPreviewEmoji;
         return AVATAR_CATALOG.find(a => a.emoji === selected) || AVATAR_CATALOG[0];
-    }, [form.emoji, user?.avatar]);
+    }, [activeAvatarPreviewEmoji]);
     const selectedAvatarStatus = useMemo(() => getAvatarStatus(selectedAvatar), [selectedAvatar, getAvatarStatus]);
     const selectedAvatarUnlock = useMemo(() => getUnlockHint(selectedAvatar), [selectedAvatar, getUnlockHint]);
     const historyItems = useMemo(() => {
@@ -3748,6 +4053,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }, [historyItems]);
 
     const handleSelectAvatar = async (item, status) => {
+        setAvatarPreviewEmoji(item?.emoji || '');
         if (!status.locked) {
             setForm(prev => ({ ...prev, emoji: item.emoji }));
             return;
@@ -3760,6 +4066,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         });
         return;
     };
+    useEffect(() => {
+        if (!avatarPreviewEmoji) return;
+        const previewItem = getAvatarCatalogItemByEmoji(avatarPreviewEmoji);
+        if (previewItem) return;
+        setAvatarPreviewEmoji('');
+    }, [avatarPreviewEmoji]);
+    useEffect(() => {
+        if (avatarPreviewEmoji) return;
+        setAvatarPreviewEmoji(form.emoji || user?.avatar || DEFAULT_EMOJI);
+    }, [avatarPreviewEmoji, form.emoji, user?.avatar]);
 
     // Helper: Log Activity
     const logActivity = async (text, icon) => {
@@ -5134,6 +5450,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         if (audienceManualBackingAllowed || catalogSearchMode !== 'youtube') return;
         setCatalogSearchMode('catalog');
     }, [audienceManualBackingAllowed, catalogSearchMode]);
+
+    useEffect(() => {
+        if (!audienceYouTubeOnlySearch || catalogSearchMode === 'youtube') return;
+        setCatalogSearchMode('youtube');
+    }, [audienceYouTubeOnlySearch, catalogSearchMode]);
 
     useEffect(() => {
         if (catalogSearchMode === 'catalog') return;
@@ -7871,7 +8192,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
                 <div className="w-screen -mx-6 px-0 relative">
-                    <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
+                    <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
                 </div>
                 <div
                     className="w-full max-w-sm mt-1 rounded-3xl border p-2.5 text-center shadow-[0_14px_40px_rgba(0,0,0,0.4)]"
@@ -9259,7 +9580,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <span key={`profile-c-${idx}`} className={`spotlight s${idx + 1}`} />
                             ))}
                         </div>
-                        <AvatarCoverflow items={AVATAR_CATALOG} value={form.emoji || user.avatar} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} />
+                        <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} brandTheme={audienceBrandTheme} />
                     </div>
                     <div
                         className="rounded-3xl p-5 text-center shadow-[0_12px_35px_rgba(0,0,0,0.45)]"
@@ -9272,7 +9593,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             className="text-6xl mb-2"
                             style={{ filter: `drop-shadow(0 0 18px ${withAudienceBrandAlpha(audienceBrandTheme.secondaryColor, 0.5)})` }}
                         >
-                            {form.emoji || user.avatar}
+                            {activeAvatarPreviewEmoji}
                         </div>
                         <div className="text-3xl font-black drop-shadow" style={{ color: audienceBrandTheme.primaryColor }}>{selectedAvatar?.label}</div>
                         {selectedAvatarStatus?.locked ? (
@@ -9911,295 +10232,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         {Math.max(0, getEffectivePoints())} PTS
                     </div>
                 </div>
-                {!showPointsShop ? (
-                    simplifyFestivalSupportAccess ? (
-                    <>
-                        <div className="grid gap-3">
-                            <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
-                                <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
-                                    {eventCreditsSummary.title}
-                                </div>
-                                <div className="text-base text-zinc-100">
-                                    {eventCreditsSummary.body}
-                                </div>
-                                <div className="mt-3 text-sm text-zinc-300">
-                                    Room points are for the live session. Use email if you want your profile and history to carry forward.
-                                </div>
-                            </div>
-                            <div className="bg-black/30 border border-pink-400/35 rounded-2xl p-4">
-                                <div className="text-base uppercase tracking-widest text-pink-200 mb-2">Support AAHF</div>
-                                <div className="text-base text-zinc-100">
-                                    Support is optional. When the room flashes a support moment on the main screen, you can donate there without interrupting your karaoke flow.
-                                </div>
-                                {roomSupportOffer?.supportUrl ? (
-                                    <button
-                                        onClick={() => startGivebutterSupportCheckout(roomSupportOffer)}
-                                        className="mt-3 w-full rounded-xl border border-emerald-300/35 bg-emerald-500/12 px-4 py-3 font-bold text-emerald-100"
-                                    >
-                                        {supportCtaLabel}
-                                    </button>
-                                ) : null}
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-2 mt-4">
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPointsShop(true); }} className="bg-gradient-to-r from-pink-600/40 to-cyan-500/40 border border-pink-400/50 px-6 py-3 rounded-xl font-bold text-white text-base tracking-wide min-h-[44px]">
-                                Get More Points
-                            </button>
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
-                        </div>
-                    </>
-                    ) : (
-                    <>
-                        <div className="grid gap-3">
-                            <div className={`bg-black/30 border rounded-2xl p-4 ${eventCreditsSummary.tone === 'amber' ? 'border-amber-400/40' : eventCreditsSummary.tone === 'zinc' ? 'border-white/10' : 'border-cyan-400/30'}`}>
-                                <div className={`text-base uppercase tracking-widest mb-2 ${eventCreditsSummary.tone === 'amber' ? 'text-amber-200' : eventCreditsSummary.tone === 'zinc' ? 'text-zinc-300' : 'text-cyan-200'}`}>
-                                    {eventCreditsSummary.title}
-                                </div>
-                                <div className="text-base text-zinc-100">
-                                    {eventCreditsSummary.body}
-                                </div>
-                                {eventCreditsSummary.showClaims && (
-                                    <>
-                                        <div className="mt-3 text-sm text-zinc-300">
-                                            Official event links and ticket-matched perks can unlock bonuses automatically. Only use a promo code here when the event explicitly shares one.
-                                        </div>
-                                        {eventPromoSummary.usesGivebutter && (
-                                            <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">
-                                                Givebutter attendee matching is active for this room. If your ticket email matches your sign-in email, your {isCustomAudienceBrand ? 'festival pass' : 'VIP'} or entry credits can attach automatically.
-                                            </div>
-                                        )}
-                                        {eventPromoSummary.promoCampaigns.length > 0 && (
-                                            <div className="mt-3 flex flex-wrap gap-2">
-                                                {eventPromoSummary.promoCampaigns.slice(0, 4).map((campaign) => (
-                                                    <span key={campaign.id} className="rounded-full border border-amber-300/30 bg-amber-500/12 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-amber-100">
-                                                        {campaign.label || campaign.id}
-                                                        {campaign.pointsReward > 0 ? ` +${campaign.pointsReward}` : ''}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        )}
-                                        <div className="mt-3 grid gap-2">
-                                            <label className="block">
-                                                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Event promo code</div>
-                                                <input
-                                                    value={eventGrantCode}
-                                                    onChange={(e) => setEventGrantCode(e.target.value)}
-                                                    placeholder="Enter event promo code"
-                                                    className="mt-2 w-full rounded-xl border border-amber-400/20 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition focus:border-amber-300/45"
-                                                />
-                                            </label>
-                                            <button
-                                                onClick={() => claimEventCredit({ claimCode: eventGrantCode })}
-                                                disabled={eventGrantBusy || !String(eventGrantCode || '').trim()}
-                                                className={`w-full rounded-xl border border-amber-300/40 bg-amber-500/12 px-4 py-2.5 font-bold text-amber-100 ${eventGrantBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                            >
-                                                {eventGrantBusy ? 'Applying promo...' : 'Apply promo code'}
-                                            </button>
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                            <div className="bg-black/30 border border-pink-400/40 rounded-2xl p-4">
-                                <div className="text-base uppercase tracking-widest text-pink-200 mb-2">Earn points</div>
-                                <div className="flex items-center gap-3 text-lg text-zinc-100">
-                                    <span className="text-2xl">{EMOJI.sparkle}</span>
-                                    Win games, bonus drops, and crowd moments.
-                                </div>
-                                <div className="flex items-center gap-3 text-lg text-zinc-100 mt-2">
-                                    <span className="text-2xl">{EMOJI.star}</span>
-                                    {festivalGuestJoinNoEmail
-                                        ? 'No BeauRocks account is needed tonight. If AAHF wants follow-up, that should come from the festival directly.'
-                                        : allowsDonationAccess
-                                        ? 'Support the fundraiser or link your email to keep tonight&apos;s event perks moving with you.'
-                                        : 'Link your email later to keep tonight&apos;s event perks, profile, and future bonuses.'}
-                                </div>
-                                {festivalGuestJoinNoEmail ? (
-                                    <div className="mt-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
-                                        Festival updates should come from AAHF, not from a BeauRocks account flow.
-                                    </div>
-                                ) : (
-                                    <button
-                                        onClick={() => openVipUpgrade(allowsDonationAccess ? 'email' : 'auto')}
-                                        className="mt-3 w-full bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-cyan-200 py-2 rounded-xl font-bold text-base"
-                                    >
-                                        {allowsDonationAccess ? 'Continue with Email instead' : 'Continue with Email'}
-                                    </button>
-                                )}
-                            </div>
-                            <div className="bg-black/30 border border-cyan-400/40 rounded-2xl p-4">
-                                <div className="text-base uppercase tracking-widest text-cyan-200 mb-2">Carry over?</div>
-                                <div className="text-lg text-zinc-100">
-                                    {festivalGuestJoinNoEmail
-                                        ? 'Room points are for tonight&apos;s live AAHF session. No BeauRocks email is required to join or use them.'
-                                        : allowsDonationAccess
-                                        ? 'Room points power tonight&apos;s session. Supporter unlocks light up this room right away, and email access keeps your identity, history, and future bonuses tied together.'
-                                        : `Room points power tonight&apos;s session. Linking your email later keeps your identity, event bonuses, ${premiumPerksLabel}, and history tied together.`}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex flex-col gap-2 mt-4">
-                            <button onClick={() => { setSupportEmbedOpen(allowsDonationAccess && !!roomSupportOffer?.supportEmbedUrl); setShowPointsShop(true); }} className="bg-gradient-to-r from-pink-600/40 to-cyan-500/40 border border-pink-400/50 px-6 py-3 rounded-xl font-bold text-white text-base tracking-wide min-h-[44px]">
-                                {allowsDonationAccess ? 'Open Support + Points' : 'Add More Points'}
-                            </button>
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowHowToPlay(true); }} className="bg-cyan-600/20 text-cyan-200 border border-cyan-400/40 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">How to Play</button>
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
-                        </div>
-                    </>
-                    )
-                ) : (
-                    <>
-                        <div className="space-y-5">
-                            <div>
-                                <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For you</div>
-                                <div className="text-base text-zinc-400 mb-3">
-                                    {hasDonationPointOffers
-                                        ? 'Donation-backed Givebutter boosts for your points wallet.'
-                                        : 'Standard packs plus any room-specific personal boosts configured by the host.'}
-                                </div>
-                                <div className="grid gap-3">
-                                    {personalShopOffers.map((pack, idx) => {
-                                        const amount = pack.amount ? `$${pack.amount}` : '$';
-                                        const points = pack.points ? `+${pack.points} pts` : '';
-                                        const isBest = idx === personalShopOffers.length - 1;
-                                        const isRoomOffer = pack.offerType === 'tip_crate';
-                                        const isDonationOffer = pack.offerType === 'support_offer';
-                                        return (
-                                            <button
-                                                key={pack.id || `${pack.label}-${idx}`}
-                                                onClick={() => (isRoomOffer ? startTipCrateCheckout(pack) : startPersonalPackCheckout(pack))}
-                                                className={`w-full rounded-2xl px-5 py-4 text-left border transition-colors ${isBest ? 'bg-pink-500/20 border-pink-400/60 hover:border-pink-300/80' : 'bg-zinc-900/70 border-zinc-700 hover:border-zinc-500/60'}`}
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <div className="text-sm uppercase tracking-widest text-zinc-300">
-                                                            {isDonationOffer
-                                                                ? 'Givebutter'
-                                                                : isRoomOffer
-                                                                    ? 'Room special'
-                                                                    : isBest ? 'Big refill' : 'Quick boost'}
-                                                        </div>
-                                                        <div className="text-2xl font-bold text-white flex items-center gap-2">
-                                                            <span className="text-2xl">{EMOJI.gift}</span>
-                                                            {pack.label}
-                                                        </div>
-                                                        <div className="text-base text-zinc-200">
-                                                            You get {points}
-                                                            {isDonationOffer ? ' after the Givebutter donation clears.' : ''}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-pink-200 font-black text-2xl">{amount}</div>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            {roomShopOffers.length > 0 && (
-                            <div>
-                                <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">For everyone</div>
-                                <div className="text-base text-zinc-400 mb-3">
-                                    {hasDonationPointOffers
-                                        ? 'Donation-backed room bursts for the whole crowd.'
-                                        : 'Buy a room-wide points burst for the whole crowd.'}
-                                </div>
-                                <div className="grid gap-3">
-                                    {roomShopOffers.map((crate, idx) => {
-                                        const label = crate.label || `Room Boost ${idx + 1}`;
-                                        const amount = crate.amount ? `$${crate.amount}` : '$';
-                                        const points = crate.points ? `+${crate.points} pts` : '';
-                                        const earnsBadge = crate.awardBadge !== false;
-                                        return (
-                                            <button
-                                                key={crate.id || `${label}-${idx}`}
-                                                onClick={() => startTipCrateCheckout(crate)}
-                                                className="w-full bg-[#00C4D9]/15 border border-[#00C4D9]/50 rounded-2xl px-5 py-4 text-left hover:border-[#00C4D9]/80"
-                                            >
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <div className="text-sm uppercase tracking-widest text-cyan-200">
-                                                            Room boost
-                                                            {earnsBadge ? ' - Earns a badge' : ''}
-                                                        </div>
-                                                        <div className="text-2xl font-bold text-white flex items-center gap-2">
-                                                            <span className="text-2xl">{EMOJI.crown}</span>
-                                                            {label}
-                                                        </div>
-                                                        <div className="text-base text-zinc-200">
-                                                            Everyone gets {points || 'a boost'}{earnsBadge ? ` + ${MONEYBAGS_BADGE_LABEL}` : ''}
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-cyan-300 font-black text-2xl">{amount}</div>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            )}
-                            {roomSupportOffer && !hasDonationPointOffers && (
-                                <div>
-                                    <div className="text-sm uppercase tracking-widest text-zinc-300 mb-1">Support the room</div>
-                                    <div className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <div className="text-sm uppercase tracking-widest text-emerald-200">Givebutter</div>
-                                                <div className="text-2xl font-bold text-white mt-1">{roomSupportOffer.label}</div>
-                                                <div className="text-base text-zinc-200 mt-2">
-                                                    {roomSupportOffer.supportPoints > 0
-                                                        ? `Completed support purchases can trigger +${roomSupportOffer.supportPoints} pts for the whole room.`
-                                                        : 'Use this to support the room without leaving the audience flow.'}
-                                                    {roomSupportOffer.supportBadge ? ` ${MONEYBAGS_BADGE_LABEL} spotlight included.` : ''}
-                                                    {allowsDonationAccess ? ` ${supporterAccessLabel} perks can unlock here too.` : ''}
-                                                </div>
-                                            </div>
-                                            <div className="text-2xl">{EMOJI.tip}</div>
-                                        </div>
-                                        <div className="mt-3 flex flex-col gap-2">
-                                            {roomSupportOffer.hasEmbed ? (
-                                                <button
-                                                    onClick={() => setSupportEmbedOpen((prev) => !prev)}
-                                                    className="w-full rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-4 py-3 font-bold text-emerald-100"
-                                                >
-                                                    {supportEmbedOpen ? 'Hide Givebutter embed' : 'Open Givebutter embed'}
-                                                </button>
-                                            ) : null}
-                                            {roomSupportOffer.supportUrl && (
-                                                <button
-                                                    onClick={() => window.open(roomSupportOffer.supportUrl, '_blank', 'noopener,noreferrer')}
-                                                    className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 font-bold text-white"
-                                                >
-                                                    Open support page
-                                                </button>
-                                            )}
-                                            {allowsEmailFallbackAccess && allowsDonationAccess && !festivalGuestJoinNoEmail && (
-                                                <button
-                                                    onClick={() => openVipUpgrade('email')}
-                                                    className="w-full rounded-xl border border-cyan-300/35 bg-cyan-500/12 px-4 py-3 font-bold text-cyan-100"
-                                                >
-                                                    Continue with Email instead
-                                                </button>
-                                            )}
-                                        </div>
-                                        {supportEmbedOpen && roomSupportOffer.supportEmbedUrl && (
-                                            <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
-                                                <iframe
-                                                    src={roomSupportOffer.supportEmbedUrl}
-                                                    title="Givebutter support"
-                                                    className="h-[480px] w-full bg-white"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex flex-col gap-2 mt-4">
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPointsShop(false); }} className="bg-zinc-800 px-6 py-2 rounded-xl font-bold text-base tracking-wide min-h-[44px]">Back</button>
-                            <button onClick={() => { setSupportEmbedOpen(false); setShowPoints(false); setShowPointsShop(false); }} className="bg-zinc-700 px-6 py-2 rounded-xl text-base tracking-wide min-h-[44px]">Close</button>
-                        </div>
-                    </>
-                )}
+                {pointsDrawerContent}
             </div>
         </div>
     );
@@ -10570,10 +10603,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const audienceRequestCtaLabel = audienceSongLimitState.hardBlocked
         ? 'Song Limit Reached'
         : audienceSongLimitState.softReviewPending
-            ? 'Request for Host Review'
-            : activeRequestCount > 0
-                ? 'Add Another Song'
-                : 'Search + Add Song';
+            ? 'Host Review Pending'
+            : 'Add Song';
     const audienceRequestCtaDetail = audienceSongLimitState.hardBlocked || audienceSongLimitState.softReviewPending
         ? audienceSongLimitState.detail
         : 'Open search, pick a song, and it goes straight to the queue.';
@@ -10740,8 +10771,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         { key: 'request', label: 'Songs', icon: 'fa-music' }
     ];
     const streamlinedSongsNavItems = [
-        { key: 'browse', label: 'Browse', icon: 'fa-magnifying-glass' },
-        { key: 'queue', label: 'Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
+        { key: 'browse', label: 'Add Song', icon: 'fa-magnifying-glass' },
+        { key: 'queue', label: 'View Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
@@ -11738,7 +11769,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             style={audienceBrandPalette.primaryPillStyle}
                                         >
                                             <i className="fa-solid fa-plus"></i>
-                                            Request a Song
+                                            Add Song
                                         </button>
                                         <button
                                             type="button"
@@ -11832,6 +11863,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     <span>Audience Video</span>
                                                     <div className="flex items-center gap-2">
                                                         <button
+                                                            onClick={() => {
+                                                                setShowAudienceVideo(false);
+                                                                setShowAudienceVideoFullscreen(false);
+                                                            }}
+                                                            className="text-zinc-200 tracking-normal uppercase hover:text-white"
+                                                        >
+                                                            Hide
+                                                        </button>
+                                                        <button
                                                             onClick={() => setShowAudienceVideoFullscreen(true)}
                                                             className="text-cyan-300 tracking-normal uppercase hover:text-cyan-200"
                                                         >
@@ -11876,16 +11916,28 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                             <div className="bg-black/70 border-y border-white/10 overflow-hidden">
                                                 <div className="flex items-center justify-between px-4 py-2 text-[11px] uppercase tracking-[0.3em] text-zinc-400 bg-black/60">
                                                     <span>Lyrics</span>
-                                                    <button
-                                                        onClick={() => {
-                                                            setShowAudienceVideo(false);
-                                                            setShowAudienceVideoFullscreen(false);
-                                                            setViewLyrics(true);
-                                                        }}
-                                                        className="text-cyan-300 tracking-normal uppercase hover:text-cyan-200"
-                                                    >
-                                                        Full screen
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setInlineLyrics(false);
+                                                                setViewLyrics(false);
+                                                                setDismissedHostLyrics(true);
+                                                            }}
+                                                            className="text-zinc-200 tracking-normal uppercase hover:text-white"
+                                                        >
+                                                            Hide
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setShowAudienceVideo(false);
+                                                                setShowAudienceVideoFullscreen(false);
+                                                                setViewLyrics(true);
+                                                            }}
+                                                            className="text-cyan-300 tracking-normal uppercase hover:text-cyan-200"
+                                                        >
+                                                            Full screen
+                                                        </button>
+                                                    </div>
                                                 </div>
                                                 <div className="max-h-40 overflow-y-auto px-4 py-4 text-lg text-white/90 whitespace-pre-line font-bebas text-center leading-snug bg-gradient-to-b from-black/10 via-black/30 to-black/60">
                                                     {currentSinger.lyrics}
@@ -12139,7 +12191,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         onClick={() => setTab('request')}
                                         className="rounded-2xl border border-pink-400/35 bg-pink-500/18 px-4 py-3 text-sm font-black uppercase tracking-[0.16em] text-pink-100 hover:bg-pink-500/28"
                                     >
-                                        Browse Songs
+                                        Add Song
                                     </button>
                                     <button
                                         type="button"
@@ -12198,7 +12250,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         style={audienceBrandPalette.primaryPillStyle}
                                     >
                                         <i className="fa-solid fa-music"></i>
-                                        Open Songs
+                                        Add Song
                                     </button>
                                     <button
                                         type="button"
@@ -12350,10 +12402,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     })}
                                 </div>
                                 <button onClick={()=>setTab('request')} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#27d3f7] to-[#26D7E8] text-black py-2.5 rounded-xl font-bold shadow-[0_0_20px_rgba(0,196,217,0.28)]">
-                                    Add first song to start karaoke
+                                    Add Song to Start Karaoke
                                 </button>
                              </div>
-                         ) : noSingerOnStage ? (
+                        ) : noSingerOnStage && !showStreamlinedIdleRequestCard ? (
                              <>
                                  <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                                      <div className="flex items-center justify-between gap-3">
@@ -12372,7 +12424,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                              style={streamlinedPrimaryActionStyle}
                                          >
                                              <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/85">Quick Start</div>
-                                             <div className="mt-1 text-base font-black text-white">Search for a Song</div>
+                                             <div className="mt-1 text-base font-black text-white">Add Song</div>
                                              <div className="mt-1 text-sm text-zinc-100/85">Open song search and add the next performer.</div>
                                          </button>
                                      </div>
@@ -12996,7 +13048,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </div>
                                     <div className="px-4 py-3 border-b border-white/10">
                                         <div className={audienceInputShellClass}>
-                                            {audienceManualBackingAllowed && (
+                                            {audienceManualBackingAllowed && !audienceYouTubeOnlySearch && (
                                                 <div className="mb-3 flex flex-wrap gap-2">
                                                     {[
                                                         ['catalog', 'Song search'],
@@ -13028,7 +13080,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                 />
                                             </div>
                                             <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
-                                                {catalogSearchMode === 'youtube'
+                                                {audienceYouTubeOnlySearch
+                                                    ? 'This room is locked to YouTube karaoke search for guest requests.'
+                                                    : catalogSearchMode === 'youtube'
                                                     ? 'Search direct YouTube karaoke backings first. Song matches stay below as a fallback if you need them.'
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>

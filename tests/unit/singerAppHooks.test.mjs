@@ -102,6 +102,36 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
     /Tap to push the applause meter/,
     "SingerApp applause takeover should keep stable helper copy instead of swapping layout around a cooldown badge",
   );
+  assert.match(
+    source,
+    /Tonight&apos;s Points/,
+    "SingerApp points modal should lead with a plain summary of tonight's points config",
+  );
+  assert.match(
+    source,
+    /How To Earn More/,
+    "SingerApp points modal should group point-earning paths into one clear section",
+  );
+  assert.match(
+    source,
+    /Quest Log/,
+    "SingerApp points modal should expose festival quests as a dedicated log",
+  );
+  assert.match(
+    source,
+    /Donate with Givebutter/,
+    "SingerApp points modal should keep one primary donation CTA instead of burying support across multiple cards",
+  );
+  assert.match(
+    source,
+    /Every \$1 donated tonight via Givebutter credits the entire room with about/,
+    "SingerApp donation section should explain the room-wide points effect of Givebutter support",
+  );
+  assert.match(
+    source,
+    /MONEYBAGS_BADGE_LABEL.*latest room-wide support burst|MONEYBAGS_BADGE_LABEL.*spotlight a supporter after a room-wide donation burst/,
+    "SingerApp donation section should explain the Moneybags supporter spotlight",
+  );
 });
 
 test("SingerApp keeps streamlined audience shell inside party and songs flows", () => {
@@ -124,8 +154,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /const streamlinedSongsNavItems = \[\s*\{ key: 'browse', label: 'Browse', icon: 'fa-magnifying-glass' \},/,
-    "SingerApp should keep streamlined song tabs focused on browse and queue instead of generic button actions",
+    /const streamlinedSongsNavItems = \[\s*\{ key: 'browse', label: 'Add Song', icon: 'fa-magnifying-glass' \},/,
+    "SingerApp should keep streamlined song tabs focused on Add Song and View Queue instead of drifting button language",
   );
   assert.match(
     source,
@@ -164,13 +194,13 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /Search \+ Add Song/,
-    "SingerApp should use Search + Add Song copy in streamlined mode",
+    /Add Song/,
+    "SingerApp should use Add Song as the primary request CTA label",
   );
   assert.match(
     source,
-    /Request a Song/,
-    "SingerApp should expose a Request a Song CTA from streamlined party surfaces",
+    /Host Review Pending/,
+    "SingerApp should keep the request CTA language tight and only branch for true review states",
   );
   assert.match(
     source,
@@ -189,8 +219,13 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /Open Songs/,
-    "SingerApp streamlined idle home should route guests into the Songs tab instead of duplicating request language",
+    /Add Song/,
+    "SingerApp streamlined idle home should route guests into the Songs tab with the same Add Song language used elsewhere",
+  );
+  assert.match(
+    source,
+    /\) : noSingerOnStage && !showStreamlinedIdleRequestCard \? \(/,
+    "SingerApp should not render the weaker Stage Open add-song card when the stronger Room Ready idle card is already on screen",
   );
   assert.match(
     source,
@@ -488,5 +523,55 @@ test("SingerApp keeps audience stage collapse controls inside mobile viewport", 
     source,
     /<span className="hidden sm:inline">Collapse<\/span>/,
     "SingerApp should hide collapse text on narrow screens to prevent clipping",
+  );
+  assert.match(
+    source,
+    /<span>Audience Video<\/span>[\s\S]*>\s*Hide\s*<\/button>[\s\S]*>\s*Full screen\s*<\/button>/,
+    "SingerApp should keep a hide action inside the expanded audience video panel",
+  );
+  assert.match(
+    source,
+    /This room is locked to YouTube karaoke search for guest requests\./,
+    "SingerApp should explain when the host locked guest search to YouTube only",
+  );
+});
+
+test("SingerApp lets locked emoji become the active preview and includes new themed avatars", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const \[avatarPreviewEmoji, setAvatarPreviewEmoji\] = useState\(''\);/,
+    "SingerApp should track avatar preview separately from the saved avatar choice",
+  );
+  assert.match(
+    source,
+    /const activeAvatarPreviewEmoji = avatarPreviewEmoji \|\| form\.emoji \|\| user\?\.avatar \|\| DEFAULT_EMOJI;/,
+    "SingerApp should derive a preview avatar even when the locked choice is not yet equipped",
+  );
+  assert.match(
+    source,
+    /setAvatarPreviewEmoji\(item\?\.emoji \|\| ''\);[\s\S]*if \(!status\.locked\)/,
+    "SingerApp should preview a tapped avatar before deciding whether it can be equipped",
+  );
+  assert.match(
+    source,
+    /Cherry Blossom/,
+    "SingerApp should include a cherry blossom themed avatar",
+  );
+  assert.match(
+    source,
+    /Lantern/,
+    "SingerApp should include a lantern themed avatar",
+  );
+  assert.match(
+    source,
+    /Carp Banner/,
+    "SingerApp should include a carp-banner themed avatar",
+  );
+  assert.match(
+    source,
+    /Rice Ball/,
+    "SingerApp should include a rice-ball themed avatar",
   );
 });

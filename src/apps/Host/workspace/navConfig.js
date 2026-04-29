@@ -12,6 +12,7 @@ export const HOST_WORKSPACE_VIEWS = Object.freeze([
 export const HOST_WORKSPACE_SECTIONS = Object.freeze([
     { id: 'ops.room_setup', view: 'ops', label: 'Night Setup', legacyTab: 'general' },
     { id: 'ops.automation', view: 'ops', label: 'Automation', legacyTab: 'automations' },
+    { id: 'audience.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' },
     { id: 'queue.live_run', view: 'queue', label: 'Live Run', hostTab: 'stage' },
     { id: 'queue.catalog', view: 'queue', label: 'Catalog', hostTab: 'browse' },
     { id: 'show.timeline', view: 'show', label: 'Run Of Show', hostTab: 'run_of_show' },

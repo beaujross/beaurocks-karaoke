@@ -186,6 +186,7 @@ const getAssociatedBackingDurationSec = (song = {}) => {
     song?.backingDurationSec,
     song?.trackDurationSec,
     song?.durationSec,
+    song?.duration,
   ];
   for (const candidate of candidates) {
     const durationSec = normalizeDurationSec(candidate);
@@ -194,7 +195,7 @@ const getAssociatedBackingDurationSec = (song = {}) => {
   return 0;
 };
 
-const startQueueSongOnStage = async ({
+export const startQueueSongOnStage = async ({
   songId = '',
   songs = [],
   room = {},
@@ -2903,6 +2904,31 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             setDesktopQueueSurfaceTab('queue');
         }
     }, [desktopQueueSurfaceTab, hasRunOfShowQueueHud]);
+    useEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+        const focusQueueControls = () => {
+            setDesktopQueueSurfaceTab('queue');
+            queueSurface.activateCompactTab('queue');
+            window.requestAnimationFrame(() => {
+                const node = document.querySelector('[data-feature-id="queue-live-controls"]');
+                node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        };
+        const focusInbox = () => {
+            setDesktopQueueSurfaceTab('inbox');
+            queueSurface.activateCompactTab('inbox');
+            window.requestAnimationFrame(() => {
+                const node = document.querySelector('[data-feature-id="panel-inbox"]');
+                node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        };
+        window.addEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
+        window.addEventListener('beaurocks:focus-host-inbox', focusInbox);
+        return () => {
+            window.removeEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
+            window.removeEventListener('beaurocks:focus-host-inbox', focusInbox);
+        };
+    }, [queueSurface]);
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
     const getQueueWorkspaceTabButtonClass = (active = false) => (
         `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${

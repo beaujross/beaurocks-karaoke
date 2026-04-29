@@ -7,7 +7,7 @@ const useHostEntryBootstrap = ({
     legacyTabRedirects = {},
     normalizeGameParam,
     normalizeLaunchRoomCode,
-    openModerationInbox,
+    openHostInbox,
     openOnboardingWizard,
     parseLaunchBoolParam,
     sectionToSettingsTab = {},
@@ -62,9 +62,9 @@ const useHostEntryBootstrap = ({
                 setSettingsTab(mappedTab);
             }
         } else if (t === 'photos') {
-            setTab('lobby');
+            setTab('stage');
             setLobbyTab('users');
-            openModerationInbox();
+            openHostInbox?.();
         } else if (t === 'qa') {
             setTab('admin');
             setSettingsTab('qa');
@@ -148,7 +148,7 @@ const useHostEntryBootstrap = ({
         legacyTabRedirects,
         normalizeGameParam,
         normalizeLaunchRoomCode,
-        openModerationInbox,
+        openHostInbox,
         openOnboardingWizard,
         parseLaunchBoolParam,
         sectionToSettingsTab,
