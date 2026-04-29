@@ -536,6 +536,9 @@ const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     mediaSceneUrl: cleanText(overrides.mediaSceneUrl),
     mediaSceneType: cleanText(overrides.mediaSceneType).toLowerCase() === 'video' ? 'video' : 'image',
     mediaSceneFit: cleanText(overrides.mediaSceneFit).toLowerCase() === 'cover' ? 'cover' : 'contain',
+    mediaSceneSourceUploadId: cleanText(overrides.mediaSceneSourceUploadId),
+    mediaSceneStoragePath: cleanText(overrides.mediaSceneStoragePath),
+    mediaSceneFileName: cleanText(overrides.mediaSceneFileName),
     accentTheme: cleanText(overrides.accentTheme) || 'cyan',
     soundtrackSourceType: ALLOWED_TAKEOVER_SOUNDTRACK_SOURCES.has(cleanText(overrides.soundtrackSourceType).toLowerCase())
         ? cleanText(overrides.soundtrackSourceType).toLowerCase()

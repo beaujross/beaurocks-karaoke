@@ -3217,7 +3217,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         Queue Next Moment
                                     </button>
                                     <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
-                                        Add To Run Of Show
+                                        Use In Run Of Show
                                     </button>
                                     <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
                                         Delete
@@ -3262,7 +3262,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Moments</div>
-                    <div className="mt-1 text-xs text-zinc-400">Keep scene building out of the queue flow. Open the library when you want to upload, time, or slot slides.</div>
+                    <div className="mt-1 text-xs text-zinc-400">Room Uploads is the shared ingest path. Open the library when you want to tune timing, run a scene now, or slot slides into the conveyor.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">

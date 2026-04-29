@@ -24,6 +24,22 @@ test("HostApp clears run of show state back to straight queue mode", () => {
   assert.match(source, /runOfShowItemId:\s*null,/);
 });
 
+test("HostApp reset and media deletes reconcile run-of-show TV state", () => {
+  const source = readFileSync(hostAppPath, "utf8");
+
+  assert.match(source, /const clearRoomDataForCode = async \(targetRoomCode = ''\) => \{/);
+  assert.match(source, /const nextRunOfShowDirector = createDefaultRunOfShowDirector\(\);/);
+  assert.match(source, /programMode:\s*RUN_OF_SHOW_PROGRAM_MODES\.standard,/);
+  assert.match(source, /runOfShowEnabled:\s*false,/);
+  assert.match(source, /runOfShowDirector:\s*nextRunOfShowDirector,/);
+  assert.match(source, /announcement:\s*null,/);
+  assert.match(source, /tvPreviewOverlay:\s*null,/);
+  assert.match(source, /const reconcileDeletedMediaReferences = useCallback\(async \(asset = \{\}\) => \{/);
+  assert.match(source, /reconcileRunOfShowDirectorMediaDeletion\(getCurrentRunOfShowDirector\(\), assetIdentity\)/);
+  assert.match(source, /await reconcileDeletedMediaReferences\(mergeRoomMediaIdentities\(/);
+  assert.match(source, /await reconcileDeletedMediaReferences\(preset\);/);
+});
+
 test("Run of show queue and board surfaces expose clear-show controls", () => {
   const queueHudSource = readFileSync(runOfShowQueueHudPath, "utf8");
   const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
@@ -70,7 +86,7 @@ test("HostApp restores queue tools after stop and previews the audience app", ()
   assert.match(queueTabSource, /onPreviewItem=\{onPreviewRunOfShowItem\}/);
   assert.match(queueTabSource, /onMoveItem=\{onMoveRunOfShowItem\}/);
   assert.match(queueTabSource, /onSkipItem=\{onSkipRunOfShowItem\}/);
-  assert.match(queueTabSource, /runOfShowNeedsAttentionCount > 0 \? \(/);
+  assert.match(queueTabSource, /badge:\s*runOfShowNeedsAttentionCount,/);
   assert.match(queueTabSource, /setShowAddForm\(true\);/);
   assert.match(queueTabSource, /setShowQueueList\(true\);/);
   assert.match(hostSource, /onFocusRunOfShowItem=\{\(itemId\) => \{/);
@@ -388,18 +404,24 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   const hostSource = readFileSync(hostAppPath, "utf8");
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
-  assert.match(queueTabSource, /label="TV Moments"/);
-  assert.match(queueTabSource, /featureId="panel-tv-moments"/);
+  assert.match(queueTabSource, /data-feature-id="panel-tv-moments"/);
+  assert.match(queueTabSource, /TV Moments/);
   assert.match(queueTabSource, /Queue Next Moment/);
-  assert.match(queueTabSource, /Add To Run Of Show/);
+  assert.match(queueTabSource, /Use In Run Of Show/);
+  assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);
+  assert.match(hostSource, /const useScenePresetInRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
+  assert.match(hostSource, /const uploadMediaFileToRunOfShow = useCallback\(async \(file, options = \{\}\) => \{/);
+  assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join Run Of Show\./);
   assert.match(hostSource, /onQueueScenePreset:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
-  assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
+  assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*useScenePresetInRunOfShow/);
+  assert.match(hostSource, /runOfShowSelectedItemId/);
+  assert.match(hostSource, /onSelectionChange=\{setRunOfShowSelectedItemId\}/);
   assert.match(hostSource, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
   assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
   assert.match(
     queueTabSource,
-    /<QueueListPanel[\s\S]*\/>\s*<div className="rounded-2xl border border-white\/10 bg-black\/20 p-2">[\s\S]*label="TV Moments"/,
+    /<QueueListPanel[\s\S]*\/>\s*<div data-feature-id="panel-tv-moments">[\s\S]*TV Moments/,
     "TV Moments should render below the queue board instead of above it",
   );
 });

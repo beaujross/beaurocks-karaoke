@@ -45,6 +45,7 @@ const HostRoomLaunchPadBrowser = ({
     requestedLaunchRoomCodeCandidate,
     openExistingRoomWorkspace,
     joiningRoom,
+    eventFocusRoom,
     activeRoomBucket,
     roomBrowserBuckets,
     setRoomBrowserFilter,
@@ -216,6 +217,14 @@ const HostRoomLaunchPadBrowser = ({
     const selectedRoomSchedule = selectedRoom ? formatRoomSchedule(selectedRoom) : '';
     const manageModeActive = roomSetupMode === 'manage';
     const createModeActive = roomSetupMode === 'create';
+    const eventFocusCode = String(eventFocusRoom?.code || '').trim().toUpperCase();
+    const eventFocusPinned = pinnedRoomCodeSet?.has?.(eventFocusCode);
+    const eventFocusSelected = !!eventFocusCode && String(selectedRoom?.code || '').trim().toUpperCase() === eventFocusCode;
+    const eventFocusSchedule = eventFocusRoom
+        ? (formatRoomSchedule(eventFocusRoom) || formatRecentRoomTime(eventFocusRoom.updatedAtMs || eventFocusRoom.createdAtMs))
+        : '';
+    const eventFocusBusy = roomManagerBusyCode === eventFocusCode;
+    const eventFocusCanManage = !!eventFocusCode && !joiningRoom && !eventFocusBusy;
 
     return (
     <div className="relative z-10 w-full max-w-[1600px]">
@@ -263,6 +272,84 @@ const HostRoomLaunchPadBrowser = ({
                     </div>
                 </div>
             </div>
+
+            {eventFocusRoom ? (
+                <section className="mt-4 rounded-[1.5rem] border border-amber-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.16),transparent_34%),linear-gradient(145deg,rgba(35,23,11,0.88),rgba(16,19,34,0.94))] p-4 shadow-[0_18px_52px_rgba(0,0,0,0.28)]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-amber-100/72">Event Focus</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <div className="text-2xl font-black text-white">{eventFocusRoom.roomName || eventFocusCode}</div>
+                                <span className="rounded-full border border-amber-300/35 bg-amber-500/12 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                    AAHF
+                                </span>
+                                {eventFocusPinned ? (
+                                    <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
+                                        Pinned
+                                    </span>
+                                ) : null}
+                            </div>
+                            <div className="mt-1 text-sm text-amber-50/74">
+                                {eventFocusCode}
+                                {eventFocusSchedule ? ` | ${eventFocusSchedule}` : ''}
+                            </div>
+                            <div className="mt-2 max-w-4xl text-sm text-amber-50/80">
+                                Keep AAHF one click away while you prep the festival night, jump into the show plan, and clear test data before doors.
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {!eventFocusSelected ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleSelectRoom(eventFocusCode)}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                >
+                                    Select Room
+                                </button>
+                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'queue.live_run')}
+                                disabled={!eventFocusCanManage}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Open Host Panel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'show.timeline')}
+                                disabled={!eventFocusCanManage}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Show Plan
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'ops.room_setup')}
+                                disabled={!eventFocusCanManage}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Room Settings
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => togglePinnedRoom?.(eventFocusCode)}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${eventFocusPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                            >
+                                {eventFocusPinned ? 'Pinned' : 'Pin Room'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => runLandingRoomCleanup?.(eventFocusCode)}
+                                disabled={!eventFocusCanManage}
+                                className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-rose-100 ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                {eventFocusBusy && roomManagerBusyAction === 'cleanup' ? 'Resetting' : 'Reset Room'}
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            ) : null}
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
                 <aside className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3 xl:row-span-2">

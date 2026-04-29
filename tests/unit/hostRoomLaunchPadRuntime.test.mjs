@@ -111,6 +111,40 @@ test('HostRoomLaunchPad prioritizes pinned ready rooms in the browser and select
   );
 });
 
+test('HostRoomLaunchPad gives AAHF a dedicated event-focus strip with live and reset actions', () => {
+  const markup = renderLaunchPad({
+    recentHostRooms: [
+      {
+        code: 'FRIDAY1',
+        roomName: 'Friday Main Room',
+        updatedAtMs: 3000,
+        createdAtMs: 1000,
+        closedAtMs: 0,
+        archived: false,
+        publicRoom: false,
+      },
+      {
+        code: 'AAHF',
+        roomName: 'AAHF Kick-Off',
+        updatedAtMs: 2000,
+        createdAtMs: 1500,
+        closedAtMs: 0,
+        archived: false,
+        publicRoom: true,
+        roomStartsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+      },
+    ],
+  });
+
+  assert.match(markup, /Event Focus/);
+  assert.match(markup, /AAHF Kick-Off/);
+  assert.match(markup, /Keep AAHF one click away while you prep the festival night/);
+  assert.match(markup, />Open Host Panel</);
+  assert.match(markup, />Show Plan</);
+  assert.match(markup, />Room Settings</);
+  assert.match(markup, />Reset Room</);
+});
+
 test('HostRoomLaunchPad keeps create flow collapsed while manage workspace is active by default', () => {
   const markup = renderLaunchPad({
     recentHostRooms: [

@@ -210,6 +210,13 @@ import {
     getTrackDurationSecFromSearchResult
 } from './hostPlaybackAutomation';
 import {
+    buildRoomMediaIdentity,
+    hasRoomMediaIdentity,
+    mergeRoomMediaIdentities,
+    reconcileRunOfShowDirectorMediaDeletion,
+    roomMediaIdentityMatches
+} from './runOfShowMediaCleanup';
+import {
     getRoomFlowSnapshot
 } from './roomFlowOrchestrator';
 import {
@@ -712,6 +719,52 @@ const normalizeDurationSec = (value = 0) => {
     if (!Number.isFinite(numeric)) return 0;
     return Math.max(0, Math.round(numeric));
 };
+
+const getRoomMediaType = (item = {}) => {
+    const explicit = String(item?.mediaType || '').trim().toLowerCase();
+    if (explicit === 'audio' || explicit === 'video' || explicit === 'image') return explicit;
+    const mediaUrl = String(item?.mediaUrl || item?.url || '').trim().toLowerCase();
+    if (/\.(png|jpe?g|gif|webp|avif|svg)(\?|$)/i.test(mediaUrl)) return 'image';
+    if (/\.(mp3|m4a|wav|ogg|aac|flac)(\?|$)/i.test(mediaUrl)) return 'audio';
+    return 'video';
+};
+
+const getRoomMediaUrl = (item = {}) => String(item?.mediaUrl || item?.url || '').trim();
+
+const getRoomMediaTitle = (item = {}) => {
+    const mediaType = getRoomMediaType(item);
+    const fallbackTitle = mediaType === 'image'
+        ? 'Image Scene'
+        : mediaType === 'audio'
+            ? 'Audio Upload'
+            : 'Video Scene';
+    return String(item?.title || item?.trackName || item?.fileName || fallbackTitle).trim() || fallbackTitle;
+};
+
+const canQueueRoomMedia = (item = {}) => {
+    const mediaType = getRoomMediaType(item);
+    return mediaType === 'audio' || mediaType === 'video';
+};
+
+const canUseRoomMediaAsScene = (item = {}) => {
+    const mediaType = getRoomMediaType(item);
+    const mediaUrl = getRoomMediaUrl(item);
+    if (!mediaUrl || mediaUrl.startsWith('blob:')) return false;
+    return mediaType === 'image' || mediaType === 'video';
+};
+
+const RUN_OF_SHOW_MEDIA_TARGET_TYPES = new Set([
+    'announcement',
+    'intro',
+    'closing',
+    'intermission',
+    'buffer',
+    'winner_declaration'
+]);
+
+const isRunOfShowMediaTargetItem = (item = {}) => (
+    RUN_OF_SHOW_MEDIA_TARGET_TYPES.has(String(item?.type || '').trim().toLowerCase())
+);
 
 const getPerformanceSessionSourceType = ({
     usesAppleBacking = false,
@@ -4318,7 +4371,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? 'Saved on this host device for offline backup.'
                     : 'Uploaded room media backup.'
             }))
-            .filter((item) => item.url)
+            .filter((item) => item.url && item.mediaType !== 'image')
     ), [isAudioUrl, localLibrary]);
     const roomLibraryItems = useMemo(() => {
         const merged = mergeUniqueQueueSearchResults(
@@ -4641,6 +4694,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [runOfShowEnabled, setRunOfShowEnabled] = useState(false);
     const [runOfShowDirectorState, setRunOfShowDirectorState] = useState(() => createDefaultRunOfShowDirector());
     const [runOfShowFocusRequest, setRunOfShowFocusRequest] = useState(null);
+    const [runOfShowSelectedItemId, setRunOfShowSelectedItemId] = useState('');
     const [runOfShowPolicy, setRunOfShowPolicy] = useState(() => normalizeRunOfShowPolicy({}));
     const [runOfShowRoles, setRunOfShowRoles] = useState(() => normalizeRunOfShowRoles({}));
     const [runOfShowTemplateMeta, setRunOfShowTemplateMeta] = useState(() => normalizeRunOfShowTemplateMeta({}));
@@ -5461,7 +5515,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? {
                         mediaUrl: item.presentationPlan.mediaSceneUrl,
                         mediaType: String(item?.presentationPlan?.mediaSceneType || '').trim().toLowerCase() === 'video' ? 'video' : 'image',
-                        fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain'
+                        fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain',
+                        sourceUploadId: String(item?.presentationPlan?.mediaSceneSourceUploadId || '').trim(),
+                        storagePath: String(item?.presentationPlan?.mediaSceneStoragePath || '').trim(),
+                        fileName: String(item?.presentationPlan?.mediaSceneFileName || '').trim()
                     }
                     : null
             };
@@ -5789,7 +5846,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? {
                 mediaUrl: item.presentationPlan.mediaSceneUrl,
                 mediaType: String(item?.presentationPlan?.mediaSceneType || '').trim().toLowerCase() === 'video' ? 'video' : 'image',
-                fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain'
+                fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain',
+                sourceUploadId: String(item?.presentationPlan?.mediaSceneSourceUploadId || '').trim(),
+                storagePath: String(item?.presentationPlan?.mediaSceneStoragePath || '').trim(),
+                fileName: String(item?.presentationPlan?.mediaSceneFileName || '').trim()
             }
             : null,
         durationSec: Math.max(6, Math.min(20, Number(item?.plannedDurationSec || 10) || 10)),
@@ -6164,7 +6224,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 accentTheme: 'cyan',
                 mediaSceneUrl: mediaUrl,
                 mediaSceneType: mediaType,
-                mediaSceneFit: 'contain'
+                mediaSceneFit: 'contain',
+                mediaSceneSourceUploadId: String(preset?.sourceUploadId || preset?.id || '').trim(),
+                mediaSceneStoragePath: String(preset?.storagePath || '').trim(),
+                mediaSceneFileName: String(preset?.fileName || '').trim()
             },
             roomMomentPlan: {
                 activeScreen: 'stage',
@@ -6174,10 +6237,46 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         };
     }, []);
-    const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
+    const buildScenePresetRunOfShowItemPatch = useCallback((item = {}, preset = {}) => {
         const mediaUrl = String(preset?.mediaUrl || '').trim();
-        if (!mediaUrl) {
-            toast('Scene preset is missing media.');
+        const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+        const fallbackTitle = String(preset?.title || '').trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene');
+        const currentPresentationPlan = item?.presentationPlan && typeof item.presentationPlan === 'object'
+            ? item.presentationPlan
+            : {};
+        const currentRoomMomentPlan = item?.roomMomentPlan && typeof item.roomMomentPlan === 'object'
+            ? item.roomMomentPlan
+            : {};
+        return {
+            title: String(item?.title || '').trim() || fallbackTitle,
+            plannedDurationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || item?.plannedDurationSec || 20) || 20)),
+            presentationPlan: {
+                ...currentPresentationPlan,
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'media_scene',
+                headline: String(currentPresentationPlan?.headline || item?.title || fallbackTitle).trim() || fallbackTitle,
+                subhead: String(currentPresentationPlan?.subhead || '').trim(),
+                accentTheme: String(currentPresentationPlan?.accentTheme || 'cyan').trim() || 'cyan',
+                mediaSceneUrl: mediaUrl,
+                mediaSceneType: mediaType,
+                mediaSceneFit: 'contain',
+                mediaSceneSourceUploadId: String(preset?.sourceUploadId || preset?.id || '').trim(),
+                mediaSceneStoragePath: String(preset?.storagePath || '').trim(),
+                mediaSceneFileName: String(preset?.fileName || '').trim()
+            },
+            roomMomentPlan: {
+                activeScreen: 'stage',
+                activeMode: '',
+                showHowToPlay: false,
+                lightMode: 'off',
+                ...currentRoomMomentPlan,
+            }
+        };
+    }, []);
+    const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
+        const mediaUrl = getRoomMediaUrl(preset);
+        if (!mediaUrl || mediaUrl.startsWith('blob:')) {
+            toast('Scene media needs an uploaded cloud URL before it can join Run Of Show.');
             return null;
         }
         const director = getCurrentRunOfShowDirector();
@@ -6208,6 +6307,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : 'Scene queued as the next conveyor moment.');
         return persistedDirector;
     }, [buildScenePresetRunOfShowOverrides, getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
+    const uploadMediaFileToTvLibrary = useCallback(async (file, options = {}) => {
+        const uploaded = await uploadRoomMediaAsset(file, {
+            title: String(options?.title || '').trim(),
+            successToast: false
+        });
+        if (!uploaded) return null;
+        return saveMediaAssetAsScenePreset(uploaded, {
+            title: String(options?.title || '').trim() || getRoomMediaTitle(uploaded),
+            durationSec: Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20))
+        });
+    }, [saveMediaAssetAsScenePreset, uploadRoomMediaAsset]);
+    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
+        const uploaded = await uploadRoomMediaAsset(file, {
+            title: String(options?.title || '').trim(),
+            successToast: false
+        });
+        if (!uploaded) return null;
+        await useScenePresetInRunOfShow(uploaded);
+        return uploaded;
+    }, [uploadRoomMediaAsset, useScenePresetInRunOfShow]);
     const duplicateRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
         const index = director.items.findIndex((item) => item.id === itemId);
@@ -6297,6 +6416,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.tvPreviewOverlay?.itemId,
         syncRunOfShowTakeoverSoundtrack,
         updateRoom
+    ]);
+    const useScenePresetInRunOfShow = useCallback(async (preset = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const items = Array.isArray(director?.items) ? director.items : [];
+        const selectedItem = tab === 'run_of_show'
+            ? items.find((item) => item.id === String(runOfShowSelectedItemId || '').trim())
+            : null;
+        if (selectedItem && isRunOfShowMediaTargetItem(selectedItem)) {
+            const persistedDirector = await patchRunOfShowItem(selectedItem.id, buildScenePresetRunOfShowItemPatch(selectedItem, preset));
+            toast(`Media attached to ${selectedItem.title || 'that scene'}.`);
+            return persistedDirector;
+        }
+        const activeTarget = [runOfShowLiveItem, runOfShowStagedItem, runOfShowNextItem]
+            .find((item) => isRunOfShowMediaTargetItem(item));
+        if (activeTarget) {
+            const persistedDirector = await patchRunOfShowItem(activeTarget.id, buildScenePresetRunOfShowItemPatch(activeTarget, preset));
+            toast(`Media attached to ${activeTarget.title || 'the active scene slot'}.`);
+            return persistedDirector;
+        }
+        return queueScenePresetAsMoment(preset, { placement: 'append' });
+    }, [
+        buildScenePresetRunOfShowItemPatch,
+        getCurrentRunOfShowDirector,
+        patchRunOfShowItem,
+        queueScenePresetAsMoment,
+        runOfShowLiveItem,
+        runOfShowNextItem,
+        runOfShowSelectedItemId,
+        runOfShowStagedItem,
+        tab,
+        toast
     ]);
     const runOfShowAssignableSlots = useMemo(
         () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
@@ -9312,9 +9462,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
         await purgeRoomArtifactsForCode(normalizedCode);
+        const nextRunOfShowDirector = createDefaultRunOfShowDirector();
         await updateRoomByCode(normalizedCode, {
             activeMode: 'karaoke',
             activeScreen: 'stage',
+            programMode: RUN_OF_SHOW_PROGRAM_MODES.standard,
+            runOfShowEnabled: false,
+            runOfShowDirector: nextRunOfShowDirector,
             spotlightUser: null,
             bonusDrop: null,
             guitarWinner: null,
@@ -9326,6 +9480,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             highlightedTile: null,
             applausePeak: null,
             currentApplauseLevel: 0,
+            announcement: null,
+            tvPreviewOverlay: null,
+            appleMusicPlayback: null,
             howToPlay: { active: false, id: nowMs() },
             gameRulesId: nowMs(),
             archivedAt: null,
@@ -10775,14 +10932,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const deleteRoomUploads = async (targetRoomCode = roomCode) => {
         const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!nextRoomCode) return 0;
-        const [uploadsSnap, reactionsSnap, selfieSnap, crowdSelfieSnap] = await Promise.all([
+        const [uploadsSnap, scenePresetSnap, reactionsSnap, selfieSnap, crowdSelfieSnap] = await Promise.all([
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', nextRoomCode))),
+            getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), where('roomCode', '==', nextRoomCode))),
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', nextRoomCode))),
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_submissions'), where('roomCode', '==', nextRoomCode))),
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'), where('roomCode', '==', nextRoomCode)))
         ]);
         const storagePaths = new Set();
         uploadsSnap.docs.forEach((docSnap) => {
+            const data = docSnap.data() || {};
+            if (typeof data.storagePath === 'string' && data.storagePath) {
+                storagePaths.add(data.storagePath);
+            }
+        });
+        scenePresetSnap.docs.forEach((docSnap) => {
             const data = docSnap.data() || {};
             if (typeof data.storagePath === 'string' && data.storagePath) {
                 storagePaths.add(data.storagePath);
@@ -10815,6 +10979,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             deleted += 1;
         }
         for (const docSnap of uploadsSnap.docs) {
+            try { await deleteDoc(docSnap.ref); } catch { /* ignore delete failures */ }
+        }
+        for (const docSnap of scenePresetSnap.docs) {
             try { await deleteDoc(docSnap.ref); } catch { /* ignore delete failures */ }
         }
         return deleted;
@@ -11168,6 +11335,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const savePendingFileAsOfflineBackup = async (file, addToQueue = false) => {
         if (!file) return null;
+        if (String(file?.type || '').trim().toLowerCase().startsWith('image/')) {
+            toast('Offline backups are only for local audio or video playback.');
+            return null;
+        }
         const maxBytes = 150 * 1024 * 1024;
         if (file.size && file.size > maxBytes) {
             toast('File too large. Max 150MB.');
@@ -11213,7 +11384,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadProgress(0);
         }
     };
-    const handleLocalUpload = async (file, addToQueue = false) => {
+    const uploadRoomMediaAsset = useCallback(async (file, options = {}) => {
         if (!file) return null;
         if (!roomCode) {
             toast('Create a room first');
@@ -11221,6 +11392,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         if (!uid) {
             toast('Host auth not ready yet');
+            return null;
+        }
+        const contentType = String(file.type || '').trim().toLowerCase();
+        const mediaType = contentType.startsWith('audio/')
+            ? 'audio'
+            : contentType.startsWith('image/')
+                ? 'image'
+                : 'video';
+        if (mediaType === 'image' && file.size && file.size > 8 * 1024 * 1024) {
+            toast('Scene images must be 8 MB or smaller.');
             return null;
         }
         if (file.size && file.size > 150 * 1024 * 1024) {
@@ -11232,39 +11413,63 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const proceed = window.confirm('Room storage is over 2GB. Upload anyway?');
             if (!proceed) return null;
         }
-        const maxBytes = 150 * 1024 * 1024;
-        if (file.size && file.size > maxBytes) {
-            toast('File too large. Max 150MB.');
-            return null;
-        }
         try {
             setUploadingLocal(true);
             setUploadProgress(0);
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-            const storagePath = `room_uploads/${roomCode}/${nowMs()}_${safeName}`;
-            const fileRef = storageRef(storage, storagePath);
-            await prepareHostStorageWrite();
-            const uploadTask = uploadBytesResumable(fileRef, file, file.type ? { contentType: file.type } : undefined);
+            const title = String(options?.title || '').trim() || file.name.replace(/\.[^/.]+$/, '');
+            const directUpload = async () => {
+                const storagePath = `room_uploads/${roomCode}/${nowMs()}_${safeName}`;
+                const fileRef = storageRef(storage, storagePath);
+                await prepareHostStorageWrite();
+                const uploadTask = uploadBytesResumable(fileRef, file, contentType ? { contentType } : undefined);
 
-            await new Promise((resolve, reject) => {
-                uploadTask.on('state_changed',
-                    (snap) => {
-                        const progress = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
-                        setUploadProgress(progress);
-                    },
-                    (err) => reject(err),
-                    () => resolve(true)
-                );
-            });
+                await new Promise((resolve, reject) => {
+                    uploadTask.on('state_changed',
+                        (snap) => {
+                            const progress = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
+                            setUploadProgress(progress);
+                            options?.onProgress?.(progress);
+                        },
+                        (err) => reject(err),
+                        () => resolve(true)
+                    );
+                });
 
-            const url = await getDownloadURL(fileRef);
-            const title = file.name.replace(/\.[^/.]+$/, '');
-            const mediaType = file.type && file.type.startsWith('audio/') ? 'audio' : 'video';
+                const mediaUrl = await getDownloadURL(fileRef);
+                return { storagePath, mediaUrl };
+            };
+            const callableUpload = async () => {
+                setUploadProgress(15);
+                options?.onProgress?.(15);
+                const uploaded = await uploadHostSceneMedia({
+                    roomCode,
+                    fileName: file.name || safeName,
+                    mimeType: contentType || 'image/jpeg',
+                    mediaBase64: await fileToDataUrl(file)
+                });
+                const storagePath = String(uploaded?.storagePath || '').trim();
+                const mediaUrl = String(uploaded?.url || '').trim();
+                if (!storagePath || !mediaUrl) {
+                    throw new Error('Scene media upload returned an incomplete payload.');
+                }
+                setUploadProgress(100);
+                options?.onProgress?.(100);
+                return { storagePath, mediaUrl };
+            };
+            let storagePath = '';
+            let mediaUrl = '';
+            if (mediaType === 'image') {
+                ({ storagePath, mediaUrl } = await callableUpload());
+            } else {
+                ({ storagePath, mediaUrl } = await directUpload());
+            }
             const payload = {
                 roomCode,
                 title,
-                artist: 'Local Upload',
-                url,
+                artist: mediaType === 'audio' ? 'Local Upload' : (mediaType === 'image' ? 'Scene Upload' : 'Local Upload'),
+                url: mediaUrl,
+                mediaUrl,
                 fileName: file.name,
                 mediaType,
                 storagePath,
@@ -11275,17 +11480,131 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), payload);
             const newItem = { id: docRef.id, _cloud: true, ...payload };
             setLocalLibrary(prev => [...prev, newItem]);
-            toast(mediaType === 'audio' ? 'Uploaded audio to room library' : 'Uploaded video to room library');
-            if (addToQueue) await addLocalItemToQueue(newItem);
+            if (options?.successToast !== false) {
+                toast(
+                    mediaType === 'audio'
+                        ? 'Uploaded audio to room library'
+                        : mediaType === 'image'
+                            ? 'Uploaded scene media to room library'
+                            : 'Uploaded video to room library'
+                );
+            }
             return newItem;
         } catch (e) {
             hostLogger.error(e);
-            toast('Upload failed. Check network or file size.');
+            toast(
+                contentType.startsWith('image/')
+                    ? 'Upload failed. Check image size or network.'
+                    : 'Upload failed. Check network or file size.'
+            );
             return null;
         } finally {
             setUploadingLocal(false);
             setUploadProgress(0);
         }
+    }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, uid]);
+    const saveMediaAssetAsScenePreset = useCallback(async (item = {}, options = {}) => {
+        const mediaUrl = getRoomMediaUrl(item);
+        if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
+            toast('This upload is not usable as a TV scene yet.');
+            return null;
+        }
+        const mediaType = getRoomMediaType(item);
+        const title = String(options?.title || getRoomMediaTitle(item)).trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene');
+        const durationSec = Math.max(5, Math.min(600, Number(options?.durationSec || item?.durationSec || 20) || 20));
+        const sourceUploadId = String(item?.id || '').trim();
+        const existingPreset = (Array.isArray(scenePresets) ? scenePresets : []).find((preset) => (
+            (sourceUploadId && String(preset?.sourceUploadId || '').trim() === sourceUploadId)
+            || (String(item?.storagePath || '').trim() && String(preset?.storagePath || '').trim() === String(item?.storagePath || '').trim())
+            || String(preset?.mediaUrl || '').trim() === mediaUrl
+        ));
+        if (existingPreset) {
+            toast('Already saved to the TV library.');
+            return existingPreset;
+        }
+        const createdAtMs = nowMs();
+        const payload = {
+            roomCode,
+            title,
+            mediaUrl,
+            mediaType,
+            durationSec,
+            storagePath: String(item?.storagePath || '').trim(),
+            fileName: String(item?.fileName || '').trim(),
+            size: Number(item?.size || 0) || 0,
+            sourceUploadId,
+            createdAt: serverTimestamp(),
+            createdAtMs,
+            createdBy: hostName || room?.hostName || 'Host'
+        };
+        try {
+            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+            toast('Saved to TV library.');
+            return { id: docRef.id, ...payload };
+        } catch (error) {
+            hostLogger.error('Could not save upload to TV library', error);
+            toast('Could not save that upload to the TV library.');
+            return null;
+        }
+    }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast]);
+    const reconcileDeletedMediaReferences = useCallback(async (asset = {}) => {
+        const assetIdentity = buildRoomMediaIdentity(asset);
+        if (!hasRoomMediaIdentity(assetIdentity)) return false;
+        const {
+            changed,
+            affectedItemIds,
+            nextDirector
+        } = reconcileRunOfShowDirectorMediaDeletion(getCurrentRunOfShowDirector(), assetIdentity);
+        const roomUpdates = {};
+        const activeAnnouncementItemId = String(room?.announcement?.runOfShowItemId || '').trim();
+        const previewItemId = String(room?.tvPreviewOverlay?.itemId || '').trim();
+
+        if (changed && activeAnnouncementItemId && affectedItemIds.includes(activeAnnouncementItemId)) {
+            const nextItem = (Array.isArray(nextDirector?.items) ? nextDirector.items : []).find((entry) => entry.id === activeAnnouncementItemId) || null;
+            const startedAtMs = Math.max(
+                0,
+                Number(room?.announcement?.startedAtMs || nextItem?.liveStartedAtMs || nowMs())
+            );
+            roomUpdates.announcement = nextItem?.presentationPlan?.publicTvTakeoverEnabled
+                ? (buildRunOfShowStartRoomUpdates(nextItem, startedAtMs)?.announcement || null)
+                : null;
+        } else if (roomMediaIdentityMatches(assetIdentity, room?.announcement?.mediaScene || room?.announcement || {})) {
+            roomUpdates.announcement = null;
+        }
+
+        if (changed && previewItemId && affectedItemIds.includes(previewItemId)) {
+            const nextItem = (Array.isArray(nextDirector?.items) ? nextDirector.items : []).find((entry) => entry.id === previewItemId) || null;
+            roomUpdates.tvPreviewOverlay = nextItem ? buildRunOfShowPreviewPayload(nextItem) : null;
+        } else if (roomMediaIdentityMatches(assetIdentity, room?.tvPreviewOverlay?.mediaScene || room?.tvPreviewOverlay || {})) {
+            roomUpdates.tvPreviewOverlay = null;
+        }
+
+        if (changed) {
+            await persistRunOfShowDirector(
+                nextDirector,
+                Object.keys(roomUpdates).length ? { roomUpdates } : {}
+            );
+            return true;
+        }
+        if (Object.keys(roomUpdates).length) {
+            await updateRoom(roomUpdates);
+            return true;
+        }
+        return false;
+    }, [
+        buildRunOfShowPreviewPayload,
+        buildRunOfShowStartRoomUpdates,
+        getCurrentRunOfShowDirector,
+        persistRunOfShowDirector,
+        room?.announcement,
+        room?.tvPreviewOverlay,
+        updateRoom
+    ]);
+    const handleLocalUpload = async (file, addToQueue = false) => {
+        if (!file) return null;
+        const newItem = await uploadRoomMediaAsset(file);
+        if (newItem && addToQueue) await addLocalItemToQueue(newItem);
+        return newItem;
     };
     const appendQaHelperQueueSong = useCallback((payload = {}, options = {}) => {
         const safePayload = {
@@ -11328,6 +11647,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [hostName, room?.hostName, roomCode]);
     const addLocalItemToQueue = async (item, singerOverride) => {
         if (!item?.title || !item?.url) return;
+        if (!canQueueRoomMedia(item)) {
+            toast('Images can be used for TV scenes or Run Of Show, not the karaoke queue.');
+            return;
+        }
         try {
             const singerIdentity = resolveQueueSingerIdentity(singerOverride);
             const singerName = singerIdentity.singerName || room?.hostName || hostName || 'Host';
@@ -11340,8 +11663,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     mediaUrl: item.url,
                     albumArtUrl: item.artworkUrl100 || '',
                     trackSource: 'custom',
-                    backingAudioOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
-                    audioOnly: item.mediaType === 'audio' || isAudioUrl(item.url)
+                    backingAudioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
+                    audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url)
                 }, { source: 'local_library' });
                 toast('Added local upload to queue');
                 return;
@@ -11359,8 +11682,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 source: 'custom',
                 mediaUrl: item.url,
                 duration: null,
-                audioOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
-                backingOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
+                audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
+                backingOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
                 addedBy: hostName || 'Host'
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs'), {
@@ -11379,8 +11702,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 timestamp: serverTimestamp(),
                 priorityScore: nowMs(),
                 emoji: EMOJI.mic,
-                backingAudioOnly: item.mediaType === 'audio' || isAudioUrl(item.url),
-                audioOnly: item.mediaType === 'audio' || isAudioUrl(item.url)
+                backingAudioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url),
+                audioOnly: getRoomMediaType(item) === 'audio' || isAudioUrl(item.url)
             });
             toast('Added local upload to queue');
         } catch (e) {
@@ -11393,6 +11716,19 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const confirmed = window.confirm(`Delete "${item.title}" from the room library?`);
         if (!confirmed) return;
         try {
+            const linkedScenePresets = (Array.isArray(scenePresets) ? scenePresets : []).filter((preset) => (
+                String(preset?.sourceUploadId || '').trim() === String(item.id || '').trim()
+                || (String(item?.storagePath || '').trim() && String(preset?.storagePath || '').trim() === String(item.storagePath || '').trim())
+            ));
+            await reconcileDeletedMediaReferences(mergeRoomMediaIdentities(
+                buildRoomMediaIdentity(item),
+                ...linkedScenePresets.map((preset) => buildRoomMediaIdentity(preset))
+            ));
+            for (const preset of linkedScenePresets) {
+                if (preset?.id) {
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id)).catch(() => {});
+                }
+            }
             await deleteObject(storageRef(storage, item.storagePath));
             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads', item.id));
             toast('Removed upload');
@@ -11401,109 +11737,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Failed to delete upload');
         }
     };
-    const createScenePresetFromFile = async (file, options = {}) => {
-        if (!file || !roomCode) return null;
-        const contentType = String(file.type || '').trim();
-        const mediaType = contentType.startsWith('video/') ? 'video' : contentType.startsWith('image/') ? 'image' : '';
-        if (!mediaType) {
-            toast('Scene presets must be an image or video file.');
-            return null;
-        }
-        if (mediaType === 'image' && file.size && file.size > 8 * 1024 * 1024) {
-            toast('Scene images must be 8 MB or smaller.');
-            return null;
-        }
-        if (file.size && file.size > 150 * 1024 * 1024) {
-            toast('Scene file too large. Keep files under 150MB.');
-            return null;
-        }
-        setScenePresetUploading(true);
-        setScenePresetUploadProgress(0);
-        try {
-            const safeName = String(file.name || 'scene-media').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-90);
-            const directUpload = async () => {
-                const storagePath = `room_scene_media/${roomCode}/${nowMs()}_${safeName}`;
-                const fileRef = storageRef(storage, storagePath);
-                await prepareHostStorageWrite();
-                const uploadTask = uploadBytesResumable(fileRef, file, contentType ? { contentType } : undefined);
-                await new Promise((resolve, reject) => {
-                    uploadTask.on('state_changed',
-                        (snap) => {
-                            const progress = snap.totalBytes ? (snap.bytesTransferred / snap.totalBytes) * 100 : 0;
-                            setScenePresetUploadProgress(progress);
-                        },
-                        (err) => reject(err),
-                        () => resolve(true)
-                    );
-                });
-                const mediaUrl = await getDownloadURL(fileRef);
-                return { storagePath, mediaUrl };
-            };
-            const callableUpload = async () => {
-                setScenePresetUploadProgress(15);
-                const uploaded = await uploadHostSceneMedia({
-                    roomCode,
-                    fileName: file.name || safeName,
-                    mimeType: contentType || 'image/jpeg',
-                    mediaBase64: await fileToDataUrl(file)
-                });
-                const storagePath = String(uploaded?.storagePath || '').trim();
-                const mediaUrl = String(uploaded?.url || '').trim();
-                if (!storagePath || !mediaUrl) {
-                    throw new Error('Scene media upload returned an incomplete payload.');
-                }
-                setScenePresetUploadProgress(100);
-                return { storagePath, mediaUrl };
-            };
-            let storagePath = '';
-            let mediaUrl = '';
-            if (mediaType === 'image') {
-                ({ storagePath, mediaUrl } = await callableUpload());
-            } else {
-                ({ storagePath, mediaUrl } = await directUpload());
-            }
-            const rawTitle = String(options?.title || '').trim();
-            const fallbackTitle = safeName.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
-            const durationSec = Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20));
-            const createdAtMs = nowMs();
-            const payload = {
-                roomCode,
-                title: rawTitle || fallbackTitle || (mediaType === 'video' ? 'Video Scene' : 'Image Scene'),
-                mediaUrl,
-                mediaType,
-                durationSec,
-                storagePath,
-                fileName: file.name || safeName,
-                size: file.size || 0,
-                createdAt: serverTimestamp(),
-                createdAtMs,
-                createdBy: hostName || room?.hostName || 'Host'
-            };
-            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
-            toast('Scene preset saved.');
-            return { id: docRef.id, ...payload };
-        } catch (error) {
-            hostLogger.error('Scene preset upload failed', error);
-            toast(error?.code === 'storage/unauthorized'
-                ? 'Could not upload scene media. Host storage access is not allowed for this room.'
-                : mediaType === 'image'
-                    ? 'Could not upload scene image.'
-                    : 'Could not upload scene media.'
-            );
-            return null;
-        } finally {
-            setScenePresetUploading(false);
-            setScenePresetUploadProgress(0);
-        }
-    };
-    const launchScenePreset = async (preset = {}) => {
-        const mediaUrl = String(preset?.mediaUrl || '').trim();
-        if (!mediaUrl) {
-            toast('Scene preset is missing media.');
+    const launchMediaSceneAsset = useCallback(async (item = {}, options = {}) => {
+        const mediaUrl = getRoomMediaUrl(item);
+        if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
+            toast('That upload is not ready for a TV scene.');
             return;
         }
-        const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
-        const durationSec = Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20));
+        const mediaType = getRoomMediaType(item);
+        const durationSec = Math.max(5, Math.min(600, Number(options?.durationSec || item?.durationSec || 20) || 20));
         const startedAtMs = nowMs();
         try {
             await updateRoom({
@@ -11512,8 +11753,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     active: true,
                     id: `media_scene_${startedAtMs}`,
                     type: 'media_scene',
-                    title: String(preset?.title || '').trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene'),
-                    headline: String(preset?.title || '').trim() || '',
+                    title: getRoomMediaTitle(item),
+                    headline: getRoomMediaTitle(item),
                     subhead: '',
                     takeoverScene: 'media_scene',
                     accentTheme: 'cyan',
@@ -11522,7 +11763,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     mediaScene: {
                         mediaUrl,
                         mediaType,
-                        fit: 'contain'
+                        fit: 'contain',
+                        sourceUploadId: String(item?.sourceUploadId || item?.id || '').trim(),
+                        storagePath: String(item?.storagePath || '').trim(),
+                        fileName: String(item?.fileName || '').trim()
                     }
                 }
             });
@@ -11531,6 +11775,51 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error('Could not launch scene preset', error);
             toast('Could not send scene to Public TV.');
         }
+    }, [hostLogger, toast, updateRoom]);
+    const createScenePresetFromFile = async (file, options = {}) => {
+        if (!file || !roomCode) return null;
+        const mediaType = String(file.type || '').trim().toLowerCase().startsWith('video/')
+            ? 'video'
+            : String(file.type || '').trim().toLowerCase().startsWith('image/')
+                ? 'image'
+                : '';
+        if (!mediaType) {
+            toast('Scene presets must be an image or video file.');
+            return null;
+        }
+        setScenePresetUploading(true);
+        setScenePresetUploadProgress(0);
+        const uploadedAsset = await uploadRoomMediaAsset(file, {
+            title: String(options?.title || '').trim(),
+            successToast: false,
+            onProgress: (progress) => setScenePresetUploadProgress(progress)
+        });
+        if (!uploadedAsset) {
+            setScenePresetUploading(false);
+            setScenePresetUploadProgress(0);
+            return null;
+        }
+        try {
+            const saved = await saveMediaAssetAsScenePreset(uploadedAsset, {
+                title: String(options?.title || '').trim() || getRoomMediaTitle(uploadedAsset),
+                durationSec: Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20))
+            });
+            return saved;
+        } catch (error) {
+            hostLogger.error('Scene preset upload failed', error);
+            toast(mediaType === 'image' ? 'Could not upload scene image.' : 'Could not upload scene media.');
+            return null;
+        } finally {
+            setScenePresetUploading(false);
+            setScenePresetUploadProgress(0);
+        }
+    };
+    const launchScenePreset = async (preset = {}) => {
+        if (!String(preset?.mediaUrl || '').trim()) {
+            toast('Scene preset is missing media.');
+            return;
+        }
+        await launchMediaSceneAsset(preset, { durationSec: preset?.durationSec || 20 });
     };
     const clearScenePreset = async () => {
         try {
@@ -11546,7 +11835,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const confirmed = window.confirm(`Delete scene preset "${preset.title || 'Media Scene'}"?`);
         if (!confirmed) return;
         try {
-            if (preset.storagePath) {
+            await reconcileDeletedMediaReferences(preset);
+            if (preset.storagePath && !String(preset?.sourceUploadId || '').trim()) {
                 await deleteObject(storageRef(storage, preset.storagePath)).catch(() => {});
             }
             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id));
@@ -15835,7 +16125,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onUpdateScenePreset: updateScenePreset,
         onLaunchScenePreset: launchScenePreset,
         onQueueScenePreset: (preset) => queueScenePresetAsMoment(preset, { placement: 'next', activateShow: true }),
-        onAddScenePresetToRunOfShow: (preset) => queueScenePresetAsMoment(preset, { placement: 'append' }),
+        onAddScenePresetToRunOfShow: useScenePresetInRunOfShow,
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
         onSceneLibraryModalChange: setSceneLibraryModalOpen,
@@ -16256,6 +16546,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     queueSongs={runOfShowQueueCandidates}
                                     previewActiveId={String(room?.tvPreviewOverlay?.active ? room?.tvPreviewOverlay?.itemId || '' : '')}
                                     focusRequest={runOfShowFocusRequest}
+                                    onSelectionChange={setRunOfShowSelectedItemId}
                                     operatorRole={runOfShowOperatorRole}
                                     operatorCapabilities={runOfShowOperatorCapabilities}
                                     operatingHint={runOfShowOperatingHint}
@@ -19490,15 +19781,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             <div className="flex flex-wrap items-center gap-2">
                                 <input
                                     type="file"
-                                    accept="video/*,audio/*"
+                                    accept="video/*,audio/*,image/*"
                                     onChange={e => setPendingLocalFile(e.target.files?.[0] || null)}
                                     className="host-file-input text-xs text-cyan-100/80"
                                     disabled={uploadingLocal}
-                                    title="Upload a local audio or video file"
+                                    title="Upload a local audio, video, or image file"
                                 />
                                 <div className="host-form-helper ml-0 sm:ml-auto">Cloud uploads are room-wide. Offline backups stay on this host device.</div>
                             </div>
-                            <div className="host-form-helper">Audio/video only. Max 150MB. Room storage target: 2GB.</div>
+                            <div className="host-form-helper">Audio/video/image. Max 150MB. Scene images stay capped at 8MB. Room storage target: 2GB.</div>
                             <div className="flex items-center justify-between text-sm text-cyan-100/60">
                                 <span>Room storage used</span>
                                 <span className="text-cyan-100/85">{formatBytes(roomUploadBytes)} (~${estimateStorageMonthly(roomUploadBytes).toFixed(2)}/mo)</span>
@@ -19506,16 +19797,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {pendingLocalFile && (
                                 <div className="flex flex-wrap items-center gap-2 text-sm text-cyan-100/75">
                                     <span className="flex-1 truncate">{pendingLocalFile.name}</span>
-                                    <button
-                                        onClick={async () => {
-                                            await handleLocalUpload(pendingLocalFile, true);
-                                            setPendingLocalFile(null);
-                                        }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1`}
-                                        disabled={uploadingLocal}
-                                    >
-                                        <i className="fa-solid fa-plus mr-1"></i> Upload + Queue
-                                    </button>
+                                    {String(pendingLocalFile?.type || '').startsWith('audio/') || String(pendingLocalFile?.type || '').startsWith('video/') ? (
+                                        <button
+                                            onClick={async () => {
+                                                await handleLocalUpload(pendingLocalFile, true);
+                                                setPendingLocalFile(null);
+                                            }}
+                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1`}
+                                            disabled={uploadingLocal}
+                                        >
+                                            <i className="fa-solid fa-plus mr-1"></i> Upload + Queue
+                                        </button>
+                                    ) : null}
+                                    {String(pendingLocalFile?.type || '').startsWith('image/') || String(pendingLocalFile?.type || '').startsWith('video/') ? (
+                                        <>
+                                            <button
+                                                onClick={async () => {
+                                                    await uploadMediaFileToTvLibrary(pendingLocalFile, {
+                                                        durationSec: 20,
+                                                    });
+                                                    setPendingLocalFile(null);
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1`}
+                                                disabled={uploadingLocal}
+                                            >
+                                                Save To TV Library
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    await uploadMediaFileToRunOfShow(pendingLocalFile, {
+                                                        durationSec: 20,
+                                                        placement: 'append',
+                                                    });
+                                                    setPendingLocalFile(null);
+                                                }}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1`}
+                                                disabled={uploadingLocal}
+                                            >
+                                                Use In Run Of Show
+                                            </button>
+                                        </>
+                                    ) : null}
                                     <button
                                         onClick={async () => {
                                             await handleLocalUpload(pendingLocalFile, false);
@@ -19526,16 +19848,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     >
                                         Upload Only
                                     </button>
-                                    <button
-                                        onClick={async () => {
-                                            await savePendingFileAsOfflineBackup(pendingLocalFile, false);
-                                            setPendingLocalFile(null);
-                                        }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 border-emerald-400/35 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300/55 hover:bg-emerald-500/20`}
-                                        disabled={uploadingLocal}
-                                    >
-                                        Save Offline Backup
-                                    </button>
+                                    {String(pendingLocalFile?.type || '').startsWith('audio/') || String(pendingLocalFile?.type || '').startsWith('video/') ? (
+                                        <button
+                                            onClick={async () => {
+                                                await savePendingFileAsOfflineBackup(pendingLocalFile, false);
+                                                setPendingLocalFile(null);
+                                            }}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 border-emerald-400/35 bg-emerald-500/10 text-emerald-100 hover:border-emerald-300/55 hover:bg-emerald-500/20`}
+                                            disabled={uploadingLocal}
+                                        >
+                                            Save Offline Backup
+                                        </button>
+                                    ) : null}
                                 </div>
                             )}
                             {uploadingLocal && (
@@ -19551,9 +19875,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {item.title}
                                             <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
                                         </div>
-                                        <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
-                                            <i className="fa-solid fa-plus mr-1"></i> Add to Queue
-                                        </button>
+                                        {canQueueRoomMedia(item) ? (
+                                            <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
+                                                <i className="fa-solid fa-plus mr-1"></i> Add to Queue
+                                            </button>
+                                        ) : null}
+                                        {canUseRoomMediaAsScene(item) ? (
+                                            <>
+                                                <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                    TV Library
+                                                </button>
+                                                <button onClick={() => useScenePresetInRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                    Use In Run Of Show
+                                                </button>
+                                            </>
+                                        ) : null}
                                         {item._local ? (
                                             <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                 Remove Local
@@ -19591,9 +19927,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {item.title}
                                                 <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
                                             </div>
-                                            <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
-                                                <i className="fa-solid fa-plus mr-1"></i> Add
-                                            </button>
+                                            {canQueueRoomMedia(item) ? (
+                                                <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
+                                                    <i className="fa-solid fa-plus mr-1"></i> Add
+                                                </button>
+                                            ) : null}
+                                            {canUseRoomMediaAsScene(item) ? (
+                                                <>
+                                                    <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                        TV Library
+                                                    </button>
+                                                    <button onClick={() => useScenePresetInRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                        Use In Run Of Show
+                                                    </button>
+                                                </>
+                                            ) : null}
                                             {item._local ? (
                                                 <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                     Remove Local

@@ -203,6 +203,41 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
 });
 
+test('host setup keeps room uploads available for local playback checks', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+
+  assert.match(
+    hostAppSource,
+    /Room Uploads/,
+    'Host app should keep the room upload library visible for local media checks',
+  );
+  assert.match(
+    hostAppSource,
+    /accept="video\/\*,audio\/\*,image\/\*"/,
+    'Room uploads should accept local audio, video, and image files',
+  );
+  assert.match(
+    hostAppSource,
+    /Upload \+ Queue/,
+    'Hosts should still be able to upload a local file straight into the queue',
+  );
+  assert.match(
+    hostAppSource,
+    /Save To TV Library/,
+    'Room uploads should let hosts save uploaded image or video assets into the TV library',
+  );
+  assert.match(
+    hostAppSource,
+    /Use In Run Of Show/,
+    'Room uploads should let hosts send uploaded image or video assets into the run of show from the shared upload surface',
+  );
+  assert.match(
+    hostAppSource,
+    /Save Offline Backup/,
+    'Hosts should still be able to save an offline local backup on the host device',
+  );
+});
+
 test('host app declares Apple playback refs before assigning the sync callback', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
   const refDeclarationIndex = hostAppSource.indexOf("const syncApplePlaybackStateRef = useRef(async () => {});");

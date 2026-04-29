@@ -673,6 +673,9 @@ test("runOfShowDirector preserves media-scene takeover fields for custom TV mome
       mediaSceneUrl: "https://cdn.example.com/flyer.png",
       mediaSceneType: "image",
       mediaSceneFit: "contain",
+      mediaSceneSourceUploadId: "upload_123",
+      mediaSceneStoragePath: "room_uploads/AAHF/flyer.png",
+      mediaSceneFileName: "flyer.png",
     },
   });
 
@@ -684,6 +687,9 @@ test("runOfShowDirector preserves media-scene takeover fields for custom TV mome
   assert.equal(normalizedItem.presentationPlan.mediaSceneUrl, "https://cdn.example.com/flyer.png");
   assert.equal(normalizedItem.presentationPlan.mediaSceneType, "image");
   assert.equal(normalizedItem.presentationPlan.mediaSceneFit, "contain");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneSourceUploadId, "upload_123");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneStoragePath, "room_uploads/AAHF/flyer.png");
+  assert.equal(normalizedItem.presentationPlan.mediaSceneFileName, "flyer.png");
 });
 
 test("runOfShowDirector imports csv show sheets into performance, moment, and scene items", () => {

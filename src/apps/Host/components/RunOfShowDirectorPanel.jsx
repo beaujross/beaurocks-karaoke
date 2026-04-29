@@ -3582,6 +3582,7 @@ export default function RunOfShowDirectorPanel({
     appleMusicAuthorized = false,
     previewActiveId = '',
     focusRequest = null,
+    onSelectionChange,
     operatorRole = RUN_OF_SHOW_OPERATOR_ROLES.viewer,
     operatorCapabilities = null,
     operatingHint = '',
@@ -4199,6 +4200,7 @@ export default function RunOfShowDirectorPanel({
     const pickerLocalResults = useMemo(() => {
         if (pickerSourceType !== 'local_file') return [];
         return uniqueById((Array.isArray(localLibrary) ? localLibrary : [])
+            .filter((entry) => String(entry?.mediaType || '').trim().toLowerCase() !== 'image')
             .filter((entry) => {
                 const title = entry?.title || entry?.trackName || entry?.fileName || entry?.id || '';
                 const artist = entry?.artist || entry?.artistName || '';
@@ -4431,6 +4433,10 @@ export default function RunOfShowDirectorPanel({
         () => items.find((item) => item.id === focusedBuildItemId) || null,
         [focusedBuildItemId, items]
     );
+    useEffect(() => {
+        if (typeof onSelectionChange !== 'function') return;
+        onSelectionChange(expandedItemId || '');
+    }, [expandedItemId, onSelectionChange]);
     const performanceItems = useMemo(
         () => items.filter((item) => String(item?.type || '').trim().toLowerCase() === 'performance'),
         [items]
@@ -5122,6 +5128,7 @@ export default function RunOfShowDirectorPanel({
         const queryText = buildMediaQuery(item);
         if (!queryText) return [];
         const localMatches = uniqueById((Array.isArray(localLibrary) ? localLibrary : [])
+            .filter((entry) => String(entry?.mediaType || '').trim().toLowerCase() !== 'image')
             .filter((entry) => matchesMediaQuery([entry?.title, entry?.artist, entry?.fileName, entry?.id], queryText))
             .slice(0, 3)
             .map((entry, index) => ({

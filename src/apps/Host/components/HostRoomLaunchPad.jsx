@@ -584,8 +584,9 @@ const HostRoomLaunchPad = ({
     const pastRooms = [...cleanupRooms, ...archivedRooms];
     const upcomingRooms = activeRooms.filter((roomItem) => Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000));
     const tonightRooms = activeRooms.filter((roomItem) => !upcomingRooms.some((entry) => entry.code === roomItem.code));
+    const eventFocusRoom = [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom) || null;
     const featuredRoom = [...recentHostRooms].find((roomItem) => pinnedRoomCodeSet.has(String(roomItem.code || '').trim().toUpperCase()))
-        || [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom)
+        || eventFocusRoom
         || tonightRooms[0]
         || upcomingRooms[0]
         || cleanupRooms[0]
@@ -694,6 +695,7 @@ const HostRoomLaunchPad = ({
             requestedLaunchRoomCodeCandidate={requestedLaunchRoomCodeCandidate}
             openExistingRoomWorkspace={openExistingRoomWorkspace}
             joiningRoom={joiningRoom}
+            eventFocusRoom={eventFocusRoom}
             activeRoomBucket={activeRoomBucket}
             roomBrowserBuckets={roomBrowserBuckets}
             setRoomBrowserFilter={setRoomBrowserFilter}
