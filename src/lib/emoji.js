@@ -9,6 +9,7 @@ export const EMOJI = {
     diamond: emoji(0x1F48E),
     crown: emoji(0x1F451),
     money: emoji(0x1F4B0),
+    cherryBlossom: emoji(0x1F338),
     sparkle: emoji(0x2728),
     mic: emoji(0x1F3A4),
     radio: emoji(0x1F4FB),
@@ -37,4 +38,20 @@ export const EMOJI = {
     wave: emoji(0x1F44B),
     info: emoji(0x2139),
     robot: emoji(0x1F916)
+};
+
+export const REACTION_EMOJI = Object.freeze({
+    fire: EMOJI.fire,
+    heart: EMOJI.heart,
+    clap: EMOJI.clap,
+    drink: EMOJI.drink,
+    rocket: EMOJI.rocket,
+    diamond: EMOJI.diamond,
+    crown: EMOJI.crown,
+    money: EMOJI.cherryBlossom
+});
+
+export const getReactionEmoji = (type = '', fallback = EMOJI.heart) => {
+    const key = String(type || '').trim().toLowerCase();
+    return REACTION_EMOJI[key] || fallback;
 };

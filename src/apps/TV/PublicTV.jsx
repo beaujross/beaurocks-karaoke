@@ -11,7 +11,7 @@ import { averageBand } from '../../lib/utils';
 import AudioVisualizer from '../../components/AudioVisualizer';
 import Stage from '../../components/Stage';
 import GameContainer from '../../components/GameContainer';
-import { emoji, EMOJI } from '../../lib/emoji';
+import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { HOW_TO_PLAY } from '../../lib/howToPlay';
 import { REACTION_COSTS } from '../../lib/reactionConstants';
 import { normalizeBackingChoice, resolveStageMediaUrl } from '../../lib/playbackSource';
@@ -72,12 +72,24 @@ import {
 } from '../../lib/volleyOrbUiState';
 import { buildQaTvFixture } from './qaTvFixtures';
 import {
+    getTvReactionEmojiClass,
+    getTvReactionLabel,
+    getTvReactionLaneLeft,
+    getTvReactionMotionSpec,
+    getTvReactionThemeKey
+} from './publicTvReactionConfig';
+import {
     buildGivebutterSupportLaunchUrl,
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     normalizePurchaseCelebration,
 } from '../../lib/roomMonetization';
-import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
+import {
+    buildAudienceBrandThemePalette,
+    getAudienceBrandThemePreset,
+    normalizeAudienceBrandTheme,
+    withAudienceBrandAlpha
+} from '../../lib/audienceBrandTheme';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -205,29 +217,6 @@ const RoundWinnersPodiumOverlay = ({ moment = null }) => {
             </div>
         </div>
     );
-};
-
-const LOBBY_REACTION_LABELS = {
-    fire: 'Hype',
-    heart: 'Love',
-    clap: 'Clap',
-    drink: 'Cheers',
-    rocket: 'Boost',
-    diamond: 'Gem',
-    money: 'Rich',
-    crown: 'Royal',
-    strum: 'Strum'
-};
-
-const getLobbyReactionLabel = (type = '') => {
-    const key = String(type || '').trim().toLowerCase();
-    if (key.startsWith('vote_')) return 'Vote';
-    if (LOBBY_REACTION_LABELS[key]) return LOBBY_REACTION_LABELS[key];
-    if (!key) return 'Reaction';
-    return key
-        .split('_')
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
 };
 
 const isVoteReactionType = (type = '') => String(type || '').trim().toLowerCase().startsWith('vote_');
@@ -508,8 +497,7 @@ const LOBBY_ORB_EVENT_CAP = 14;
 const LOBBY_PARTICLE_MAX = 10;
 const LOBBY_ORB_MIN_TOP_PCT = 24;
 const LOBBY_GROUND_LINE_TOP_PCT = 92;
-const TV_REACTION_VISIBILITY_MS = 9200;
-const FEATURED_REACTION_SPOTLIGHT_MS = 4200;
+const TV_REACTION_VISIBILITY_MS = 12800;
 const SELFIE_ARRIVAL_SPOTLIGHT_MS = 6800;
 const SELFIE_RECENT_BADGE_MS = 18000;
 const DOODLE_RECENT_BADGE_MS = 18000;
@@ -559,52 +547,6 @@ const toEpochMs = (ts) => {
     if (typeof ts?.toMillis === 'function') return ts.toMillis();
     if (typeof ts?.seconds === 'number') return ts.seconds * 1000;
     return 0;
-};
-
-const hashTvMotionSeed = (value = '') => {
-    const source = String(value || '');
-    let hash = 0;
-    for (let index = 0; index < source.length; index += 1) {
-        hash = ((hash << 5) - hash) + source.charCodeAt(index);
-        hash |= 0;
-    }
-    return Math.abs(hash);
-};
-
-const getTvReactionMotionSpec = ({ type = '', id = '', index = 0 } = {}) => {
-    const key = String(type || '').trim().toLowerCase();
-    const seed = hashTvMotionSeed(`${key}:${id}:${index}`);
-    const pick = (items = []) => items[seed % items.length];
-    const base = {
-        variant: 'drift-right',
-        durationMs: 8600 + (seed % 1400),
-        driftX: 24 + (seed % 44),
-        riseY: 88 + (seed % 90),
-        rotateDeg: -6 + (seed % 13),
-        scaleBoost: 1 + ((seed % 7) * 0.018),
-    };
-    if (key === 'clap') {
-        return { ...base, variant: pick(['bounce', 'hover']), durationMs: 9400 + (seed % 1200), driftX: 8 + (seed % 12), riseY: 28 + (seed % 20), rotateDeg: -4 + (seed % 9) };
-    }
-    if (key === 'heart') {
-        return { ...base, variant: 'hover', durationMs: 9800 + (seed % 1200), driftX: 10 + (seed % 16), riseY: 36 + (seed % 26), rotateDeg: -8 + (seed % 17) };
-    }
-    if (key === 'drink') {
-        return { ...base, variant: pick(['drift-left', 'drift-right']), durationMs: 9000 + (seed % 1200), driftX: 30 + (seed % 36), riseY: 54 + (seed % 34), rotateDeg: -10 + (seed % 21) };
-    }
-    if (key === 'money') {
-        return { ...base, variant: pick(['drift-left', 'sweep']), durationMs: 9600 + (seed % 1000), driftX: 46 + (seed % 46), riseY: 48 + (seed % 28), rotateDeg: -14 + (seed % 29) };
-    }
-    if (key === 'rocket') {
-        return { ...base, variant: 'sweep', durationMs: 8200 + (seed % 900), driftX: 72 + (seed % 56), riseY: 108 + (seed % 46), rotateDeg: -18 + (seed % 37), scaleBoost: 1.08 + ((seed % 5) * 0.02) };
-    }
-    if (key === 'diamond' || key === 'crown') {
-        return { ...base, variant: 'hover', durationMs: 10200 + (seed % 1200), driftX: 14 + (seed % 20), riseY: 42 + (seed % 24), rotateDeg: -6 + (seed % 13), scaleBoost: 1.04 + ((seed % 5) * 0.018) };
-    }
-    if (key === 'fire') {
-        return { ...base, variant: pick(['bounce', 'drift-right']), durationMs: 8800 + (seed % 1000), driftX: 20 + (seed % 24), riseY: 102 + (seed % 44), rotateDeg: -8 + (seed % 17), scaleBoost: 1.08 + ((seed % 5) * 0.02) };
-    }
-    return { ...base, variant: pick(['drift-left', 'drift-right', 'hover']) };
 };
 
 const getLobbyEventTimestampMs = (event) => {
@@ -2064,11 +2006,34 @@ const PublicTV = ({ roomCode }) => {
     const [previewSession, setPreviewSession] = useState({ key: '', startMs: 0 });
     const [takeoverNowMs, setTakeoverNowMs] = useState(nowMs());
     const [reactionScoreTotalsByPerformance, setReactionScoreTotalsByPerformance] = useState(() => new Map());
-    const [featuredReaction, setFeaturedReaction] = useState(null);
     const [selfieArrivalSpotlight, setSelfieArrivalSpotlight] = useState(null);
+    const rawTvBrandAppTitle = String(room?.audienceBrandTheme?.appTitle || '').trim();
+    const rawTvBrandPrimaryColor = String(room?.audienceBrandTheme?.primaryColor || '').trim();
+    const rawTvBrandSecondaryColor = String(room?.audienceBrandTheme?.secondaryColor || '').trim();
+    const rawTvBrandAccentColor = String(room?.audienceBrandTheme?.accentColor || '').trim();
+    const hasExplicitTvBrandColors = !!(rawTvBrandPrimaryColor || rawTvBrandSecondaryColor || rawTvBrandAccentColor);
     const tvAudienceBrandTheme = useMemo(
-        () => normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}),
-        [room?.audienceBrandTheme]
+        () => (
+            hasExplicitTvBrandColors
+                ? normalizeAudienceBrandTheme({
+                    appTitle: rawTvBrandAppTitle,
+                    primaryColor: rawTvBrandPrimaryColor,
+                    secondaryColor: rawTvBrandSecondaryColor,
+                    accentColor: rawTvBrandAccentColor
+                })
+                : getAudienceBrandThemePreset('festival_sunburst', { appTitle: rawTvBrandAppTitle })
+        ),
+        [
+            hasExplicitTvBrandColors,
+            rawTvBrandAccentColor,
+            rawTvBrandAppTitle,
+            rawTvBrandPrimaryColor,
+            rawTvBrandSecondaryColor
+        ]
+    );
+    const tvBrandPalette = useMemo(
+        () => buildAudienceBrandThemePalette(tvAudienceBrandTheme),
+        [tvAudienceBrandTheme]
     );
     const tvBrandTitle = tvAudienceBrandTheme.appTitle || 'BeauRocks Karaoke';
     const isCustomTvBrand = String(tvBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
@@ -2078,6 +2043,22 @@ const PublicTV = ({ roomCode }) => {
     const tvChatLockedLabel = isCustomTvBrand ? 'Chat is festival-pass only right now.' : 'Chat is VIP-only right now.';
     const tvScoreLabel = isCustomTvBrand ? `${tvBrandTitle} Score` : 'BeauRocks Score';
     const tvLogoAlt = tvBrandTitle;
+    const queueCountCardStyle = useMemo(
+        () => ({
+            borderColor: withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.36),
+            backgroundImage: `linear-gradient(145deg, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.22)} 0%, rgba(10, 10, 12, 0.84) 78%)`,
+            boxShadow: `0 0 24px ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.12)}`
+        }),
+        [tvAudienceBrandTheme.primaryColor]
+    );
+    const queueWaitCardStyle = useMemo(
+        () => ({
+            borderColor: withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.34),
+            backgroundImage: `linear-gradient(145deg, ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.2)} 0%, rgba(10, 10, 12, 0.84) 78%)`,
+            boxShadow: `0 0 24px ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.1)}`
+        }),
+        [tvAudienceBrandTheme.secondaryColor]
+    );
     const performanceSessionWriteKeyRef = useRef('');
 
     useEffect(() => {
@@ -2201,6 +2182,7 @@ const PublicTV = ({ roomCode }) => {
     const recapPreviewRef = useRef(null);
     const lastBonusDropRef = useRef(null);
     const lastPurchaseCelebrationRef = useRef(null);
+    const purchaseCelebrationQueueRef = useRef([]);
     const lastGuitarModeRef = useRef(null);
     const activeGuitarSessionRef = useRef(null);
     const guitarSyncSessionRef = useRef(null);
@@ -2225,33 +2207,11 @@ const PublicTV = ({ roomCode }) => {
     const lobbyTransitionTimerRef = useRef(null);
     const chatFullscreenScrollRef = useRef(null);
     const chatSidebarScrollRef = useRef(null);
-    const featuredReactionQueueRef = useRef([]);
-    const featuredReactionTimerRef = useRef(null);
     const selfieArrivalQueueRef = useRef([]);
     const selfieArrivalTimerRef = useRef(null);
     const visibleSelfieSubmissionIdsRef = useRef(new Set());
     const lastSelfiePromptIdRef = useRef('');
     const currentPerformanceIdRef = useRef('');
-    const enqueueFeaturedReaction = useCallback((entry) => {
-        if (!entry?.id) return;
-        featuredReactionQueueRef.current.push(entry);
-        if (featuredReactionTimerRef.current) return;
-        const showNext = () => {
-            const next = featuredReactionQueueRef.current.shift();
-            if (!next) {
-                featuredReactionTimerRef.current = null;
-                setFeaturedReaction(null);
-                return;
-            }
-            setFeaturedReaction(next);
-            featuredReactionTimerRef.current = setTimeout(() => {
-                setFeaturedReaction(null);
-                featuredReactionTimerRef.current = null;
-                showNext();
-            }, FEATURED_REACTION_SPOTLIGHT_MS);
-        };
-        showNext();
-    }, []);
     const enqueueSelfieArrivalSpotlight = useCallback((entry) => {
         if (!entry?.id || !entry?.url) return;
         selfieArrivalQueueRef.current.push(entry);
@@ -2273,7 +2233,6 @@ const PublicTV = ({ roomCode }) => {
         showNext();
     }, []);
     useEffect(() => () => {
-        if (featuredReactionTimerRef.current) clearTimeout(featuredReactionTimerRef.current);
         if (selfieArrivalTimerRef.current) clearTimeout(selfieArrivalTimerRef.current);
     }, []);
     const selfieVoteCounts = useMemo(() => {
@@ -2392,17 +2351,8 @@ const PublicTV = ({ roomCode }) => {
     }, [room?.bingoMysteryRng?.results, roomUsers]);
 
     // Helpers
-    const getEmojiChar = (t) => (EMOJI[t] || (t.includes('spotlight') ? EMOJI.sparkle : EMOJI.heart));
-    const getReactionClass = (t) => ({
-        rocket: 'animate-rocket-fly text-[clamp(2.75rem,9vw,8rem)]', 
-        diamond: 'animate-diamond-shine text-[clamp(3rem,9.5vw,9rem)]', 
-        crown: 'animate-crown-bounce text-[clamp(3.25rem,10vw,10rem)]', 
-        money: 'animate-money-wobble text-[clamp(3rem,9.5vw,9rem)]', 
-        drink: 'animate-drink-sway text-[clamp(2.5rem,8vw,6rem)]',
-        fire: 'animate-fire-flicker text-[clamp(2.5rem,8vw,6rem)] drop-shadow-[0_0_15px_orange]',
-        heart: 'animate-heart-beat text-[clamp(2.5rem,8vw,6rem)] drop-shadow-[0_0_15px_red]',
-        clap: 'animate-clap-shake text-[clamp(2.5rem,8vw,6rem)]'
-    }[t] || 'animate-float text-[clamp(2rem,6vw,4rem)]');
+    const getEmojiChar = (t) => getReactionEmoji(t, t.includes('spotlight') ? EMOJI.sparkle : EMOJI.heart);
+    const getReactionClass = (t) => getTvReactionEmojiClass(t);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -2989,7 +2939,7 @@ const PublicTV = ({ roomCode }) => {
                             const count = Math.min(Math.max(1, Number(d.count || 1)), 3);
                             const totalCount = Math.max(1, Number(d.count || 1));
                             for (let i = 0; i < count; i += 1) {
-                                const left = Math.random() * 80 + 10;
+                                const left = getTvReactionLaneLeft({ type: d.type, id: c.doc.id, index: i, wide: true });
                                 const motion = getTvReactionMotionSpec({ type: d.type, id: c.doc.id, index: i });
                                 setTimeout(() => {
                                     setReactions(prev => [...prev, {
@@ -3004,10 +2954,12 @@ const PublicTV = ({ roomCode }) => {
                                         motionDriftX: motion.driftX,
                                         motionRiseY: motion.riseY,
                                         motionRotateDeg: motion.rotateDeg,
-                                        motionScaleBoost: motion.scaleBoost,
+                                        motionScaleBoost: motion.scaleBoost + (i === 0 ? 0.05 : 0) + (Math.min(totalCount, 3) * 0.014),
                                         points: 0,
                                         basePoints: 0,
                                         multiplier: 1,
+                                        burstCount: totalCount,
+                                        arrivalGlowStrength: i === 0 ? 0.92 : 0.64,
                                         createdAtMs: nowMs()
                                     }]);
                                 }, i * 80);
@@ -3384,7 +3336,7 @@ const PublicTV = ({ roomCode }) => {
                                 id: `strum-${c.doc.id}`,
                                 avatar: d.avatar || EMOJI.guitar,
                                 user: d.userName || d.user || 'Guest',
-                                text: `${inBeatWindow ? 'hit the groove with' : 'sent'} ${strumCount} ${getLobbyReactionLabel('strum').toLowerCase()}${strumCount > 1 ? 's' : ''}${inBeatWindow ? ' in the sync window' : ''}`,
+                                text: `${inBeatWindow ? 'hit the groove with' : 'sent'} ${strumCount} ${getTvReactionLabel('strum').toLowerCase()}${strumCount > 1 ? 's' : ''}${inBeatWindow ? ' in the sync window' : ''}`,
                                 timestampMs: eventTimestamp
                             });
                             // Guitar strums are reflected in the live guitar leaderboard instead.
@@ -3408,7 +3360,7 @@ const PublicTV = ({ roomCode }) => {
                               const points = basePoints * multiplier;
                               const isVip = !!d.isVip || (d.vipLevel || 0) > 0;
                               for (let i = 0; i < count; i += 1) {
-                                  const left = Math.random() * 80 + 10;
+                                  const left = getTvReactionLaneLeft({ type: d.type, id: c.doc.id, index: i });
                                   const motion = getTvReactionMotionSpec({ type: d.type, id: c.doc.id, index: i });
                                   setTimeout(() => {
                                       setReactions(prev => [...prev, {
@@ -3420,25 +3372,16 @@ const PublicTV = ({ roomCode }) => {
                                           motionDriftX: motion.driftX,
                                           motionRiseY: motion.riseY,
                                           motionRotateDeg: motion.rotateDeg,
-                                          motionScaleBoost: motion.scaleBoost,
+                                          motionScaleBoost: motion.scaleBoost + (i === 0 ? 0.08 : 0) + (isVip ? 0.06 : 0) + (Math.min(totalCount, 4) * 0.015),
                                           points,
                                           basePoints,
                                           multiplier,
                                           isVip,
+                                          burstCount: totalCount,
+                                          arrivalGlowStrength: i === 0 ? 1 : 0.72,
                                           createdAtMs: nowMs()
                                       }]);
                                   }, i * 80);
-                              }
-                              if (currentPerformanceIdRef.current && d.performanceId === currentPerformanceIdRef.current) {
-                                  enqueueFeaturedReaction({
-                                      id: `featured-${c.doc.id}`,
-                                      type: d.type,
-                                      count: totalCount,
-                                      userName: d.userName || d.user || 'Guest',
-                                      avatar: d.avatar || EMOJI.sparkle,
-                                      isVip,
-                                      points: totalVal * Math.max(1, Number(multiplier || 1))
-                                  });
                               }
                               setCombo(prev => Math.min(100, prev + totalVal));
                               lastHypeAtRef.current = nowMs();
@@ -3447,7 +3390,7 @@ const PublicTV = ({ roomCode }) => {
                                   id: `reaction-${c.doc.id}`,
                                   avatar: d.avatar || EMOJI.sparkle,
                                   user: d.userName || d.user || 'Guest',
-                                  text: `sent ${getLobbyReactionLabel(d.type).toLowerCase()}${Number(totalCount || 1) > 1 ? ` x${totalCount}` : ''}`,
+                                  text: `sent ${getTvReactionLabel(d.type).toLowerCase()}${Number(totalCount || 1) > 1 ? ` x${totalCount}` : ''}`,
                                   timestampMs: nowMs()
                               });
                           }
@@ -3522,7 +3465,7 @@ const PublicTV = ({ roomCode }) => {
             messageTimeoutsRef.current.forEach(t => clearTimeout(t));
             messageTimeoutsRef.current = [];
         };
-    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution, enqueueFeaturedReaction]);
+    }, [roomCode, isMarketingDemoFixture, pushLobbyLiveEvent, awardRoomPointsOnce, upsertReactionScoreContribution]);
 
     useEffect(() => {
         if (isMarketingDemoFixture) {
@@ -3947,10 +3890,16 @@ const PublicTV = ({ roomCode }) => {
             return;
         }
         lastPurchaseCelebrationRef.current = celebration.id;
-        setPurchaseCelebrationBurst(celebration);
+        const alreadyQueued = purchaseCelebrationQueueRef.current.some((entry) => entry?.id === celebration.id);
+        if (!alreadyQueued) {
+            purchaseCelebrationQueueRef.current.push(celebration);
+        }
+    }, [room?.purchaseCelebration]);
+    useEffect(() => {
+        if (!purchaseCelebrationBurst) return;
         const t = setTimeout(() => setPurchaseCelebrationBurst(null), 6500);
         return () => clearTimeout(t);
-    }, [room?.purchaseCelebration]);
+    }, [purchaseCelebrationBurst]);
 
     // --- EFFECT: Loop & Logic ---
     useEffect(() => { comboRef.current = combo; }, [combo]);
@@ -3968,7 +3917,14 @@ const PublicTV = ({ roomCode }) => {
             });
             const tickGroundLineBottomPct = tickLobbySceneActive ? 3.2 : 4.4;
             const tickGroundLineTopPct = 100 - tickGroundLineBottomPct;
-            setReactions(prev => prev.filter((r) => (tickNow - Number(r?.createdAtMs || toEpochMs(r?.timestamp) || 0)) < TV_REACTION_VISIBILITY_MS));
+            setReactions(prev => prev.filter((r) => {
+                const createdAtMs = Number(r?.createdAtMs || toEpochMs(r?.timestamp) || 0);
+                const visibilityWindowMs = Math.max(
+                    TV_REACTION_VISIBILITY_MS,
+                    Number(r?.motionDurationMs || 0) + 900
+                );
+                return (tickNow - createdAtMs) < visibilityWindowMs;
+            }));
             setLobbyPlayBursts((prev) => prev.filter((burst) => (tickNow - Number(burst?.createdAt || 0)) < LOBBY_BURST_WINDOW_MS));
             setLobbyPlayScreenFx((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAt || 0)) < LOBBY_SCREEN_FX_WINDOW_MS));
             setLobbyComboMoments((prev) => prev.filter((entry) => (tickNow - Number(entry?.createdAtMs || 0)) < LOBBY_COMBO_WINDOW_MS));
@@ -5341,9 +5297,25 @@ const PublicTV = ({ roomCode }) => {
         }
     }, []);
 
-    const bgClass = multiplier >= 4 ? 'bg-gradient-to-br from-pink-900 via-purple-900 to-indigo-900 animate-pulse' : 
-                    multiplier >= 2 ? 'bg-gradient-to-br from-blue-900 to-black' : 
-                    'bg-black';
+    const crowdEnergyOverlayClass = multiplier >= 4
+        ? 'opacity-100 animate-pulse'
+        : multiplier >= 2
+            ? 'opacity-70'
+            : 'opacity-0';
+    const tvShellStyle = useMemo(
+        () => ({
+            ...tvBrandPalette.rootStyle,
+            height: '100dvh',
+            backgroundColor: '#050304',
+            backgroundImage: [
+                `radial-gradient(circle at 16% 14%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.26)} 0%, transparent 28%)`,
+                `radial-gradient(circle at 86% 10%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.18)} 0%, transparent 24%)`,
+                `radial-gradient(circle at 52% 102%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.18)} 0%, transparent 36%)`,
+                'linear-gradient(180deg, rgba(22, 8, 8, 0.56) 0%, rgba(5, 3, 4, 0.92) 38%, rgba(3, 2, 2, 1) 100%)',
+            ].join(', ')
+        }),
+        [tvAudienceBrandTheme.primaryColor, tvAudienceBrandTheme.secondaryColor, tvBrandPalette.rootStyle]
+    );
     const waveformOpacity = current ? 'opacity-50' : 'opacity-95';
     const {
         bgVisualizerSimulatedLevel,
@@ -5753,6 +5725,40 @@ const PublicTV = ({ roomCode }) => {
     const showVerboseJoinUrl = viewportSize.width >= 2100 && !isShortViewport && !lobbyCompactHudMode;
     const showExtendedSpotlightMeta = viewportSize.width >= 1760 && !isShortViewport;
     const chatTvFullscreenActive = !!room?.chatShowOnTv && room?.chatTvMode === 'fullscreen';
+    const tvPreviewOverlay = room?.tvPreviewOverlay && room.tvPreviewOverlay.active ? room.tvPreviewOverlay : null;
+    const tvPreviewExpired = tvPreviewOverlay
+        ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
+        : true;
+    const roundWinnersMoment = room?.roundWinnersMoment?.active ? room.roundWinnersMoment : null;
+    const roundWinnersMomentExpired = roundWinnersMoment
+        ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
+        : true;
+    const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
+    const activeAnnouncement = !applauseOverlayVisible && room?.announcement?.active && !activeGameCartridgeMode
+        ? (room.announcement || {})
+        : null;
+    const activeAnnouncementIsExpiredMediaScene = String(activeAnnouncement?.type || '').trim().toLowerCase() === 'media_scene'
+        && Number(activeAnnouncement?.durationSec || 0) > 0
+        && Number(activeAnnouncement?.startedAtMs || 0) > 0
+        && (Number(activeAnnouncement.startedAtMs) + (Number(activeAnnouncement.durationSec) * 1000)) <= nowMs();
+    const purchaseCelebrationBlocked = Boolean(
+        (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired)
+        || (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired)
+        || (!applauseOverlayVisible && ['leaderboard', 'leaderboard_stack', 'tipping'].includes(String(room?.activeScreen || '').trim().toLowerCase()))
+        || (!applauseOverlayVisible && room?.howToPlay?.active)
+        || (!applauseOverlayVisible && room?.readyCheck?.active)
+        || (!!activeAnnouncement && !activeAnnouncementIsExpiredMediaScene)
+        || (!applauseOverlayVisible && chatTvFullscreenActive)
+        || (room?.activeMode === 'doodle_oke' && room?.doodleOke)
+        || activeGameCartridgeMode
+        || (!applauseOverlayVisible && recap)
+    );
+    useEffect(() => {
+        if (purchaseCelebrationBurst || purchaseCelebrationBlocked) return;
+        const nextCelebration = purchaseCelebrationQueueRef.current.shift();
+        if (!nextCelebration) return;
+        setPurchaseCelebrationBurst(nextCelebration);
+    }, [purchaseCelebrationBlocked, purchaseCelebrationBurst, room?.purchaseCelebration?.id]);
 
     // --- RENDER ---
     
@@ -5784,22 +5790,75 @@ const PublicTV = ({ roomCode }) => {
     }
 
     // 1. Full Screen Overlays (Top Priority)
-    const tvPreviewOverlay = room?.tvPreviewOverlay && room.tvPreviewOverlay.active ? room.tvPreviewOverlay : null;
-    const tvPreviewExpired = tvPreviewOverlay
-        ? (Number(tvPreviewOverlay.startedAtMs || 0) + (Math.max(3, Number(tvPreviewOverlay.durationSec || 8)) * 1000)) <= nowMs()
-        : true;
-    const roundWinnersMoment = room?.roundWinnersMoment?.active ? room.roundWinnersMoment : null;
-    const roundWinnersMomentExpired = roundWinnersMoment
-        ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
-        : true;
+    const renderPurchaseCelebrationOverlay = () => {
+        if (!purchaseCelebrationBurst) return null;
+        const celebrationIsMoneyRain = purchaseCelebrationBurst?.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst;
+        return (
+            <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
+                {celebrationIsMoneyRain && (
+                    <div className="bonus-drop-rainfield" aria-hidden="true">
+                        {['ðŸ’¸', 'ðŸ’°', 'ðŸ’µ', 'ðŸª™', 'âœ¨', 'ðŸŒŸ', 'ðŸ’¸', 'ðŸ¤‘'].map((icon, idx) => (
+                            <span
+                                key={`bonus-purchase-rain-${idx}`}
+                                className="bonus-drop-rain-item"
+                                style={{
+                                    left: `${8 + (idx * 11)}%`,
+                                    animationDelay: `${idx * 0.12}s`,
+                                    animationDuration: `${2.9 + ((idx % 4) * 0.35)}s`
+                                }}
+                            >
+                                {icon}
+                            </span>
+                        ))}
+                    </div>
+                )}
+                <div className={`bonus-drop-burst ${celebrationIsMoneyRain ? 'bonus-drop-burst-money' : ''}`}>
+                    {celebrationIsMoneyRain && (
+                        <div className="bonus-drop-moneyline">
+                            <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || 'ðŸ¤‘'}</span>
+                            <span>ðŸ’°</span>
+                            <span>ðŸ’¸</span>
+                            <span>ðŸ’°</span>
+                            <span>ðŸª©</span>
+                        </div>
+                    )}
+                    <div className="bonus-drop-title">
+                        {purchaseCelebrationBurst.title || `${purchaseCelebrationBurst.buyerName || 'Someone'} boosted the room`}
+                    </div>
+                    <div className="bonus-drop-points">
+                        {purchaseCelebrationBurst.points > 0 ? `+${purchaseCelebrationBurst.points} PTS` : MONEYBAGS_BADGE_LABEL}
+                    </div>
+                    <div className="bonus-drop-sub">
+                        {purchaseCelebrationBurst.amountCents > 0
+                            ? `$${(purchaseCelebrationBurst.amountCents / 100).toFixed(2)} â€¢ `
+                            : ''}
+                        {purchaseCelebrationBurst.subtitle
+                            || (purchaseCelebrationBurst.badgeAwarded
+                                ? `${purchaseCelebrationBurst.label || 'Room support'} - ${purchaseCelebrationBurst.badgeLabel || MONEYBAGS_BADGE_LABEL}`
+                                : (purchaseCelebrationBurst.label || 'Room support'))}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+    const withPurchaseCelebrationOverlay = (content) => (
+        purchaseCelebrationBurst
+            ? (
+                <>
+                    {content}
+                    {renderPurchaseCelebrationOverlay()}
+                </>
+            )
+            : content
+    );
     if (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired) {
-        return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
+        return withPurchaseCelebrationOverlay(<RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[205]" preview nowValue={takeoverNowMs} />);
     }
     if (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired) {
-        return <RoundWinnersPodiumOverlay moment={roundWinnersMoment} />;
+        return withPurchaseCelebrationOverlay(<RoundWinnersPodiumOverlay moment={roundWinnersMoment} />);
     }
     if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard') {
-        return (
+        return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
                 <LeaderboardOverlay users={roomUsers} songs={songs} premiumBadgeLabel={tvPremiumBadgeLabel} />
@@ -5807,7 +5866,7 @@ const PublicTV = ({ roomCode }) => {
         );
     }
     if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard_stack') {
-        return (
+        return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
                 <LeaderboardStackOverlay users={roomUsers} songs={songs} premiumBadgeLabel={tvPremiumBadgeLabel} />
@@ -5815,19 +5874,19 @@ const PublicTV = ({ roomCode }) => {
         );
     }
     if (!applauseOverlayVisible && room?.activeScreen === 'tipping') {
-        return (
+        return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
                 <TipOverlay room={room} />
             </>
         );
     }
-    if (!applauseOverlayVisible && room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} brandEyebrow={tvBrandEyebrow} poweredByLabel={tvPoweredByLabel} brandTitle={tvBrandTitle} />;
+    if (!applauseOverlayVisible && room?.howToPlay?.active) return withPurchaseCelebrationOverlay(<HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} brandEyebrow={tvBrandEyebrow} poweredByLabel={tvPoweredByLabel} brandTitle={tvBrandTitle} />);
     if (!applauseOverlayVisible && room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
         const readyPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
-        return (
+        return withPurchaseCelebrationOverlay(
             <div className="public-tv fixed inset-0 z-[200] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.16),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_48%),#09090b] flex flex-col items-center justify-center p-4 md:p-8 2xl:p-12 text-center">
                 <div className="flex items-center gap-3 mb-3 md:mb-4">
                     <div className="text-sm md:text-base uppercase tracking-[0.2em] md:tracking-[0.4em] text-zinc-200">Ready Check</div>
@@ -5850,19 +5909,13 @@ const PublicTV = ({ roomCode }) => {
             </div>
         );
     }
-    const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
     if (!applauseOverlayVisible && room?.announcement?.active && !activeGameCartridgeMode) {
-        const announcement = room.announcement || {};
-        const isExpiredMediaScene = String(announcement?.type || '').trim().toLowerCase() === 'media_scene'
-            && Number(announcement?.durationSec || 0) > 0
-            && Number(announcement?.startedAtMs || 0) > 0
-            && (Number(announcement.startedAtMs) + (Number(announcement.durationSec) * 1000)) <= nowMs();
-        if (!isExpiredMediaScene) {
-            return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
+        if (!activeAnnouncementIsExpiredMediaScene) {
+            return withPurchaseCelebrationOverlay(<RunOfShowTakeoverOverlay overlay={activeAnnouncement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />);
         }
     }
     if (!applauseOverlayVisible && chatTvFullscreenActive) {
-        return (
+        return withPurchaseCelebrationOverlay(
             <div className="public-tv fixed inset-0 z-[190] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.18),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_45%),#07080a] text-white font-saira flex flex-col" style={{ height: '100dvh' }}>
                 <div className="px-5 md:px-8 py-4 border-b border-white/10 bg-black/35 backdrop-blur">
                     <div className="flex items-center justify-between gap-3">
@@ -5934,7 +5987,7 @@ const PublicTV = ({ roomCode }) => {
         const winner = submissionsSorted[0];
         const galleryCols = submissionsSorted.length > 4 ? 'grid-cols-3' : 'grid-cols-2';
 
-        return (
+        return withPurchaseCelebrationOverlay(
             <div data-feature-id="tv-doodle-oke" className="fixed inset-0 z-[200] bg-zinc-950 flex flex-col items-center justify-center p-4 md:p-6 2xl:p-10 text-white">
                 <div className="w-full max-w-6xl">
                     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4 md:mb-6">
@@ -6060,7 +6113,7 @@ const PublicTV = ({ roomCode }) => {
         const inputSource = room.gameData?.inputSource || (tvIsPlayer ? 'local' : 'remote');
 
         if (isBingo && room?.bingoShowTv === false) {
-            return (
+            return withPurchaseCelebrationOverlay(
                 <div className="absolute inset-0 bg-black flex items-center justify-center">
                     <div className="text-center">
                         <img src={room?.logoUrl || ASSETS.logo} className="w-40 mx-auto mb-4 opacity-80" alt={tvLogoAlt} />
@@ -6071,7 +6124,7 @@ const PublicTV = ({ roomCode }) => {
             );
         }
 
-        return (
+        return withPurchaseCelebrationOverlay(
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
                 <GameContainer
@@ -6520,6 +6573,8 @@ const PublicTV = ({ roomCode }) => {
         : (guitarTakeoverMode ? 'col-span-12' : defaultStageSpanClass);
     const sidebarAreaSpanClass = hasActivePopTriviaPanel ? popTriviaSidebarSpanClass : defaultSidebarSpanClass;
     const showAmbientFx = !exploreSimple;
+    const purchaseCelebrationIsMoneyRain = purchaseCelebrationBurst?.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst;
+    const showMoneyRainCelebration = !!bonusDropBurst || purchaseCelebrationIsMoneyRain;
     const showJoinOverlay = !room?.hideJoinOverlay;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
@@ -6594,10 +6649,10 @@ const PublicTV = ({ roomCode }) => {
         (bingoRng?.finalized && (bingoRngNow - (bingoRng.finishedAt || 0) < 15000))
     );
 
-    return (
-        <div
-            className={`public-tv h-screen min-h-screen w-full relative ${tvOverflowClass} font-saira text-white transition-colors duration-1000 ${bgClass} ${motionSafeFx ? 'motion-safe-fx' : ''}`}
-            style={{ height: '100dvh' }}
+        return withPurchaseCelebrationOverlay(
+            <div
+            className={`public-tv h-screen min-h-screen w-full relative ${tvOverflowClass} font-saira text-white transition-colors duration-1000 ${motionSafeFx ? 'motion-safe-fx' : ''}`}
+            style={tvShellStyle}
         >
             <audio
                 ref={bgVisualizerAudioRef}
@@ -6607,6 +6662,10 @@ const PublicTV = ({ roomCode }) => {
                 aria-hidden="true"
                 crossOrigin="anonymous"
             />
+            <div className="tv-festival-atmosphere absolute inset-0 z-0 pointer-events-none" />
+            <div className={`absolute inset-0 z-0 pointer-events-none transition-opacity duration-700 ${crowdEnergyOverlayClass}`}>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(135deg,rgba(255,123,92,0.18),transparent_56%,rgba(56,189,248,0.12)),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0))]" />
+            </div>
             {!showVisualizerTv && showAmbientFx && (
                 <div className={`absolute inset-0 z-0 mix-blend-screen pointer-events-none ${waveformOpacity} ${room?.hideWaveform ? 'hidden' : ''}`}>
                     <AudioVisualizer
@@ -6625,11 +6684,13 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {!room?.hideLogo && (
-                <img
-                    src={room?.logoUrl || ASSETS.logo}
-                    className={`tv-logo absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 ${lobbyCompactHudMode ? 'w-20 sm:w-28 md:w-36 lg:w-40 2xl:w-52' : logoSizeClass} z-50 drop-shadow-xl opacity-90`}
-                    alt="Logo"
-                />
+                <div className="tv-brand-logo-shell absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 z-50">
+                    <img
+                        src={room?.logoUrl || ASSETS.logo}
+                        className={`tv-logo tv-brand-logo ${lobbyCompactHudMode ? 'w-20 sm:w-28 md:w-36 lg:w-40 2xl:w-52' : logoSizeClass} opacity-95`}
+                        alt="Logo"
+                    />
+                </div>
             )}
             {isExperienceActive && (
                 <div data-tv-live-pill={experienceLabel} className="absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[240] flex items-center gap-2 md:gap-3 bg-red-600/90 border border-red-200/40 px-3 py-1.5 md:px-4 md:py-2 rounded-full shadow-[0_0_30px_rgba(239,68,68,0.5)]">
@@ -6687,19 +6748,53 @@ const PublicTV = ({ roomCode }) => {
                     </div>
                 </div>
             )}
-            {showAmbientFx && bonusDropBurst && (
+            {bonusDropBurst && (
                 <div className="absolute inset-0 z-[210] pointer-events-none flex items-center justify-center">
-                    <div className="bonus-drop-burst">
+                    {showMoneyRainCelebration && (
+                        <div className="bonus-drop-rainfield" aria-hidden="true">
+                            {['💸', '💰', '🪙', '💵', '✨', '🤑'].map((icon, idx) => (
+                                <span
+                                    key={`bonus-host-rain-${idx}`}
+                                    className="bonus-drop-rain-item"
+                                    style={{
+                                        left: `${12 + (idx * 14)}%`,
+                                        animationDelay: `${idx * 0.16}s`,
+                                        animationDuration: `${3.2 + ((idx % 3) * 0.4)}s`
+                                    }}
+                                >
+                                    {icon}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    <div className={`bonus-drop-burst ${showMoneyRainCelebration ? 'bonus-drop-burst-money' : ''}`}>
                         <div className="bonus-drop-title">{bonusDropBurst.by || 'Host'} made it rain</div>
                         <div className="bonus-drop-points">+{bonusDropBurst.points || 0} PTS</div>
                         <div className="bonus-drop-sub">for all lobby members</div>
                     </div>
                 </div>
             )}
-            {showAmbientFx && purchaseCelebrationBurst && (
+            {purchaseCelebrationBurst && (
                 <div className="absolute inset-0 z-[212] pointer-events-none flex items-center justify-center">
-                    <div className="bonus-drop-burst">
-                        {purchaseCelebrationBurst.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst && (
+                    {purchaseCelebrationIsMoneyRain && (
+                        <div className="bonus-drop-rainfield" aria-hidden="true">
+                            {['💸', '💰', '💵', '🪙', '✨', '🌟', '💸', '🤑'].map((icon, idx) => (
+                                <span
+                                    key={`bonus-purchase-rain-${idx}`}
+                                    className="bonus-drop-rain-item"
+                                    style={{
+                                        left: `${8 + (idx * 11)}%`,
+                                        animationDelay: `${idx * 0.12}s`,
+                                        animationDuration: `${2.9 + ((idx % 4) * 0.35)}s`
+                                    }}
+                                >
+                                    {icon}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    <div className={`bonus-drop-burst ${purchaseCelebrationIsMoneyRain ? 'bonus-drop-burst-money' : ''}`}>
+                        {purchaseCelebrationIsMoneyRain && (
                             <div className="bonus-drop-moneyline">
                                 <span className="bonus-drop-avatar">{purchaseCelebrationBurst.buyerAvatar || '🤑'}</span>
                                 <span>💰</span>
@@ -7634,20 +7729,31 @@ const PublicTV = ({ roomCode }) => {
                                         </div>
                                         {sidebarFeatureView === 'queue' ? (
                                             <>
-                                                {!isDistanceConstrained && (
-                                                    <div className="flex flex-wrap gap-2 mb-3">
-                                                        {queueRules.map(rule => (
-                                                            <div key={rule.label} className="flex items-center gap-2 bg-black/45 border border-white/10 px-3 py-1.5 rounded-full text-sm md:text-base font-semibold uppercase tracking-[0.12em] text-zinc-100">
-                                                                <i className={`fa-solid ${rule.icon} text-cyan-300`}></i>
-                                                                <span>{rule.shortLabel || rule.label}</span>
+                                                <div className="mb-3 grid grid-cols-2 gap-2.5">
+                                                    <div
+                                                        className="rounded-[1.4rem] border px-3 py-3 md:px-4 md:py-3.5"
+                                                        style={queueCountCardStyle}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-[10px] md:text-[11px] uppercase tracking-[0.22em] text-cyan-100/80">Queued Songs</div>
+                                                                <div className="mt-2 text-4xl md:text-[2.9rem] 2xl:text-[3.25rem] font-black leading-none text-white tabular-nums">{allQueue.length}</div>
                                                             </div>
-                                                        ))}
+                                                            <i className="fa-solid fa-list-music text-xl md:text-2xl text-cyan-200/85"></i>
+                                                        </div>
                                                     </div>
-                                                )}
-                                                <div className="mb-3 text-base md:text-lg uppercase tracking-[0.08em] md:tracking-[0.12em] text-zinc-100 font-semibold">
-                                                    Queue: <span className="text-white font-bold">{allQueue.length}</span> songs
-                                                    {' '}
-                                                    | Est wait <span className="text-white font-bold">{formatWaitTime(queueWaitSec)}</span>
+                                                    <div
+                                                        className="rounded-[1.4rem] border px-3 py-3 md:px-4 md:py-3.5"
+                                                        style={queueWaitCardStyle}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <div className="text-[10px] md:text-[11px] uppercase tracking-[0.22em] text-fuchsia-100/80">Est. Wait</div>
+                                                                <div className="mt-2 text-3xl md:text-[2.35rem] 2xl:text-[2.8rem] font-black leading-none text-white tabular-nums">{formatWaitTime(queueWaitSec)}</div>
+                                                            </div>
+                                                            <i className="fa-solid fa-hourglass-half text-xl md:text-2xl text-fuchsia-200/85"></i>
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1 space-y-3">
                                                     {nextUp.length === 0 && (
@@ -8804,86 +8910,64 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Reactions */}
-            {featuredReaction && currentPerformanceId && (
-                <div className="absolute left-1/2 top-5 z-[210] w-[min(92vw,880px)] -translate-x-1/2 pointer-events-none">
-                    <div className={`featured-reaction-spotlight relative overflow-hidden rounded-[2rem] border px-5 py-4 md:px-7 md:py-5 ${featuredReaction.isVip ? 'border-yellow-300/65 bg-[radial-gradient(circle_at_top,rgba(251,191,36,0.32),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_48px_rgba(251,191,36,0.24)]' : 'border-cyan-300/35 bg-[radial-gradient(circle_at_top,rgba(236,72,153,0.24),rgba(17,24,39,0.95)_55%,rgba(3,7,18,0.98)_100%)] shadow-[0_0_44px_rgba(34,211,238,0.18)]'}`}>
-                        <div className="absolute inset-0 featured-reaction-sheen opacity-70" aria-hidden="true" />
-                        <div className="relative flex items-center gap-4 md:gap-6">
-                            <div className={`featured-reaction-avatar flex h-20 w-20 md:h-24 md:w-24 items-center justify-center rounded-[1.6rem] border text-4xl md:text-5xl ${featuredReaction.isVip ? 'border-yellow-300/55 bg-yellow-300/12' : 'border-white/12 bg-white/6'}`}>
-                                {featuredReaction.avatar || EMOJI.sparkle}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className={`text-[10px] md:text-xs font-black uppercase tracking-[0.34em] ${featuredReaction.isVip ? 'text-yellow-200' : 'text-cyan-200'}`}>
-                                    Crowd moment
-                                </div>
-                                <div className="mt-1 text-[clamp(1.6rem,4vw,3.35rem)] font-black leading-[0.92] text-white drop-shadow-[0_0_22px_rgba(255,255,255,0.12)]">
-                                    {featuredReaction.userName || 'Guest'}
-                                </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-2 md:gap-3">
-                                    <div className={`inline-flex items-center rounded-full px-3 py-1.5 md:px-4 md:py-2 text-sm md:text-lg font-black uppercase tracking-[0.22em] ${featuredReaction.isVip ? 'bg-yellow-300/12 text-yellow-100 border border-yellow-300/45' : 'bg-cyan-400/10 text-cyan-100 border border-cyan-300/30'}`}>
-                                        {getLobbyReactionLabel(featuredReaction.type)}
-                                        {featuredReaction.count > 1 ? ` x${featuredReaction.count}` : ''}
-                                    </div>
-                                    <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs md:text-sm font-semibold text-zinc-100">
-                                        +{featuredReaction.points || 0} hype
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="featured-reaction-emoji shrink-0 text-[3.8rem] leading-none md:text-[5.6rem] drop-shadow-[0_0_20px_rgba(255,255,255,0.18)]">
-                                {featuredReaction.emojiChar || getEmojiChar(featuredReaction.type)}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
             <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
-                {reactions.map(r => (
-                    <div
-                        key={r.id}
-                        className={`absolute bottom-0 flex flex-col items-center reaction-stack reaction-stack-${r.motionVariant || 'drift-right'}`}
-                        style={{
-                            left: `${r.left}%`,
-                            '--reaction-duration': `${Math.max(6800, Number(r.motionDurationMs || TV_REACTION_VISIBILITY_MS))}ms`,
-                            '--reaction-drift-x': `${Number(r.motionDriftX || 32)}px`,
-                            '--reaction-rise-y': `${Number(r.motionRiseY || 96)}px`,
-                            '--reaction-rotate': `${Number(r.motionRotateDeg || 0)}deg`,
-                            '--reaction-scale': Number(r.motionScaleBoost || 1),
-                        }}
-                    >
-                        {r.isVip && (
-                            <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30 blur-xl animate-vip-glow"></div>
-                        )}
-                        <div className="relative flex flex-col items-center">
-                            <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
-                                {r.emojiChar || getEmojiChar(r.type)}
-                                {r.isVip && (
-                                    <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
-                                )}
-                            </div>
-                            {isSimpleTvProfile ? (
-                                <div className="mt-2 inline-flex items-center rounded-full border border-white/18 bg-black/68 px-3 py-1.5 text-sm font-black text-white shadow-[0_0_16px_rgba(255,255,255,0.08)]">
-                                    <span className="text-lg leading-none">{r.avatar || EMOJI.sparkle}</span>
-                                </div>
-                            ) : (
-                                <div className="mt-3 flex flex-col items-center gap-1 reaction-label">
-                                    <div className={`px-4 py-2 md:px-6 md:py-3 rounded-[1.5rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/76 shadow-[0_0_22px_rgba(253,224,71,0.55)]' : 'text-white border-2 border-white/25 bg-black/68 shadow-[0_0_18px_rgba(255,255,255,0.08)]'}`}>
-                                        <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
-                                        <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
-                                        {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
-                                    </div>
-                                    <div className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/10' : 'text-cyan-200 border border-cyan-400/40 bg-black/60'}`}>
-                                        {r.labelOverride || getLobbyReactionLabel(r.type)}
-                                    </div>
-                                    {Number(r.points || 0) > 0 && (
-                                        <div className={`px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/10 border border-yellow-300/35' : 'text-zinc-200 bg-white/5 border border-white/10'}`}>
-                                            +{r.points || 0} pts
-                                        </div>
+                {reactions.map(r => {
+                    const reactionTheme = getTvReactionThemeKey(r.type);
+                    return (
+                        <div
+                            key={r.id}
+                            className={`absolute bottom-0 flex flex-col items-center reaction-stack reaction-stack-${r.motionVariant || 'drift-right'}`}
+                            style={{
+                                left: `${r.left}%`,
+                                '--reaction-duration': `${Math.max(6800, Number(r.motionDurationMs || TV_REACTION_VISIBILITY_MS))}ms`,
+                                '--reaction-drift-x': `${Number(r.motionDriftX || 32)}px`,
+                                '--reaction-rise-y': `${Number(r.motionRiseY || 96)}px`,
+                                '--reaction-rotate': `${Number(r.motionRotateDeg || 0)}deg`,
+                                '--reaction-scale': Number(r.motionScaleBoost || 1),
+                                '--reaction-pop-scale': Number(r.motionScaleBoost || 1) * (r.isVip ? 1.08 : 1.03),
+                                '--reaction-glow-strength': Number(r.arrivalGlowStrength || 0.78),
+                            }}
+                        >
+                            {r.isVip && (
+                                <div className="absolute -inset-10 rounded-full bg-gradient-to-tr from-yellow-400/30 via-pink-400/30 to-cyan-400/30 blur-xl animate-vip-glow"></div>
+                            )}
+                            <div className="relative flex flex-col items-center">
+                                <div className={`reaction-impact-bloom reaction-impact-bloom-${reactionTheme} ${r.isVip ? 'reaction-impact-bloom-vip' : ''}`} />
+                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} ${r.isVip ? 'reaction-impact-ring-vip' : ''}`} />
+                                <div className={`reaction-impact-ring reaction-impact-ring-${reactionTheme} reaction-impact-ring-delayed ${r.isVip ? 'reaction-impact-ring-vip' : ''}`} />
+                                <div className={`relative ${getReactionClass(r.type)} ${r.isVip ? 'vip-reaction-emoji' : ''}`}>
+                                    {r.emojiChar || getEmojiChar(r.type)}
+                                    {r.isVip && (
+                                        <span className="absolute -top-3 -right-3 md:-top-4 md:-right-4 text-xl md:text-3xl animate-vip-spin">{'\u2728'}</span>
                                     )}
                                 </div>
-                            )}
+                                {isSimpleTvProfile ? (
+                                    <div className="reaction-nameplate mt-2 inline-flex items-center rounded-full border border-white/18 bg-black/74 px-3 py-1.5 text-sm font-black text-white shadow-[0_0_16px_rgba(255,255,255,0.08)]">
+                                        <span className="text-lg leading-none">{r.avatar || EMOJI.sparkle}</span>
+                                        <span className="ml-2 max-w-[8rem] truncate">{r.userName || 'Guest'}</span>
+                                    </div>
+                                ) : (
+                                    <div className="mt-3 flex flex-col items-center gap-1.5 reaction-label">
+                                        <div className={`reaction-nameplate px-4 py-2.5 md:px-6 md:py-3.5 rounded-[1.7rem] text-xl md:text-4xl font-black flex items-center gap-2.5 ${r.isVip ? 'text-yellow-200 border-2 border-yellow-300 bg-black/78 shadow-[0_0_30px_rgba(253,224,71,0.58)]' : 'text-white border-2 border-white/25 bg-black/72 shadow-[0_0_22px_rgba(255,255,255,0.1)]'}`}>
+                                            <span className="text-2xl md:text-4xl leading-none">{r.avatar || EMOJI.sparkle}</span>
+                                            <span className="truncate max-w-[13rem] md:max-w-[18rem]">{r.userName || 'Guest'}</span>
+                                            {r.isVip && <span className="text-xs font-black tracking-widest">{tvPremiumBadgeLabel}</span>}
+                                        </div>
+                                        <div className={`reaction-type-chip px-3 py-1.5 md:px-4 md:py-2 rounded-full text-xs md:text-xl font-bold tracking-[0.24em] uppercase ${r.isVip ? 'text-cyan-100 border border-cyan-300/45 bg-cyan-500/12' : 'text-cyan-200 border border-cyan-400/40 bg-black/64'}`}>
+                                            {r.labelOverride || getTvReactionLabel(r.type)}
+                                            {Number(r.burstCount || 1) > 1 ? ` x${Number(r.burstCount || 1)}` : ''}
+                                        </div>
+                                        {Number(r.points || 0) > 0 && (
+                                            <div className={`reaction-points-chip px-3 py-1 rounded-full text-[11px] md:text-sm font-semibold ${r.isVip ? 'text-yellow-200/90 bg-yellow-400/12 border border-yellow-300/35' : 'text-zinc-200 bg-white/8 border border-white/12'}`}>
+                                                +{r.points || 0} pts
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             {tvExploreEnabled && (
@@ -8970,44 +9054,190 @@ const PublicTV = ({ roomCode }) => {
               @keyframes marquee { 0% { transform: translateX(100vw); } 100% { transform: translateX(-100%); } } 
               @keyframes marqueeFade { 0% { opacity: 0; transform: translateY(12px); } 100% { opacity: 1; transform: translateY(0); } }
               @keyframes reaction-drift-left {
-                0% { opacity: 0; transform: translate3d(0, 22px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.35)) scale(0.82); }
-                12% { opacity: 1; transform: translate3d(-8px, 0, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.2)) scale(calc(var(--reaction-scale, 1) * 1.06)); }
-                70% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.72), calc(var(--reaction-rise-y, 96px) * -0.64), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.7)) scale(var(--reaction-scale, 1)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -1), calc(var(--reaction-rise-y, 96px) * -1), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.94)); }
+                0% { opacity: 0; transform: translate3d(0, 40px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.24)) scale(0.56); }
+                10% { opacity: 1; transform: translate3d(-10px, -18px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.16)) scale(var(--reaction-pop-scale, 1.1)); }
+                26% { opacity: 1; transform: translate3d(-12px, -20px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.2)) scale(calc(var(--reaction-scale, 1) * 1.02)); }
+                68% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.54), calc(var(--reaction-rise-y, 96px) * -0.48), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.55)) scale(var(--reaction-scale, 1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.9), calc(var(--reaction-rise-y, 96px) * -0.96), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.92)); }
               }
               @keyframes reaction-drift-right {
-                0% { opacity: 0; transform: translate3d(0, 18px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.35)) scale(0.84); }
-                12% { opacity: 1; transform: translate3d(10px, -3px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)) scale(calc(var(--reaction-scale, 1) * 1.07)); }
-                72% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.76), calc(var(--reaction-rise-y, 96px) * -0.68), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.72)) scale(var(--reaction-scale, 1)); }
-                100% { opacity: 0; transform: translate3d(var(--reaction-drift-x, 32px), calc(var(--reaction-rise-y, 96px) * -1), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.94)); }
+                0% { opacity: 0; transform: translate3d(0, 38px, 0) rotate(calc(var(--reaction-rotate, 0deg) * -0.24)) scale(0.56); }
+                10% { opacity: 1; transform: translate3d(10px, -20px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.14)) scale(var(--reaction-pop-scale, 1.1)); }
+                26% { opacity: 1; transform: translate3d(12px, -18px, 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)) scale(calc(var(--reaction-scale, 1) * 1.02)); }
+                70% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.58), calc(var(--reaction-rise-y, 96px) * -0.5), 0) rotate(calc(var(--reaction-rotate, 0deg) * 0.58)) scale(var(--reaction-scale, 1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.96), calc(var(--reaction-rise-y, 96px) * -1), 0) rotate(var(--reaction-rotate, 0deg)) scale(calc(var(--reaction-scale, 1) * 0.92)); }
               }
               @keyframes reaction-hover-burst {
-                0% { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.72) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
-                12% { opacity: 1; transform: translate3d(0, -4px, 0) scale(calc(var(--reaction-scale, 1) * 1.08)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
-                30% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.16), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * 0.32)); }
-                72% { opacity: 0.96; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.14), calc(var(--reaction-rise-y, 96px) * -0.28), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * -0.14)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.2), calc(var(--reaction-rise-y, 96px) * -0.42), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * 0.12)); }
+                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.54) rotate(calc(var(--reaction-rotate, 0deg) * -0.18)); }
+                12% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.12)); }
+                34% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
+                74% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * -0.1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.16), calc(var(--reaction-rise-y, 96px) * -0.4), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(calc(var(--reaction-rotate, 0deg) * 0.08)); }
               }
               @keyframes reaction-bounce-burst {
-                0% { opacity: 0; transform: translate3d(0, 30px, 0) scale(0.68) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
-                14% { opacity: 1; transform: translate3d(0, -12px, 0) scale(calc(var(--reaction-scale, 1) * 1.12)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
-                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.16), 0, 0) scale(calc(var(--reaction-scale, 1) * 0.98)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
-                58% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.24), calc(var(--reaction-rise-y, 96px) * -0.34), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.32)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.3), calc(var(--reaction-rise-y, 96px) * -0.56), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.52) rotate(calc(var(--reaction-rotate, 0deg) * -0.18)); }
+                14% { opacity: 1; transform: translate3d(0, -24px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * 0.14)); }
+                28% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), -8px, 0) scale(calc(var(--reaction-scale, 1) * 1.01)) rotate(calc(var(--reaction-rotate, 0deg) * -0.06)); }
+                62% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.2), calc(var(--reaction-rise-y, 96px) * -0.3), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.24)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.28), calc(var(--reaction-rise-y, 96px) * -0.54), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
               @keyframes reaction-side-sweep {
-                0% { opacity: 0; transform: translate3d(0, 26px, 0) scale(0.7) rotate(calc(var(--reaction-rotate, 0deg) * -0.22)); }
-                12% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), -2px, 0) scale(calc(var(--reaction-scale, 1) * 1.1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
-                60% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.46), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.72)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.3), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(0, 40px, 0) scale(0.54) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
+                12% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), -16px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
+                32% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.01)) rotate(calc(var(--reaction-rotate, 0deg) * 0.18)); }
+                68% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.72), calc(var(--reaction-rise-y, 96px) * -0.38), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.62)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.22), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
               @keyframes points-burst { 0% { opacity: 0; transform: translateY(10px) scale(0.6); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px) scale(1.2); } }
               @keyframes vip-glow { 0% { opacity: 0.6; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.08); } 100% { opacity: 0.6; transform: scale(0.95); } }
               @keyframes vip-jolt { 0%, 100% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-2deg) scale(1.05); } 50% { transform: rotate(2deg) scale(1.08); } 75% { transform: rotate(-1deg) scale(1.04); } }
               @keyframes vip-spin { 0% { transform: rotate(0deg) scale(1); } 100% { transform: rotate(360deg) scale(1.2); } }
-              @keyframes reaction-label-in { 0% { opacity: 0; transform: translateY(10px) scale(0.95); } 40% { opacity: 1; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-              @keyframes featured-reaction-enter { 0% { opacity: 0; transform: translateY(-12px) scale(0.96); } 18% { opacity: 1; transform: translateY(0) scale(1.02); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-              @keyframes featured-reaction-sheen { 0% { transform: translateX(-120%); opacity: 0; } 18% { opacity: 0.5; } 55% { opacity: 0.18; } 100% { transform: translateX(130%); opacity: 0; } }
+              @keyframes reaction-label-in { 0% { opacity: 0; transform: translateY(18px) scale(0.88); } 38% { opacity: 1; transform: translateY(-4px) scale(1.03); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+              @keyframes reaction-impact-bloom {
+                0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.24); }
+                40% { opacity: calc(var(--reaction-glow-strength, 0.78) * 0.68); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.22); }
+              }
+              @keyframes reaction-impact-ring {
+                0% { opacity: 0.88; transform: translate(-50%, -50%) scale(0.44); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.34); }
+              }
+              @keyframes reaction-launch-trail {
+                0% { opacity: 0; transform: translate3d(0, 48px, 0) scale(0.38) rotate(-14deg); }
+                10% { opacity: 1; transform: translate3d(0, -24px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(-4deg); }
+                28% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(calc(var(--reaction-scale, 1) * 1.06)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.26), calc(var(--reaction-rise-y, 96px) * -1.12), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-prism-float {
+                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.42) rotate(-10deg); }
+                14% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(8deg); }
+                36% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
+                74% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), calc(var(--reaction-rise-y, 96px) * -0.26), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.22)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.44), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * -0.12)); }
+              }
+              @keyframes reaction-royal-rise {
+                0% { opacity: 0; transform: translate3d(0, 46px, 0) scale(0.44) rotate(-6deg); }
+                12% { opacity: 1; transform: translate3d(0, -20px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(-2deg); }
+                28% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.04)) rotate(calc(var(--reaction-rotate, 0deg) * 0.08)); }
+                58% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.04), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * 0.04)); }
+              }
+              @keyframes reaction-blossom-drift {
+                0% { opacity: 0; transform: translate3d(0, 40px, 0) scale(0.4) rotate(-14deg); }
+                12% { opacity: 1; transform: translate3d(-14px, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(10deg); }
+                34% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.26)); }
+                62% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.16), calc(var(--reaction-rise-y, 96px) * -0.28), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.34)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.24), calc(var(--reaction-rise-y, 96px) * -0.54), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-cheers-sway {
+                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.46) rotate(-16deg); }
+                14% { opacity: 1; transform: translate3d(-8px, -22px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(12deg); }
+                30% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.14), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.22)); }
+                56% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.18), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.26)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.22), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-ember-rise {
+                0% { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.42) rotate(-10deg); }
+                10% { opacity: 1; transform: translate3d(6px, -24px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.02)) rotate(8deg); }
+                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.14), 0) scale(calc(var(--reaction-scale, 1) * 1.06)) rotate(calc(var(--reaction-rotate, 0deg) * -0.16)); }
+                60% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.42), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.24)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.06), calc(var(--reaction-rise-y, 96px) * -0.86), 0) scale(calc(var(--reaction-scale, 1) * 0.88)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-heart-lift {
+                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.5) rotate(-8deg); }
+                14% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(4deg); }
+                34% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.03)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
+                72% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.1), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.04), calc(var(--reaction-rise-y, 96px) * -0.46), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(calc(var(--reaction-rotate, 0deg) * -0.05)); }
+              }
+              @keyframes reaction-applause-snap {
+                0% { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.46) rotate(-10deg); }
+                12% { opacity: 1; transform: translate3d(0, -24px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(10deg); }
+                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), -10px, 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
+                40% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.22)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.06), calc(var(--reaction-rise-y, 96px) * -0.44), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+              }
+              @keyframes reaction-bloom-rocket {
+                0% { opacity: 0.96; transform: translate(-50%, -50%) scale(0.2); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.5); }
+              }
+              @keyframes reaction-bloom-diamond {
+                0% { opacity: 0.94; transform: translate(-50%, -50%) scale(0.2) rotate(0deg); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.34) rotate(48deg); }
+              }
+              @keyframes reaction-bloom-crown {
+                0% { opacity: 0.94; transform: translate(-50%, -50%) scale(0.24) translateY(8px); }
+                42% { opacity: 0.46; transform: translate(-50%, -50%) scale(0.88) translateY(-6px); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.22) translateY(-18px); }
+              }
+              @keyframes reaction-bloom-blossom {
+                0% { opacity: 0.94; transform: translate(-50%, -50%) scale(0.22) rotate(-18deg); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.28) rotate(30deg); }
+              }
+              @keyframes reaction-bloom-drink {
+                0% { opacity: 0.92; transform: translate(-50%, -50%) scale(0.22) rotate(-10deg); }
+                48% { opacity: 0.4; transform: translate(-50%, -50%) scale(0.96) rotate(10deg); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.24) rotate(-6deg); }
+              }
+              @keyframes reaction-bloom-fire {
+                0% { opacity: 0.96; transform: translate(-50%, -50%) scale(0.18); }
+                42% { opacity: 0.52; transform: translate(-50%, -50%) scale(0.98); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.42); }
+              }
+              @keyframes reaction-bloom-heart {
+                0% { opacity: 0.92; transform: translate(-50%, -50%) scale(0.26); }
+                46% { opacity: 0.44; transform: translate(-50%, -50%) scale(0.9); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.18); }
+              }
+              @keyframes reaction-bloom-clap {
+                0% { opacity: 0.92; transform: translate(-50%, -50%) scale(0.24) rotate(-8deg); }
+                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.24) rotate(8deg); }
+              }
+              @keyframes reaction-emoji-rocket {
+                0%, 100% { transform: translateY(0px) rotate(-2deg) scale(1); }
+                35% { transform: translateY(-4px) rotate(3deg) scale(1.05); }
+                70% { transform: translateY(-1px) rotate(-1deg) scale(1.02); }
+              }
+              @keyframes reaction-emoji-diamond {
+                0%, 100% { transform: rotate(0deg) scale(1); filter: drop-shadow(0 0 18px rgba(103,232,249,0.48)); }
+                50% { transform: rotate(10deg) scale(1.06); filter: drop-shadow(0 0 28px rgba(103,232,249,0.72)); }
+              }
+              @keyframes reaction-emoji-crown {
+                0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
+                45% { transform: translateY(-5px) rotate(4deg) scale(1.05); }
+              }
+              @keyframes reaction-emoji-blossom {
+                0%, 100% { transform: rotate(-4deg) scale(1); }
+                50% { transform: rotate(6deg) scale(1.05); }
+              }
+              @keyframes reaction-emoji-drink {
+                0%, 100% { transform: rotate(-4deg) scale(1); }
+                50% { transform: rotate(7deg) scale(1.04); }
+              }
+              @keyframes reaction-emoji-fire {
+                0%, 100% { transform: scale(1) rotate(-2deg); filter: drop-shadow(0 0 18px rgba(251,146,60,0.58)); }
+                50% { transform: scale(1.08) rotate(3deg); filter: drop-shadow(0 0 30px rgba(251,146,60,0.78)); }
+              }
+              @keyframes reaction-emoji-heart {
+                0%, 100% { transform: scale(1); }
+                30% { transform: scale(1.08); }
+                60% { transform: scale(0.98); }
+              }
+              @keyframes reaction-emoji-clap {
+                0%, 100% { transform: rotate(-2deg) scale(1); }
+                50% { transform: rotate(4deg) scale(1.06); }
+              }
+              @keyframes bonus-money-rain {
+                0% { opacity: 0; transform: translate3d(0, -16vh, 0) rotate(0deg) scale(0.84); }
+                12% { opacity: 0.94; }
+                100% { opacity: 0; transform: translate3d(0, 112vh, 0) rotate(32deg) scale(1.06); }
+              }
+              @keyframes reaction-safe-float {
+                0% { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.8); }
+                14% { opacity: 1; transform: translate3d(0, -10px, 0) scale(calc(var(--reaction-scale, 1) * 1.02)); }
+                72% { opacity: 1; transform: translate3d(0, calc(var(--reaction-rise-y, 96px) * -0.16), 0) scale(var(--reaction-scale, 1)); }
+                100% { opacity: 0; transform: translate3d(0, calc(var(--reaction-rise-y, 96px) * -0.34), 0) scale(calc(var(--reaction-scale, 1) * 0.94)); }
+              }
               @keyframes selfie-grid-sheen { 0% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } 50% { transform: translateX(4%) translateY(8%); opacity: 0.32; } 100% { transform: translateX(-30%) translateY(0%); opacity: 0.12; } }
               @keyframes selfie-card-fresh { 0%, 100% { box-shadow: 0 0 0 rgba(34,211,238,0.0), 0 18px 60px rgba(0,0,0,0.35); } 50% { box-shadow: 0 0 36px rgba(34,211,238,0.18), 0 22px 70px rgba(0,0,0,0.42); } }
               @keyframes selfie-arrival-enter { 0% { opacity: 0; transform: translateY(36px) scale(0.72) rotate(-10deg); } 24% { opacity: 1; transform: translateY(-10px) scale(1.08) rotate(2deg); } 52% { opacity: 1; transform: translateY(2px) scale(0.98) rotate(-3deg); } 100% { opacity: 1; transform: translateY(0) scale(1) rotate(-2deg); } }
@@ -9109,6 +9339,22 @@ const PublicTV = ({ roomCode }) => {
                 box-shadow: 0 0 60px rgba(34,211,238,0.25), 0 0 90px rgba(236,72,153,0.25);
                 animation: bonus-pop 6s ease forwards;
               }
+              .bonus-drop-burst-money {
+                background: radial-gradient(circle at top, rgba(250,204,21,0.28), rgba(244,114,182,0.26) 36%, rgba(0,0,0,0.92) 74%);
+                box-shadow: 0 0 70px rgba(250,204,21,0.24), 0 0 120px rgba(244,114,182,0.2);
+              }
+              .bonus-drop-rainfield {
+                position: absolute;
+                inset: 0;
+                overflow: hidden;
+              }
+              .bonus-drop-rain-item {
+                position: absolute;
+                top: -12vh;
+                font-size: clamp(1.5rem, 3vw, 3rem);
+                filter: drop-shadow(0 0 16px rgba(250,204,21,0.28));
+                animation: bonus-money-rain 3.2s linear forwards;
+              }
               .bonus-drop-moneyline { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 14px; font-size: clamp(2rem, 4vw, 4rem); filter: drop-shadow(0 0 20px rgba(250,204,21,0.3)); }
               .bonus-drop-avatar { display: inline-flex; align-items: center; justify-content: center; min-width: 1.4em; }
               .bonus-drop-title { font-size: clamp(1.2rem, 2vw, 2rem); letter-spacing: 0.4em; text-transform: uppercase; color: #e2e8f0; }
@@ -9128,14 +9374,76 @@ const PublicTV = ({ roomCode }) => {
               .reaction-stack-hover { animation: reaction-hover-burst var(--reaction-duration, 9000ms) ease-out forwards; }
               .reaction-stack-bounce { animation: reaction-bounce-burst var(--reaction-duration, 9000ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
               .reaction-stack-sweep { animation: reaction-side-sweep var(--reaction-duration, 8200ms) cubic-bezier(0.18, 0.7, 0.22, 1) forwards; }
-              .reaction-label { animation: reaction-label-in 0.35s ease-out forwards; }
+              .reaction-stack-launch { animation: reaction-launch-trail var(--reaction-duration, 9000ms) cubic-bezier(0.14, 0.78, 0.22, 1) forwards; }
+              .reaction-stack-prism { animation: reaction-prism-float var(--reaction-duration, 9600ms) ease-out forwards; }
+              .reaction-stack-royal { animation: reaction-royal-rise var(--reaction-duration, 9400ms) cubic-bezier(0.2, 0.68, 0.22, 1) forwards; }
+              .reaction-stack-blossom { animation: reaction-blossom-drift var(--reaction-duration, 9800ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .reaction-stack-cheers { animation: reaction-cheers-sway var(--reaction-duration, 9000ms) ease-out forwards; }
+              .reaction-stack-ember { animation: reaction-ember-rise var(--reaction-duration, 9200ms) cubic-bezier(0.18, 0.7, 0.22, 1) forwards; }
+              .reaction-stack-heart { animation: reaction-heart-lift var(--reaction-duration, 9600ms) ease-out forwards; }
+              .reaction-stack-applause { animation: reaction-applause-snap var(--reaction-duration, 8800ms) cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .reaction-label { animation: reaction-label-in 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
+              .reaction-nameplate { backdrop-filter: blur(12px); }
+              .reaction-type-chip { box-shadow: 0 0 20px rgba(34, 211, 238, 0.16); }
+              .reaction-points-chip { box-shadow: 0 0 18px rgba(255, 255, 255, 0.08); }
+              .reaction-impact-bloom,
+              .reaction-impact-ring {
+                position: absolute;
+                left: 50%;
+                top: 50%;
+                pointer-events: none;
+                transform: translate(-50%, -50%);
+              }
+              .reaction-impact-bloom {
+                width: clamp(6rem, 13vw, 10rem);
+                height: clamp(6rem, 13vw, 10rem);
+                border-radius: 9999px;
+                mix-blend-mode: screen;
+                filter: blur(2px);
+              }
+              .reaction-impact-bloom-rocket { background: radial-gradient(circle, rgba(255,244,214,0.34) 0%, rgba(251,146,60,0.28) 26%, rgba(244,114,182,0.18) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-rocket 1s ease-out both; }
+              .reaction-impact-bloom-diamond { background: radial-gradient(circle, rgba(255,255,255,0.34) 0%, rgba(103,232,249,0.26) 28%, rgba(56,189,248,0.2) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-diamond 1s ease-out both; }
+              .reaction-impact-bloom-crown { background: radial-gradient(circle, rgba(255,244,190,0.34) 0%, rgba(250,204,21,0.26) 30%, rgba(251,191,36,0.2) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-crown 1s ease-out both; }
+              .reaction-impact-bloom-blossom { background: radial-gradient(circle, rgba(255,241,242,0.34) 0%, rgba(251,113,133,0.24) 26%, rgba(244,114,182,0.22) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-blossom 1s ease-out both; }
+              .reaction-impact-bloom-drink { background: radial-gradient(circle, rgba(224,242,254,0.32) 0%, rgba(96,165,250,0.24) 26%, rgba(34,211,238,0.18) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-drink 1s ease-out both; }
+              .reaction-impact-bloom-fire { background: radial-gradient(circle, rgba(255,237,213,0.36) 0%, rgba(251,146,60,0.28) 24%, rgba(239,68,68,0.2) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-fire 1s ease-out both; }
+              .reaction-impact-bloom-heart { background: radial-gradient(circle, rgba(255,228,230,0.34) 0%, rgba(251,113,133,0.26) 28%, rgba(244,114,182,0.2) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-heart 1s ease-out both; }
+              .reaction-impact-bloom-clap { background: radial-gradient(circle, rgba(236,254,255,0.32) 0%, rgba(34,211,238,0.24) 28%, rgba(56,189,248,0.18) 48%, rgba(255,255,255,0) 76%); animation: reaction-bloom-clap 1s ease-out both; }
+              .reaction-impact-bloom-default { background: radial-gradient(circle, rgba(255,255,255,0.28) 0%, rgba(34,211,238,0.22) 28%, rgba(236,72,153,0.18) 48%, rgba(255,255,255,0) 74%); animation: reaction-impact-bloom 1s ease-out both; }
+              .reaction-impact-bloom-vip {
+                background: radial-gradient(circle, rgba(255,244,190,0.34) 0%, rgba(250,204,21,0.28) 30%, rgba(236,72,153,0.18) 48%, rgba(255,255,255,0) 74%);
+              }
+              .reaction-impact-ring {
+                width: clamp(4.5rem, 10vw, 7.75rem);
+                height: clamp(4.5rem, 10vw, 7.75rem);
+                border-radius: 9999px;
+                animation: reaction-impact-ring 1.1s ease-out both;
+              }
+              .reaction-impact-ring-rocket { border: 3px solid rgba(251,146,60,0.58); box-shadow: 0 0 24px rgba(251,146,60,0.34), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-diamond { border: 3px solid rgba(103,232,249,0.58); box-shadow: 0 0 24px rgba(103,232,249,0.34), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-crown { border: 3px solid rgba(250,204,21,0.56); box-shadow: 0 0 24px rgba(250,204,21,0.32), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-blossom { border: 3px solid rgba(251,113,133,0.56); box-shadow: 0 0 24px rgba(251,113,133,0.3), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-drink { border: 3px solid rgba(96,165,250,0.56); box-shadow: 0 0 24px rgba(96,165,250,0.3), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-fire { border: 3px solid rgba(251,146,60,0.58); box-shadow: 0 0 24px rgba(249,115,22,0.34), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-heart { border: 3px solid rgba(251,113,133,0.56); box-shadow: 0 0 24px rgba(244,114,182,0.3), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-clap { border: 3px solid rgba(34,211,238,0.56); box-shadow: 0 0 24px rgba(34,211,238,0.32), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-default { border: 3px solid rgba(255,255,255,0.44); box-shadow: 0 0 22px rgba(34,211,238,0.28), inset 0 0 16px rgba(255,255,255,0.12); }
+              .reaction-impact-ring-vip {
+                border-color: rgba(250,204,21,0.6);
+                box-shadow: 0 0 24px rgba(250,204,21,0.34), inset 0 0 18px rgba(255,255,255,0.16);
+              }
+              .reaction-impact-ring-delayed { animation-delay: 0.12s; }
+              .reaction-emoji-rocket { animation: reaction-emoji-rocket 1.6s ease-in-out infinite; filter: drop-shadow(0 0 22px rgba(251,146,60,0.5)); }
+              .reaction-emoji-diamond { animation: reaction-emoji-diamond 1.8s ease-in-out infinite; transform-style: preserve-3d; }
+              .reaction-emoji-crown { animation: reaction-emoji-crown 1.9s ease-in-out infinite; filter: drop-shadow(0 0 22px rgba(250,204,21,0.46)); }
+              .reaction-emoji-blossom { animation: reaction-emoji-blossom 2.1s ease-in-out infinite; filter: drop-shadow(0 0 22px rgba(251,113,133,0.42)); }
+              .reaction-emoji-drink { animation: reaction-emoji-drink 1.7s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(96,165,250,0.42)); }
+              .reaction-emoji-fire { animation: reaction-emoji-fire 1.25s ease-in-out infinite; }
+              .reaction-emoji-heart { animation: reaction-emoji-heart 1.3s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(251,113,133,0.5)); }
+              .reaction-emoji-clap { animation: reaction-emoji-clap 0.95s ease-in-out infinite; filter: drop-shadow(0 0 16px rgba(34,211,238,0.46)); }
               .animate-vip-glow { animation: vip-glow 1.2s ease-in-out infinite; }
               .vip-reaction-emoji { animation: vip-jolt 0.6s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(250, 204, 21, 0.75)); }
               .animate-vip-spin { animation: vip-spin 1.2s linear infinite; }
-              .featured-reaction-spotlight { animation: featured-reaction-enter 0.36s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
-              .featured-reaction-sheen { animation: featured-reaction-sheen 3s ease-in-out infinite; }
-              .featured-reaction-avatar { backdrop-filter: blur(14px); }
-              .featured-reaction-emoji { animation: vip-jolt 0.9s ease-in-out infinite; }
               .selfie-grid-sheen { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.14) 40%, transparent 72%); animation: selfie-grid-sheen 8s ease-in-out infinite; mix-blend-mode: screen; }
               .selfie-wall-card { transition: transform 450ms ease, box-shadow 450ms ease, border-color 450ms ease; }
               .selfie-wall-card-fresh { animation: selfie-card-fresh 2.8s ease-in-out infinite; }
@@ -9156,6 +9464,36 @@ const PublicTV = ({ roomCode }) => {
               .doodle-wall-card-fresh { animation: doodle-card-fresh 3.2s ease-in-out infinite; }
               .doodle-arrival-chip { animation: doodle-arrival-chip 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
               .tv-light-sweep { background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.12) 45%, transparent 80%); animation: tv-sweep 10s ease-in-out infinite; mix-blend-mode: screen; }
+              .motion-safe-fx .reaction-stack-drift-left,
+              .motion-safe-fx .reaction-stack-drift-right,
+              .motion-safe-fx .reaction-stack-hover,
+              .motion-safe-fx .reaction-stack-bounce,
+              .motion-safe-fx .reaction-stack-sweep,
+              .motion-safe-fx .reaction-stack-launch,
+              .motion-safe-fx .reaction-stack-prism,
+              .motion-safe-fx .reaction-stack-royal,
+              .motion-safe-fx .reaction-stack-blossom,
+              .motion-safe-fx .reaction-stack-cheers,
+              .motion-safe-fx .reaction-stack-ember,
+              .motion-safe-fx .reaction-stack-heart,
+              .motion-safe-fx .reaction-stack-applause {
+                animation: reaction-safe-float var(--reaction-duration, 9000ms) ease-out forwards;
+              }
+              .motion-safe-fx .reaction-impact-bloom,
+              .motion-safe-fx .reaction-impact-ring,
+              .motion-safe-fx .reaction-emoji-rocket,
+              .motion-safe-fx .reaction-emoji-diamond,
+              .motion-safe-fx .reaction-emoji-crown,
+              .motion-safe-fx .reaction-emoji-blossom,
+              .motion-safe-fx .reaction-emoji-drink,
+              .motion-safe-fx .reaction-emoji-fire,
+              .motion-safe-fx .reaction-emoji-heart,
+              .motion-safe-fx .reaction-emoji-clap,
+              .motion-safe-fx .vip-reaction-emoji,
+              .motion-safe-fx .animate-vip-spin {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+              }
               .lobby-burst-anchor { transform: translate(-50%, -50%); }
               .lobby-burst-motion { animation: lobby-burst-rise 3.6s cubic-bezier(0.22, 0.61, 0.36, 1) forwards; }
               .lobby-burst-aura { animation: lobby-aura-pulse 1.2s ease-out forwards; mix-blend-mode: screen; }

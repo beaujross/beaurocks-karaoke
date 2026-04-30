@@ -63,6 +63,7 @@
     "qa:audience:branding": "node scripts/qa/audience-aahf-branding-visuals.mjs",
     "qa:audience:crowd-selfie": "node scripts/qa/crowd-selfie-flow-playwright.mjs",
     "qa:audience:screenshots": "node scripts/qa/audience-shell-before-after-screenshots.mjs",
+    "qa:tv:reactions": "node scripts/qa/public-tv-reactions-playwright.mjs",
     "qa:tv:run-of-show": "node scripts/qa/public-tv-run-of-show-visuals.mjs",
     "test:e2e": "npm run build && npm run qa:release:marketing && npm run qa:marketing:host-waitlist && npm run qa:release:host && npm run qa:audience:app && npm run qa:games:voice-local && npm run qa:tv:run-of-show",
     "qa:agent:brief": "node scripts/qa/generate-agent-mode-brief.mjs",

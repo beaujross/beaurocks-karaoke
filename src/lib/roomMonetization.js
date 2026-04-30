@@ -201,3 +201,14 @@ export const normalizePurchaseCelebration = (input = {}) => {
         createdAtMs: Math.max(0, Number(source.createdAtMs || 0) || 0),
     };
 };
+
+export const buildPurchaseCelebrationReplay = (input = {}, replayAtMs = Date.now()) => {
+    const celebration = normalizePurchaseCelebration(input);
+    if (!celebration.id) return null;
+    const safeReplayAtMs = Math.max(1, Number(replayAtMs || 0) || Date.now());
+    return {
+        ...celebration,
+        id: `replay_${safeReplayAtMs}_${celebration.id}`,
+        createdAtMs: safeReplayAtMs,
+    };
+};

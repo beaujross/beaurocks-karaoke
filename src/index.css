@@ -27,6 +27,90 @@ html, body, #root { height: 100%; width: 100%; }
     width: clamp(120px, 14vw, 220px);
   }
 }
+.tv-festival-atmosphere::before,
+.tv-festival-atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tv-festival-atmosphere::before {
+  inset: -12% -8% 42%;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(var(--audience-brand-primary-rgb, 224, 90, 68), 0.26) 0%, rgba(var(--audience-brand-secondary-rgb, 244, 201, 74), 0.12) 26%, rgba(0, 0, 0, 0) 58%);
+  filter: blur(26px);
+  opacity: 0.95;
+}
+.tv-festival-atmosphere::after {
+  inset: auto -16% -26% -16%;
+  height: 60%;
+  background:
+    radial-gradient(circle at 50% 100%, rgba(var(--audience-brand-primary-rgb, 224, 90, 68), 0.18) 0%, rgba(var(--audience-brand-secondary-rgb, 244, 201, 74), 0.08) 28%, rgba(0, 0, 0, 0) 62%);
+  filter: blur(34px);
+  opacity: 0.9;
+}
+
+@keyframes tv-brand-logo-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.012); }
+}
+@keyframes tv-brand-logo-glow {
+  0%, 100% { opacity: 0.72; transform: scale(0.98); }
+  50% { opacity: 1; transform: scale(1.03); }
+}
+@keyframes tv-brand-logo-sheen {
+  0%, 12%, 100% { opacity: 0; transform: translateX(-72%) skewX(-18deg); }
+  18% { opacity: 0.28; }
+  30% { opacity: 0; transform: translateX(138%) skewX(-18deg); }
+}
+.tv-brand-logo-shell {
+  isolation: isolate;
+  overflow: visible;
+}
+.tv-brand-logo-shell::before,
+.tv-brand-logo-shell::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.tv-brand-logo-shell::before {
+  inset: 10% -8%;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(var(--audience-brand-primary-rgb, 224, 90, 68), 0.22) 0%, rgba(var(--audience-brand-secondary-rgb, 244, 201, 74), 0.08) 42%, rgba(0, 0, 0, 0) 72%);
+  filter: blur(18px);
+  z-index: 0;
+  animation: tv-brand-logo-glow 8s ease-in-out infinite;
+}
+.tv-brand-logo-shell::after {
+  top: -16%;
+  bottom: -14%;
+  left: -48%;
+  width: 36%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, 0.24) 48%, rgba(255, 244, 214, 0.1) 62%, transparent 100%);
+  transform: skewX(-18deg);
+  mix-blend-mode: screen;
+  filter: blur(1px);
+  z-index: 2;
+  animation: tv-brand-logo-sheen 12s ease-in-out infinite;
+}
+.tv-brand-logo {
+  position: relative;
+  z-index: 1;
+  transform-origin: center;
+  filter:
+    drop-shadow(0 0 28px rgba(var(--audience-brand-primary-rgb, 224, 90, 68), 0.24))
+    drop-shadow(0 0 52px rgba(255, 255, 255, 0.08));
+  animation: tv-brand-logo-float 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tv-brand-logo,
+  .tv-brand-logo-shell::before,
+  .tv-brand-logo-shell::after {
+    animation: none;
+  }
+}
 .font-emoji { font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", "EmojiOne Color", sans-serif; }
 .emoji-carousel {
   scrollbar-width: none;
@@ -602,10 +686,11 @@ html, body, #root { height: 100%; width: 100%; }
 
 /* Money: Raining Down (Inverted Gravity feeling) */
 @keyframes moneyFloat {
-  0% { transform: translateY(0) rotate(0) scale(0.5); opacity: 0; }
-  10% { opacity: 1; transform: translateY(-10vh) rotate(45deg) scale(1.2); }
-  50% { transform: translateY(-50vh) rotate(-45deg) scale(1.5); }
-  100% { transform: translateY(-120vh) rotate(180deg) scale(2.0); opacity: 0; }
+  0% { transform: translateY(0) translateX(0) rotate(-12deg) scale(0.45); opacity: 0; }
+  12% { opacity: 1; transform: translateY(-12vh) translateX(-10px) rotate(14deg) scale(1.1); }
+  38% { transform: translateY(-34vh) translateX(16px) rotate(-16deg) scale(1.28); }
+  66% { transform: translateY(-70vh) translateX(-12px) rotate(18deg) scale(1.38); }
+  100% { transform: translateY(-120vh) translateX(10px) rotate(-8deg) scale(1.86); opacity: 0; }
 }
 
 /* Drink: Clinking */
@@ -648,11 +733,62 @@ html, body, #root { height: 100%; width: 100%; }
 .animate-rocket-fly { animation: rocketFly 2.5s ease-in forwards; filter: drop-shadow(0 0 30px orange); }
 .animate-diamond-shine { animation: diamondFloat 4s linear forwards; filter: drop-shadow(0 0 25px cyan); perspective: 1000px; }
 .animate-crown-bounce { animation: wobbleFloat 4s ease-out forwards; filter: drop-shadow(0 0 25px gold); }
-.animate-money-wobble { animation: moneyFloat 4s linear forwards; filter: drop-shadow(0 0 15px lime); }
+.animate-money-wobble { animation: moneyFloat 4s ease-out forwards; filter: drop-shadow(0 0 18px rgba(251, 113, 133, 0.7)); }
 .animate-drink-sway { animation: cheersFly 3.5s ease-out forwards; filter: drop-shadow(0 0 15px white); }
 .animate-heart-beat { animation: heartBeatFloat 3s linear forwards; filter: drop-shadow(0 0 20px red); }
 .animate-fire-flicker { animation: fireFloat 2.5s linear forwards; filter: drop-shadow(0 0 20px orangered); }
 .animate-clap-shake { animation: clapFloat 3s linear forwards; }
+
+@keyframes reactionOptionRocket {
+  0%, 100% { transform: translateY(0px) rotate(-2deg) scale(1); }
+  40% { transform: translateY(-4px) rotate(3deg) scale(1.06); }
+}
+
+@keyframes reactionOptionDiamond {
+  0%, 100% { transform: rotate(0deg) scale(1); filter: drop-shadow(0 0 14px rgba(103, 232, 249, 0.36)); }
+  50% { transform: rotate(8deg) scale(1.05); filter: drop-shadow(0 0 20px rgba(103, 232, 249, 0.6)); }
+}
+
+@keyframes reactionOptionCrown {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  45% { transform: translateY(-3px) rotate(4deg) scale(1.05); }
+}
+
+@keyframes reactionOptionBlossom {
+  0%, 100% { transform: rotate(-5deg) scale(1); }
+  50% { transform: rotate(7deg) scale(1.06); }
+}
+
+@keyframes reactionOptionDrink {
+  0%, 100% { transform: rotate(-4deg) scale(1); }
+  50% { transform: rotate(6deg) scale(1.04); }
+}
+
+@keyframes reactionOptionFire {
+  0%, 100% { transform: scale(1) rotate(-2deg); filter: drop-shadow(0 0 14px rgba(251, 146, 60, 0.44)); }
+  50% { transform: scale(1.08) rotate(2deg); filter: drop-shadow(0 0 24px rgba(251, 146, 60, 0.78)); }
+}
+
+@keyframes reactionOptionHeart {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.08); }
+  60% { transform: scale(0.98); }
+}
+
+@keyframes reactionOptionClap {
+  0%, 100% { transform: rotate(-2deg) scale(1); }
+  50% { transform: rotate(4deg) scale(1.06); }
+}
+
+.reaction-option-icon { display: inline-flex; align-items: center; justify-content: center; transform-origin: center; }
+.animate-reaction-option-rocket { animation: reactionOptionRocket 1.8s ease-in-out infinite; }
+.animate-reaction-option-diamond { animation: reactionOptionDiamond 1.9s ease-in-out infinite; }
+.animate-reaction-option-crown { animation: reactionOptionCrown 2s ease-in-out infinite; filter: drop-shadow(0 0 16px rgba(250, 204, 21, 0.42)); }
+.animate-reaction-option-blossom { animation: reactionOptionBlossom 2.1s ease-in-out infinite; filter: drop-shadow(0 0 18px rgba(251, 113, 133, 0.48)); }
+.animate-reaction-option-drink { animation: reactionOptionDrink 1.7s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(96, 165, 250, 0.36)); }
+.animate-reaction-option-fire { animation: reactionOptionFire 1.2s ease-in-out infinite; }
+.animate-reaction-option-heart { animation: reactionOptionHeart 1.3s ease-in-out infinite; filter: drop-shadow(0 0 16px rgba(251, 113, 133, 0.46)); }
+.animate-reaction-option-clap { animation: reactionOptionClap 0.95s ease-in-out infinite; filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.4)); }
 
 
 .animate-in { animation: fadeIn 0.5s ease-out forwards; }

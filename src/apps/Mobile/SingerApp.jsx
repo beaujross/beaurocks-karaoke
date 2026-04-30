@@ -30,9 +30,9 @@ import {
     lockBingoMysteryPick
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
-import { emoji, EMOJI } from '../../lib/emoji';
+import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
-import { HOW_TO_PLAY } from '../../lib/howToPlay';
+import { buildSingerHowToPlay } from '../../lib/howToPlay';
 import { useToast } from '../../context/ToastContext';
 import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
@@ -225,12 +225,13 @@ const AudienceBrowseSongRow = ({
     artist = '',
     loading = false,
     ready = false,
+    disabled = false,
     onRequest,
     onTight15 = null,
     requestLabel = 'Request',
     requestToneClass = 'bg-[#00C4D9]/18 text-[#46D7E8] border-[#00C4D9]/30',
 }) => (
-    <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 hover:border-[#00C4D9]/40">
+    <div className={`flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 ${disabled ? 'opacity-70' : 'hover:border-[#00C4D9]/40'}`}>
         {index !== null ? (
             <div className="w-6 text-center font-mono text-sm text-zinc-500">{index}</div>
         ) : null}
@@ -256,7 +257,8 @@ const AudienceBrowseSongRow = ({
             <button
                 type="button"
                 onClick={onRequest}
-                className={`rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${requestToneClass}`}
+                disabled={disabled}
+                className={`rounded-full border px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] ${requestToneClass} ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
             >
                 {requestLabel}
             </button>
@@ -954,6 +956,7 @@ const SingerApp = ({ roomCode, uid }) => {
         [room?.audienceShellVariant]
     );
     const isStreamlinedAudienceShell = shellVariant === AUDIENCE_SHELL_VARIANTS.streamlined;
+    const singerHowToPlay = useMemo(() => buildSingerHowToPlay(room), [room]);
     const takeoverKind = useMemo(
         () => deriveAudienceTakeoverKind({ activeMode: room?.activeMode, lightMode: room?.lightMode }),
         [room?.activeMode, room?.lightMode]
@@ -1467,6 +1470,15 @@ const SingerApp = ({ roomCode, uid }) => {
     const [popTriviaSubmitting, setPopTriviaSubmitting] = useState(false);
     const [popTriviaRevealSnapshot, setPopTriviaRevealSnapshot] = useState(null);
     const [dismissedPopTriviaCardKey, setDismissedPopTriviaCardKey] = useState('');
+    const [isJoining, setIsJoining] = useState(false);
+    const [requestSubmitPending, setRequestSubmitPending] = useState(false);
+    const [requestSubmitPendingMeta, setRequestSubmitPendingMeta] = useState({ songTitle: '', artist: '' });
+    const [doodleSubmitting, setDoodleSubmitting] = useState(false);
+    const [doodleVotePendingUid, setDoodleVotePendingUid] = useState('');
+    const [selfieChallengeSubmitting, setSelfieChallengeSubmitting] = useState(false);
+    const [selfieVotePendingUid, setSelfieVotePendingUid] = useState('');
+    const [bingoSpinPending, setBingoSpinPending] = useState(false);
+    const [bingoSuggestSubmitting, setBingoSuggestSubmitting] = useState(false);
 
     // Email-link account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(!!initialAudienceDemoFixture?.showPhoneModal);
@@ -1521,6 +1533,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [showRulesModal, setShowRulesModal] = useState(false);
     const [pendingJoin, setPendingJoin] = useState(null);
     const [nameFocused, setNameFocused] = useState(false);
+    const joinNameInputRef = useRef(null);
     const joinContainerRef = useRef(null);
     const joinRayStageRef = useRef(null);
     const joinLogoRef = useRef(null);
@@ -2911,6 +2924,25 @@ const SingerApp = ({ roomCode, uid }) => {
     const joinConnectedLabel = hasSupporterAccess && !isVipAccount
         ? `${supporterAccessLabel} Access Ready`
         : 'Email Sync Ready';
+    const joinReadyName = clampName(String(form.name || '').trim());
+    const joinCanSubmit = !!activeUid && !!joinReadyName;
+    const joinButtonLabel = isJoining
+        ? 'JOINING...'
+        : !activeUid
+        ? 'CONNECTING...'
+        : joinCanSubmit
+            ? 'JOIN THE PARTY'
+            : 'ADD YOUR NAME';
+    const joinStatusHint = isJoining
+        ? 'Adding you to the room now. This can take a moment.'
+        : !activeUid
+        ? 'Connecting you to the room now.'
+        : joinCanSubmit
+            ? 'Songs opens first so you can add yourself fast.'
+            : 'Add your name to light up the queue.';
+    const requestSubmitPendingLabel = requestSubmitPendingMeta.songTitle
+        ? `Adding ${requestSubmitPendingMeta.songTitle} to the queue...`
+        : 'Adding song to the queue...';
     useEffect(() => {
         if (!roomCode || !activeUid || !user) return undefined;
         if (!activeEventCredits.enabled || !activeEventCredits.timedLobbyEnabled) return undefined;
@@ -3789,6 +3821,17 @@ const SingerApp = ({ roomCode, uid }) => {
     };
 
     // Helpers
+    const getReactionOptionIconClass = (t, sizeClass = 'text-5xl') => ({
+        rocket: `reaction-option-icon animate-reaction-option-rocket ${sizeClass}`,
+        diamond: `reaction-option-icon animate-reaction-option-diamond ${sizeClass}`,
+        crown: `reaction-option-icon animate-reaction-option-crown ${sizeClass}`,
+        money: `reaction-option-icon animate-reaction-option-blossom ${sizeClass}`,
+        drink: `reaction-option-icon animate-reaction-option-drink ${sizeClass}`,
+        fire: `reaction-option-icon animate-reaction-option-fire ${sizeClass}`,
+        heart: `reaction-option-icon animate-reaction-option-heart ${sizeClass}`,
+        clap: `reaction-option-icon animate-reaction-option-clap ${sizeClass}`
+    }[t] || `reaction-option-icon ${sizeClass}`);
+
     const getReactionClass = (t) => ({
         rocket: 'animate-rocket-fly text-6xl', 
         diamond: 'animate-diamond-shine text-6xl', 
@@ -3800,7 +3843,7 @@ const SingerApp = ({ roomCode, uid }) => {
         clap: 'animate-clap-shake text-6xl'
     }[t] || 'animate-float text-6xl');
 
-const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
+const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     const hasLyrics = !!currentSinger?.lyrics;
     const applePlayback = room?.appleMusicPlayback || null;
@@ -3872,11 +3915,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const submitDoodleDrawing = useCallback(async () => {
         if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
         if (doodleSubmitted) return;
+        if (doodleSubmitting) return;
         const canvas = doodleCanvasRef.current;
         if (!canvas) return;
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         if (!dataUrl || dataUrl.length < 1000) return toast('Add a little more detail first');
         try {
+            setDoodleSubmitting(true);
             const submission = await submitDoodleOkeEntry({
                 roomCode,
                 promptId: room.doodleOke.promptId,
@@ -3894,13 +3939,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             toast('Submit failed');
+        } finally {
+            setDoodleSubmitting(false);
         }
-    }, [roomCode, user, room?.doodleOke?.promptId, room?.doodleOke?.requireReview, doodleSubmitted, activeUid, toast]);
+    }, [roomCode, user, room?.doodleOke?.promptId, room?.doodleOke?.requireReview, doodleSubmitted, doodleSubmitting, activeUid, toast]);
 
     const submitDoodleVote = async (targetUid) => {
         if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
         if (doodleMyVote) return;
+        if (doodleVotePendingUid) return;
         try {
+            setDoodleVotePendingUid(String(targetUid || '').trim());
             const vote = await castDoodleOkeVote({
                 roomCode,
                 promptId: room.doodleOke.promptId,
@@ -3918,6 +3967,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             toast('Vote failed');
+        } finally {
+            setDoodleVotePendingUid('');
         }
     };
 
@@ -3981,11 +4032,12 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     useEffect(() => {
         if (!showHowToPlay) return undefined;
         setHowToPlayIndex(0);
+        const slideCount = Math.max(1, singerHowToPlay.sections?.length || 0);
         const timer = setInterval(() => {
-            setHowToPlayIndex(prev => (prev + 1) % (HOW_TO_PLAY.sections?.length || 1));
+            setHowToPlayIndex(prev => (prev + 1) % slideCount);
         }, 5000);
         return () => clearInterval(timer);
-    }, [showHowToPlay]);
+    }, [showHowToPlay, singerHowToPlay.sections?.length]);
 
     useEffect(() => {
         if (room?.activeMode === 'bingo') {
@@ -5699,6 +5751,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const safeName = clampName(rawName.trim());
         const finalEmoji = resolveAllowedAvatarEmoji(rawEmoji);
         if(!safeName) return false;
+        if (isJoining) return false;
 
         const writeJoinProjection = async () => (
             joinRoomAudience({
@@ -5709,6 +5762,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         );
 
         try {
+            setIsJoining(true);
             markActive();
             await initAuth().catch(() => ({ ok: false }));
             let activeUid = await waitForJoinAuthUid();
@@ -5776,6 +5830,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             console.error('Audience join failed', error);
             toast(getJoinErrorMessage(error));
             return false;
+        } finally {
+            setIsJoining(false);
         }
     };
     demoJoinRef.current = join;
@@ -5930,6 +5986,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             window.location.href = launchUrl;
         }
     }, [roomCode, roomSupportOffer, toast]);
+    const openDirectSupportFlow = useCallback(() => {
+        if (!roomSupportOffer) {
+            setShowPoints(true);
+            return;
+        }
+        if (roomSupportOffer?.supportEmbedUrl) {
+            setSupportEmbedOpen(true);
+            setShowPoints(true);
+            return;
+        }
+        startGivebutterSupportCheckout(roomSupportOffer);
+    }, [roomSupportOffer, startGivebutterSupportCheckout]);
 
     const startPersonalPackCheckout = useCallback(async (pack) => {
         if (pack?.offerType === 'support_offer') {
@@ -6577,7 +6645,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const submitSelfieChallenge = async () => {
         if (!videoRef.current || !user || !room?.selfieChallenge?.promptId) return;
+        if (selfieChallengeSubmitting) return;
         try {
+            setSelfieChallengeSubmitting(true);
             const photo = await captureAndUploadSelfie({ quality: 0.5, suffix: 'challenge' });
             const submission = await submitSelfieChallengeEntry({
                 roomCode,
@@ -6595,6 +6665,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (e) {
             console.error(e);
             toast(resolveSelfieErrorMessage(e, 'Selfie submit failed'));
+        } finally {
+            setSelfieChallengeSubmitting(false);
         }
     };
 
@@ -6707,8 +6779,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const react = async (type, cost=10) => { 
         const safeType = String(type || '').trim().toLowerCase();
         let nextCost = Math.max(0, Number(cost || 0) || 0);
+        const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
         if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_result') && safeType === 'clap') nextCost = 0;
         if (coHostFreeReactions) nextCost = 0;
+        if (!currentSinger && !applauseModeActive) return toast('Reactions wake up once someone is on stage.');
         if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} pts!`); 
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
@@ -6856,6 +6930,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
     const submitSong = async (s, a, art, options = {}) => { 
         if(!user) return; 
+        if (requestSubmitPending) return;
         const singerUid = activeUid;
         if (!singerUid) {
             toast('Session is still connecting. Try again.');
@@ -6875,6 +6950,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         try {
             const song = s || form.song; const artist = a || form.artist; const artwork = art || form.art; 
             if(!song) return; 
+            setRequestSubmitPending(true);
+            setRequestSubmitPendingMeta({
+                songTitle: String(song || '').trim(),
+                artist: String(artist || '').trim()
+            });
             markActive();
             await ensureAppCheckToken(false).catch(() => false);
             const enforcePending = songLimitState.softReviewPending;
@@ -7067,6 +7147,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         } catch (err) {
             console.warn('Singer queue submit failed', err);
             toast(getQueueSubmitErrorMessage(err, 'Error sending request'));
+        } finally {
+            setRequestSubmitPending(false);
+            setRequestSubmitPendingMeta({ songTitle: '', artist: '' });
         }
     };
     
@@ -8184,7 +8267,65 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         {poweredByBeauRocksLabel}
                     </div>
                 ) : null}
-                <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
+                <div className="max-w-sm text-center">
+                    <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
+                    <div className="text-sm leading-6 text-zinc-100/90">
+                        Pick your emoji, add your name, and you will land in Songs ready to search.
+                    </div>
+                </div>
+                <div className="mt-3 grid w-full max-w-sm grid-cols-3 gap-2 text-left">
+                    {[
+                        {
+                            key: 'emoji',
+                            label: 'Pick Emoji',
+                            detail: selectedAvatar?.label || 'Avatar',
+                            complete: !!activeAvatarPreviewEmoji,
+                            active: !joinReadyName,
+                        },
+                        {
+                            key: 'name',
+                            label: 'Add Name',
+                            detail: joinReadyName || 'Queue name',
+                            complete: !!joinReadyName,
+                            active: !!activeAvatarPreviewEmoji && !joinReadyName,
+                        },
+                        {
+                            key: 'join',
+                            label: 'Join Room',
+                            detail: activeUid ? 'Ready' : 'Connecting',
+                            complete: joinCanSubmit,
+                            active: joinCanSubmit,
+                        }
+                    ].map((step) => {
+                        const stepStyle = step.complete
+                            ? {
+                                borderColor: `${audienceBrandTheme.secondaryColor}66`,
+                                background: `${audienceBrandTheme.secondaryColor}22`,
+                                color: '#ffffff',
+                            }
+                            : step.active
+                                ? {
+                                    borderColor: `${audienceBrandTheme.primaryColor}66`,
+                                    background: `${audienceBrandTheme.primaryColor}22`,
+                                    color: '#ffffff',
+                                }
+                                : {
+                                    borderColor: 'rgba(255,255,255,0.08)',
+                                    background: 'rgba(0,0,0,0.22)',
+                                    color: 'rgba(228,228,231,0.92)',
+                                };
+                        return (
+                            <div key={step.key} className="rounded-2xl border px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={stepStyle}>
+                                <div className="text-[9px] font-black uppercase tracking-[0.24em]">
+                                    {step.label}
+                                </div>
+                                <div className="mt-1 text-sm font-bold leading-tight">
+                                    {step.detail}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
                 <div className="w-screen -mx-6 px-0 relative">
                     <AvatarCoverflow items={AVATAR_CATALOG} value={activeAvatarPreviewEmoji} onSelect={handleSelectAvatar} getStatus={getAvatarStatus} loop={false} edgePadding="center" brandTheme={audienceBrandTheme} />
@@ -8206,6 +8347,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 </div>
                 <div className="relative w-full max-w-sm mt-2 mb-2.5">
                     <input
+                        ref={joinNameInputRef}
                         data-singer-join-name
                         value={form.name}
                         maxLength={NAME_LIMIT}
@@ -8213,6 +8355,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                                 e.preventDefault();
+                                if (!joinReadyName) return;
                                 if (!termsAccepted) {
                                     setPendingJoin({ type: 'join', payload: null });
                                     setShowRulesModal(true);
@@ -8236,10 +8379,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[2px] h-6 bg-white/80 caret-blink"></span>
                     ) : null}
                 </div>
+                <div className="mb-3 flex w-full max-w-sm items-center justify-between gap-3 text-[11px] uppercase tracking-[0.18em] text-zinc-200/80">
+                    <span>Name shows in the queue and on the room screen.</span>
+                    <span>{`${clampName(String(form.name || '')).length}/${NAME_LIMIT}`}</span>
+                </div>
                 <button
                     data-singer-join-button
-                    disabled={!activeUid}
+                    disabled={!joinCanSubmit || isJoining}
                     onClick={() => {
+                        if (isJoining) return;
                         if (!termsAccepted) {
                             setPendingJoin({ type: 'join', payload: null });
                             setShowRulesModal(true);
@@ -8247,14 +8395,24 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         }
                         join();
                     }}
-                    className={`w-full max-w-sm py-3.5 rounded-xl font-bold text-white shadow-lg text-lg transition-transform border-[5px] border-white/90 ${activeUid ? 'active:scale-95' : 'bg-zinc-700/90 border-zinc-400/50 text-zinc-200 cursor-wait'}`}
+                    className={`w-full max-w-sm py-3.5 rounded-xl font-bold text-white shadow-lg text-lg transition-transform border-[5px] ${
+                        joinCanSubmit && !isJoining
+                            ? 'border-white/90 active:scale-95'
+                            : activeUid
+                                ? 'border-white/20 text-zinc-100/85 cursor-not-allowed'
+                                : 'bg-zinc-700/90 border-zinc-400/50 text-zinc-200 cursor-wait'
+                    }`}
                     style={activeUid ? {
                         backgroundImage: `linear-gradient(90deg, ${audienceBrandTheme.secondaryColor} 0%, ${audienceBrandTheme.primaryColor} 100%)`,
                         boxShadow: audienceBrandPalette.ringStyle.boxShadow,
+                        opacity: joinCanSubmit && !isJoining ? 1 : 0.55,
                     } : undefined}
                 >
-                    {activeUid ? 'JOIN THE PARTY' : 'CONNECTING...'}
+                    {joinButtonLabel}
                 </button>
+                <div className="mt-2 max-w-sm text-center text-[11px] uppercase tracking-[0.18em] text-zinc-200/80">
+                    {joinStatusHint}
+                </div>
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
                     {joinAccessHelperText}
                 </div>
@@ -8335,8 +8493,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </label>
                     <button
                         data-singer-rules-confirm
-                        disabled={!termsAccepted || crowdSelfieSubmitting}
+                        disabled={!termsAccepted || crowdSelfieSubmitting || isJoining}
                         onClick={async () => {
+                            if (isJoining) return;
                             if (!termsAccepted) return;
                             if (typeof window !== 'undefined') {
                                 const key = `beaurocks_rules_${uid || 'guest'}`;
@@ -8361,9 +8520,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             setCrowdSelfieSetupOpen(false);
                             setShowRulesModal(false);
                         }}
-                        className={`w-full py-2.5 rounded-xl font-bold text-white shadow-md text-base transition-transform ${(termsAccepted && !crowdSelfieSubmitting) ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 active:scale-95' : 'bg-zinc-700 text-zinc-300 cursor-not-allowed'}`}
+                        className={`w-full py-2.5 rounded-xl font-bold text-white shadow-md text-base transition-transform ${(termsAccepted && !crowdSelfieSubmitting && !isJoining) ? 'bg-gradient-to-r from-pink-500 to-fuchsia-500 active:scale-95' : 'bg-zinc-700 text-zinc-300 cursor-not-allowed'}`}
                     >
-                        {crowdSelfieSubmitting ? 'Joining...' : 'Agree and Continue'}
+                        {(crowdSelfieSubmitting || isJoining) ? 'Joining...' : 'Agree and Continue'}
                     </button>
                     <button
                         onClick={() => {
@@ -8406,6 +8565,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </div>
                     <button
                         onClick={() => {
+                            if (isJoining) return;
                             if (!termsAccepted) {
                                 setPendingJoin({ type: 'rejoin', payload: returningProfile });
                                 setShowRejoinModal(false);
@@ -8415,9 +8575,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             setShowRejoinModal(false);
                             join(returningProfile);
                         }}
-                        className="w-full py-3 rounded-xl font-bold text-white shadow-lg text-base transition-transform bg-gradient-to-r from-pink-600 to-purple-600 active:scale-95"
+                        disabled={isJoining}
+                        className={`w-full py-3 rounded-xl font-bold text-white shadow-lg text-base transition-transform ${isJoining ? 'bg-zinc-700 text-zinc-300 cursor-not-allowed' : 'bg-gradient-to-r from-pink-600 to-purple-600 active:scale-95'}`}
                     >
-                        Rejoin as {returningProfile.name}
+                        {isJoining ? 'Joining...' : `Rejoin as ${returningProfile.name}`}
                     </button>
                     <button
                         onClick={() => {
@@ -8842,11 +9003,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <button
                                         data-feature-id="singer-doodle-submit"
                                         onClick={submitDoodleDrawing}
-                                        disabled={hasSubmitted}
-                                        className={`mt-3 w-full py-3 rounded-xl font-bold ${hasSubmitted ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
+                                        disabled={hasSubmitted || doodleSubmitting}
+                                        className={`mt-3 w-full py-3 rounded-xl font-bold ${(hasSubmitted || doodleSubmitting) ? 'bg-zinc-800 text-zinc-500' : 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black'}`}
                                     >
-                                        {hasSubmitted ? 'Submitted' : 'Submit Drawing'}
+                                        {hasSubmitted ? 'Submitted' : doodleSubmitting ? 'Submitting...' : 'Submit Drawing'}
                                     </button>
+                                    {doodleSubmitting ? (
+                                        <div className="mt-2 text-xs text-cyan-200 text-center">Uploading your drawing now...</div>
+                                    ) : null}
                                     {hasSubmitted && requireReview && !mySubmissionApproved && (
                                         <div className="mt-2 text-xs text-amber-300 text-center">Awaiting host approval before your sketch appears.</div>
                                     )}
@@ -8881,10 +9045,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     <button
                                                         data-feature-id={`singer-doodle-vote-${s.uid}`}
                                                         onClick={() => submitDoodleVote(s.uid)}
-                                                        disabled={!!doodleMyVote}
-                                                        className={`px-3 py-1 rounded-full border ${doodleMyVote ? 'border-zinc-700 text-zinc-500' : 'border-cyan-400/40 text-cyan-200'}`}
+                                                        disabled={!!doodleMyVote || !!doodleVotePendingUid}
+                                                        className={`px-3 py-1 rounded-full border ${(doodleMyVote || doodleVotePendingUid) ? 'border-zinc-700 text-zinc-500' : 'border-cyan-400/40 text-cyan-200'}`}
                                                     >
-                                                        {doodleMyVote?.targetUid === s.uid ? 'Voted' : 'Vote'}
+                                                        {doodleMyVote?.targetUid === s.uid ? 'Voted' : doodleVotePendingUid === s.uid ? 'Voting...' : 'Vote'}
                                                     </button>
                                                 )}
                                             </div>
@@ -8922,20 +9086,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         const castVote = async (targetUid) => {
             if (!user || !challenge?.promptId) return;
             if (mySelfieVote) return toast('Vote already submitted');
-            const vote = await castSelfieChallengeVote({
-                roomCode,
-                promptId: challenge.promptId,
-                targetUid
-            });
-            const voterUid = String(vote?.voterUid || activeUid || '').trim();
-            if (voterUid) {
-                setMySelfieVote(targetUid);
-                setSelfieVotes((prev) => {
-                    if (prev.some((entry) => entry.voterUid === voterUid)) return prev;
-                    return [...prev, { id: voterUid, voterUid, targetUid }];
+            if (selfieVotePendingUid) return;
+            try {
+                setSelfieVotePendingUid(String(targetUid || '').trim());
+                const vote = await castSelfieChallengeVote({
+                    roomCode,
+                    promptId: challenge.promptId,
+                    targetUid
                 });
+                const voterUid = String(vote?.voterUid || activeUid || '').trim();
+                if (voterUid) {
+                    setMySelfieVote(targetUid);
+                    setSelfieVotes((prev) => {
+                        if (prev.some((entry) => entry.voterUid === voterUid)) return prev;
+                        return [...prev, { id: voterUid, voterUid, targetUid }];
+                    });
+                }
+                toast(vote?.duplicate ? 'Vote already submitted' : 'Vote submitted');
+            } catch (error) {
+                console.error(error);
+                toast('Vote failed');
+            } finally {
+                setSelfieVotePendingUid('');
             }
-            toast(vote?.duplicate ? 'Vote already submitted' : 'Vote submitted');
         };
 
         return (
@@ -8952,23 +9125,48 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                         <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover"></video>
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/40"></div>
                         <div className="absolute bottom-12 left-0 w-full flex justify-center z-30">
-                            <button data-feature-id="singer-selfie-submit" onClick={submitSelfieChallenge} disabled={hasSubmitted} className="w-24 h-24 bg-white rounded-full border-4 border-zinc-300 shadow-xl active:scale-95 transition-transform disabled:opacity-50"></button>
+                            <button
+                                data-feature-id="singer-selfie-submit"
+                                onClick={submitSelfieChallenge}
+                                disabled={hasSubmitted || selfieChallengeSubmitting}
+                                className={`w-24 h-24 rounded-full border-4 shadow-xl transition-transform disabled:opacity-50 ${selfieChallengeSubmitting ? 'bg-cyan-200 border-cyan-50 cursor-not-allowed' : 'bg-white border-zinc-300 active:scale-95'}`}
+                            >
+                                {selfieChallengeSubmitting ? (
+                                    <i className="fa-solid fa-spinner animate-spin text-2xl text-zinc-900"></i>
+                                ) : null}
+                            </button>
                         </div>
                         <div className="absolute bottom-4 left-0 w-full text-center text-xs text-zinc-300 z-30">
-                            {hasSubmitted ? 'Submitted - waiting for votes' : 'Tap to submit your selfie'}
+                            {hasSubmitted ? 'Submitted - waiting for votes' : selfieChallengeSubmitting ? 'Submitting your selfie...' : 'Tap to submit your selfie'}
                         </div>
                     </div>
                 ) : (
                     <div className="flex-1 p-6 mt-16">
+                        {selfieVotePendingUid ? (
+                            <div className="mb-4 rounded-full border border-cyan-300/35 bg-cyan-500/12 px-4 py-2 text-center text-[11px] font-black uppercase tracking-[0.2em] text-cyan-100">
+                                Sending vote...
+                            </div>
+                        ) : null}
                         {challenge?.status === 'voting' ? (
                             <div className="grid grid-cols-2 gap-4">
                                 {visibleSubmissions.map(s => (
-                                    <button data-feature-id={`singer-selfie-vote-${s.uid}`} key={s.id} onClick={() => castVote(s.uid)} className={`relative rounded-2xl overflow-hidden border ${mySelfieVote === s.uid ? 'border-[#00C4D9]' : 'border-zinc-700'} bg-zinc-900/60`}>
+                                    <button
+                                        data-feature-id={`singer-selfie-vote-${s.uid}`}
+                                        key={s.id}
+                                        onClick={() => castVote(s.uid)}
+                                        disabled={!!mySelfieVote || !!selfieVotePendingUid}
+                                        className={`relative rounded-2xl overflow-hidden border ${mySelfieVote === s.uid ? 'border-[#00C4D9]' : 'border-zinc-700'} bg-zinc-900/60 ${(mySelfieVote || selfieVotePendingUid) ? 'cursor-not-allowed opacity-80' : ''}`}
+                                    >
                                         <img src={s.url} alt={s.userName} className="w-full h-40 object-cover" />
                                         <div className="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-2 text-sm flex items-center justify-between">
                                             <span className="truncate">{s.userName}</span>
-                                            <span className="text-cyan-300 font-bold">{voteCounts[s.uid] || 0}</span>
+                                            <span className="text-cyan-300 font-bold">{selfieVotePendingUid === s.uid ? '...' : (voteCounts[s.uid] || 0)}</span>
                                         </div>
+                                        {selfieVotePendingUid === s.uid ? (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-sm font-black uppercase tracking-[0.2em] text-cyan-100">
+                                                Voting...
+                                            </div>
+                                        ) : null}
                                     </button>
                                 ))}
                                 {visibleSubmissions.length === 0 && (
@@ -9206,11 +9404,17 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         const submitMysterySpin = async ({ allowFinalized = false } = {}) => {
             if (!user || !activeUid) return false;
-            const result = await submitBingoMysterySpin({
-                roomCode,
-                allowFinalized
-            });
-            return !!result?.ok;
+            if (bingoSpinPending) return false;
+            try {
+                setBingoSpinPending(true);
+                const result = await submitBingoMysterySpin({
+                    roomCode,
+                    allowFinalized
+                });
+                return !!result?.ok;
+            } finally {
+                setBingoSpinPending(false);
+            }
         };
 
         // PASS THE USER OBJECT HERE
@@ -9238,6 +9442,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
 
         const submitBingoSuggestion = async () => {
             if (!user || pendingBingoSuggest === null) return;
+            if (bingoSuggestSubmitting) return;
             const idx = pendingBingoSuggest;
             const note = bingoSuggestNote.trim().slice(0, 20);
             if (bingoSessionVotes?.[idx]) {
@@ -9246,6 +9451,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 return;
             }
             try {
+                setBingoSuggestSubmitting(true);
                 if (!activeUid) {
                     toast('Session is still connecting. Try again.');
                     setPendingBingoSuggest(null);
@@ -9295,6 +9501,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     toast('Could not send that bingo update.');
                 }
             } finally {
+                setBingoSuggestSubmitting(false);
                 setPendingBingoSuggest(null);
             }
         };
@@ -9362,9 +9569,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         toast('Spin failed');
                                     }
                                 }}
-                                className="mt-5 w-full bg-gradient-to-r from-cyan-400 to-pink-500 text-black font-black py-3 rounded-full text-sm uppercase tracking-widest"
+                                disabled={bingoSpinPending || !!bingoRng?.results?.[uid]}
+                                className={`mt-5 w-full font-black py-3 rounded-full text-sm uppercase tracking-widest ${bingoSpinPending || bingoRng?.results?.[uid] ? 'bg-zinc-700 text-zinc-300 cursor-not-allowed' : 'bg-gradient-to-r from-cyan-400 to-pink-500 text-black'}`}
                             >
-                                {bingoRng?.results?.[uid] ? 'Waiting...' : 'Spin Now'}
+                                {bingoRng?.results?.[uid] ? 'Waiting...' : bingoSpinPending ? 'Spinning...' : 'Spin Now'}
                             </button>
                             <div className="text-[11px] text-zinc-400 mt-4">Highest number picks first.</div>
                         </div>
@@ -9393,9 +9601,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     toast('Join failed');
                                 }
                             }}
-                            className="bg-gradient-to-r from-cyan-400 to-pink-500 text-black font-bold px-4 py-2 rounded-full text-xs uppercase tracking-widest"
+                            disabled={bingoSpinPending || !!bingoRng?.results?.[uid]}
+                            className={`font-bold px-4 py-2 rounded-full text-xs uppercase tracking-widest ${bingoSpinPending || bingoRng?.results?.[uid] ? 'bg-zinc-700 text-zinc-300 cursor-not-allowed' : 'bg-gradient-to-r from-cyan-400 to-pink-500 text-black'}`}
                         >
-                            Spin In
+                            {bingoSpinPending ? 'Spinning...' : 'Spin In'}
                         </button>
                     </div>
                 )}
@@ -9417,8 +9626,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 maxLength={20}
                             />
                             <div className="flex gap-2 mt-4">
-                                <button onClick={() => setPendingBingoSuggest(null)} className="flex-1 bg-zinc-800 text-white rounded-lg py-2 text-sm font-bold">Cancel</button>
-                                <button onClick={submitBingoSuggestion} className="flex-1 bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9] rounded-lg py-2 text-sm font-bold">Send</button>
+                                <button disabled={bingoSuggestSubmitting} onClick={() => setPendingBingoSuggest(null)} className={`flex-1 rounded-lg py-2 text-sm font-bold ${bingoSuggestSubmitting ? 'bg-zinc-800/70 text-zinc-500 cursor-not-allowed' : 'bg-zinc-800 text-white'}`}>Cancel</button>
+                                <button disabled={bingoSuggestSubmitting} onClick={submitBingoSuggestion} className={`flex-1 rounded-lg py-2 text-sm font-bold ${bingoSuggestSubmitting ? 'bg-cyan-200 text-zinc-700 cursor-not-allowed' : 'bg-[#00C4D9]/20 border border-[#00C4D9]/40 text-[#00C4D9]'}`}>{bingoSuggestSubmitting ? 'Sending...' : 'Send'}</button>
                             </div>
                         </div>
                     </div>
@@ -10154,8 +10363,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     }
 
     if (showHowToPlay) {
-        const slides = HOW_TO_PLAY.sections || [];
-        const active = slides[howToPlayIndex] || { title: '', items: [] };
+        const slides = singerHowToPlay.sections || [];
+        const active = slides[howToPlayIndex] || { title: '', items: [], eyebrow: '', tip: '', tags: [] };
         const handleTouchStart = (e) => {
             howToPlayTouchStart.current = e.touches[0]?.clientX ?? null;
         };
@@ -10187,7 +10396,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <div className="min-w-0">
                                 <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">How to Play</div>
                                 <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899]">
-                                    {HOW_TO_PLAY.title}
+                                    {singerHowToPlay.title}
                                 </h2>
                             </div>
                         </div>
@@ -10200,10 +10409,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                             <i className="fa-solid fa-xmark"></i>
                         </button>
                     </div>
-                    <div className="text-base text-zinc-300 mb-5">{HOW_TO_PLAY.subtitle}</div>
+                    <div className="text-base text-zinc-300 mb-5">{singerHowToPlay.subtitle}</div>
                     <div className="bg-black/50 border border-white/10 rounded-2xl p-5">
-                        <div className="text-sm font-bold text-cyan-200 uppercase tracking-widest mb-3">{active.title}</div>
-                        <ul className="text-lg text-zinc-100 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200">{active.eyebrow || 'Room Guide'}</div>
+                            <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-300">
+                                {howToPlayIndex + 1} / {slides.length || 1}
+                            </div>
+                        </div>
+                        <div className="mt-3 text-sm font-bold text-cyan-200 uppercase tracking-widest">{active.title}</div>
+                        {Array.isArray(active.tags) && active.tags.length ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {active.tags.map((tag) => (
+                                    <span key={tag} className="rounded-full border border-fuchsia-300/22 bg-fuchsia-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100">
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
+                        <ul className="mt-4 text-lg text-zinc-100 space-y-3">
                             {active.items.map(item => (
                                 <li key={item} className="flex gap-2">
                                     <span className="text-pink-400">*</span>
@@ -10211,9 +10435,14 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </li>
                             ))}
                         </ul>
+                        {active.tip ? (
+                            <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/8 px-4 py-3 text-sm text-cyan-50">
+                                {active.tip}
+                            </div>
+                        ) : null}
                     </div>
                     <div className="mt-4 flex items-center justify-between text-xs text-zinc-500">
-                        <div>Swipe to browse - {howToPlayIndex + 1} of {slides.length || 1}</div>
+                        <div>Swipe through room tips - {howToPlayIndex + 1} of {slides.length || 1}</div>
                         <div className="flex gap-2">
                             {slides.map((_, i) => (
                                 <span key={i} className={`h-1.5 w-6 rounded-full ${i === howToPlayIndex ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899]' : 'bg-zinc-700'}`}></span>
@@ -10232,7 +10461,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             <div className="w-full max-w-sm bg-gradient-to-br from-zinc-800 via-zinc-900 to-[#231426] border border-pink-400/30 rounded-3xl p-6 shadow-[0_0_60px_rgba(255,103,182,0.35)] text-left max-h-[85vh] overflow-y-auto custom-scrollbar">
                 <div className="flex items-center justify-between mb-4">
                     <div>
-                        <div className="text-sm uppercase tracking-[0.35em] text-zinc-300">Points</div>
+                        <div className="text-sm uppercase tracking-[0.35em] text-zinc-300">{allowsDonationAccess ? 'Support + Points' : 'Points'}</div>
                         <h2 className="text-4xl font-black text-cyan-300">Fuel the show</h2>
                     </div>
                     <div className="bg-black/50 border border-cyan-500/30 rounded-full px-4 py-1.5 text-lg font-black text-cyan-300">
@@ -10601,6 +10830,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     ).length;
     const latestMyRequest = myRequestSongs[0] || null;
     const latestMyRequestStateMeta = latestMyRequest ? getAudienceRequestStateMeta(latestMyRequest) : null;
+    const hasActiveSongRequest = activeRequestCount > 0 || !!latestMyRequest;
     const audienceSongLimitState = getAudienceSongLimitState({
         queueSettings: queueSettingsView,
         songs,
@@ -10728,6 +10958,8 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
     const activeMessages = activeChatTab === 'host' ? dmMessages : loungeMessages;
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
+    const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
+    const performanceReactionsReady = !!currentSinger || applauseModeActive;
     const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
     const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard({
@@ -10736,6 +10968,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         lobbyVolleySceneActive,
         isStreamlinedAudienceShell,
     });
+    const showStreamlinedIdleReactionGuide = showStreamlinedIdleRequestCard && !performanceReactionsReady;
+    const howToPlayFeaturedGameLabels = Array.isArray(singerHowToPlay?.featuredGames)
+        ? singerHowToPlay.featuredGames.map((game) => game.label).filter(Boolean).slice(0, 4)
+        : [];
     const lobbyPlayStrictMode = !!room?.lobbyPlaygroundStrictMode;
     const lobbyPlaygroundPaused = !!room?.lobbyPlaygroundPaused;
     const lobbyRatePlan = getLobbyVolleyAudienceRatePlan(lobbyVolleyPreview || createLobbyVolleyState(), {
@@ -12269,11 +12505,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Room Ready</div>
-                                        <div className="mt-1 text-[1.4rem] font-black leading-tight text-white">
-                                            The room is open and the next singer slot is coming up
+                                        <div className="mt-1 text-[1.25rem] font-black leading-tight text-white">
+                                            No one is on stage yet
                                         </div>
                                         <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                            Use the Songs tab when you are ready to search. From here, just keep an eye on the queue and room activity.
+                                            Sing, support, or just wait for the room to light up. Songs is for joining the queue. Party is for reacting once someone is live.
                                         </div>
                                     </div>
                                     <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
@@ -12283,15 +12519,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                 </div>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
-                                        <i className="fa-solid fa-hashtag text-[9px]"></i>
-                                        Room {roomCode || 'AAHF'}
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
                                         <i className="fa-solid fa-users text-[9px]"></i>
                                         {allUsers.length || 0} in room
                                     </span>
+                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                        <i className="fa-solid fa-hashtag text-[9px]"></i>
+                                        Room {roomCode || 'AAHF'}
+                                    </span>
                                 </div>
-                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <div className="mt-4 flex flex-wrap items-center gap-2">
                                     <button
                                         type="button"
                                         data-feature-id="singer-streamlined-idle-request-cta"
@@ -12304,24 +12540,29 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     </button>
                                     <button
                                         type="button"
+                                        onClick={openDirectSupportFlow}
+                                        className={`inline-flex items-center justify-center gap-2 rounded-2xl border px-4 py-3 text-sm font-black uppercase tracking-[0.18em] ${allowsDonationAccess ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100 hover:bg-emerald-500/20' : 'border-white/12 bg-white/6 text-zinc-100 hover:bg-white/10'}`}
+                                    >
+                                        <i className="fa-solid fa-heart"></i>
+                                        {allowsDonationAccess ? 'Support the Festival' : 'View Points'}
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => {
                                             setTab('request');
                                             setSongsTab('queue');
                                         }}
-                                        className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-zinc-100"
+                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-white/12 bg-white/6 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-100"
                                     >
                                         <i className="fa-solid fa-list"></i>
-                                        View Queue
+                                        Queue {queueSongsView.length || 0}
                                     </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowHowToPlay(true)}
-                                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200"
-                                >
-                                    <i className="fa-solid fa-circle-info text-[10px]"></i>
-                                    How it works
-                                </button>
+                                <div className="mt-3 text-xs leading-5 text-zinc-300">
+                                    {allowsDonationAccess
+                                        ? 'Not singing tonight? Support the fundraiser here, then stay in Party for games, reactions, and donation callouts.'
+                                        : 'Songs is where you add yourself. Party is where you react once the room is rolling.'}
+                                </div>
                             </div>
                         )}
                          {autoCrowdMomentActive && (
@@ -12455,7 +12696,58 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     Add Song to Start Karaoke
                                 </button>
                              </div>
-                        ) : noSingerOnStage && !showStreamlinedIdleRequestCard ? (
+                        ) : showStreamlinedIdleReactionGuide ? (
+                            <>
+                                <div
+                                    data-feature-id="singer-streamlined-idle-reaction-guide"
+                                    className="rounded-2xl border border-fuchsia-300/24 bg-gradient-to-br from-fuchsia-500/12 via-[#0a1020] to-cyan-500/12 p-4 shadow-[0_0_22px_rgba(217,70,239,0.14)]"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Live Reactions</div>
+                                            <div className="mt-1 text-lg font-black text-white">Party reactions unlock when a singer is performing</div>
+                                            <div className="mt-1 text-sm text-zinc-300">
+                                                Hearts, hype, clap, and cheers spend room points only during a live song.
+                                            </div>
+                                        </div>
+                                        <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
+                                            <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Points</div>
+                                            <div className="font-bebas text-2xl tracking-[0.18em] text-fuchsia-100">{Math.max(0, getEffectivePoints())}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-2 gap-2">
+                                        {[
+                                            { key: 'fire', label: 'Hype', tone: 'border-orange-400/40 bg-orange-500/12 text-orange-100' },
+                                            { key: 'heart', label: 'Love', tone: 'border-pink-400/40 bg-pink-500/12 text-pink-100' },
+                                            { key: 'clap', label: 'Clap', tone: 'border-cyan-400/40 bg-cyan-500/12 text-cyan-100' },
+                                            { key: 'drink', label: 'Cheers', tone: 'border-blue-400/40 bg-blue-500/12 text-blue-100' }
+                                        ].map((reaction) => (
+                                            <div key={reaction.key} className={`rounded-2xl border px-3 py-3 opacity-72 ${reaction.tone}`}>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <span className="text-3xl leading-none">{getEmojiChar(reaction.key)}</span>
+                                                    <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white/85">
+                                                        {reactionCostLabel(REACTION_COSTS[reaction.key])}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-2 text-sm font-black uppercase tracking-[0.16em]">{reaction.label}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3 text-sm text-zinc-200">
+                                        Reactions wake up once someone is on stage.
+                                        {howToPlayFeaturedGameLabels.length ? ` Tonight's game deck: ${howToPlayFeaturedGameLabels.join(' • ')}.` : ' Bonus games will explain themselves here when the host launches them.'}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowHowToPlay(true)}
+                                        className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-200"
+                                    >
+                                        <i className="fa-solid fa-circle-info text-[10px]"></i>
+                                        How it works
+                                    </button>
+                                </div>
+                            </>
+                        ) : noSingerOnStage ? (
                              <>
                                  <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                                      <div className="flex items-center justify-between gap-3">
@@ -12488,25 +12780,25 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                  <div className="grid grid-cols-2 gap-4">
                                      <button data-feature-id="reaction-fire-button" disabled={isReactionCoolingDown('fire')} onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden rounded-2xl border-2 border-orange-500/80 bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:bg-orange-500 active:scale-95'} ${cooldownFlashKey === 'fire' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
                                          {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
-                                         <span className="text-5xl mb-2">{getEmojiChar('fire')}</span>
+                                         <span className={`${getReactionOptionIconClass('fire')} mb-2`}>{getEmojiChar('fire')}</span>
                                          <span className="font-bold text-orange-200 text-base">HYPE</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{reactionCostLabel(REACTION_COSTS.fire)}</div>
                                      </button>
                                      <button data-feature-id="reaction-heart-button" disabled={isReactionCoolingDown('heart')} onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden rounded-2xl border-2 border-pink-500/80 bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:bg-pink-500 active:scale-95'} ${cooldownFlashKey === 'heart' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
                                          {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
-                                         <span className="text-5xl mb-2">{getEmojiChar('heart')}</span>
+                                         <span className={`${getReactionOptionIconClass('heart')} mb-2`}>{getEmojiChar('heart')}</span>
                                          <span className="font-bold text-pink-200 text-base">LOVE</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{reactionCostLabel(REACTION_COSTS.heart)}</div>
                                      </button>
                                      <button data-feature-id="reaction-clap-button" disabled={isReactionCoolingDown('clap')} onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
                                          {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
-                                         <span className="text-5xl mb-2">{getEmojiChar('clap')}</span>
+                                         <span className={`${getReactionOptionIconClass('clap')} mb-2`}>{getEmojiChar('clap')}</span>
                                          <span className="font-bold text-cyan-200 text-base">CLAP</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{reactionCostLabel(REACTION_COSTS.clap)}</div>
                                      </button>
                                      <button data-feature-id="reaction-drink-button" disabled={isReactionCoolingDown('drink')} onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden rounded-2xl border-2 border-blue-400/80 bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:bg-blue-500 active:scale-95'} ${cooldownFlashKey === 'drink' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
                                          {renderReactionCooldownFill('drink', 'bg-blue-300/25', 'border-blue-300/35 bg-black/55 text-blue-50')}
-                                         <span className="text-5xl mb-2">{getEmojiChar('drink')}</span>
+                                         <span className={`${getReactionOptionIconClass('drink')} mb-2`}>{getEmojiChar('drink')}</span>
                                          <span className="font-bold text-blue-200 text-base">CHEERS</span>
                                          <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{reactionCostLabel(REACTION_COSTS.drink)}</div>
                                      </button>
@@ -12520,15 +12812,15 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                      const accent = {
                                          rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
                                          diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
-                                         money: 'border-emerald-300/80 text-emerald-200 bg-emerald-500/10 shadow-[0_0_24px_rgba(52,211,153,0.45)]',
+                                         money: 'border-rose-300/80 text-rose-100 bg-rose-500/10 shadow-[0_0_26px_rgba(251,113,133,0.45)]',
                                          crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
                                      }[t];
                                      const cost = REACTION_COSTS[t];
                                      return (
                                      <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
                                             {premiumReactionsUnlocked ? renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50') : null}
-                                            <span className={`text-5xl mb-2 animate-${t}`}>{getEmojiChar(t)}</span>
-                                            <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'RICH'}[t]}</span>
+                                            <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
+                                            <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'BLOOM'}[t]}</span>
                                             <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
                                                  {reactionCostLabel(cost)}
                                              </div>
@@ -12548,7 +12840,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}
                          <div className={`grid w-full gap-2 ${isStreamlinedAudienceShell ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                            <button onClick={() => setShowPoints(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">{EMOJI.info} Points</button>
+                            <button onClick={() => setShowPoints(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">{EMOJI.info} {allowsDonationAccess ? 'Support + Points' : 'Points'}</button>
                             {!isStreamlinedAudienceShell && (
                                 <button onClick={() => setShowHowToPlay(true)} className="bg-zinc-800 border border-zinc-600 py-3 rounded-xl text-zinc-300 text-[11px]">How to Play</button>
                             )}
@@ -13255,8 +13547,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                     <button
                                                                         key={`audience-song-match:${result.resultKey || index}`}
                                                                         type="button"
+                                                                        disabled={requestSubmitPending}
                                                                         onClick={() => handleAudienceCatalogPrimaryAction(result)}
-                                                                        className="flex w-full items-center gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left transition hover:border-cyan-300/30"
+                                                                        className={`flex w-full items-center gap-2.5 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 text-left transition ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : 'hover:border-cyan-300/30'}`}
                                                                     >
                                                                         <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-black/35">
                                                                             {result.artworkUrl100 ? (
@@ -13300,8 +13593,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     >
                                                         <button
                                                             type="button"
+                                                            disabled={requestSubmitPending}
                                                             onClick={() => handleAudienceCatalogPrimaryAction(r)}
-                                                            className="group w-full text-left transition hover:border-cyan-300/45 hover:bg-[linear-gradient(180deg,rgba(46,24,73,0.98),rgba(24,13,48,0.98))]"
+                                                            className={`group w-full text-left transition ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : 'hover:border-cyan-300/45 hover:bg-[linear-gradient(180deg,rgba(46,24,73,0.98),rgba(24,13,48,0.98))]'}`}
                                                         >
                                                             <div className="relative aspect-[0.94] overflow-hidden bg-black/35">
                                                                 <img src={r.artworkUrl100} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" alt="" />
@@ -13351,8 +13645,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         {audienceBackingPickerAllowed && r.knownBackingCount > 0 && (
                                                             <button
                                                                 type="button"
+                                                                disabled={requestSubmitPending}
                                                                 onClick={() => openAudienceBackingPicker(r)}
-                                                                className="flex w-full items-center justify-between border-t border-white/10 bg-black/20 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.18em] text-cyan-100"
+                                                                className={`flex w-full items-center justify-between border-t border-white/10 bg-black/20 px-3 py-3 text-left text-xs font-black uppercase tracking-[0.18em] text-cyan-100 ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : ''}`}
                                                             >
                                                                 <span>Backing options</span>
                                                                 <span className="inline-flex items-center gap-2 text-zinc-300">
@@ -13394,6 +13689,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         <button
                                                             key={`${option.id || option.mediaUrl || optionIndex}`}
                                                             type="button"
+                                                            disabled={requestSubmitPending}
                                                             onClick={() => handleAudienceCatalogResultSelect(
                                                                 enrichedCatalogResults.find((item) => item.resultKey === backingChoiceState.resultKey) || {
                                                                     trackName: backingChoiceState.title,
@@ -13402,7 +13698,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                 },
                                                                 buildAudienceBackingRequestOptions(option)
                                                             )}
-                                                            className="w-full rounded-2xl border border-white/10 bg-zinc-900/55 px-4 py-3 text-left"
+                                                            className={`w-full rounded-2xl border border-white/10 bg-zinc-900/55 px-4 py-3 text-left ${requestSubmitPending ? 'cursor-not-allowed opacity-70' : ''}`}
                                                         >
                                                             <div className="flex items-center justify-between gap-3">
                                                                 <div className="min-w-0">
@@ -13531,9 +13827,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <button
                                             data-feature-id="singer-request-submit"
                                             type="submit"
-                                            className="w-full bg-[#00C4D9] text-black py-4 rounded-2xl font-bold text-xl"
+                                            disabled={requestSubmitPending}
+                                            className={`w-full py-4 rounded-2xl font-bold text-xl ${requestSubmitPending ? 'bg-cyan-200 text-zinc-700 cursor-not-allowed' : 'bg-[#00C4D9] text-black'}`}
                                         >
-                                            Send Request
+                                            {requestSubmitPending ? 'Sending Request...' : 'Send Request'}
                                         </button>
                                     </form>
                                     </div>
@@ -13702,12 +13999,16 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                         <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div className="min-w-0">
-                                                    <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">Step 1</div>
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-200/84">
+                                                        {hasActiveSongRequest ? 'Keep the queue moving' : 'You are in'}
+                                                    </div>
                                                     <div className="mt-1 text-[1.5rem] font-black leading-tight text-white">
-                                                        Search for your song
+                                                        {hasActiveSongRequest ? 'Add another song or track the line' : 'Search for your first song'}
                                                     </div>
                                                     <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                                        Start with search if you know it, or tap a category below to browse fast.
+                                                        {hasActiveSongRequest
+                                                            ? 'Search if you know it, or tap a category below to browse fast.'
+                                                            : 'Start with search if you know it, or tap a category below to browse fast. Once you add one, the queue and Party views take over.'}
                                                     </div>
                                                 </div>
                                                 <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
@@ -13715,6 +14016,22 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                     <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
                                                 </div>
                                             </div>
+                                            {!hasActiveSongRequest ? (
+                                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                                    <div className="rounded-2xl border border-cyan-300/35 bg-cyan-500/12 px-3 py-2 text-white">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">1 Search</div>
+                                                        <div className="mt-1 text-sm font-semibold">Find your song</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-200">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">2 Queue It</div>
+                                                        <div className="mt-1 text-sm font-semibold">Send it straight in</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-200">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">3 Back to Party</div>
+                                                        <div className="mt-1 text-sm font-semibold">React while you wait</div>
+                                                    </div>
+                                                </div>
+                                            ) : null}
                                             <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                 <button
                                                     type="button"
@@ -13956,6 +14273,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         artist={song.artist}
                                                         ready={song.hasApprovedBacking}
                                                         loading={!!top100ArtLoading[song.artKey]}
+                                                        disabled={requestSubmitPending}
                                                         onRequest={async () => {
                                                             const art = await fetchTop100Art(song);
                                                             submitSong(song.title, song.artist, art || song.art, song.backing?.mediaUrl ? {
@@ -14031,6 +14349,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         artist={song.artist}
                                                         ready={song.hasApprovedBacking}
                                                         loading={!!top100ArtLoading[song.artKey]}
+                                                        disabled={requestSubmitPending}
                                                         onRequest={async () => {
                                                             const art = await fetchTop100Art(song);
                                                             submitSong(song.title, song.artist, art || song.art, song.backing?.mediaUrl ? {
@@ -14102,6 +14421,7 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                         </div>
                                                         <button
                                                             type="button"
+                                                            disabled={requestSubmitPending}
                                                             onClick={() => submitSong(item.trackName, item.artistName, item.artworkUrl100, {
                                                                 mediaUrl: item.url,
                                                                 trackSource: item.trackSource,
@@ -14112,9 +14432,9 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                                                 resolutionStatus: 'resolved',
                                                                 resolutionLayer: item.resolutionLayer
                                                             })}
-                                                            className="rounded-full bg-[#00C4D9] px-4 py-2 text-sm font-black uppercase tracking-[0.18em] text-black"
+                                                            className={`rounded-full px-4 py-2 text-sm font-black uppercase tracking-[0.18em] ${requestSubmitPending ? 'bg-cyan-200 text-zinc-700 cursor-not-allowed' : 'bg-[#00C4D9] text-black'}`}
                                                         >
-                                                            Request
+                                                            {requestSubmitPending ? 'Adding...' : 'Request'}
                                                         </button>
                                                     </div>
                                                 ))}
@@ -14516,6 +14836,26 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     <i className={`fa-solid ${floatingEngagementPrompt.icon} mr-2`}></i>
                     {floatingEngagementPrompt.label}
                 </button>
+            )}
+            {requestSubmitPending && (
+                <div
+                    data-feature-id="singer-request-pending-indicator"
+                    className="fixed left-1/2 z-[118] w-[min(92vw,24rem)] -translate-x-1/2 rounded-2xl border border-cyan-300/45 bg-[#08111d]/94 px-4 py-3 text-white shadow-[0_18px_42px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 1rem)` }}
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
+                            <i className="fa-solid fa-spinner animate-spin"></i>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/84">Working</div>
+                            <div className="mt-1 truncate text-sm font-black text-white">{requestSubmitPendingLabel}</div>
+                            {requestSubmitPendingMeta.artist ? (
+                                <div className="truncate text-xs text-zinc-300">{requestSubmitPendingMeta.artist}</div>
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
             )}
             {!takeoverOpen && !isStreamlinedAudienceShell && (
                 <div

@@ -7,6 +7,7 @@ import { test } from "vitest";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const singerAppPath = path.resolve(__dirname, "../../src/apps/Mobile/SingerApp.jsx");
+const howToPlayPath = path.resolve(__dirname, "../../src/lib/howToPlay.js");
 
 test("SingerApp keeps React hooks above the render boundary", () => {
   const source = readFileSync(singerAppPath, "utf8");
@@ -209,7 +210,7 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /The room is open and the next singer slot is coming up/,
+    /No one is on stage yet/,
     "SingerApp streamlined idle home should keep the copy focused on room status and pacing",
   );
   assert.match(
@@ -224,7 +225,7 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /\) : noSingerOnStage && !showStreamlinedIdleRequestCard \? \(/,
+    /\) : showStreamlinedIdleReactionGuide \? \(/,
     "SingerApp should not render the weaker Stage Open add-song card when the stronger Room Ready idle card is already on screen",
   );
   assert.match(
@@ -239,8 +240,8 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /Use the Songs tab when you are ready to search\. From here, just keep an eye on the queue and room activity\./,
-    "SingerApp streamlined idle home should explain that the Party view is status-first while Songs owns search",
+    /Sing, support, or just wait for the room to light up\. Songs is for joining the queue\. Party is for reacting once someone is live\./,
+    "SingerApp streamlined idle home should explain the three audience intents while still making Songs own the queue and Party own the live reaction state",
   );
   assert.match(
     source,
@@ -318,6 +319,237 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     source,
     /!isStreamlinedAudienceShell && \(\s*<button onClick=\{\(\) => setShowHowToPlay\(true\)\}/,
     "SingerApp should demote the How to Play utility button out of the streamlined always-visible action row",
+  );
+});
+
+test("SingerApp gives streamlined join and first-song flows clearer onboarding cues", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /Pick your emoji, add your name, and you will land in Songs ready to search\./,
+    "SingerApp join should explain the immediate next step instead of leaving the first action implicit",
+  );
+  assert.match(
+    source,
+    /Pick Emoji/,
+    "SingerApp join should break the arrival into visible emoji, name, and join steps",
+  );
+  assert.match(
+    source,
+    /Add Name/,
+    "SingerApp join should expose the name step explicitly",
+  );
+  assert.match(
+    source,
+    /const joinButtonLabel = isJoining[\s\S]*'JOINING\.\.\.'[\s\S]*'JOIN THE PARTY'[\s\S]*'ADD YOUR NAME';/,
+    "SingerApp join CTA should explain why the button is not ready when the name is missing",
+  );
+  assert.match(
+    source,
+    /Name shows in the queue and on the room screen\./,
+    "SingerApp join should tell guests where their entered name will appear",
+  );
+  assert.match(
+    source,
+    /Songs opens first so you can add yourself fast\./,
+    "SingerApp join should reinforce the immediate post-join destination",
+  );
+  assert.match(
+    source,
+    /Songs is where you add yourself\. Party is where you react once the room is rolling\./,
+    "SingerApp idle home should explain the difference between streamlined Party and Songs surfaces",
+  );
+  assert.match(
+    source,
+    /Search for your first song/,
+    "SingerApp streamlined browse should celebrate entry and guide first-time singers toward their first request",
+  );
+  assert.match(
+    source,
+    /3 Back to Party/,
+    "SingerApp streamlined browse should teach the full search, queue, and return-to-party loop",
+  );
+  assert.match(
+    source,
+    /const \[isJoining, setIsJoining\] = useState\(false\);/,
+    "SingerApp should track join-in-flight state for async room entry",
+  );
+  assert.match(
+    source,
+    /const joinButtonLabel = isJoining[\s\S]*'JOINING\.\.\.'/,
+    "SingerApp join CTA should switch into a visible joining state after the guest taps it",
+  );
+  assert.match(
+    source,
+    /Adding you to the room now\. This can take a moment\./,
+    "SingerApp join flow should explain that the room entry is still in progress",
+  );
+  assert.match(
+    source,
+    /setIsJoining\(true\);[\s\S]*finally \{\s*setIsJoining\(false\);/m,
+    "SingerApp should always clear join-in-flight state after join resolves or fails",
+  );
+});
+
+test("SingerApp shows visible in-flight feedback while adding songs to the queue", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const \[requestSubmitPending, setRequestSubmitPending\] = useState\(false\);/,
+    "SingerApp should track audience queue-submit pending state",
+  );
+  assert.match(
+    source,
+    /if \(requestSubmitPending\) return;/,
+    "SingerApp should suppress duplicate queue submissions while one is already in flight",
+  );
+  assert.match(
+    source,
+    /setRequestSubmitPending\(true\);[\s\S]*finally \{\s*setRequestSubmitPending\(false\);/m,
+    "SingerApp should bracket queue submissions with an explicit pending lifecycle",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-request-pending-indicator"/,
+    "SingerApp should render a visible pending indicator while a song request is being submitted",
+  );
+  assert.match(
+    source,
+    /Adding song to the queue\.\.\.|Adding .* to the queue\.\.\./,
+    "SingerApp pending indicator should tell the guest that the song request is still processing",
+  );
+  assert.match(
+    source,
+    /Sending Request\.\.\./,
+    "SingerApp manual request submit button should acknowledge the tap while waiting on the network",
+  );
+});
+
+test("SingerApp shows pending feedback for slower audience game submissions and votes", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const \[doodleSubmitting, setDoodleSubmitting\] = useState\(false\);/,
+    "SingerApp should track in-flight doodle submissions",
+  );
+  assert.match(
+    source,
+    /const \[doodleVotePendingUid, setDoodleVotePendingUid\] = useState\(''\);/,
+    "SingerApp should track in-flight doodle votes",
+  );
+  assert.match(
+    source,
+    /Submitting\.\.\./,
+    "SingerApp should acknowledge slower audience game submissions with explicit pending button copy",
+  );
+  assert.match(
+    source,
+    /Uploading your drawing now\.\.\./,
+    "SingerApp should explain that a doodle submission is still uploading",
+  );
+  assert.match(
+    source,
+    /const \[selfieChallengeSubmitting, setSelfieChallengeSubmitting\] = useState\(false\);/,
+    "SingerApp should track in-flight selfie challenge submissions",
+  );
+  assert.match(
+    source,
+    /const \[selfieVotePendingUid, setSelfieVotePendingUid\] = useState\(''\);/,
+    "SingerApp should track in-flight selfie challenge votes",
+  );
+  assert.match(
+    source,
+    /Submitting your selfie\.\.\./,
+    "SingerApp should show clear progress text after a selfie challenge submit tap",
+  );
+  assert.match(
+    source,
+    /Sending vote\.\.\./,
+    "SingerApp should show explicit vote-in-flight feedback in selfie challenge voting",
+  );
+  assert.match(
+    source,
+    /const \[bingoSpinPending, setBingoSpinPending\] = useState\(false\);/,
+    "SingerApp should track in-flight bingo spin requests",
+  );
+  assert.match(
+    source,
+    /const \[bingoSuggestSubmitting, setBingoSuggestSubmitting\] = useState\(false\);/,
+    "SingerApp should track in-flight bingo confirmations",
+  );
+  assert.match(
+    source,
+    /Spinning\.\.\./,
+    "SingerApp should acknowledge mystery bingo spin requests while the room write is pending",
+  );
+  assert.match(
+    source,
+    /Sending\.\.\./,
+    "SingerApp should acknowledge bingo note submissions while they are being sent",
+  );
+});
+
+test("SingerApp keeps streamlined empty-stage party focused on guidance instead of live spending", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const showStreamlinedIdleReactionGuide = showStreamlinedIdleRequestCard && !performanceReactionsReady;/,
+    "SingerApp should derive a dedicated streamlined empty-stage reaction guide instead of falling through to live reaction controls",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-streamlined-idle-reaction-guide"/,
+    "SingerApp should expose a dedicated empty-stage reaction guide card for streamlined Party",
+  );
+  assert.match(
+    source,
+    /Party reactions unlock when a singer is performing/,
+    "SingerApp should explicitly tell streamlined audiences that reaction spending waits for a live singer",
+  );
+  assert.match(
+    source,
+    /if \(!currentSinger && !applauseModeActive\) return toast\('Reactions wake up once someone is on stage\.'\);/,
+    "SingerApp should hard-stop reaction spending if no singer is on stage",
+  );
+});
+
+test("SingerApp uses room-aware how-to guidance instead of the old static audience explainer", () => {
+  const singerSource = readFileSync(singerAppPath, "utf8");
+  const howToPlaySource = readFileSync(howToPlayPath, "utf8");
+
+  assert.match(
+    singerSource,
+    /const singerHowToPlay = useMemo\(\(\) => buildSingerHowToPlay\(room\), \[room\]\);/,
+    "SingerApp should build its how-to modal from the current room state",
+  );
+  assert.match(
+    singerSource,
+    /Swipe through room tips -/,
+    "SingerApp how-to modal should present the updated room-tip framing instead of the older generic browse copy",
+  );
+  assert.match(
+    howToPlaySource,
+    /export const buildSingerHowToPlay = \(room = null\) => \{/,
+    "How-to content should be generated through a room-aware builder",
+  );
+  assert.match(
+    howToPlaySource,
+    /Reactions only spend points while someone is performing\./,
+    "How-to guidance should explain the current reaction-spend rule directly",
+  );
+  assert.match(
+    howToPlaySource,
+    /Tonight\\'s Game Deck/,
+    "How-to guidance should expose a dedicated game-focused slide instead of drifting into old generic copy",
+  );
+  assert.match(
+    howToPlaySource,
+    /Pop-Up Trivia|Mystery Bingo|Selfie Challenge|Doodle-Oke|Voice Games/,
+    "How-to guidance should mention the room's audience game lineup",
   );
 });
 
@@ -593,5 +825,25 @@ test("SingerApp lets locked emoji become the active preview and includes new the
     source,
     /Rice Ball/,
     "SingerApp should include a rice-ball themed avatar",
+  );
+});
+
+test("SingerApp presents the premium blossom reaction with themed icon motion", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /money:'BLOOM'/,
+    "SingerApp should rename the former Rich premium reaction to Bloom.",
+  );
+  assert.match(
+    source,
+    /getReactionEmoji\(t, EMOJI\.heart\)/,
+    "SingerApp reaction buttons should use the shared reaction emoji mapping instead of the generic money bag icon.",
+  );
+  assert.match(
+    source,
+    /animate-reaction-option-blossom/,
+    "SingerApp should give the blossom reaction button its own themed motion treatment.",
   );
 });

@@ -1,7 +1,20 @@
+import { getTvReactionLaneLeft, getTvReactionMotionSpec } from "./publicTvReactionConfig.js";
+
 export const FIXED_QA_TV_NOW_MS = 1763503200000;
 const AAHF_EVENT_PROFILE_ID = 'aahf_2026_kickoff';
 const AAHF_LOGO_URL = '/images/marketing/aahf-combined-badge-clean.png';
 const GENERIC_LOGO_URL = '/images/logo-library/beaurocks-logo-neon trasnparent.png';
+const QA_REACTION_TYPES = Object.freeze(['rocket', 'diamond', 'crown', 'money', 'drink', 'fire', 'heart', 'clap']);
+const QA_REACTION_USERS = Object.freeze([
+    { userName: 'Avery', avatar: '🎤' },
+    { userName: 'Mika', avatar: '🎧' },
+    { userName: 'Jules', avatar: '🎷' },
+    { userName: 'Nova', avatar: '🪩' },
+    { userName: 'Kai', avatar: '🥁' },
+    { userName: 'Rin', avatar: '🎸' },
+    { userName: 'Skye', avatar: '🎶' },
+    { userName: 'Paz', avatar: '✨' },
+]);
 
 export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
     {
@@ -34,6 +47,21 @@ export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Closing Moment', 'Thank You For Singing', 'Show graphics live on Public TV'],
     },
+    {
+        id: 'reaction-showcase',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Avery', 'Bloom', 'Royal'],
+    },
+    {
+        id: 'support-host-rain',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['DJ Beau made it rain', 'for all lobby members'],
+    },
+    {
+        id: 'support-purchase-rain',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Maya boosted the room', 'Room support'],
+    },
 ]);
 
 const buildBaseRoom = (roomCode = 'DEMOAAHF', overrides = {}) => ({
@@ -52,6 +80,30 @@ const buildBaseRoom = (roomCode = 'DEMOAAHF', overrides = {}) => ({
     },
     ...overrides,
 });
+
+const buildReactionShowcase = (nowMs = FIXED_QA_TV_NOW_MS) => (
+    QA_REACTION_TYPES.map((type, index) => {
+        const motion = getTvReactionMotionSpec({ type, id: `qa-${type}`, index });
+        const person = QA_REACTION_USERS[index] || QA_REACTION_USERS[0];
+        return {
+            id: `qa-reaction-${type}`,
+            type,
+            userName: person.userName,
+            user: person.userName,
+            avatar: person.avatar,
+            left: getTvReactionLaneLeft({ type, id: `qa-${type}`, index }),
+            motionVariant: motion.variant,
+            motionDurationMs: motion.durationMs,
+            motionDriftX: motion.driftX,
+            motionRiseY: motion.riseY,
+            motionRotateDeg: motion.rotateDeg,
+            motionScaleBoost: motion.scaleBoost + (index === 0 ? 0.08 : 0),
+            arrivalGlowStrength: index === 0 ? 1 : 0.72,
+            burstCount: 1,
+            createdAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 250,
+        };
+    })
+);
 
 export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_TV_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
@@ -191,6 +243,56 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                     subhead: 'Send the room out on a thank-you beat and point them to the next AAHF moment.',
                     accentTheme: 'amber',
                     startedAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1500,
+                },
+            },
+        };
+    }
+
+    if (safeId === 'reaction-showcase') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                hostName: 'Reaction QA Host',
+            },
+            reactions: buildReactionShowcase(nowMs),
+        };
+    }
+
+    if (safeId === 'support-host-rain') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                bonusDrop: {
+                    id: 'qa-host-rain',
+                    by: 'DJ Beau',
+                    points: 250,
+                },
+            },
+        };
+    }
+
+    if (safeId === 'support-purchase-rain') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                purchaseCelebration: {
+                    id: 'qa-purchase-rain',
+                    buyerName: 'Maya',
+                    buyerAvatar: '🤑',
+                    title: 'Maya boosted the room',
+                    label: 'Room support',
+                    subtitle: 'Festival support spotlight',
+                    points: 120,
+                    badgeAwarded: true,
+                    badgeLabel: 'Moneybags',
+                    sourceProvider: 'givebutter',
+                    rewardScope: 'room',
+                    amountCents: 2500,
+                    celebrationStyle: 'moneybags_burst',
+                    createdAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1000,
                 },
             },
         };
