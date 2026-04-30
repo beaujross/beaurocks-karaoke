@@ -127,6 +127,7 @@ These tests should be the strongest and most deterministic.
 - Receive co-host audio signals in the intended live-ops surface
 - Use `Fill Next Slot`
 - Use `Fill All Suggested`
+- Switch across the host queue workspaces (`Queue`, `Add To Queue`, `Inbox`, `Run Of Show`) without a runtime crash
 
 ### TV
 
@@ -179,6 +180,8 @@ Recommended conversions:
   - add a behavior-level discover filtering test
 - `tests/unit/hostLiveOpsPanelSource.test.mjs`
   - add a rendered host live-ops signal behavior test
+- `tests/unit/hostQueueTabRuntime.test.mjs`
+  - keep one rendered test that explicitly mounts the `Inbox` workspace because tab-only host branches can break while the default queue shell still looks healthy
 - `tests/unit/singerRunOfShowGovernanceSource.test.mjs`
   - add a rendered co-host prompt behavior test
 - `tests/unit/eventCreditsConfigPanelSource.test.mjs`

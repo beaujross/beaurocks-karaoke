@@ -42,13 +42,26 @@ export const resolveDistFilePath = async (distDir, requestPath = "/") => {
   const normalized = decodeURIComponent(String(requestPath || "/")).split("?")[0];
   const trimmed = normalized.replace(/^\/+/, "");
   const joined = path.resolve(distDir, trimmed || "index.html");
-  if (!joined.startsWith(distDir)) return path.join(distDir, "index.html");
+  const hasExplicitExtension = Boolean(path.extname(trimmed));
+  const relativeToDist = path.relative(distDir, joined);
+  const outsideDist = relativeToDist.startsWith("..") || path.isAbsolute(relativeToDist);
+  if (outsideDist) {
+    return {
+      filePath: path.join(distDir, "index.html"),
+      statusCode: hasExplicitExtension ? 404 : 200,
+    };
+  }
   try {
     const stats = await fs.stat(joined);
-    if (stats.isDirectory()) return path.join(joined, "index.html");
-    return joined;
+    if (stats.isDirectory()) {
+      return { filePath: path.join(joined, "index.html"), statusCode: 200 };
+    }
+    return { filePath: joined, statusCode: 200 };
   } catch {
-    return path.join(distDir, "index.html");
+    return {
+      filePath: path.join(distDir, "index.html"),
+      statusCode: hasExplicitExtension ? 404 : 200,
+    };
   }
 };
 
@@ -56,10 +69,10 @@ export const startStaticDistServer = async ({ distDir, port = 0, host = "127.0.0
   await fs.access(path.join(distDir, "index.html"));
   const server = http.createServer(async (req, res) => {
     try {
-      const filePath = await resolveDistFilePath(distDir, req?.url || "/");
+      const { filePath, statusCode } = await resolveDistFilePath(distDir, req?.url || "/");
       const body = await fs.readFile(filePath);
       const ext = path.extname(filePath).toLowerCase();
-      res.writeHead(200, {
+      res.writeHead(statusCode, {
         "Content-Type": MIME_TYPES[ext] || "application/octet-stream",
         "Cache-Control": "no-store",
       });

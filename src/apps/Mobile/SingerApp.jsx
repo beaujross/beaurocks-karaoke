@@ -2847,10 +2847,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const supportCtaLabel = roomSupportOffer?.label
         || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
     const isDonationFirstAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.donation;
-    const allowsEmailFallbackAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.email
-        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailCapture
-        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailOrDonation
-        || audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account;
     const allowsDonationAccess = !!roomSupportOffer
         && (
             isDonationFirstAccess
@@ -2886,7 +2882,6 @@ const SingerApp = ({ roomCode, uid }) => {
     const chatLocked = !!room?.chatEnabled && room?.chatAudienceMode === 'vip' && !hasPremiumRoomAccess;
     const {
         accessActionLabel,
-        accessConnectedLabel: baseAccessConnectedLabel,
         audienceAccessHeadline,
         audienceAccessBody,
     } = buildAudienceAccessPresentation({
@@ -2900,9 +2895,6 @@ const SingerApp = ({ roomCode, uid }) => {
         supporterAccessLabel,
         premiumPerksLabel,
     });
-    const accessConnectedLabel = hasSupporterAccess && !isVipAccount
-        ? `${supporterAccessLabel} Ready`
-        : baseAccessConnectedLabel;
     const joinEmailActionLabel = simpleEmailCaptureMode
         ? 'Optional: Save With Email'
         : 'Optional: Continue With Email';
@@ -2913,6 +2905,9 @@ const SingerApp = ({ roomCode, uid }) => {
         : allowsDonationAccess
             ? 'Join now. Email save-in and room support stay available after you are inside.'
             : 'Join now. Email save-in stays available after you are inside.';
+    const festivalNightGuideUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}print/aahf-audience-guide.html`
+        : '/print/aahf-audience-guide.html';
     const joinConnectedLabel = hasSupporterAccess && !isVipAccount
         ? `${supporterAccessLabel} Access Ready`
         : 'Email Sync Ready';
@@ -8263,6 +8258,18 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                 <div className="mt-2 max-w-sm text-center text-xs text-zinc-300">
                     {joinAccessHelperText}
                 </div>
+                {festivalGuestJoinNoEmail ? (
+                    <button
+                        type="button"
+                        data-singer-night-guide-button
+                        onClick={() => {
+                            window.open(festivalNightGuideUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="mt-3 text-sm font-bold text-amber-100 underline decoration-amber-300/70 underline-offset-4"
+                    >
+                        See tonight&apos;s format, points, and prizes
+                    </button>
+                ) : null}
                 {isAnon && !festivalGuestJoinNoEmail ? (
                     <button
                         type="button"
@@ -11097,6 +11104,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         }
         try {
             const actorUid = String(activeUid || auth.currentUser?.uid || '').trim();
+            const performanceMeta = currentPerformanceSignalContext || {};
+            const performanceSongTitle = String(performanceMeta.songTitle || '').trim();
+            const performanceArtistName = String(performanceMeta.artistName || '').trim();
+            const performanceAlbumArtUrl = String(performanceMeta.artworkUrl || '').trim();
+            const performanceElapsedSec = Math.max(0, Number(performanceMeta.elapsedSec || 0) || 0);
             const activityPayload = buildCoHostSignalActivityPayload({
                 meta,
                 roomCode,
@@ -11108,6 +11120,13 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
             });
             await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
                 ...activityPayload,
+                type: 'cohost_signal',
+                signalId: meta.id,
+                signalScope: performanceMeta.performanceId ? 'performance' : 'room',
+                performanceSongTitle: performanceSongTitle || null,
+                performanceArtistName: performanceArtistName || null,
+                performanceAlbumArtUrl: performanceAlbumArtUrl || null,
+                performanceElapsedSec: performanceElapsedSec || 0,
                 timestamp: serverTimestamp()
             });
             setCoHostSignalCooldownById((prev) => ({

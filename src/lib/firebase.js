@@ -351,6 +351,22 @@ if (typeof window !== 'undefined') {
 }
 
 const trackEvent = (name, params = {}) => {
+  if (typeof window !== 'undefined') {
+    try {
+      const detail = {
+        name: String(name || '').trim(),
+        params: params && typeof params === 'object' ? { ...params } : {},
+        trackedAtMs: Date.now(),
+      };
+      const existing = Array.isArray(window.__beaurocksTrackedEvents)
+        ? window.__beaurocksTrackedEvents
+        : [];
+      window.__beaurocksTrackedEvents = [...existing.slice(-199), detail];
+      window.dispatchEvent(new CustomEvent('beaurocks:analytics-event', { detail }));
+    } catch {
+      // Ignore local analytics debug bridge failures.
+    }
+  }
   if (!analytics) return;
   try {
     logEvent(analytics, name, params);

@@ -59,6 +59,7 @@ As of 2026-02-08, this is a focused engineering assessment of current technical 
 - `SingerApp.jsx`, `HostApp.jsx`, and some live-ops surfaces have historically been protected by source-shape assertions more than behavior tests.
 - Risk: a refactor can keep the same strings or structure patterns while still breaking the live room flow.
 - Guardrail: for event-facing flows, prefer small extracted helpers plus deterministic unit/runtime tests over additional regex/source checks.
+- Additional host-specific guardrail from the 2026-04-29 inbox crash: any host workspace selected by a tab, compact rail, or lazy branch must have at least one test that actually mounts that branch.
 
 14. Optional modes can silently consume hardening time without improving event confidence.
 - Trivia, Would You Rather, Doodle Oke, Selfie Cam, and other audience-side extras are real product surfaces, but they should not automatically receive the same testing depth as join/request/queue/run-of-show flows.

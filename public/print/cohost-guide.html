@@ -166,6 +166,97 @@
       line-height: 1.32;
     }
 
+    .vote-band {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      padding: 0 36px 18px;
+    }
+
+    .vote-card {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fcff 100%);
+      padding: 20px;
+    }
+
+    .vote-shot {
+      display: block;
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      object-position: top center;
+      margin-bottom: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(16, 24, 40, 0.08);
+      background: #edf4fb;
+    }
+
+    .vote-kicker {
+      margin: 0 0 6px;
+      color: var(--festival-deep);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .vote-title {
+      margin: 0 0 8px;
+      font-size: 31px;
+      line-height: 1.02;
+      letter-spacing: -0.03em;
+    }
+
+    .vote-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.38;
+    }
+
+    .vote-flow {
+      margin: 0 36px 18px;
+      border-radius: 24px;
+      border: 1px solid rgba(16, 24, 40, 0.10);
+      background: linear-gradient(180deg, #ffffff 0%, #f5fbff 100%);
+      padding: 18px 22px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .vote-pill {
+      border-radius: 18px;
+      border: 1px solid rgba(16, 24, 40, 0.10);
+      background: rgba(255, 255, 255, 0.92);
+      padding: 14px 16px;
+    }
+
+    .vote-pill-step {
+      margin: 0 0 6px;
+      color: var(--festival-deep);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .vote-pill-title {
+      margin: 0 0 6px;
+      color: var(--navy);
+      font-size: 22px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .vote-pill-copy {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.38;
+    }
+
     .bottom {
       display: grid;
       grid-template-columns: 1.02fr 0.98fr;
@@ -381,20 +472,57 @@
           <li><strong>Help guests join fast.</strong> Keep the room code and QR story simple.</li>
           <li><strong>Find the singer first.</strong> Every add starts with the right person.</li>
           <li><strong>Use helper catalog.</strong> Build the queue before the room gets rushed.</li>
+          <li><strong>Use co-host votes as planning input.</strong> They help the host choose, but they do not auto-change the queue.</li>
           <li><strong>Watch for confusion.</strong> If a guest is stuck, fix the next step, not the whole app.</li>
           <li><strong>Use Tell Host once.</strong> Short, useful, and only when it changes what the host needs to do.</li>
         </ul>
       </div>
 
       <div class="panel">
-        <h2 class="panel-title">Escalate instead of improvising</h2>
+        <h2 class="panel-title">Escalate and vote clean</h2>
         <ul class="list">
+          <li><strong>When the host opens a vote, pick one side once.</strong> The host sees your choice in the live tally.</li>
+          <li><strong>Votes are bounded.</strong> One vote per joined co-host, then the host confirms the winner before anything changes.</li>
+          <li><strong>Tell Host adds context.</strong> Use it for issues, not for the vote itself.</li>
           <li><strong>Audio problem, wrong track, or empty stage.</strong> Tell host once.</li>
           <li><strong>Guest is upset, confused, or thinks they were skipped.</strong> Tell host once.</li>
-          <li><strong>No blind adds.</strong> Never guess the singer.</li>
           <li><strong>No note spam.</strong> One clean signal is enough.</li>
           <li><strong>No second host act.</strong> You support the room, not run it.</li>
         </ul>
+      </div>
+    </section>
+
+    <section class="vote-band">
+      <div class="vote-card">
+        <img class="vote-shot" src="./screenshots/cohost-faceoff-host.png" alt="Host view of the co-host song face-off panel" />
+        <p class="vote-kicker">Host View</p>
+        <h3 class="vote-title">The host opens the face-off</h3>
+        <p class="vote-copy">The host launches a co-host-only song or slot vote when they want help choosing the next move. The tally lands in the host panel, but the host still confirms the outcome before the queue changes.</p>
+      </div>
+
+      <div class="vote-card">
+        <img class="vote-shot" src="./screenshots/cohost-faceoff-audience.png" alt="Co-host phone view of the song face-off vote" />
+        <p class="vote-kicker">Co-Host Phone</p>
+        <h3 class="vote-title">You vote from the live room</h3>
+        <p class="vote-copy">Each joined co-host gets one tap. Your choice is written into the live tally the host sees right away, and your phone confirms that your vote was sent.</p>
+      </div>
+    </section>
+
+    <section class="vote-flow">
+      <div class="vote-pill">
+        <p class="vote-pill-step">Step 1</p>
+        <p class="vote-pill-title">Host opens the vote</p>
+        <p class="vote-pill-copy">This is a quick face-off between the next two songs or the next open-slot options.</p>
+      </div>
+      <div class="vote-pill">
+        <p class="vote-pill-step">Step 2</p>
+        <p class="vote-pill-title">Co-hosts tap once</p>
+        <p class="vote-pill-copy">Vote cleanly, then use <strong>Tell Host</strong> only if there is extra context the host actually needs.</p>
+      </div>
+      <div class="vote-pill">
+        <p class="vote-pill-step">Step 3</p>
+        <p class="vote-pill-title">Host confirms the winner</p>
+        <p class="vote-pill-copy">Your input helps the host choose fast, but the host still owns the final queue change and room pacing.</p>
       </div>
     </section>
 
@@ -431,7 +559,7 @@
             <div class="helper-num">4</div>
             <div>
               <p class="helper-step-title">When something matters: signal once</p>
-              <p class="helper-step-copy">Use Tell Host for audio, pacing, guest issues, or a real queue problem. Do not fill it with chatter.</p>
+              <p class="helper-step-copy">Use Tell Host for audio, pacing, guest issues, or a real queue problem. Do not fill it with chatter or duplicate what the vote already says.</p>
             </div>
           </div>
         </div>

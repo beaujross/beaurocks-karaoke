@@ -4830,7 +4830,7 @@ const PublicTV = ({ roomCode }) => {
         ? currentPerformanceHypeScore + Math.max(0, Number(current?.applauseScore || 0)) + Math.max(0, Number(current?.hostBonus || 0))
         : 0;
     const showScoring = room?.showScoring !== false;
-    const isVipSong = (song) => {
+    function isVipSong(song) {
         if (!song) return false;
         const match = roomUsers.find(u =>
             (song.singerUid && u.uid === song.singerUid) ||
@@ -4838,7 +4838,7 @@ const PublicTV = ({ roomCode }) => {
             (song.name && u.name === song.name)
         );
         return !!match?.isVip || (match?.vipLevel || 0) > 0;
-    };
+    }
     const spotlightUser = room?.spotlightUser?.id
         ? roomUsers.find((u) => resolveRoomUserUid(u) === room.spotlightUser.id)
         : null;

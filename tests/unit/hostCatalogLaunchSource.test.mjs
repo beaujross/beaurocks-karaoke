@@ -41,6 +41,11 @@ test('host catalogue launch preserves the requested catalog surface through auth
   );
   assert.match(
     appSource,
+    /buildSurfaceUrl\(\{ surface: 'marketing', path: 'host-access' \}, window\.location\)/,
+    'Host auth gate should send unauthenticated hosts through the marketing host-access surface',
+  );
+  assert.match(
+    appSource,
     /returnToUrl\.pathname = window\.location\.pathname \|\| '\/';/,
     'Host auth gate should preserve the current host path as the post-auth return target',
   );

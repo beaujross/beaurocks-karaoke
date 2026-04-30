@@ -4,7 +4,6 @@ import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../..
 import {
     getRunOfShowHudActionKey,
     getRunOfShowHudState,
-    getRunOfShowHudToneClass,
     getRunOfShowItemLabel,
     normalizeRunOfShowDirector
 } from '../../../lib/runOfShowDirector';
@@ -45,16 +44,6 @@ const formatRunOfShowDuration = (value = 0) => {
     }
     if (mins > 0) return `${mins}:${String(secs).padStart(2, '0')}`;
     return `${secs}s`;
-};
-
-const formatRunOfShowTotalDuration = (value = 0) => {
-    const totalSec = Math.max(0, Math.round(Number(value || 0) || 0));
-    if (!totalSec) return '0m';
-    const mins = Math.ceil(totalSec / 60);
-    const hours = Math.floor(mins / 60);
-    const remMins = mins % 60;
-    if (hours > 0) return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
-    return `${mins}m`;
 };
 
 const formatRemainingShowTime = (value = 0) => {
@@ -157,9 +146,6 @@ const HostTopChrome = ({
     roomReadinessSummary = '',
     roomReadinessStatusLabel = 'Room',
     roomReadinessActive = false,
-    roomReadinessNeedsAttention = false,
-    roomReadinessLaunchBusy = false,
-    onLaunchRoom,
     onOpenHostDashboard,
     audiencePreviewVisible = false,
     setAudiencePreviewVisible,
@@ -178,13 +164,8 @@ const HostTopChrome = ({
     onOpenShowWorkspace,
     onOpenRunOfShowIssue,
     onStartRunOfShow,
-    onStopRunOfShow,
     onAdvanceRunOfShow,
-    onRewindRunOfShow,
-    onFocusRunOfShowItem,
-    onTriggerRunOfShowItem,
     onToggleRunOfShowAutomationPause,
-    runOfShowQaStatusDetail = '',
     runOfShowFocusMode = false,
     crowdPulse = null,
     activeMomentFeedback = null
@@ -264,8 +245,6 @@ const HostTopChrome = ({
             : normalizedPermission === 'member'
                 ? 'border-amber-400/35 bg-amber-500/10 text-amber-100'
                 : 'border-zinc-600 bg-zinc-900/70 text-zinc-300';
-    const queueWorkspaceMode = tab === 'stage';
-    const compactRunOfShowDense = queueWorkspaceMode && !runOfShowFocusMode;
     const missionStatus = missionRecommendation?.status || 'ready';
     const tvDisplayLabel = tvDisplayMode === 'lyrics_viz'
         ? 'Lyrics + Viz'
@@ -438,8 +417,6 @@ const HostTopChrome = ({
                             : 'fa-wave-square'
         };
     });
-    const compactRunOfShowTotalDurationSec = compactRunOfShowItems.reduce((sum, item) => sum + Math.max(0, Number(item?.durationSec || 0) || 0), 0);
-    const compactRunOfShowCurrentIndex = compactRunOfShowItems.findIndex((item) => item.isLive || item.isStaged || item.isNext);
     const runOfShowTransportStatus = runOfShowLiveItem?.id
         ? 'live'
         : runOfShowStagedItem?.id
@@ -459,7 +436,6 @@ const HostTopChrome = ({
         stagedItemId: runOfShowStagedItem?.id,
         nextItemId: runOfShowNextItem?.id
     });
-    const runOfShowHudToneClass = getRunOfShowHudToneClass(runOfShowHudState.tone);
     const runOfShowHudActionKey = getRunOfShowHudActionKey({
         hasPlan: hasRunOfShowPlan,
         runEnabled: runOfShowEnabled,
@@ -467,56 +443,6 @@ const HostTopChrome = ({
         preflightReport: safeRunOfShowPreflightReport,
         hasIssue: !!(topCriticalRunOfShowItem || topRiskyRunOfShowItem)
     });
-    const runOfShowPrimaryAction = (() => {
-        if (runOfShowHudActionKey === 'open_show') {
-            return {
-                label: 'Open Show',
-                onClick: onOpenShowWorkspace,
-                className: styles.btnNeutral,
-                disabled: typeof onOpenShowWorkspace !== 'function'
-            };
-        }
-        if (runOfShowHudActionKey === 'go_live_check') {
-            return {
-                label: 'Go Live Check',
-                onClick: onOpenRunOfShowIssue || onOpenShowWorkspace,
-                className: styles.btnHighlight,
-                disabled: typeof (onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
-            };
-        }
-        if (runOfShowHudActionKey === 'start_show') {
-            return {
-                label: 'Start Show',
-                onClick: onStartRunOfShow,
-                className: styles.btnHighlight,
-                disabled: typeof onStartRunOfShow !== 'function'
-            };
-        }
-        if (runOfShowHudActionKey === 'resume') {
-            return {
-                label: 'Resume',
-                onClick: typeof onToggleRunOfShowAutomationPause === 'function'
-                    ? () => onToggleRunOfShowAutomationPause(false)
-                    : onOpenRunOfShowIssue || onOpenShowWorkspace,
-                className: styles.btnHighlight,
-                disabled: typeof (onToggleRunOfShowAutomationPause || onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
-            };
-        }
-        if (runOfShowHudActionKey === 'fix_issue') {
-            return {
-                label: 'Fix Issue',
-                onClick: () => (onOpenRunOfShowIssue || onOpenShowWorkspace)?.({ itemId: topCriticalRunOfShowItem?.itemId || topRiskyRunOfShowItem?.itemId || '' }),
-                className: styles.btnHighlight,
-                disabled: typeof (onOpenRunOfShowIssue || onOpenShowWorkspace) !== 'function'
-            };
-        }
-        return {
-            label: 'Advance',
-            onClick: onAdvanceRunOfShow,
-            className: styles.btnHighlight,
-            disabled: typeof onAdvanceRunOfShow !== 'function' || runOfShowTransportStatus === 'idle'
-        };
-    })();
     const showTimeClockEnabled = runOfShowEnabled || tab === 'run_of_show' || tab === 'show';
     const [showTimeNow, setShowTimeNow] = React.useState(() => Date.now());
     const [showTimeDisplayMode, setShowTimeDisplayMode] = React.useState('time');

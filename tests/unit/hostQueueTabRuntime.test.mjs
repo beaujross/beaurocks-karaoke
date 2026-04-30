@@ -149,6 +149,24 @@ const mockHostQueueTabDependencies = () => {
   }));
 };
 
+const mockDesktopQueueSurfaceTab = (initialTab = 'inbox') => {
+  vi.doMock('react', async () => {
+    const actual = await vi.importActual('react');
+    let injectedQueueTab = false;
+    return {
+      ...actual,
+      default: actual.default ?? actual,
+      useState: (initialState) => {
+        if (!injectedQueueTab && initialState === 'queue') {
+          injectedQueueTab = true;
+          return actual.useState(initialTab);
+        }
+        return actual.useState(initialState);
+      },
+    };
+  });
+};
+
 const renderQueueTabMarkup = async (overrides = {}) => {
   const { default: HostQueueTab } = await import('../../src/apps/Host/components/HostQueueTab.jsx');
   return renderToStaticMarkup(
@@ -362,4 +380,18 @@ test('HostQueueTab keeps inbox out of the left rail and exposes it as a workspac
   assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
   assert.doesNotMatch(markup, /Host Inbox/);
   assert.doesNotMatch(markup, /Transport/);
+});
+
+test('HostQueueTab mounts the inbox workspace without a host-room runtime crash', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('inbox');
+
+  const markup = await renderQueueTabMarkup({
+    chatUnread: 2,
+    dmUnread: 1,
+  });
+
+  assert.match(markup, /data-feature-id="panel-inbox"/);
+  assert.match(markup, /Host Inbox/);
+  assert.match(markup, /Needs Host/);
 });

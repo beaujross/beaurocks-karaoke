@@ -1,5 +1,18 @@
 const normalizeToken = (value = "") => String(value || "").trim().toLowerCase();
 
+const isHostLikeLocation = (locationLike = null) => {
+  if (!locationLike) return false;
+  const pathname = String(locationLike.pathname || "/").trim().replace(/\/+$/, "") || "/";
+  const hostname = normalizeToken(locationLike.hostname);
+  const search = String(locationLike.search || "");
+  const params = new URLSearchParams(search);
+  const mode = normalizeToken(params.get("mode"));
+
+  if (mode === "host") return true;
+  if (pathname === "/host" || pathname === "/host-dashboard") return true;
+  return hostname === "host.beaurocks.app";
+};
+
 const isMarketingLikeLocation = (locationLike = null) => {
   if (!locationLike) return false;
   const pathname = String(locationLike.pathname || "/").trim().replace(/\/+$/, "") || "/";
@@ -48,8 +61,10 @@ export const shouldBootstrapAnonymousAuth = ({
 
   const normalizedViewHint = normalizeToken(viewHint);
   if (normalizedViewHint === "marketing") return false;
+  if (normalizedViewHint === "host") return false;
 
   const resolvedLocation = locationLike || (typeof window !== "undefined" ? window.location : null);
+  if (isHostLikeLocation(resolvedLocation)) return false;
   if (isMarketingLikeLocation(resolvedLocation)) return false;
 
   return true;

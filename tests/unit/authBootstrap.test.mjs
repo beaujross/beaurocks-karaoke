@@ -29,6 +29,11 @@ test("authBootstrap.test", () => {
   );
 
   assert.equal(
+    shouldBootstrapAnonymousAuth({ customToken: "", currentUser: null, viewHint: "host" }),
+    false
+  );
+
+  assert.equal(
     shouldBootstrapAnonymousAuth({
       customToken: "",
       currentUser: null,
@@ -52,5 +57,18 @@ test("authBootstrap.test", () => {
       },
     }),
     true
+  );
+
+  assert.equal(
+    shouldBootstrapAnonymousAuth({
+      customToken: "",
+      currentUser: null,
+      locationLike: {
+        hostname: "host.beaurocks.app",
+        pathname: "/",
+        search: "",
+      },
+    }),
+    false
   );
 });

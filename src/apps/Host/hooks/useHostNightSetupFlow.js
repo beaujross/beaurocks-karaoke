@@ -200,6 +200,12 @@ const useHostNightSetupFlow = ({
         const recommendation = resolveNightSetupRecommendation();
         const resolvedPresetId = (presetId && hostNightPresets[presetId]) ? presetId : recommendation.presetId;
         setNightSetupRecommendation(recommendation);
+        trackEvent('host_night_setup_opened', {
+            room_code: roomCode || '',
+            preset_id: resolvedPresetId,
+            recommendation_preset_id: recommendation.presetId,
+            mission_control_enabled: missionControlEnabled === true,
+        });
         if (missionControlEnabled) {
             const roomDraft = buildMissionDraftFromRoom(room || {}, {
                 flowRules: missionFlowRules,

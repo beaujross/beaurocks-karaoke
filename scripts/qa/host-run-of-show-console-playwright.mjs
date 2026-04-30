@@ -42,8 +42,13 @@ const main = async () => {
 
   const checks = [];
   let failure = null;
+  const pageErrors = [];
 
   try {
+    page.on("pageerror", (error) => {
+      pageErrors.push(String(error?.stack || error?.message || error));
+    });
+
     if (!buildQaHostFixture("run-of-show-console", {
       roomCode: "DEMOAAHF",
       nowMs: FIXED_QA_HOST_NOW_MS,
@@ -59,9 +64,9 @@ const main = async () => {
 
     await runCheck(checks, "host_run_of_show_panel_visible", async () => {
       await page.locator('[data-host-qa-ready="true"]').waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("RUN OF SHOW BOARD").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("SHOW STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "run-of-show board visible";
+      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("CONVEYOR STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "show conveyor surface visible";
     });
 
     await runCheck(checks, "host_event_profile_branding_loaded", async () => {
@@ -86,9 +91,10 @@ const main = async () => {
     await runCheck(checks, "host_timeline_strip_opens", async () => {
       await page.getByRole("button", { name: /OPEN BOARD/i }).click({ force: true });
       await page.getByRole("button", { name: /COLLAPSE BOARD/i }).waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("TIMELINE ACTIONS").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("CONVEYOR ACTIONS").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("FEATURE SLOT 1").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "timeline strip expands with current and next scenes";
+      await page.getByText("AUDIENCE SPOTLIGHT").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "conveyor strip expands with live and on-deck scenes";
     });
 
     await runCheck(checks, "host_live_adjustments_extend_and_toggle_audio", async () => {
@@ -96,7 +102,8 @@ const main = async () => {
       const panel = page.locator('[data-live-adjustment-panel="true"]').first();
       await panel.waitFor({ state: "visible", timeout: timeoutMs });
       await panel.getByText(/1:30 window/i).waitFor({ state: "visible", timeout: timeoutMs });
-      await panel.getByRole("button", { name: /show later|hide later/i }).waitFor({ state: "visible", timeout: timeoutMs });
+      await panel.getByRole("button", { name: /\+30 sec/i }).waitFor({ state: "visible", timeout: timeoutMs });
+      await panel.getByRole("button", { name: /pause audio|resume audio/i }).waitFor({ state: "visible", timeout: timeoutMs });
       return "more controls reveals the live adjustment panel";
     });
 
@@ -133,6 +140,11 @@ const main = async () => {
       await fillButton.waitFor({ state: "visible", timeout: timeoutMs });
       await fillButton.click({ force: true });
       return "slot assignment controls are available from preflight";
+    });
+
+    await runCheck(checks, "host_no_runtime_page_errors", async () => {
+      if (pageErrors.length) throw new Error(pageErrors[0]);
+      return "no client-side runtime errors";
     });
   } catch (error) {
     failure = error;

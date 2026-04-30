@@ -205,6 +205,44 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS, o
             fileName: 'valerie-alt-cut.mp3',
             url: 'https://media.example.com/local/valerie-alt-cut.mp3',
             _local: true
+        },
+        {
+            id: 'cloud_break_card',
+            title: 'Festival Break Card',
+            artist: 'Scene Upload',
+            fileName: 'festival-break-card.png',
+            url: QA_SINCE_U_BEEN_GONE_ART_URL,
+            mediaUrl: QA_SINCE_U_BEEN_GONE_ART_URL,
+            mediaType: 'image',
+            storagePath: 'fixtures/festival-break-card.png',
+            size: 102400,
+            _cloud: true
+        }
+    ],
+    scenePresets: [
+        {
+            id: 'scene_break_card',
+            roomCode,
+            title: 'Festival Break Card',
+            mediaUrl: QA_SINCE_U_BEEN_GONE_ART_URL,
+            mediaType: 'image',
+            durationSec: 20,
+            storagePath: 'fixtures/festival-break-card.png',
+            fileName: 'festival-break-card.png',
+            size: 102400,
+            sourceUploadId: 'cloud_break_card'
+        },
+        {
+            id: 'scene_welcome_loop',
+            roomCode,
+            title: 'Welcome Loop',
+            mediaUrl: QA_DREAMS_ART_URL,
+            mediaType: 'image',
+            durationSec: 15,
+            storagePath: 'fixtures/welcome-loop.png',
+            fileName: 'welcome-loop.png',
+            size: 98304,
+            sourceUploadId: ''
         }
     ],
     ytIndex: [

@@ -303,7 +303,20 @@ const App = () => {
         initAuth({ viewHint: initialViewHintRef.current }).then((res) => {
             if (!res?.ok && res?.error) {
                 setAuthError(res.error);
+                setAuthReady(true);
+                return;
             }
+            const currentUser = auth.currentUser;
+            if (currentUser) {
+                setUid(currentUser.uid);
+                setHasBeauRocksAccount(!currentUser.isAnonymous);
+                setAuthError(null);
+                setAuthReady(true);
+                return;
+            }
+            setUid(null);
+            setHasBeauRocksAccount(false);
+            setAuthReady(true);
         });
         const unsub = onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -326,9 +339,9 @@ const App = () => {
 
         const resumeIntent = 'host_dashboard_resume';
         const baseHref = marketingFlags.routePathsEnabled
-            ? buildSurfaceUrl({ surface: 'host', path: 'host-access' }, window.location)
+            ? buildSurfaceUrl({ surface: 'marketing', path: 'host-access' }, window.location)
             : buildSurfaceUrl({
-                surface: 'host',
+                surface: 'marketing',
                 params: { mode: 'marketing', page: MARKETING_ROUTE_PAGES.hostAccess },
             }, window.location);
         const returnToUrl = new URL(baseHref);

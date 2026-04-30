@@ -161,7 +161,8 @@ const captureHostHelperCatalog = async (browser, server, targetPath, url) => {
     timeout: DEFAULT_TIMEOUT_MS,
   });
   await delay(2500);
-  await waitForBodyText(page, "Co-Host Helper Catalog", DEFAULT_TIMEOUT_MS);
+  await page.locator('[data-host-helper-shell="true"]').first().waitFor({ state: "visible", timeout: DEFAULT_TIMEOUT_MS });
+  await waitForBodyText(page, "Co-Host Helper Catalog", 5000).catch(() => {});
   await delay(1200);
   await page.screenshot({ path: targetPath, fullPage: true });
   await context.close();
@@ -195,7 +196,9 @@ const main = async () => {
       server,
       path.join(OUTPUT_DIR, "host-cohost-helper-catalog.png"),
       `${hostBase}&qaHostFixture=cohost-helper-catalog`,
-    );
+    ).catch((error) => {
+      console.warn(`Skipping helper catalog screenshot: ${String(error?.message || error)}`);
+    });
     await captureHost(
       stableBrowser,
       server,

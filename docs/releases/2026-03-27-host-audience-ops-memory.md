@@ -114,6 +114,14 @@ This note captures product and engineering lessons that should outlive the immed
   - the operator should not need multiple places just to stay aware of the room
 - If different communication models exist temporarily, the product copy should still present a single clear primary place to look first.
 
+## Host Workspace Branches Need Real Mount Coverage
+
+- On 2026-04-29 the host room regressed after login because `HostQueueTab` still passed `handleChatViewMode` into `HostInboxPanel`, but the prop had been dropped from the parent component signature.
+- The default queue shell could still render, so the failure stayed hidden until the inbox workspace branch mounted.
+- Durable rule:
+  - if a host surface is selected by a tab, compact rail, or lazy branch, at least one test must actually mount that branch
+  - source-shape checks are useful tripwires, but they do not count as stability coverage for operator-critical paths
+
 ## Run Of Show Direction
 
 - The `Show` workspace should keep moving toward a studio shell:

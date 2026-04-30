@@ -4325,6 +4325,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     });
     const [showAiSetupGuide, setShowAiSetupGuide] = useState(false);
+    const trackHostOperatorEvent = useCallback((name, params = {}) => {
+        const eventName = String(name || '').trim();
+        if (!eventName) return;
+        trackEvent(eventName, {
+            room_code: roomCode || normalizedInitialCode || '',
+            ...(params && typeof params === 'object' ? params : {})
+        });
+    }, [normalizedInitialCode, roomCode]);
     const ytIndexFilteredSorted = useMemo(() => {
         const needle = ytIndexFilter.trim().toLowerCase();
         const filtered = (ytIndex || [])
@@ -4631,6 +4639,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         setShowSettings(tab === 'admin');
     }, [tab]);
+    const sceneLibraryAnalyticsOpenRef = useRef(false);
+    useEffect(() => {
+        if (!sceneLibraryModalOpen) {
+            sceneLibraryAnalyticsOpenRef.current = false;
+            return;
+        }
+        if (sceneLibraryAnalyticsOpenRef.current) return;
+        sceneLibraryAnalyticsOpenRef.current = true;
+        trackHostOperatorEvent('host_scene_library_opened', {
+            host_tab: String(tab || '').trim(),
+            workspace_section: String(activeWorkspaceSection || '').trim(),
+            preset_count: Array.isArray(scenePresets) ? scenePresets.length : 0
+        });
+    }, [activeWorkspaceSection, sceneLibraryModalOpen, scenePresets, tab, trackHostOperatorEvent]);
     const hallOfFameTimerRef = useRef(null);
     const layoutDefaultedRef = useRef(false);
     const [clearingRoom, setClearingRoom] = useState(false);
@@ -4809,6 +4831,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [autoBgFadeInMs, setAutoBgFadeInMs] = useState(900);
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
     const [lobbyTab, setLobbyTab] = useState('users');
+    const hostWorkspaceAnalyticsKeyRef = useRef('');
+    useEffect(() => {
+        const nextPayload = {
+            room_code: roomCode || normalizedInitialCode || '',
+            host_tab: String(tab || '').trim(),
+            settings_tab: tab === 'admin' ? String(settingsTab || '').trim() : '',
+            workspace_section: tab === 'admin'
+                ? String(activeWorkspaceSection || SETTINGS_TAB_TO_SECTION[settingsTab] || '').trim()
+                : '',
+            lobby_tab: tab === 'lobby' ? String(lobbyTab || '').trim() : ''
+        };
+        if (!nextPayload.room_code) return;
+        const nextKey = JSON.stringify(nextPayload);
+        if (hostWorkspaceAnalyticsKeyRef.current === nextKey) return;
+        hostWorkspaceAnalyticsKeyRef.current = nextKey;
+        trackHostOperatorEvent('host_workspace_viewed', nextPayload);
+    }, [activeWorkspaceSection, lobbyTab, normalizedInitialCode, roomCode, settingsTab, tab, trackHostOperatorEvent]);
     const [selectedLobbyUserToken, setSelectedLobbyUserToken] = useState('');
     const [lockedLobbyUserToken, setLockedLobbyUserToken] = useState('');
     const [bracketBusy, setBracketBusy] = useState(false);
@@ -4991,6 +5030,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (Array.isArray(fixture.songs)) setSongs(fixture.songs);
         if (Array.isArray(fixture.users)) setUsers(fixture.users);
         if (Array.isArray(fixture.localLibrary)) setLocalLibrary(fixture.localLibrary);
+        if (Array.isArray(fixture.scenePresets)) setScenePresets(fixture.scenePresets);
         if (Array.isArray(fixture.ytIndex)) setYtIndex(fixture.ytIndex);
         setRunOfShowPolicy(normalizeRunOfShowPolicy(fixture.room?.runOfShowPolicy || {}));
         setRunOfShowRoles(normalizeRunOfShowRoles(fixture.room?.runOfShowRoles || {}));
@@ -6307,26 +6347,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : 'Scene queued as the next conveyor moment.');
         return persistedDirector;
     }, [buildScenePresetRunOfShowOverrides, getCurrentRunOfShowDirector, persistRunOfShowDirector, toast]);
-    const uploadMediaFileToTvLibrary = useCallback(async (file, options = {}) => {
-        const uploaded = await uploadRoomMediaAsset(file, {
-            title: String(options?.title || '').trim(),
-            successToast: false
-        });
-        if (!uploaded) return null;
-        return saveMediaAssetAsScenePreset(uploaded, {
-            title: String(options?.title || '').trim() || getRoomMediaTitle(uploaded),
-            durationSec: Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20))
-        });
-    }, [saveMediaAssetAsScenePreset, uploadRoomMediaAsset]);
-    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
-        const uploaded = await uploadRoomMediaAsset(file, {
-            title: String(options?.title || '').trim(),
-            successToast: false
-        });
-        if (!uploaded) return null;
-        await useScenePresetInRunOfShow(uploaded);
-        return uploaded;
-    }, [uploadRoomMediaAsset, useScenePresetInRunOfShow]);
     const duplicateRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
         const index = director.items.findIndex((item) => item.id === itemId);
@@ -6420,11 +6440,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const useScenePresetInRunOfShow = useCallback(async (preset = {}) => {
         const director = getCurrentRunOfShowDirector();
         const items = Array.isArray(director?.items) ? director.items : [];
+        const mediaType = getRoomMediaType(preset);
+        const mediaTitle = getRoomMediaTitle(preset);
         const selectedItem = tab === 'run_of_show'
             ? items.find((item) => item.id === String(runOfShowSelectedItemId || '').trim())
             : null;
         if (selectedItem && isRunOfShowMediaTargetItem(selectedItem)) {
             const persistedDirector = await patchRunOfShowItem(selectedItem.id, buildScenePresetRunOfShowItemPatch(selectedItem, preset));
+            trackHostOperatorEvent('host_run_of_show_media_attached', {
+                host_tab: String(tab || '').trim(),
+                target_mode: 'selected_item',
+                target_item_id: selectedItem.id,
+                target_item_type: String(selectedItem?.type || '').trim(),
+                media_type: mediaType,
+                media_title: mediaTitle
+            });
             toast(`Media attached to ${selectedItem.title || 'that scene'}.`);
             return persistedDirector;
         }
@@ -6432,13 +6462,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             .find((item) => isRunOfShowMediaTargetItem(item));
         if (activeTarget) {
             const persistedDirector = await patchRunOfShowItem(activeTarget.id, buildScenePresetRunOfShowItemPatch(activeTarget, preset));
+            trackHostOperatorEvent('host_run_of_show_media_attached', {
+                host_tab: String(tab || '').trim(),
+                target_mode: 'active_slot',
+                target_item_id: activeTarget.id,
+                target_item_type: String(activeTarget?.type || '').trim(),
+                media_type: mediaType,
+                media_title: mediaTitle
+            });
             toast(`Media attached to ${activeTarget.title || 'the active scene slot'}.`);
             return persistedDirector;
         }
-        return queueScenePresetAsMoment(preset, { placement: 'append' });
+        const persistedDirector = await queueScenePresetAsMoment(preset, { placement: 'append' });
+        if (persistedDirector) {
+            trackHostOperatorEvent('host_run_of_show_media_attached', {
+                host_tab: String(tab || '').trim(),
+                target_mode: 'queued_append',
+                target_item_id: '',
+                target_item_type: 'announcement',
+                media_type: mediaType,
+                media_title: mediaTitle
+            });
+        }
+        return persistedDirector;
     }, [
         buildScenePresetRunOfShowItemPatch,
         getCurrentRunOfShowDirector,
+        getRoomMediaTitle,
+        getRoomMediaType,
         patchRunOfShowItem,
         queueScenePresetAsMoment,
         runOfShowLiveItem,
@@ -6446,6 +6497,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowSelectedItemId,
         runOfShowStagedItem,
         tab,
+        trackHostOperatorEvent,
         toast
     ]);
     const runOfShowAssignableSlots = useMemo(
@@ -10567,87 +10619,106 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const saveApiKeys = async () => { 
         localStorage.setItem('bross_host_name', hostName || 'Host');
-        if (roomCode) {
-            const nextEventCredits = buildProvisionEventCreditsPayload(eventCreditsConfig);
-            await updateRoom({ 
-                tipUrl: tipSettings.link.trim() || null, 
-                tipQrUrl: tipSettings.qr.trim() || null,
-                hostName: hostName || 'Host',
-                logoUrl: logoUrl?.trim() || null,
-                lobbyOrbSkinUrl: normalizeOrbSkinUrl(orbSkinUrl) || null,
-                tipCrates: normalizeTipCratesForSave(tipCrates),
-                eventCredits: nextEventCredits,
-                appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
-                appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
-                autoDj: !!autoDj,
-                autoBgMusic: !!autoBgMusic,
-                autoPlayMedia: !!autoPlayMedia,
-                autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
-                autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
-                autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
-                autoDjDelaySec: Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10)),
-                autoEndOnTrackFinish: autoEndOnTrackFinish !== false,
-                autoBonusEnabled: autoBonusEnabled !== false,
-                autoBonusPoints: Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0)),
-                readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
-                readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
-                showScoring: !!showScoring,
-                showFameLevel: !!showFameLevel,
-                requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
-                allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
-                audienceBackingMode: deriveAudienceBackingMode({
-                    requestMode,
+        try {
+            if (roomCode) {
+                const nextEventCredits = buildProvisionEventCreditsPayload(eventCreditsConfig);
+                await updateRoom({ 
+                    tipUrl: tipSettings.link.trim() || null, 
+                    tipQrUrl: tipSettings.qr.trim() || null,
+                    hostName: hostName || 'Host',
+                    logoUrl: logoUrl?.trim() || null,
+                    lobbyOrbSkinUrl: normalizeOrbSkinUrl(orbSkinUrl) || null,
+                    tipCrates: normalizeTipCratesForSave(tipCrates),
+                    eventCredits: nextEventCredits,
+                    appleMusicAutoPlaylistId: parseAppleMusicPlaylistId(appleMusicAutoPlaylistId),
+                    appleMusicAutoPlaylistTitle: (appleMusicAutoPlaylistTitle || '').trim(),
+                    autoDj: !!autoDj,
+                    autoBgMusic: !!autoBgMusic,
+                    autoPlayMedia: !!autoPlayMedia,
+                    autoBgFadeOutMs: Math.max(200, Number(autoBgFadeOutMs || 900)),
+                    autoBgFadeInMs: Math.max(200, Number(autoBgFadeInMs || 900)),
+                    autoBgMixDuringSong: Math.max(0, Math.min(100, Number(autoBgMixDuringSong ?? 0))),
+                    autoDjDelaySec: Math.max(2, Math.min(45, Number(autoDjDelaySec || 10) || 10)),
+                    autoEndOnTrackFinish: autoEndOnTrackFinish !== false,
+                    autoBonusEnabled: autoBonusEnabled !== false,
+                    autoBonusPoints: Math.max(0, Math.min(1000, Number(autoBonusPoints || 0) || 0)),
+                    readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
+                    readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
+                    showScoring: !!showScoring,
+                    showFameLevel: !!showFameLevel,
+                    requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
                     allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
-                }),
-                unknownBackingPolicy: deriveUnknownBackingPolicy({
-                    unknownBackingPolicy,
-                    requestMode,
-                    allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
-                }),
-                hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
-                audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
-                audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
-                audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
-                chatShowOnTv: !!chatShowOnTv,
-                chatTvMode: chatTvMode || 'auto',
-                marqueeEnabled: !!marqueeEnabled,
-                marqueeShowMode: marqueeShowMode || 'idle',
-                marqueeDurationMs: marqueeDurationMsDraft,
-                marqueeIntervalMs: marqueeIntervalMsDraft,
-                marqueeItems: cleanedMarqueeItems,
-                programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
-                runOfShowEnabled: !!runOfShowEnabled,
-                runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
-                hostNightPreset: hostNightPreset || 'custom',
-                bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
-                autoLyricsOnQueue: !!autoLyricsOnQueue,
-                popTriviaEnabled: popTriviaEnabled === true,
-                queueSettings: {
-                    limitMode: queueLimitMode || 'none',
-                    limitCount: Math.max(0, Number(queueLimitCount || 0)),
-                    rotation: queueRotation || 'round_robin',
-                    firstTimeBoost: !!queueFirstTimeBoost
-                }
-            });
-            if (room?.publicRoom) {
-                await runWithAppCheckWarmup(
-                    () => upsertHostRoomDiscoveryListing({
-                        roomCode,
-                        listing: {
-                            publicRoom: true,
-                            title: String(room?.discoverTitle || room?.roomName || '').trim(),
-                            startsAtMs: Number(room?.discoverStartsAtMs || 0) || 0,
-                            sessionMode: room?.virtualOnly ? 'virtual' : (String(room?.activeMode || 'karaoke').trim() || 'karaoke'),
-                            virtualOnly: room?.virtualOnly === true,
-                            supportProvider: String(nextEventCredits?.supportProvider || '').trim().toLowerCase(),
-                            supportLabel: String(nextEventCredits?.supportLabel || '').trim(),
-                        },
+                    audienceBackingMode: deriveAudienceBackingMode({
+                        requestMode,
+                        allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
                     }),
-                    { scope: 'upsertHostRoomDiscoveryListing' }
-                );
+                    unknownBackingPolicy: deriveUnknownBackingPolicy({
+                        unknownBackingPolicy,
+                        requestMode,
+                        allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
+                    }),
+                    hideNonEmbeddableYouTube: hideNonEmbeddableYouTube === true,
+                    audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+                    audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
+                    audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
+                    chatShowOnTv: !!chatShowOnTv,
+                    chatTvMode: chatTvMode || 'auto',
+                    marqueeEnabled: !!marqueeEnabled,
+                    marqueeShowMode: marqueeShowMode || 'idle',
+                    marqueeDurationMs: marqueeDurationMsDraft,
+                    marqueeIntervalMs: marqueeIntervalMsDraft,
+                    marqueeItems: cleanedMarqueeItems,
+                    programMode: programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow ? RUN_OF_SHOW_PROGRAM_MODES.runOfShow : RUN_OF_SHOW_PROGRAM_MODES.standard,
+                    runOfShowEnabled: !!runOfShowEnabled,
+                    runOfShowDirector: normalizeRunOfShowDirector(runOfShowDirectorState || {}),
+                    hostNightPreset: hostNightPreset || 'custom',
+                    bingoAudienceReopenEnabled: audienceBingoReopenEnabled !== false,
+                    autoLyricsOnQueue: !!autoLyricsOnQueue,
+                    popTriviaEnabled: popTriviaEnabled === true,
+                    queueSettings: {
+                        limitMode: queueLimitMode || 'none',
+                        limitCount: Math.max(0, Number(queueLimitCount || 0)),
+                        rotation: queueRotation || 'round_robin',
+                        firstTimeBoost: !!queueFirstTimeBoost
+                    }
+                });
+                if (room?.publicRoom) {
+                    await runWithAppCheckWarmup(
+                        () => upsertHostRoomDiscoveryListing({
+                            roomCode,
+                            listing: {
+                                publicRoom: true,
+                                title: String(room?.discoverTitle || room?.roomName || '').trim(),
+                                startsAtMs: Number(room?.discoverStartsAtMs || 0) || 0,
+                                sessionMode: room?.virtualOnly ? 'virtual' : (String(room?.activeMode || 'karaoke').trim() || 'karaoke'),
+                                virtualOnly: room?.virtualOnly === true,
+                                supportProvider: String(nextEventCredits?.supportProvider || '').trim().toLowerCase(),
+                                supportLabel: String(nextEventCredits?.supportLabel || '').trim(),
+                            },
+                        }),
+                        { scope: 'upsertHostRoomDiscoveryListing' }
+                    );
+                }
+                trackHostOperatorEvent('host_room_settings_saved', {
+                    host_tab: String(tab || '').trim(),
+                    settings_tab: String(settingsTab || '').trim(),
+                    workspace_section: String(activeWorkspaceSection || '').trim(),
+                    audience_shell_variant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
+                    request_mode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
+                    run_of_show_enabled: runOfShowEnabled === true,
+                    host_night_preset: hostNightPreset || 'custom'
+                });
             }
+            toast("Settings Saved"); 
+        } catch (error) {
+            hostLogger.error('Save room settings failed', error);
+            trackHostOperatorEvent('host_room_settings_save_failed', {
+                host_tab: String(tab || '').trim(),
+                settings_tab: String(settingsTab || '').trim(),
+                workspace_section: String(activeWorkspaceSection || '').trim()
+            });
+            toast('Could not save room settings.');
         }
-        toast("Settings Saved"); 
     };
 
     const persistYtIndex = useCallback(async (next) => {
@@ -11480,6 +11551,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), payload);
             const newItem = { id: docRef.id, _cloud: true, ...payload };
             setLocalLibrary(prev => [...prev, newItem]);
+            trackHostOperatorEvent('host_room_media_uploaded', {
+                media_type: mediaType,
+                file_name: String(file.name || '').trim(),
+                file_size_bytes: Number(file.size || 0) || 0,
+                upload_mode: mediaType === 'image' ? 'callable' : 'direct_storage'
+            });
             if (options?.successToast !== false) {
                 toast(
                     mediaType === 'audio'
@@ -11492,6 +11569,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return newItem;
         } catch (e) {
             hostLogger.error(e);
+            trackHostOperatorEvent('host_room_media_upload_failed', {
+                media_type: contentType.startsWith('image/')
+                    ? 'image'
+                    : (contentType.startsWith('audio/') ? 'audio' : 'video'),
+                file_name: String(file?.name || '').trim(),
+                file_size_bytes: Number(file?.size || 0) || 0
+            });
             toast(
                 contentType.startsWith('image/')
                     ? 'Upload failed. Check image size or network.'
@@ -11502,7 +11586,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadingLocal(false);
             setUploadProgress(0);
         }
-    }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, uid]);
+    }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, trackHostOperatorEvent, uid]);
     const saveMediaAssetAsScenePreset = useCallback(async (item = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(item);
         if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
@@ -11539,6 +11623,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         try {
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+            trackHostOperatorEvent('host_scene_preset_saved', {
+                media_type: mediaType,
+                media_title: title,
+                duration_sec: durationSec,
+                source_upload_id: sourceUploadId || ''
+            });
             toast('Saved to TV library.');
             return { id: docRef.id, ...payload };
         } catch (error) {
@@ -11546,7 +11636,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not save that upload to the TV library.');
             return null;
         }
-    }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast]);
+    }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast, trackHostOperatorEvent]);
+    const uploadMediaFileToTvLibrary = useCallback(async (file, options = {}) => {
+        const uploaded = await uploadRoomMediaAsset(file, {
+            title: String(options?.title || '').trim(),
+            successToast: false
+        });
+        if (!uploaded) return null;
+        return saveMediaAssetAsScenePreset(uploaded, {
+            title: String(options?.title || '').trim() || getRoomMediaTitle(uploaded),
+            durationSec: Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20))
+        });
+    }, [saveMediaAssetAsScenePreset, uploadRoomMediaAsset]);
+    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
+        const uploaded = await uploadRoomMediaAsset(file, {
+            title: String(options?.title || '').trim(),
+            successToast: false
+        });
+        if (!uploaded) return null;
+        await useScenePresetInRunOfShow(uploaded);
+        return uploaded;
+    }, [uploadRoomMediaAsset, useScenePresetInRunOfShow]);
     const reconcileDeletedMediaReferences = useCallback(async (asset = {}) => {
         const assetIdentity = buildRoomMediaIdentity(asset);
         if (!hasRoomMediaIdentity(assetIdentity)) return false;
@@ -11770,12 +11880,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     }
                 }
             });
+            trackHostOperatorEvent('host_public_tv_scene_launched', {
+                media_type: mediaType,
+                media_title: getRoomMediaTitle(item),
+                duration_sec: durationSec,
+                source_upload_id: String(item?.sourceUploadId || item?.id || '').trim()
+            });
             toast('Scene sent to Public TV.');
         } catch (error) {
             hostLogger.error('Could not launch scene preset', error);
             toast('Could not send scene to Public TV.');
         }
-    }, [hostLogger, toast, updateRoom]);
+    }, [getRoomMediaTitle, hostLogger, toast, trackHostOperatorEvent, updateRoom]);
     const createScenePresetFromFile = async (file, options = {}) => {
         if (!file || !roomCode) return null;
         const mediaType = String(file.type || '').trim().toLowerCase().startsWith('video/')

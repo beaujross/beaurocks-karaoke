@@ -26,10 +26,14 @@ test("AAHF audience poster explains the live room format and night flow", () => 
 test("AAHF co-host poster explains role boundaries and the run of night", () => {
   assert.match(cohostGuideSource, /Keep the line moving\. Protect the guest experience\./);
   assert.match(cohostGuideSource, /What you own tonight/);
-  assert.match(cohostGuideSource, /Escalate instead of improvising/);
+  assert.match(cohostGuideSource, /Escalate and vote clean/);
   assert.match(cohostGuideSource, /How your night unfolds/);
   assert.match(cohostGuideSource, /Tell Host once/);
   assert.match(cohostGuideSource, /their phone becomes their queue status screen for the night\./);
+  assert.match(cohostGuideSource, /The host opens the face-off/);
+  assert.match(cohostGuideSource, /You vote from the live room/);
+  assert.match(cohostGuideSource, /The host sees your choice in the live tally\./);
+  assert.match(cohostGuideSource, /Host confirms the winner/);
 });
 
 test("AAHF host walkthrough includes a room-settings verification block", () => {

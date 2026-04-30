@@ -44,7 +44,7 @@ test('browse-backed stage start uses resolved media duration and does not arm im
   mockHostQueueTabDependencies({ updateDocMock });
   vi.spyOn(Date, 'now').mockReturnValue(100000);
 
-  const { startQueueSongOnStage } = await import('../../src/apps/Host/components/HostQueueTab.jsx');
+  const { startQueueSongOnStage } = await import('../../src/apps/Host/startQueueSongOnStage.js');
   const { getAutoEndSchedule } = await import('../../src/apps/Host/hostPlaybackAutomation.js');
 
   const updateRoomMock = vi.fn(async () => {});

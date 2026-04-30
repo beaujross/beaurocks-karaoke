@@ -33,7 +33,6 @@ const HostChatPanel = ({
     showSettingsButton = true,
     showPopoutButton = true
 }) => {
-    if (!chatOpen) return null;
     const resolvedHostBase = hostBase || appBase;
     const displayedMessages = chatViewMode === 'room' ? roomChatMessages : hostDmMessages;
     const groupedMessages = groupChatMessages(displayedMessages.slice(-6), { mergeWindowMs: 12 * 60 * 1000 });
@@ -56,6 +55,7 @@ const HostChatPanel = ({
         if (!node) return;
         node.scrollTop = node.scrollHeight;
     }, [groupedMessages, chatViewMode]);
+    if (!chatOpen) return null;
 
     return (
     <div>

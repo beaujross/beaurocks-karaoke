@@ -42,13 +42,25 @@ const clickHostTab = async (page, tabKey, timeoutMs) => {
 const ensureShowWorkspace = async (page, timeoutMs) => {
   await clickHostTab(page, "run_of_show", timeoutMs);
   await waitForHostState(page, { tab: "run_of_show", timeoutMs });
-  await page.getByText("Run Of Show Board").first().waitFor({ state: "visible", timeout: timeoutMs });
+  await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const ensureStageWorkspace = async (page, timeoutMs) => {
   await clickHostTab(page, "stage", timeoutMs);
   await waitForHostState(page, { tab: "stage", timeoutMs });
-  await page.getByText("Live Stage").first().waitFor({ state: "visible", timeout: timeoutMs });
+  await waitForAnyVisible([
+    page.getByText("Queue Controls").first(),
+    page.getByText("LIVE LANE").first(),
+  ], timeoutMs);
+};
+
+const ensureStageQueueWorkspace = async (page, timeoutMs) => {
+  await ensureStageWorkspace(page, timeoutMs);
+  const queueSurfaceTab = page.locator('[data-feature-id="queue-surface-tab-queue-desktop"]').first();
+  if (await queueSurfaceTab.isVisible().catch(() => false)) {
+    await queueSurfaceTab.click({ force: true });
+  }
+  await page.locator('[data-feature-id="panel-tv-moments"]').first().waitFor({ state: "visible", timeout: timeoutMs });
 };
 
 const ensureLobbyWorkspace = async (page, timeoutMs) => {
@@ -92,6 +104,23 @@ const ensureAdminRoomSetup = async (page, timeoutMs) => {
   ], timeoutMs);
 };
 
+const ensureAdminMediaWorkspace = async (page, timeoutMs) => {
+  await ensureAdminRoomSetup(page, timeoutMs);
+  const mediaButton = page.getByRole("button", { name: /Screens \+ Playback/i }).first();
+  await mediaButton.waitFor({ state: "visible", timeout: timeoutMs });
+  await mediaButton.click({ force: true });
+  await page.getByText("Room Uploads").last().waitFor({ state: "visible", timeout: timeoutMs });
+};
+
+const getTrackedAnalyticsEvents = async (page) => page.evaluate(() => (
+  Array.isArray(window.__beaurocksTrackedEvents)
+    ? window.__beaurocksTrackedEvents.map((entry) => ({
+      name: String(entry?.name || ""),
+      params: entry?.params && typeof entry.params === "object" ? { ...entry.params } : {},
+    }))
+    : []
+));
+
 const main = async () => {
   const timeoutMs = Math.max(45000, Number(process.env.QA_TIMEOUT_MS || DEFAULT_TIMEOUT_MS));
   const headless = String(process.env.QA_HEADFUL || "").trim() !== "1";
@@ -120,9 +149,8 @@ const main = async () => {
     await ensureShowWorkspace(page, timeoutMs);
 
     await runCheck(checks, "host_app_fixture_loaded", async () => {
-      await page.getByText("Run Of Show Board").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Show Status").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Feature Slot 1").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("CONVEYOR STATUS").first().waitFor({ state: "visible", timeout: timeoutMs });
       await waitForAnyVisible([
         page.getByText("Open Issues").first(),
         page.getByText("Fix Issue").first(),
@@ -141,7 +169,7 @@ const main = async () => {
       if (/open board/i.test(String(toggleName || ""))) {
         await boardToggle.click({ force: true });
       }
-      await page.getByText("Timeline Actions").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Conveyor Actions").first().waitFor({ state: "visible", timeout: timeoutMs });
       await waitForAnyVisible([
         page.getByText("Issue Rail").first(),
         page.getByText("Open Issues").first(),
@@ -197,41 +225,23 @@ const main = async () => {
       return "Lantern Circuit is the first host background track and its audio asset is served";
     });
 
-    await runCheck(checks, "host_app_launch_catalogue_routes_to_queue_catalog", async () => {
+    await runCheck(checks, "host_app_stage_workspace_core_controls_visible", async () => {
       await ensureStageWorkspace(page, timeoutMs);
-      const launchToggle = page.locator('button').filter({ has: page.locator('.fa-rocket') }).first();
-      await launchToggle.waitFor({ state: "visible", timeout: timeoutMs });
-      await page.evaluate(() => {
-        window.__qaLastLaunchTarget = "";
-        window.open = ((url) => {
-          window.__qaLastLaunchTarget = String(url || "");
-          return null;
-        });
-      });
-      await launchToggle.click({ force: true });
-      const launchCatalogueButton = page.getByRole("button", { name: /Launch Catalogue/i }).first();
-      await launchCatalogueButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await launchCatalogueButton.click({ force: true });
-      const launchTarget = await page.evaluate(() => String(window.__qaLastLaunchTarget || ""));
-      if (!launchTarget) throw new Error("Launch Catalogue did not call window.open.");
-      const parsed = new URL(launchTarget, page.url());
-      if (parsed.searchParams.get("mode") !== "host") throw new Error(`Unexpected launch mode: ${parsed.toString()}`);
-      if (parsed.searchParams.get("view") !== "queue") throw new Error(`Unexpected launch view: ${parsed.toString()}`);
-      if (parsed.searchParams.get("section") !== "queue.catalog") throw new Error(`Unexpected launch section: ${parsed.toString()}`);
-      return "launch menu opens the queue catalog workspace";
+      await page.getByText("Open Conveyor").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Open TV Library").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Run Of Show").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage workspace exposes the current conveyor, TV library, and show handoff controls";
     });
 
-    await runCheck(checks, "host_app_stage_timing_uses_pace_slider_with_advanced_toggle", async () => {
+    await runCheck(checks, "host_app_stage_timing_controls_visible", async () => {
       await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
       await ensureStageWorkspace(page, timeoutMs);
       await page.getByText("Post-Performance Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Post-song Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.locator(".post-performance-timing-slider").first().waitFor({ state: "visible", timeout: timeoutMs });
-      const customizeButton = page.getByRole("button", { name: /Customize Timing/i }).first();
-      await customizeButton.waitFor({ state: "visible", timeout: timeoutMs });
-      await customizeButton.click({ force: true });
-      await page.getByText("Leaderboard beat").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage timing exposes the pace slider with optional advanced controls";
+      await page.getByText("Balanced").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Fast").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Leaderboard").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage timing exposes the current pace controls and per-beat summary";
     });
 
     await runCheck(checks, "host_app_lobby_can_promote_and_remove_cohost", async () => {
@@ -286,6 +296,53 @@ const main = async () => {
         throw new Error(`Unexpected audience brand colors: ${primary}, ${secondary}, ${accent}`);
       }
       return "audience branding fields show AAHF room colors";
+    });
+
+    await runCheck(checks, "host_app_room_setup_save_action_visible", async () => {
+      await ensureAdminRoomSetup(page, timeoutMs);
+      await page.getByRole("button", { name: /Save Room Settings/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "admin room setup exposes the save action";
+    });
+
+    await runCheck(checks, "host_app_room_upload_handoff_controls_visible", async () => {
+      await ensureAdminMediaWorkspace(page, timeoutMs);
+      const uploadRow = page.locator("div").filter({
+        hasText: "Festival Break Card",
+      }).filter({
+        has: page.getByRole("button", { name: /Use In Run Of Show/i }).first(),
+      }).first();
+      await uploadRow.waitFor({ state: "visible", timeout: timeoutMs });
+      await uploadRow.getByRole("button", { name: /TV Library/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      await uploadRow.getByRole("button", { name: /Use In Run Of Show/i }).first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "room uploads expose the TV library and run-of-show handoff controls for shared visual media";
+    });
+
+    await runCheck(checks, "host_app_stage_tv_library_modal_opens", async () => {
+      await ensureStageQueueWorkspace(page, timeoutMs);
+      await page.locator('[data-feature-id="panel-tv-moments"] [data-feature-id="open-tv-library"]').first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Festival Break Card").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage workspace keeps the TV library launcher and saved scene labels visible";
+    });
+
+    await runCheck(checks, "host_app_reload_restores_host_workspace", async () => {
+      await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs });
+      await delay(2500);
+      await ensureShowWorkspace(page, timeoutMs);
+      await page.getByText("SHOW CONVEYOR").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "fixture reload restores the host workspace without a runtime crash";
+    });
+
+    await runCheck(checks, "host_app_operator_analytics_emitted", async () => {
+      const events = await getTrackedAnalyticsEvents(page);
+      const names = new Set(events.map((entry) => entry.name));
+      if (!names.has("host_workspace_viewed")) {
+        throw new Error("Missing analytics event: host_workspace_viewed");
+      }
+      const workspaceViews = events.filter((entry) => entry.name === "host_workspace_viewed");
+      if (!workspaceViews.length) {
+        throw new Error("No host workspace analytics payloads were captured.");
+      }
+      return "host operator analytics fired for the host workspace surface";
     });
 
     await runCheck(checks, "host_app_no_page_errors", async () => {

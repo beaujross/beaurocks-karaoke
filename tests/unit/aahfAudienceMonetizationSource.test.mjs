@@ -56,13 +56,38 @@ test('AAHF-style rooms keep support optional inside access and points flows', ()
   );
   assert.match(
     source,
-    /simplifyFestivalSupportAccess \? \(/,
-    'Points modal should have a dedicated simplified branch for festival support rooms',
+    /festivalNightGuideUrl/,
+    'Festival join should derive a direct audience night-guide URL from the current origin and base path',
   );
   assert.match(
     source,
-    /Support is optional\. When the room flashes a support moment on the main screen, you can donate there without interrupting your karaoke flow\./,
-    'Points modal should steer guests toward occasional room-level support moments instead of a stacked monetization shop',
+    /data-singer-night-guide-button/,
+    'Festival join should expose a dedicated CTA that opens the audience night guide before join',
+  );
+  assert.match(
+    source,
+    /See tonight&apos;s format, points, and prizes/,
+    'Festival join should explain the purpose of the audience night-guide CTA in plain language',
+  );
+  assert.match(
+    source,
+    /print\/aahf-audience-guide\.html/,
+    'Festival join should point guests at the AAHF audience guide print route rather than a generic landing page',
+  );
+  assert.match(
+    source,
+    /allowsDonationAccess && roomSupportOffer && simplifyFestivalSupportAccess/,
+    'Points modal should keep a dedicated simplified festival support branch instead of falling back to the old stacked access flow',
+  );
+  assert.match(
+    source,
+    /Optional support/,
+    'Simplified festival support should stay visibly secondary inside the points flow',
+  );
+  assert.match(
+    source,
+    /Support AAHF separately without slowing down your karaoke join\./,
+    'Points modal should keep fundraiser support clearly separate from joining and first-request momentum',
   );
   assert.match(
     source,
