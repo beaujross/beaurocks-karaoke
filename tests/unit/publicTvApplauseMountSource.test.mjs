@@ -31,4 +31,24 @@ test('PublicTV rehydrates applause overlay state from live room mode transitions
     /if \(!applauseModeActive && applauseStep !== 'idle'\)/,
     'PublicTV should clear stale applause overlay state after the room exits applause mode.',
   );
+  assert.match(
+    source,
+    /const applauseOverlayVisible = applauseModeActive \|\| applauseStep !== 'idle';/,
+    'PublicTV should treat applause mode itself as enough to mount the overlay during fresh screen renders.',
+  );
+  assert.match(
+    source,
+    /if \(!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired\)/,
+    'PublicTV should not let preview takeovers hide applause once applause mode is active.',
+  );
+  assert.match(
+    source,
+    /if \(!applauseOverlayVisible && recap\)/,
+    'PublicTV should not let recap overlays swallow applause mode.',
+  );
+  assert.match(
+    source,
+    /\{applauseOverlayVisible && \(/,
+    'PublicTV should render the applause meter whenever the room is in an applause phase, even before local timers rehydrate.',
+  );
 });

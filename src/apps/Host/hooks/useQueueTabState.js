@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 const PANEL_LAYOUT_DEFAULTS = {
     stagePanelOpen: true,
     tvControlsOpen: true,
-    soundboardOpen: true,
+    soundboardOpen: false,
     chatOpen: true,
     overlaysOpen: true,
     vibeSyncOpen: true,

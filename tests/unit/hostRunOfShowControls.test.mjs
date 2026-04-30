@@ -45,7 +45,7 @@ test("Run of show queue and board surfaces expose clear-show controls", () => {
   const directorPanelSource = readFileSync(runOfShowDirectorPanelPath, "utf8");
 
   assert.match(queueHudSource, /onClear,/);
-  assert.match(queueHudSource, />\s*Clear Show\s*</);
+  assert.match(queueHudSource, />\s*Clear\s*</);
   assert.match(directorPanelSource, /onClearRunOfShow,/);
   assert.match(directorPanelSource, />\s*Clear Show\s*</);
 });
@@ -268,17 +268,21 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /launchLabel: modeKey \? `Launches \$\{modeKey\.replaceAll\('_', ' '\)\}` : 'Interactive launch'/);
   assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
   assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
-  assert.match(queueHudSource, /Item Actions/);
-  assert.match(queueHudSource, /Hide Later/);
-  assert.match(queueHudSource, /Show Later/);
+  assert.match(queueHudSource, /Actions/);
+  assert.match(queueHudSource, /Hide List/);
+  assert.match(queueHudSource, /Show List/);
+  assert.match(queueHudSource, /Moment Plan/);
+  assert.match(queueHudSource, /Next 3 set/);
+  assert.match(queueHudSource, /Order can flex\./);
+  assert.match(queueHudSource, /Full List/);
   assert.match(queueHudSource, />\s*Previous\s*</);
-  assert.match(queueHudSource, />\s*Stop Show\s*</);
-  assert.match(queueHudSource, /Move Earlier/);
-  assert.match(queueHudSource, /Move Later/);
-  assert.match(queueHudSource, /Fix Issue/);
+  assert.match(queueHudSource, />\s*Stop\s*</);
+  assert.match(queueHudSource, /Earlier/);
+  assert.match(queueHudSource, /Later/);
+  assert.match(queueHudSource, /Fix/);
   assert.match(queueHudSource, /Preview/);
   assert.match(queueHudSource, /Edit/);
-  assert.match(queueHudSource, /keep the room moving/);
+  assert.match(queueHudSource, /Order can flex/);
   assert.doesNotMatch(queueHudSource, /\{moreOpen \? 'Less' : 'More'\}/);
   assert.doesNotMatch(chromeSource, /compactRunOfShowToolsOpen/);
   assert.doesNotMatch(chromeSource, /\? \(compactRunOfShowDense \? 'Hide' : 'Less'\) : 'More'/);

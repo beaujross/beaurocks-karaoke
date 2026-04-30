@@ -75,7 +75,7 @@ const QueueYouTubeSearchModal = ({
 
     return (
         <div className="absolute inset-0 z-[70] bg-black/70 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-none">
-            <div className={`${styles.panel} p-6 w-full max-w-2xl border-white/20 max-h-[90vh] flex flex-col overflow-hidden pointer-events-auto`}>
+            <div className={`${styles.panel} p-6 w-full max-w-4xl border-white/20 max-h-[94vh] flex flex-col overflow-hidden pointer-events-auto`}>
                 <div className="flex justify-between items-center mb-4">
                     <div className={styles.header}>Search YouTube</div>
                     <button onClick={onClose} className={`${styles.btnStd} ${styles.btnNeutral} px-3`}>X</button>
@@ -117,7 +117,7 @@ const QueueYouTubeSearchModal = ({
                 )}
                 <div className="flex-1 min-h-0">
                     {ytResults.length > 0 && (
-                        <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto custom-scrollbar pr-1 pb-2">
+                        <div className="grid grid-cols-1 gap-3 max-h-[72vh] overflow-y-auto custom-scrollbar pr-1 pb-2 xl:grid-cols-2">
                             {ytResults.map(video => {
                                 const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
                                 const isTesting = embedStatus === 'testing';

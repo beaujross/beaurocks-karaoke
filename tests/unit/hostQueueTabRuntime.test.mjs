@@ -263,11 +263,11 @@ test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', a
     },
   });
 
-  assert.match(markup, /Run Of Show/);
+  assert.match(markup, /Planner|Planned Moments Hopper/);
   assert.match(markup, />3</);
 });
 
-test('HostQueueTab renders one unified desktop content rail with queue add inbox and run-of-show tabs', async () => {
+test('HostQueueTab renders one unified desktop content rail with queue add inbox and planner tabs', async () => {
   mockHostQueueTabDependencies();
 
   const markup = await renderQueueTabMarkup({
@@ -287,13 +287,15 @@ test('HostQueueTab renders one unified desktop content rail with queue add inbox
   });
 
   assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
-  assert.match(markup, /Add To Queue/);
+  assert.match(markup, /Add/);
   assert.match(markup, /data-feature-id="queue-surface-tab-queue-desktop"/);
-  assert.match(markup, /Current Queue/);
+  assert.match(markup, /Live Queue/);
   assert.match(markup, /data-feature-id="queue-surface-tab-inbox-desktop"/);
   assert.match(markup, />Inbox</);
   assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
-  assert.match(markup, /Run Of Show/);
+  assert.match(markup, /Planner/);
+  assert.match(markup, /Moment Plan/);
+  assert.match(markup, /Next 3/);
 });
 
 test('HostInboxPanel renders a consolidated inbox for co-host notes moderation and chat', async () => {
@@ -416,6 +418,29 @@ test('HostQueueTab keeps add-to-queue search controls visible inside the dedicat
   const markup = await renderQueueTabMarkup();
 
   assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
-  assert.match(markup, /Search songs \(autocomplete source \+ local library\)/);
-  assert.match(markup, /data-feature-id="host-manual-song-input"/);
+  assert.match(markup, /Performance/);
+  assert.match(markup, /TV/);
+  assert.match(markup, /Announcement/);
+  assert.match(markup, /Search songs or backing tracks/);
+  assert.match(markup, /Search YouTube/);
+  assert.match(markup, /Manual/);
+  assert.match(markup, /Results/);
+});
+
+test('HostQueueTab add workspace exposes explicit performance placement actions when plan slots are open', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('add');
+
+  const markup = await renderQueueTabMarkup({
+    runOfShowOpenSlots: [
+      { id: 'slot-1', label: '#2 Performance Slot', sequence: 2 },
+      { id: 'slot-2', label: '#3 Performance Slot', sequence: 3 },
+    ],
+  });
+
+  assert.match(markup, /Next: #2 Performance Slot/);
+  assert.match(markup, /Later target/);
+  assert.match(markup, /Add Next/);
+  assert.match(markup, /Add Later/);
+  assert.match(markup, /Queue Only/);
 });

@@ -12,7 +12,7 @@ const hostInboxPanelPath = path.resolve(__dirname, '../../src/apps/Host/componen
 const stagePanelPath = path.resolve(__dirname, '../../src/apps/Host/components/StageNowPlayingPanel.jsx');
 const liveOpsPanelPath = path.resolve(__dirname, '../../src/apps/Host/components/HostLiveOpsPanel.jsx');
 
-test('host stage runtime renders a consolidated live lane panel above the stage card', () => {
+test('host stage runtime keeps the stage primary and leaves the snapshot strip below it', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
   const hostQueueTabSource = readFileSync(hostQueueTabPath, 'utf8');
 
@@ -39,7 +39,6 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostQueueTabSource, /<HostLiveOpsPanel[\s\S]*current=\{current\}/);
   assert.match(hostQueueTabSource, /runOfShowFlightedItem=\{runOfShowStagedItem\}/);
   assert.match(hostQueueTabSource, /runOfShowOnDeckItem=\{runOfShowNextItem\}/);
-  assert.match(hostQueueTabSource, /crowdPulse=\{crowdPulse\}/);
   assert.match(hostQueueTabSource, /showStageSummaryHeader=\{false\}/);
   assert.match(hostQueueTabSource, /h-full min-h-0 flex flex-col overflow-hidden/);
   assert.match(hostQueueTabSource, /flex-1 min-h-0 overflow-y-auto custom-scrollbar/);
@@ -55,34 +54,27 @@ test('host stage runtime renders a consolidated live lane panel above the stage 
   assert.match(hostQueueTabSource, /onSceneLibraryModalChange\?\.\(sceneLibraryOpen\)/);
   assert.match(hostQueueTabSource, /multiple/);
   assert.match(hostQueueTabSource, /Upload Scenes/);
+  assert.ok(
+    hostQueueTabSource.indexOf('label="Stage"') < hostQueueTabSource.indexOf('<HostLiveOpsPanel'),
+    'Stage should render before the room snapshot strip so transport stays higher in the left rail',
+  );
 });
 
-test('live lane panel collapses host runtime into now next and conveyor cards', () => {
+test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   const source = readFileSync(liveOpsPanelPath, 'utf8');
 
   assert.match(source, /data-feature-id="host-live-ops-panel"/);
-  assert.match(source, /const getSongArtworkUrl = \(entry = \{\}\) => String\(/);
-  assert.match(source, /const getScenePlaceholderMeta = \(item = \{\}\) => \{/);
-  assert.match(source, /artworkUrl \? \(/);
-  assert.match(source, /placeholderIcon = 'fa-microphone-lines'/);
-  assert.match(source, /placeholderLabel = 'Live'/);
-  assert.match(source, /bg-gradient-to-br/);
-  assert.match(source, /flex items-start gap-2\.5/);
-  assert.match(source, /break-words text-\[12px\] font-semibold leading-tight text-white sm:text-\[13px\]/);
-  assert.match(source, /break-words text-\[10px\] leading-snug text-zinc-400 sm:text-\[11px\]/);
-  assert.match(source, /mt-3 grid gap-2 \[grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)\)\]/);
-  assert.match(source, /Live Lane/);
-  assert.match(source, /Now/);
+  assert.match(source, /const SnapshotCard = \(\{/);
+  assert.match(source, /Live Snapshot/);
+  assert.match(source, /On Stage/);
   assert.match(source, /Next Singer/);
-  assert.match(source, /Conveyor/);
-  assert.match(source, /fa-bullhorn/);
-  assert.match(source, /fa-gamepad/);
-  assert.match(source, /fa-user-music/);
+  assert.match(source, /Planned/);
+  assert.match(source, /meta=\{queuedMoment \? \(runOfShowFlightedItem\?\.id \? 'Armed' : 'On Deck'\) : \(runOfShowEnabled \? 'Plan' : 'Planner Off'\)\}/);
+  assert.match(source, /\? 'Open slot'/);
+  assert.match(source, />\s*Planner\s*</);
   assert.doesNotMatch(source, /Tell Host/);
-  assert.match(source, /Start Next Singer/);
-  assert.match(source, /Open Conveyor/);
-  assert.match(source, /End Current/);
-  assert.match(source, /Re-Queue Current/);
+  assert.doesNotMatch(source, /End Current/);
+  assert.doesNotMatch(source, /Re-Queue Current/);
 });
 
 test('host inbox panel aggregates moderation, co-host notes, and chat into two buckets', () => {

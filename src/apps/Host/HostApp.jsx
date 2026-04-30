@@ -32,6 +32,7 @@ import {
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
     addDoc, deleteDoc, serverTimestamp, limit, orderBy, getDocs, getDoc, setDoc, writeBatch,
+    runTransaction,
     storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject,
     auth,
     initAuth,
@@ -69,6 +70,7 @@ import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
+import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import {
     getHostMomentCueMeta,
     getHostMomentCueSoundCandidates
@@ -6204,17 +6206,188 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             runOfShowEnabled: normalizedMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow
         });
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
-    const addRunOfShowItem = useCallback(async (type = 'buffer', overrides = {}) => {
+    const addRunOfShowItem = useCallback(async (type = 'buffer', overrides = {}, options = {}) => {
         const director = getCurrentRunOfShowDirector();
+        const nextItem = createRunOfShowItem(type, { ...(overrides || {}), status: type === 'performance' ? 'blocked' : 'ready' });
+        const items = Array.isArray(director.items) ? [...director.items] : [];
+        const liveIndex = items.findIndex((item) => String(item?.status || '').trim().toLowerCase() === 'live');
+        const insertIndex = String(options?.placement || '').trim().toLowerCase() === 'next'
+            ? (liveIndex >= 0 ? liveIndex + 1 : 0)
+            : items.length;
+        items.splice(insertIndex, 0, nextItem);
         const nextDirector = normalizeRunOfShowDirector({
             ...director,
-            items: resequenceRunOfShowItems([
-                ...(director.items || []),
-                createRunOfShowItem(type, { ...(overrides || {}), status: type === 'performance' ? 'blocked' : 'ready' })
-            ])
+            items: resequenceRunOfShowItems(items)
         });
-        return persistRunOfShowDirector(nextDirector);
+        return persistRunOfShowDirector(
+            nextDirector,
+            options?.activateShow === true
+                ? {
+                    programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                    runOfShowEnabled: true
+                }
+                : {}
+        );
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const addQuickRunOfShowMoment = useCallback(async (packId = '', options = {}) => {
+        const safePackId = String(packId || '').trim().toLowerCase();
+        const packs = {
+            host_update: {
+                type: 'announcement',
+                label: 'Host Update',
+                overrides: {
+                    title: 'Host Update',
+                    plannedDurationSec: 30,
+                    notes: 'Quick host-led room update.',
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: false,
+                        takeoverScene: 'announcement',
+                        headline: 'Host update',
+                        subhead: 'Quick room beat before the next singer.',
+                        accentTheme: 'cyan'
+                    }
+                }
+            },
+            how_to_join: {
+                type: 'announcement',
+                label: 'How To Join',
+                overrides: {
+                    title: 'How To Join',
+                    plannedDurationSec: 30,
+                    roomMomentPlan: {
+                        showHowToPlay: true
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'how_to_play',
+                        headline: 'Scan in. Join. Sing next.',
+                        subhead: 'Send the audience back to the app fast.',
+                        accentTheme: 'cyan'
+                    }
+                }
+            },
+            selfie_cam: {
+                type: 'announcement',
+                label: 'Selfie Cam',
+                overrides: {
+                    title: 'Selfie Cam Moment',
+                    plannedDurationSec: 45,
+                    roomMomentPlan: {
+                        activeMode: 'selfie_cam'
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'selfie_cam',
+                        headline: 'Selfie Cam spotlight',
+                        subhead: 'Hand the spotlight to the crowd.',
+                        accentTheme: 'amber'
+                    }
+                }
+            },
+            leaderboard_flash: {
+                type: 'announcement',
+                label: 'Leaderboard Flash',
+                overrides: {
+                    title: 'Leaderboard Flash',
+                    plannedDurationSec: 30,
+                    roomMomentPlan: {
+                        activeScreen: 'leaderboard'
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'leaderboard',
+                        headline: 'Room leaders on deck',
+                        subhead: 'Show momentum without changing the queue.',
+                        accentTheme: 'cyan'
+                    }
+                }
+            },
+            would_you_rather: {
+                type: 'would_you_rather_break',
+                label: 'Would You Rather',
+                overrides: {
+                    title: 'Would You Rather',
+                    plannedDurationSec: 65,
+                    modeLaunchPlan: {
+                        modeKey: 'wyr',
+                        launchConfig: {
+                            question: 'Would you rather sing solo or bring your whole row on stage?',
+                            optionsCsv: 'Solo, Bring the row'
+                        }
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'would_you_rather_break',
+                        headline: 'Quick room vote',
+                        subhead: 'Phones vote once. TV shows the split.',
+                        accentTheme: 'emerald'
+                    }
+                }
+            },
+            applause_meter: {
+                type: 'game_break',
+                label: 'Applause Meter',
+                overrides: {
+                    title: 'Applause Meter',
+                    plannedDurationSec: 35,
+                    modeLaunchPlan: {
+                        modeKey: 'applause_countdown',
+                        launchConfig: {
+                            question: 'Measure the room',
+                            durationSec: 35,
+                            participantMode: 'all'
+                        }
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'applause_countdown',
+                        headline: 'Make some noise',
+                        subhead: 'Let the room decide how loud it can get.',
+                        accentTheme: 'amber'
+                    }
+                }
+            },
+            support_the_show: {
+                type: 'announcement',
+                label: 'Support The Show',
+                overrides: {
+                    title: 'Support The Show',
+                    plannedDurationSec: 35,
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'tipping',
+                        headline: 'Support the show',
+                        subhead: 'Donation and sponsor beat between performances.',
+                        accentTheme: 'pink'
+                    }
+                }
+            },
+            sponsor_spotlight: {
+                type: 'announcement',
+                label: 'Sponsor Spotlight',
+                overrides: {
+                    title: 'Sponsor Spotlight',
+                    plannedDurationSec: 30,
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'announcement',
+                        headline: 'Sponsor spotlight',
+                        subhead: 'Quick branded thank-you before the next singer.',
+                        accentTheme: 'amber'
+                    }
+                }
+            }
+        };
+        const pack = packs[safePackId];
+        if (!pack) return null;
+        const placement = String(options?.placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
+        const persistedDirector = await addRunOfShowItem(pack.type, pack.overrides, {
+            placement,
+            activateShow: true
+        });
+        toast(`${pack.label} added ${placement === 'append' ? 'later in Planner.' : 'next in the live plan.'}`);
+        return persistedDirector;
+    }, [addRunOfShowItem, toast]);
     const importRunOfShowCsv = useCallback(async (csvText = '', options = {}) => {
         const importResult = buildRunOfShowItemsFromCsvImport(csvText);
         if (!importResult.items.length) {
@@ -6560,18 +6733,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const assignQueueSongToRunOfShowItem = useCallback(async (songId, itemId) => {
         const safeSongId = String(songId || '').trim();
         const safeItemId = String(itemId || '').trim();
-        if (!safeSongId || !safeItemId) return;
-        const queueSong = (Array.isArray(songs) ? songs : []).find((song) => song.id === safeSongId);
-        const targetItem = (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : []).find((item) => item.id === safeItemId);
-        if (!queueSong || !targetItem || targetItem.type !== 'performance') return;
-        await patchRunOfShowItem(safeItemId, buildRunOfShowQueueAssignmentPatch(queueSong, targetItem));
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
-            status: 'assigned',
-            runOfShowItemId: safeItemId,
-            runOfShowAssignedAt: serverTimestamp()
+        if (!safeSongId || !safeItemId || !roomCode) return;
+        const roomRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode);
+        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId);
+        const result = await runTransaction(db, async (transaction) => {
+            const [roomSnap, songSnap] = await Promise.all([
+                transaction.get(roomRef),
+                transaction.get(songRef),
+            ]);
+            if (!roomSnap.exists() || !songSnap.exists()) {
+                throw new Error('assignment_target_missing');
+            }
+            const roomData = roomSnap.data() || {};
+            const queueSong = songSnap.data() || {};
+            const { nextDirector: normalizedDirector, targetItem } = prepareRunOfShowQueueAssignment({
+                director: roomData?.runOfShowDirector || getCurrentRunOfShowDirector(),
+                queueSong: {
+                    ...queueSong,
+                    id: safeSongId,
+                },
+                itemId: safeItemId,
+                buildAssignmentPatch: buildRunOfShowQueueAssignmentPatch,
+                deriveStatus: deriveRunOfShowEditableStatus,
+            });
+            transaction.update(roomRef, {
+                runOfShowDirector: normalizedDirector,
+            });
+            transaction.update(songRef, {
+                status: 'assigned',
+                runOfShowItemId: safeItemId,
+                runOfShowAssignedAt: serverTimestamp()
+            });
+            return {
+                nextDirector: normalizedDirector,
+                queueSongTitle: String(queueSong?.songTitle || '').trim(),
+                slotSequence: Number(targetItem?.sequence || 0),
+            };
         });
-        toast(`Assigned ${queueSong.songTitle || 'queue song'} to slot ${targetItem.sequence || '?'}.`);
-    }, [patchRunOfShowItem, runOfShowDirector?.items, songs, toast]);
+        setRunOfShowDirectorState(result.nextDirector);
+        runOfShowLocalEditAtRef.current = Date.now();
+        runOfShowRemoteSyncRef.current.director = JSON.stringify(result.nextDirector);
+        toast(`Assigned ${result.queueSongTitle || 'queue song'} to slot ${result.slotSequence || '?'}.`);
+    }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, roomCode, toast]);
     const assignQueueSongToNextOpenRunOfShowSlot = useCallback(async (songId) => {
         const safeSongId = String(songId || '').trim();
         const nextOpenSlot = runOfShowOpenPerformanceSlots[0] || null;
@@ -16236,6 +16439,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onToggleRunOfShowPause: toggleRunOfShowAutomationPause,
         onStopRunOfShow: stopRunOfShowNow,
         onClearRunOfShow: clearRunOfShowNow,
+        onAddQuickRunOfShowMoment: addQuickRunOfShowMoment,
         scenePresets,
         scenePresetUploading,
         scenePresetUploadProgress,

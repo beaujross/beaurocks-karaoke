@@ -4588,6 +4588,18 @@ const PublicTV = ({ roomCode }) => {
         || applauseSubject?.title
         || ''
     ).trim();
+    const applauseRenderStep = applauseStep === 'idle'
+        ? (
+            applauseMode === 'applause_countdown'
+                ? (applauseWarmupSec > 0 ? 'celebrate' : 'countdown')
+                : applauseMode === 'applause'
+                    ? 'measuring'
+                    : applauseMode === 'applause_result'
+                        ? 'result'
+                        : 'idle'
+        )
+        : applauseStep;
+    const applauseOverlayVisible = applauseModeActive || applauseStep !== 'idle';
     const popTriviaRoundSec = Math.max(
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
@@ -5780,13 +5792,13 @@ const PublicTV = ({ roomCode }) => {
     const roundWinnersMomentExpired = roundWinnersMoment
         ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
         : true;
-    if (tvPreviewOverlay && !tvPreviewExpired) {
+    if (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired) {
         return <RunOfShowTakeoverOverlay overlay={tvPreviewOverlay} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[205]" preview nowValue={takeoverNowMs} />;
     }
-    if (roundWinnersMoment && !roundWinnersMomentExpired) {
+    if (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired) {
         return <RoundWinnersPodiumOverlay moment={roundWinnersMoment} />;
     }
-    if (room?.activeScreen === 'leaderboard') {
+    if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard') {
         return (
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
@@ -5794,7 +5806,7 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
-    if (room?.activeScreen === 'leaderboard_stack') {
+    if (!applauseOverlayVisible && room?.activeScreen === 'leaderboard_stack') {
         return (
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
@@ -5802,7 +5814,7 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
-    if (room?.activeScreen === 'tipping') {
+    if (!applauseOverlayVisible && room?.activeScreen === 'tipping') {
         return (
             <>
                 <RunOfShowStatusHud hud={runOfShowHud} />
@@ -5810,8 +5822,8 @@ const PublicTV = ({ roomCode }) => {
             </>
         );
     }
-            if (room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} brandEyebrow={tvBrandEyebrow} poweredByLabel={tvPoweredByLabel} brandTitle={tvBrandTitle} />;
-    if (room?.readyCheck?.active) {
+    if (!applauseOverlayVisible && room?.howToPlay?.active) return <HowToPlayOverlay roomCode={roomCode} logoUrl={room?.logoUrl} queueRules={queueRules} startedAtMs={Number(room?.howToPlay?.id || 0)} brandEyebrow={tvBrandEyebrow} poweredByLabel={tvPoweredByLabel} brandTitle={tvBrandTitle} />;
+    if (!applauseOverlayVisible && room?.readyCheck?.active) {
         const readyCount = roomUsers.filter(u => u.isReady).length;
         const totalCount = roomUsers.length || 0;
         const readyPct = totalCount > 0 ? Math.round((readyCount / totalCount) * 100) : 0;
@@ -5839,7 +5851,7 @@ const PublicTV = ({ roomCode }) => {
         );
     }
     const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
-    if (room?.announcement?.active && !activeGameCartridgeMode) {
+    if (!applauseOverlayVisible && room?.announcement?.active && !activeGameCartridgeMode) {
         const announcement = room.announcement || {};
         const isExpiredMediaScene = String(announcement?.type || '').trim().toLowerCase() === 'media_scene'
             && Number(announcement?.durationSec || 0) > 0
@@ -5849,7 +5861,7 @@ const PublicTV = ({ roomCode }) => {
             return <RunOfShowTakeoverOverlay overlay={announcement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />;
         }
     }
-    if (chatTvFullscreenActive) {
+    if (!applauseOverlayVisible && chatTvFullscreenActive) {
         return (
             <div className="public-tv fixed inset-0 z-[190] bg-[radial-gradient(circle_at_top,rgba(6,182,212,0.18),transparent_55%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.2),transparent_45%),#07080a] text-white font-saira flex flex-col" style={{ height: '100dvh' }}>
                 <div className="px-5 md:px-8 py-4 border-b border-white/10 bg-black/35 backdrop-blur">
@@ -6079,7 +6091,7 @@ const PublicTV = ({ roomCode }) => {
     }
 
     // 3. Recap Overlay
-    if (recap) {
+    if (!applauseOverlayVisible && recap) {
         const topFan = recap.topFan;
         const vibeStats = recap.vibeStats;
         const popTriviaSummary = recap.popTriviaSummary;
@@ -7965,15 +7977,15 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Applause Meter Overlay */}
-            {applauseStep !== 'idle' && (
-                <div className="absolute inset-0 z-[150] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
+            {applauseOverlayVisible && (
+                <div className="absolute inset-0 z-[260] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
                     <div className="mb-4 md:mb-8 flex flex-col items-center gap-3 text-center px-8">
                         <div className="inline-flex items-center gap-3 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-5 py-2 text-sm md:text-lg font-black uppercase tracking-[0.28em] text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.16)]">
                             <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.9)]"></span>
                             Crowd Moment
                         </div>
                         <h1 className="text-[clamp(2.75rem,7vw,6.5rem)] font-bebas text-white tracking-[0.12em] md:tracking-[0.2em] leading-none">
-                            {applauseStep === 'celebrate' ? 'WARM UP FOR' : applauseStep === 'countdown' ? 'GET READY FOR' : 'CHEER FOR'}
+                            {applauseRenderStep === 'celebrate' ? 'WARM UP FOR' : applauseRenderStep === 'countdown' ? 'GET READY FOR' : 'CHEER FOR'}
                         </h1>
                         <div className="text-[clamp(3rem,9vw,8rem)] font-black uppercase tracking-tight leading-[0.9] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-white to-cyan-300 drop-shadow-[0_0_28px_rgba(236,72,153,0.22)]">
                             {applausePerformerName}
@@ -7993,33 +8005,33 @@ const PublicTV = ({ roomCode }) => {
                                     <stop offset="100%" stopColor="#EC4899" />
                                 </linearGradient>
                             </defs>
-                            <circle cx="50" cy="50" r="40" stroke="url(#applauseGradient)" strokeWidth="8" fill="none" strokeDasharray="251.2" strokeDashoffset={251.2 * (1 - ((applauseStep === 'result' ? applauseMax : micVolume) / 100))} strokeLinecap="round" className="transition-all duration-75 ease-linear" />
+                            <circle cx="50" cy="50" r="40" stroke="url(#applauseGradient)" strokeWidth="8" fill="none" strokeDasharray="251.2" strokeDashoffset={251.2 * (1 - ((applauseRenderStep === 'result' ? applauseMax : micVolume) / 100))} strokeLinecap="round" className="transition-all duration-75 ease-linear" />
                         </svg>
                         <div className="relative z-10 flex flex-col items-center">
                             <div className="text-[clamp(3.25rem,16vw,10rem)] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] font-mono leading-none drop-shadow-[0_0_20px_rgba(236,72,153,0.35)]">
-                                {Math.round(applauseStep === 'result' ? applauseMax : applauseStep === 'celebrate' ? 0 : micVolume)}
+                                {Math.round(applauseRenderStep === 'result' ? applauseMax : applauseRenderStep === 'celebrate' ? 0 : micVolume)}
                             </div>
                             <div className="text-lg md:text-2xl text-zinc-500 font-bold">dB</div>
                         </div>
                     </div>
                     <div className="mt-4 md:mt-8 text-center px-4">
                         <div className="text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce">
-                            {applauseStep === 'celebrate'
+                            {applauseRenderStep === 'celebrate'
                                 ? `WARM-UP LIVE ${celebrateCountdown}`
-                                : applauseStep === 'countdown'
+                                : applauseRenderStep === 'countdown'
                                     ? `METER OPENS IN ${countdown}`
-                                    : applauseStep === 'measuring'
+                                    : applauseRenderStep === 'measuring'
                                         ? `METER LIVE ${measure}`
                                         : 'PEAK LEVEL REACHED'}
                         </div>
-                        {(applauseStep === 'celebrate' || applauseStep === 'countdown') ? (
+                        {(applauseRenderStep === 'celebrate' || applauseRenderStep === 'countdown') ? (
                             <div className="mt-3 text-sm md:text-xl uppercase tracking-[0.24em] text-zinc-400">
-                                {applauseStep === 'celebrate'
+                                {applauseRenderStep === 'celebrate'
                                     ? 'Crowd warm-up before the meter opens'
                                     : 'Noise meter opens now'}
                             </div>
                         ) : null}
-                        {applauseStep === 'countdown' ? (
+                        {applauseRenderStep === 'countdown' ? (
                             <div className="mt-4 flex items-center justify-center gap-2 md:gap-3">
                                 {Array.from({ length: applauseCountdownSec }, (_, idx) => {
                                     const active = idx < countdown;
