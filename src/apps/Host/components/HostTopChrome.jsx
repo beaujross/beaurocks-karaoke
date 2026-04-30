@@ -8,13 +8,12 @@ import {
     normalizeRunOfShowDirector
 } from '../../../lib/runOfShowDirector';
 
-const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', onClick, title = '' }) => {
-    const Comp = typeof onClick === 'function' ? 'button' : 'div';
+const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', title = '' }) => {
+    const Comp = 'div';
     return (
         <Comp
-            onClick={onClick}
             title={title}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass} ${typeof onClick === 'function' ? 'cursor-pointer hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/50' : ''}`}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
         >
             <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
             {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
@@ -141,7 +140,6 @@ const HostTopChrome = ({
     onOpenAppleMusicSettings,
     onOpenAiSettings,
     onOpenAccessSettings,
-    onOpenQueueControls,
     onOpenCatalogueHelper,
     roomReadinessSummary = '',
     roomReadinessStatusLabel = 'Room',
@@ -168,7 +166,13 @@ const HostTopChrome = ({
     onToggleRunOfShowAutomationPause,
     runOfShowFocusMode = false,
     crowdPulse = null,
-    activeMomentFeedback = null
+    activeMomentFeedback = null,
+    scenePresets = [],
+    onLaunchScenePreset,
+    onQueueScenePreset,
+    onAddScenePresetToRunOfShow,
+    onClearScenePreset,
+    onReplayPurchaseCelebration,
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -199,6 +203,7 @@ const HostTopChrome = ({
     const SmallWaveform = smallWaveform;
     const [showTvQuickMenu, setShowTvQuickMenu] = React.useState(false);
     const [showOverlaysMenu, setShowOverlaysMenu] = React.useState(false);
+    const [showScenesQuickMenu, setShowScenesQuickMenu] = React.useState(false);
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
     const [compactRunOfShowCollapsed, setCompactRunOfShowCollapsed] = React.useState(() => {
@@ -214,6 +219,7 @@ const HostTopChrome = ({
     const audioMenuRef = React.useRef(null);
     const tvQuickMenuRef = React.useRef(null);
     const overlaysMenuRef = React.useRef(null);
+    const scenesQuickMenuRef = React.useRef(null);
     const sfxQuickMenuRef = React.useRef(null);
     const vibeQuickMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
@@ -292,15 +298,30 @@ const HostTopChrome = ({
     const leaderboardStackActive = room?.activeScreen === 'leaderboard_stack';
     const tipCtaActive = room?.activeScreen === 'tipping';
     const howToPlayActive = !!room?.howToPlay?.active;
-    const activeAutomationCount = Number(!!autoPlayMedia)
-        + Number(!!autoBgMusic)
-        + Number(!!autoDj)
-        + Number(!!autoEndOnTrackFinish)
-        + Number(!!autoBonusEnabled)
-        + Number(!!autoLyricsOnQueue)
-        + Number(!!autoPartyEnabled)
-        + Number(!!room?.bouncerMode);
     const overlaysActiveCount = Number(leaderboardActive) + Number(leaderboardStackActive) + Number(tipCtaActive) + Number(howToPlayActive) + Number(marqueeActive) + Number(chatTvActive) + Number(popTriviaActive);
+    const scenePresetCount = Array.isArray(scenePresets) ? scenePresets.length : 0;
+    const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
+        ? room.announcement
+        : null;
+    const recentScenePresets = React.useMemo(
+        () => (Array.isArray(scenePresets) ? scenePresets : [])
+            .slice()
+            .sort((left, right) => {
+                const leftScore = Math.max(
+                    Number(left?.lastPresentedAtMs || 0) || 0,
+                    Number(left?.updatedAtMs || 0) || 0,
+                    Number(left?.createdAtMs || 0) || 0
+                );
+                const rightScore = Math.max(
+                    Number(right?.lastPresentedAtMs || 0) || 0,
+                    Number(right?.updatedAtMs || 0) || 0,
+                    Number(right?.createdAtMs || 0) || 0
+                );
+                return rightScore - leftScore;
+            })
+            .slice(0, 6),
+        [scenePresets]
+    );
     const denseChrome = !!tabletTouchViewport || !!mediumViewport;
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
@@ -314,16 +335,14 @@ const HostTopChrome = ({
     const anyTopMenuOpen = audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
+        || showScenesQuickMenu
         || showSfxQuickMenu
         || showVibeQuickMenu
         || showLaunchMenu
         || showNavMenu;
-    const crowdPulseMetrics = crowdPulse?.metrics || {};
-    const crowdPulseLabel = String(crowdPulse?.label || '').trim() || 'No signal';
-    const crowdPulseSummary = String(crowdPulse?.summary || crowdPulse?.recommendationTitle || '').trim()
-        || 'Open queue controls for live crowd guidance.';
-    const crowdPulseToneClass = crowdPulse?.chipClass || 'border-white/10 bg-black/20 text-zinc-200';
-    const crowdPulseLivePct = Math.max(0, Number(crowdPulseMetrics.livePhonePct || 0) || 0);
+    const showMissionStatusBanner = missionControlEnabled
+        && missionStatus === 'needs_attention'
+        && missionRecommendation?.id !== 'crowd_check';
     const normalizedRunOfShowDirector = React.useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || {}),
         [runOfShowDirector]
@@ -585,6 +604,7 @@ const HostTopChrome = ({
         setAudioPanelOpen?.(false);
         setShowTvQuickMenu(false);
         setShowOverlaysMenu(false);
+        setShowScenesQuickMenu(false);
         setShowSfxQuickMenu(false);
         setShowVibeQuickMenu(false);
     }, [setAudioPanelOpen]);
@@ -796,6 +816,7 @@ const HostTopChrome = ({
                 audioMenuRef,
                 tvQuickMenuRef,
                 overlaysMenuRef,
+                scenesQuickMenuRef,
                 sfxQuickMenuRef,
                 vibeQuickMenuRef,
                 launchMenuRef,
@@ -1144,32 +1165,21 @@ const HostTopChrome = ({
                         iconClass="fa-brands fa-apple"
                         active={appleMusicConnected}
                         toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
-                        onClick={onOpenAppleMusicSettings}
-                        title={appleMusicConnected ? 'Apple Music connected. Open music settings.' : 'Apple Music not linked. Open music settings.'}
-                    />
-                    <NavStatusLight
-                        label={roomReadinessStatusLabel}
-                        iconClass="fa-solid fa-rocket"
-                        active={roomReadinessActive}
-                        toneClass={roomReadinessActive ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
-                        onClick={onOpenQueueControls}
-                        title={roomReadinessSummary || 'Open queue controls to finish room setup.'}
+                        title={appleMusicConnected ? 'Apple Music connected.' : 'Apple Music not linked.'}
                     />
                     <NavStatusLight
                         label="AI"
                         iconClass="fa-solid fa-robot"
                         active={aiToolsConnected}
                         toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
-                        onClick={onOpenAiSettings}
-                        title={aiToolsConnected ? 'AI tools enabled. Open AI settings.' : 'AI tools locked. Open AI settings.'}
+                        title={aiToolsConnected ? 'AI tools enabled.' : 'AI tools locked.'}
                     />
                     <NavStatusLight
                         label={String(permissionLevel || 'unknown').toUpperCase()}
                         iconClass="fa-solid fa-user-shield"
                         active={authSessionReady}
                         toneClass={permissionTone}
-                        onClick={onOpenAccessSettings}
-                        title={authSessionReady ? 'Session active. Open access settings.' : 'Session not ready. Open access settings.'}
+                        title={authSessionReady ? 'Session active.' : 'Session not ready.'}
                     />
                 </div>
                 <button
@@ -1244,55 +1254,6 @@ const HostTopChrome = ({
         </div>
         <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
                 <div className={`host-top-quick-strip flex min-w-0 ${denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
-                <div className={quickStripItemClass}>
-                    <button
-                        data-feature-id="deck-open-queue-controls"
-                        onClick={() => {
-                            closeAllTopMenus();
-                            onOpenQueueControls?.();
-                        }}
-                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[176px] sm:min-w-[220px]'} justify-between`}
-                        title="Open queue controls"
-                        style={{ touchAction: 'manipulation' }}
-                    >
-                        <span className="inline-flex items-center gap-2">
-                            <i className="fa-solid fa-wand-magic-sparkles"></i>
-                            Queue Controls
-                        </span>
-                        <span className="inline-flex items-center gap-2">
-                            <span className="rounded-full border border-cyan-300/35 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100">
-                                {activeAutomationCount} on
-                            </span>
-                            <i className="fa-solid fa-arrow-down text-[10px]"></i>
-                        </span>
-                    </button>
-                </div>
-                <div className={quickStripItemClass}>
-                    <button
-                        type="button"
-                        data-feature-id="deck-crowd-pulse"
-                        onClick={() => {
-                            closeAllTopMenus();
-                            onOpenQueueControls?.();
-                        }}
-                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[164px] sm:min-w-[184px]'} justify-between`}
-                        title={crowdPulseSummary}
-                        style={{ touchAction: 'manipulation' }}
-                    >
-                        <span className="inline-flex items-center gap-2">
-                            <i className="fa-solid fa-signal"></i>
-                            Crowd Pulse
-                        </span>
-                        <span className="inline-flex items-center gap-2">
-                            <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${crowdPulseToneClass}`}>
-                                {crowdPulseLabel}
-                            </span>
-                            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-300">
-                                {Math.round(crowdPulseLivePct)}% live
-                            </span>
-                        </span>
-                    </button>
-                </div>
                 {!runOfShowFocusMode ? (
                     <div className={quickStripItemClass} ref={audioMenuRef}>
                         <div className="flex flex-nowrap items-center gap-2">
@@ -1591,17 +1552,6 @@ const HostTopChrome = ({
                                             Score HUD
                                         </span>
                                         <span className="text-[11px] uppercase tracking-widest">{room?.showScoring === false ? 'Off' : 'On'}</span>
-                                    </button>
-                                    <button
-                                        onClick={() => updateRoom({ showPerformanceRecap: room?.showPerformanceRecap === false })}
-                                        className={`${styles.btnStd} ${room?.showPerformanceRecap === false ? styles.btnNeutral : styles.btnHighlight} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                        title="Show or hide the post-performance recap sequence on Public TV"
-                                    >
-                                        <span className="inline-flex items-center gap-2">
-                                            <i className="fa-solid fa-trophy-star"></i>
-                                            Post Recap
-                                        </span>
-                                        <span className="text-[11px] uppercase tracking-widest">{room?.showPerformanceRecap === false ? 'Off' : 'On'}</span>
                                     </button>
                                     <button
                                         onClick={() => updateRoom({ reduceMotionFx: !room?.reduceMotionFx })}
@@ -1915,6 +1865,138 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
+                <div className={quickStripItemClass} ref={scenesQuickMenuRef}>
+                    <button
+                        data-feature-id="deck-scenes-menu-toggle"
+                        onClick={() => {
+                            const next = !showScenesQuickMenu;
+                            closeAllTopMenus();
+                            setShowScenesQuickMenu(next);
+                        }}
+                        className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[148px] sm:min-w-[168px]'}`}
+                        title="TV moments and campaign scenes"
+                        style={{ touchAction: 'manipulation' }}
+                    >
+                        <i className="fa-solid fa-photo-film mr-1"></i>
+                        Scenes
+                        <span className="ml-1 text-[10px] text-zinc-300">{activeMediaScene ? 'Live' : scenePresetCount}</span>
+                        <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showScenesQuickMenu ? 'rotate-180' : ''}`}></i>
+                    </button>
+                    {showScenesQuickMenu && (
+                        <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} right-0 w-[min(460px,95vw)] max-h-[74vh] p-3.5`}>
+                            <div className={quickMenuSectionTitleClass}>Scenes + Moments</div>
+                            <div className={quickMenuSectionHintClass}>
+                                Launch campaign visuals now, line them up next, or drop them into the run of show without leaving the deck.
+                            </div>
+                            <div className={`${quickMenuCardClass} mt-2 space-y-2`}>
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] uppercase tracking-[0.16em]">
+                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved scenes</span>
+                                    {activeMediaScene ? (
+                                        <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">Live on TV</span>
+                                    ) : (
+                                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-300">Standby</span>
+                                    )}
+                                </div>
+                                {activeMediaScene ? (
+                                    <div className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2">
+                                        <div className="text-[10px] uppercase tracking-[0.2em] text-emerald-100">Current Scene</div>
+                                        <div className="mt-1 text-sm font-bold text-white">{activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onClearScenePreset?.();
+                                                closeAllTopMenus();
+                                            }}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} mt-2 px-3 py-1 text-[10px]`}
+                                        >
+                                            End Scene
+                                        </button>
+                                    </div>
+                                ) : null}
+                                {room?.purchaseCelebration?.id ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onReplayPurchaseCelebration?.();
+                                            closeAllTopMenus();
+                                        }}
+                                        className={`${styles.btnStd} ${styles.btnSecondary} w-full justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <i className="fa-solid fa-sack-dollar"></i>
+                                            Replay Last Support Burst
+                                        </span>
+                                        <span className="text-[11px] uppercase tracking-widest">TV</span>
+                                    </button>
+                                ) : null}
+                            </div>
+                            <div className="mt-3 text-xs uppercase tracking-[0.22em] text-zinc-200">Quick Launch</div>
+                            <div className="mt-2 space-y-2">
+                                {recentScenePresets.length > 0 ? recentScenePresets.map((preset) => (
+                                    <div key={preset.id || preset.mediaUrl} className="rounded-xl border border-white/10 bg-black/35 px-3 py-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-bold text-white truncate">{preset.title || 'Scene'}</div>
+                                                <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                                                    {preset.mediaType === 'video' ? 'Video' : 'Image'} • {Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20))}s
+                                                </div>
+                                            </div>
+                                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
+                                                {preset.mediaType === 'video' ? 'Video' : 'Still'}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onLaunchScenePreset?.(preset);
+                                                    closeAllTopMenus();
+                                                }}
+                                                className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1 text-[10px]`}
+                                            >
+                                                Run Now
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onQueueScenePreset?.(preset);
+                                                    closeAllTopMenus();
+                                                }}
+                                                className={`${styles.btnStd} ${styles.btnPrimary} px-3 py-1 text-[10px]`}
+                                            >
+                                                Queue Next
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    onAddScenePresetToRunOfShow?.(preset);
+                                                    closeAllTopMenus();
+                                                }}
+                                                className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1 text-[10px]`}
+                                            >
+                                                Run Of Show
+                                            </button>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="rounded-xl border border-dashed border-white/12 bg-black/25 px-3 py-4 text-sm text-zinc-400">
+                                        Save AAHF visuals in the TV library to launch them from here.
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setTab?.('stage');
+                                    closeAllTopMenus();
+                                }}
+                                className={`${styles.btnStd} ${styles.btnNeutral} mt-3 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
+                            >
+                                Open Queue Workspace
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div className={quickStripItemClass} ref={sfxQuickMenuRef}>
                     <button
                         data-feature-id="deck-sfx-menu-toggle"
@@ -2056,7 +2138,7 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-            {missionControlEnabled && missionStatus === 'needs_attention' && (
+            {showMissionStatusBanner && (
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                     <i className="fa-solid fa-triangle-exclamation mr-2"></i>
                     {missionStatusDetail || missionRecommendation?.reason || 'Action needed in room flow.'}

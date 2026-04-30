@@ -246,7 +246,10 @@ import {
     normalizeHostNightPresetRecord,
     persistCustomHostNightPresets,
 } from './hostNightPresets';
-import { MONEYBAGS_BADGE_LABEL } from '../../lib/roomMonetization';
+import {
+    buildPurchaseCelebrationReplay,
+    MONEYBAGS_BADGE_LABEL,
+} from '../../lib/roomMonetization';
 
 const HostQueueTab = React.lazy(() => import('./components/HostQueueTab'));
 const HostLogoManager = React.lazy(() => import('./components/HostLogoManager'));
@@ -1190,14 +1193,14 @@ const deleteLocalVideo = async (id = '') => {
 // --- STYLES ---
 const STYLES = {
     btnStd: "host-btn rounded-xl font-bold transition-all active:scale-95 shadow-md uppercase tracking-wider flex items-center justify-center border text-[11px] sm:text-xs py-2 px-3 cursor-pointer whitespace-nowrap backdrop-blur-sm gap-2 min-h-[34px] focus:outline-none focus-visible:outline-none focus-visible:ring-0 overflow-hidden bg-clip-padding relative",
-    btnPrimary: "bg-gradient-to-r from-[#0bb3c5] to-[#1f2937] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_18px_rgba(11,179,197,0.25)] hover:brightness-110",
-    btnHighlight: "bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_14px_rgba(236,72,153,0.35)] hover:brightness-110",
+    btnPrimary: "bg-gradient-to-r from-[#00C4D9] via-[#61E6F4] to-[#A5F3FC] text-slate-950 border-transparent bg-clip-padding overflow-hidden shadow-[0_0_22px_rgba(0,196,217,0.34)] hover:brightness-110",
+    btnHighlight: "bg-gradient-to-r from-[#0f2d39] via-[#17263d] to-[#26172e] text-cyan-100 border-cyan-400/30 bg-clip-padding overflow-hidden shadow-[0_0_16px_rgba(0,196,217,0.12)] hover:border-cyan-300/55 hover:text-white",
     btnNeutral: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#00C4D9]/60 hover:text-white hover:bg-zinc-800 transition-all",
     btnDanger: "bg-[#EC4899]/20 text-[#FBCFE8] border-[#EC4899]/40 hover:bg-[#EC4899]/30 hover:text-white",
-    btnInfo: "bg-[#00C4D9]/15 text-[#00C4D9] border-[#00C4D9]/40 hover:bg-[#00C4D9]/25 hover:text-white",
-    btnSuccess: "bg-[#00C4D9]/15 text-[#00C4D9] border-[#00C4D9]/40 hover:bg-[#00C4D9]/25 hover:text-white",
+    btnInfo: "bg-[#00C4D9]/12 text-cyan-100 border-cyan-400/30 hover:bg-[#00C4D9]/20 hover:border-cyan-300/50 hover:text-white",
+    btnSuccess: "bg-emerald-500/14 text-emerald-100 border-emerald-400/35 hover:bg-emerald-500/24 hover:border-emerald-300/55 hover:text-white",
     btnBrand: "bg-gradient-to-r from-[#EC4899] to-[#F472B6] text-white border-transparent bg-clip-padding overflow-hidden shadow-[0_0_16px_rgba(236,72,153,0.35)] hover:brightness-110",
-    btnSecondary: "bg-gradient-to-r from-[#0b3b44] to-[#111827] border border-zinc-700 text-zinc-200 bg-clip-padding overflow-hidden hover:brightness-110",
+    btnSecondary: "bg-zinc-950/88 border border-zinc-700 text-zinc-200 bg-clip-padding overflow-hidden hover:border-cyan-300/28 hover:text-white hover:bg-zinc-900/92",
     btnStandardBrandHover: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#EC4899]/60 hover:text-white hover:bg-zinc-800 transition-all",
     panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
     input: "bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-sm text-white focus:border-[#00C4D9] outline-none transition-colors w-full placeholder-zinc-500",
@@ -6038,6 +6041,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 await activateRunOfShowPerformanceItem(startedItem, startedAtMs);
             } else if (startedItem) {
                 await updateRoom(buildRunOfShowStartRoomUpdates(startedItem, startedAtMs));
+                if (String(startedItem?.presentationPlan?.takeoverScene || '').trim().toLowerCase() === 'media_scene') {
+                    await markScenePresetPresented({
+                        sourceUploadId: String(startedItem?.presentationPlan?.mediaSceneSourceUploadId || '').trim(),
+                        storagePath: String(startedItem?.presentationPlan?.mediaSceneStoragePath || '').trim()
+                    }, { presentedAtMs: startedAtMs });
+                }
                 await syncRunOfShowTakeoverSoundtrack(startedItem, 'start');
             }
             if (startedItem?.type === 'winner_declaration') {
@@ -6090,6 +6099,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return persistedDirector;
         }
         const persistedDirector = await persistRunOfShowDirector(nextDirector, { roomUpdates: buildRunOfShowStartRoomUpdates(targetItem, startedAtMs) });
+        if (String(targetItem?.presentationPlan?.takeoverScene || '').trim().toLowerCase() === 'media_scene') {
+            await markScenePresetPresented({
+                sourceUploadId: String(targetItem?.presentationPlan?.mediaSceneSourceUploadId || '').trim(),
+                storagePath: String(targetItem?.presentationPlan?.mediaSceneStoragePath || '').trim()
+            }, { presentedAtMs: startedAtMs });
+        }
         await syncRunOfShowTakeoverSoundtrack(targetItem, 'start');
         if (targetItem?.type === 'winner_declaration') {
             openRoundWinnersEditorRef.current?.({ sourceItem: targetItem });
@@ -6097,7 +6112,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await fireRunOfShowItemCueIfNeeded(targetItem, 'start');
         requestRunOfShowAutomationRecheck();
         return persistedDirector;
-    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
+    }, [activateRunOfShowPerformanceItem, applyRunOfShowActionResult, buildRunOfShowStartRoomUpdates, closeRunOfShowReleaseWindow, deriveRunOfShowEditableStatus, fireRunOfShowItemCueIfNeeded, getCurrentRunOfShowDirector, isMarketingDemoFixture, markScenePresetPresented, persistRunOfShowDirector, prepareRunOfShowItem, requestRunOfShowAutomationRecheck, roomCode, syncRunOfShowTakeoverSoundtrack, updateRoom]);
     const completeRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const targetItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -6487,6 +6502,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         };
     }, []);
+    const markScenePresetPresented = useCallback(async (mediaScene = {}, options = {}) => {
+        if (!roomCode) return null;
+        const sourceUploadId = String(
+            mediaScene?.sourceUploadId
+            || mediaScene?.mediaSceneSourceUploadId
+            || mediaScene?.id
+            || ''
+        ).trim();
+        const storagePath = String(
+            mediaScene?.storagePath
+            || mediaScene?.mediaSceneStoragePath
+            || ''
+        ).trim();
+        const matchedPreset = (Array.isArray(scenePresets) ? scenePresets : []).find((preset) => {
+            const presetSourceUploadId = String(preset?.sourceUploadId || preset?.id || '').trim();
+            const presetStoragePath = String(preset?.storagePath || '').trim();
+            return (sourceUploadId && presetSourceUploadId === sourceUploadId)
+                || (storagePath && presetStoragePath && presetStoragePath === storagePath);
+        });
+        if (!matchedPreset?.id) return null;
+        const presentedAtMs = Math.max(0, Number(options?.presentedAtMs || nowMs()) || nowMs());
+        const nextPresentedCount = Math.max(1, Number(matchedPreset?.presentedCount || 0) + 1);
+        const patch = {
+            lastPresentedAtMs: presentedAtMs,
+            lastPresentedRoomCode: roomCode,
+            presentedCount: nextPresentedCount
+        };
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', matchedPreset.id), patch).catch((error) => {
+            hostLogger.warn('Could not record scene preset presentation history', error);
+        });
+        setScenePresets((current) => (Array.isArray(current) ? current : []).map((preset) => (
+            preset?.id === matchedPreset.id
+                ? { ...preset, ...patch }
+                : preset
+        )));
+        return patch;
+    }, [hostLogger, roomCode, scenePresets]);
     const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(preset);
         if (!mediaUrl || mediaUrl.startsWith('blob:')) {
@@ -11725,8 +11777,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : contentType.startsWith('image/')
                 ? 'image'
                 : 'video';
-        if (mediaType === 'image' && file.size && file.size > 8 * 1024 * 1024) {
-            toast('Scene images must be 8 MB or smaller.');
+        if (mediaType === 'image' && file.size && file.size > 20 * 1024 * 1024) {
+            toast('Scene images must be 20 MB or smaller.');
             return null;
         }
         if (file.size && file.size > 150 * 1024 * 1024) {
@@ -12134,6 +12186,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     }
                 }
             });
+            await markScenePresetPresented({
+                sourceUploadId: String(item?.sourceUploadId || item?.id || '').trim(),
+                storagePath: String(item?.storagePath || '').trim()
+            }, { presentedAtMs: startedAtMs });
             trackHostOperatorEvent('host_public_tv_scene_launched', {
                 media_type: mediaType,
                 media_title: getRoomMediaTitle(item),
@@ -12145,7 +12201,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error('Could not launch scene preset', error);
             toast('Could not send scene to Public TV.');
         }
-    }, [getRoomMediaTitle, hostLogger, toast, trackHostOperatorEvent, updateRoom]);
+    }, [getRoomMediaTitle, hostLogger, markScenePresetPresented, toast, trackHostOperatorEvent, updateRoom]);
     const createScenePresetFromFile = async (file, options = {}) => {
         if (!file || !roomCode) return null;
         const mediaType = String(file.type || '').trim().toLowerCase().startsWith('video/')
@@ -12200,6 +12256,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not clear scene.');
         }
     };
+    const replayLatestPurchaseCelebration = useCallback(async () => {
+        const replayPayload = buildPurchaseCelebrationReplay(room?.purchaseCelebration || {});
+        if (!replayPayload) {
+            toast('No support celebration is ready to replay yet.');
+            return;
+        }
+        try {
+            await updateRoom({ purchaseCelebration: replayPayload });
+            toast('Support celebration replayed on Public TV.');
+        } catch (error) {
+            hostLogger.error('Could not replay purchase celebration', error);
+            toast('Could not replay support celebration.');
+        }
+    }, [room?.purchaseCelebration, toast, updateRoom]);
     const deleteScenePreset = async (preset = {}) => {
         if (!preset?.id) return;
         const confirmed = window.confirm(`Delete scene preset "${preset.title || 'Media Scene'}"?`);
@@ -16820,6 +16890,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     runOfShowFocusMode={tab === 'run_of_show'}
                     crowdPulse={crowdPulse}
                     activeMomentFeedback={activeMomentFeedback}
+                    scenePresets={scenePresets}
+                    onLaunchScenePreset={launchScenePreset}
+                    onQueueScenePreset={queueScenePresetAsMoment}
+                    onAddScenePresetToRunOfShow={useScenePresetInRunOfShow}
+                    onClearScenePreset={clearScenePreset}
+                    onReplayPurchaseCelebration={replayLatestPurchaseCelebration}
                 />
             {hostUpdateDeploymentBanner && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
@@ -16952,6 +17028,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
                                     currentRoomDraftSummary={currentRoomDraftSummary}
                                     onApplyCurrentRoomDraft={applyCurrentRoomRunOfShowDraft}
+                                    scenePresets={scenePresets}
+                                    onAddScenePresetToRunOfShow={useScenePresetInRunOfShow}
                                     onSaveTemplate={saveRunOfShowTemplate}
                                     onApplyTemplate={applyRunOfShowTemplate}
                                     onApplyStarterTemplate={applyRunOfShowStarterTemplate}
@@ -20162,7 +20240,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 />
                                 <div className="host-form-helper ml-0 sm:ml-auto">Cloud uploads are room-wide. Offline backups stay on this host device.</div>
                             </div>
-                            <div className="host-form-helper">Audio/video/image. Max 150MB. Scene images stay capped at 8MB. Room storage target: 2GB.</div>
+                            <div className="host-form-helper">Audio/video/image. Max 150MB. Scene images stay capped at 20MB. Room storage target: 2GB.</div>
                             <div className="flex items-center justify-between text-sm text-cyan-100/60">
                                 <span>Room storage used</span>
                                 <span className="text-cyan-100/85">{formatBytes(roomUploadBytes)} (~${estimateStorageMonthly(roomUploadBytes).toFixed(2)}/mo)</span>

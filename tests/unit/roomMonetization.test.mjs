@@ -7,6 +7,7 @@ import {
     MONEYBAGS_BADGE_LABEL,
     SUPPORT_CELEBRATION_STYLES,
     buildAudienceSupportOffer,
+    buildPurchaseCelebrationReplay,
     buildGivebutterSupportLaunchUrl,
     normalizeAudienceExperience,
     normalizeReactionTapCooldownMs,
@@ -71,6 +72,29 @@ describe('roomMonetization', () => {
         expect(normalizeReactionTapCooldownMs('not-a-number')).toBe(DEFAULT_REACTION_TAP_COOLDOWN_MS);
         expect(normalizeReactionTapCooldownMs(120)).toBe(250);
         expect(normalizeReactionTapCooldownMs(9900)).toBe(5000);
+    });
+
+    test('builds replayable purchase celebrations with a fresh id and timestamp', () => {
+        expect(buildPurchaseCelebrationReplay({
+            id: 'gb_123',
+            buyerName: 'Taylor',
+            amountCents: 4200,
+        }, 1234567890)).toEqual({
+            id: 'replay_1234567890_gb_123',
+            buyerName: 'Taylor',
+            buyerAvatar: '',
+            title: '',
+            label: '',
+            subtitle: '',
+            points: 0,
+            badgeAwarded: false,
+            badgeLabel: MONEYBAGS_BADGE_LABEL,
+            sourceProvider: '',
+            rewardScope: '',
+            amountCents: 4200,
+            celebrationStyle: SUPPORT_CELEBRATION_STYLES.standard,
+            createdAtMs: 1234567890,
+        });
     });
 
     test('builds donation-backed audience offers from event credits', () => {
