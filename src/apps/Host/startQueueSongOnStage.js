@@ -170,17 +170,6 @@ export const startQueueSongOnStage = async ({
     watchdogDeadlineMs: performanceStartedAtMs + ((performanceDurationSec + 90) * 1000),
   };
 
-  await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
-    status: 'performing',
-    performingStartedAt: serverTimestamp(),
-    performanceStartedDurationSec: performanceDurationSec,
-    duration: performanceDurationSec,
-    backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
-    durationSource,
-    durationConfidence,
-    autoEndSafe,
-  });
-
   if (useAppleBacking && autoStartMedia) {
     await playAppleMusicTrack(queueSong.appleMusicId, {
       title: queueSong.songTitle,
@@ -241,6 +230,17 @@ export const startQueueSongOnStage = async ({
       appleMusicPlayback: null,
     });
   }
+
+  await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
+    status: 'performing',
+    performingStartedAt: serverTimestamp(),
+    performanceStartedDurationSec: performanceDurationSec,
+    duration: performanceDurationSec,
+    backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
+    durationSource,
+    durationConfidence,
+    autoEndSafe,
+  });
 
   logActivity?.(roomCode, queueSong.singerName, 'took the stage!', emoji?.mic || 'mic');
   return {

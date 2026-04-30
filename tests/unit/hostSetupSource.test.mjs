@@ -266,6 +266,38 @@ test('host app declares room state before Apple playback effects depend on it', 
   );
 });
 
+test('stage-start flow updates room state before marking the queue entry performing', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const helperSource = readFileSync('src/apps/Host/startQueueSongOnStage.js', 'utf8');
+
+  const hostStageFlowSource = hostAppSource.slice(
+    hostAppSource.indexOf('const startQueueSongOnStage = async ({'),
+    hostAppSource.indexOf('// Background tracks and sounds imported from gameDataConstants.js'),
+  );
+  const helperStageFlowSource = helperSource;
+
+  const hostRoomUpdateIndex = hostStageFlowSource.indexOf('await updateRoom({');
+  const hostQueueUpdateIndex = hostStageFlowSource.indexOf("await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {");
+  const helperRoomUpdateIndex = helperStageFlowSource.indexOf('await updateRoom({');
+  const helperQueueUpdateIndex = helperStageFlowSource.indexOf("await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {");
+
+  assert.notEqual(hostRoomUpdateIndex, -1, 'Host app should update room state in the stage-start flow');
+  assert.notEqual(hostQueueUpdateIndex, -1, 'Host app should still mark the queue entry performing after a stage start');
+  assert.equal(
+    hostRoomUpdateIndex < hostQueueUpdateIndex,
+    true,
+    'Host app should update Public TV room state before it marks the queue entry performing',
+  );
+
+  assert.notEqual(helperRoomUpdateIndex, -1, 'Shared stage-start helper should update room state');
+  assert.notEqual(helperQueueUpdateIndex, -1, 'Shared stage-start helper should still mark the queue entry performing');
+  assert.equal(
+    helperRoomUpdateIndex < helperQueueUpdateIndex,
+    true,
+    'Shared stage-start helper should update room state before it marks the queue entry performing',
+  );
+});
+
 test('room settings avoids duplicate-looking event and base preset choices', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
 

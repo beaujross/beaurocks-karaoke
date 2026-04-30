@@ -85,6 +85,7 @@ test('browse-backed stage start uses resolved media duration and does not arm im
   assert.equal(result.songMediaUrl, 'https://www.youtube.com/watch?v=t21DFnu00Dc');
 
   assert.equal(updateDocMock.mock.calls.length, 1);
+  assert.equal(updateRoomMock.mock.invocationCallOrder[0] < updateDocMock.mock.invocationCallOrder[0], true);
   const updateDocPayload = updateDocMock.mock.calls[0][1];
   assert.equal(updateDocPayload.status, 'performing');
   assert.equal(updateDocPayload.performanceStartedDurationSec, 245);
@@ -134,4 +135,47 @@ test('browse-backed stage start uses resolved media duration and does not arm im
   assert.ok(schedule.delayMs > 10000, 'newly started songs should not auto-end immediately');
 
   assert.equal(logActivityMock.mock.calls.length, 1);
+});
+
+test('stage start does not mark queue item performing when room update fails', async () => {
+  const updateDocMock = vi.fn(async () => {});
+  mockHostQueueTabDependencies({ updateDocMock });
+
+  const { startQueueSongOnStage } = await import('../../src/apps/Host/startQueueSongOnStage.js');
+
+  const updateRoomError = new Error('room update failed');
+  const updateRoomMock = vi.fn(async () => {
+    throw updateRoomError;
+  });
+
+  await assert.rejects(
+    startQueueSongOnStage({
+      songId: 'browse_song_2',
+      songs: [{
+        id: 'browse_song_2',
+        status: 'requested',
+        songTitle: 'The Next Song',
+        artist: 'Artist',
+        singerName: 'Jordan',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        duration: 180,
+      }],
+      room: {
+        autoPlayMedia: true,
+      },
+      roomCode: 'ROOM1',
+      resolveDurationForUrl: async () => 180,
+      isAudioUrl: () => false,
+      holdAutoBgDuringStageActivation: noop,
+      playAppleMusicTrack: vi.fn(async () => {}),
+      stopAppleMusic: vi.fn(async () => {}),
+      updateRoom: updateRoomMock,
+      logActivity: vi.fn(),
+      emoji: { mic: 'mic' },
+    }),
+    updateRoomError,
+  );
+
+  assert.equal(updateRoomMock.mock.calls.length, 1);
+  assert.equal(updateDocMock.mock.calls.length, 0);
 });

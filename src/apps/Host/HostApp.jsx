@@ -907,17 +907,6 @@ const startQueueSongOnStage = async ({
         watchdogDeadlineMs: performanceStartedAtMs + ((performanceDurationSec + 90) * 1000)
     };
 
-    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
-        status: 'performing',
-        performingStartedAt: serverTimestamp(),
-        performanceStartedDurationSec: performanceDurationSec,
-        duration: performanceDurationSec,
-        backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
-        durationSource,
-        durationConfidence,
-        autoEndSafe
-    });
-
     if (useAppleBacking && autoStartMedia) {
         await playAppleMusicTrack(queueSong.appleMusicId, {
             title: queueSong.songTitle,
@@ -976,6 +965,17 @@ const startQueueSongOnStage = async ({
             appleMusicPlayback: null
         });
     }
+
+    await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', safeSongId), {
+        status: 'performing',
+        performingStartedAt: serverTimestamp(),
+        performanceStartedDurationSec: performanceDurationSec,
+        duration: performanceDurationSec,
+        backingDurationSec: resolvedBackingDurationSec || associatedBackingDurationSec || null,
+        durationSource,
+        durationConfidence,
+        autoEndSafe
+    });
 
     logActivity?.(roomCode, queueSong.singerName, 'took the stage!', EMOJI.mic);
     return {
@@ -8693,10 +8693,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const unsubActivity = onSnapshot(query(
             collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'),
             where('roomCode', '==', roomCode),
-            orderBy('timestamp', 'desc'),
             limit(200)
         ), s => {
-             setActivities(s.docs.map(d => d.data()));
+            const items = s.docs
+                .map(d => d.data())
+                .sort((a, b) => toMs(b?.timestamp) - toMs(a?.timestamp));
+             setActivities(items);
         });
         const unsubUploads = onSnapshot(
             query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)),
