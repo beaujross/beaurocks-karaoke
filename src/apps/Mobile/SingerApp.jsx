@@ -10782,6 +10782,10 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
         { key: 'queue', label: 'View Queue', icon: 'fa-list', badge: queueSongsView.length || 0 },
         ...(bracketSignupActive ? [{ key: 'tight15', label: 'Tight 15', icon: 'fa-bolt', badge: getTight15List().length || 0 }] : [])
     ];
+    const streamlinedPerformanceVotingBannerVisible = isStreamlinedAudienceShell && karaokePerformanceVotingOpen && tab === 'request';
+    const streamlinedPerformanceVotingBannerTitle = currentSinger?.singerName
+        ? `${currentSinger.singerName}${currentSinger?.songTitle ? ` - ${currentSinger.songTitle}` : ''}`
+        : 'Performance voting is live';
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
     const homeStageInteractionState = showPopTriviaCard
@@ -10939,6 +10943,11 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                                     <div className="text-[11px] font-black uppercase tracking-[0.16em]">
                                         {item.label}
                                     </div>
+                                    {item.key === 'home' && showPerformanceVotingPromptCta ? (
+                                        <span className="rounded-full border border-amber-200/70 bg-amber-300 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-black">
+                                            Live
+                                        </span>
+                                    ) : null}
                                 </div>
                             </button>
                         );
@@ -10966,39 +10975,61 @@ const getEmojiChar = (t) => (EMOJI[t] || EMOJI.heart);
                     </button>
                 </div>
                 {activePrimaryStageTab === 'request' && (
-                    <div
-                        role="tablist"
-                        aria-label="Song request sections"
-                        className="grid gap-1 border-b border-white/10 px-1 pt-1"
-                        style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
-                    >
-                        {streamlinedSongsNavItems.map((item) => {
-                            const isActive = songsTab === item.key;
-                            return (
-                                <button
-                                    key={item.key}
-                                    type="button"
-                                    role="tab"
-                                    aria-selected={isActive}
-                                    onClick={() => openStreamlinedSongsStageTab(item.key)}
-                                    className={`relative inline-flex min-h-[38px] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-[11px] font-black uppercase tracking-[0.16em] transition-colors ${
-                                        isActive
-                                            ? 'border-cyan-300 bg-transparent text-white'
-                                            : 'border-transparent bg-transparent text-zinc-400 hover:text-zinc-100'
-                                    }`}
-                                    style={isActive ? streamlinedSongsTabActiveStyle : undefined}
-                                >
-                                    <i className={`fa-solid ${item.icon} text-[10px]`}></i>
-                                    <span>{item.label}</span>
-                                    {typeof item.badge === 'number' ? (
-                                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
-                                            {item.badge}
-                                        </span>
-                                    ) : null}
-                                </button>
-                            );
-                        })}
-                    </div>
+                    <>
+                        <div
+                            role="tablist"
+                            aria-label="Song request sections"
+                            className="grid gap-1 border-b border-white/10 px-1 pt-1"
+                            style={{ gridTemplateColumns: `repeat(${streamlinedSongsNavItems.length}, minmax(0, 1fr))` }}
+                        >
+                            {streamlinedSongsNavItems.map((item) => {
+                                const isActive = songsTab === item.key;
+                                return (
+                                    <button
+                                        key={item.key}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={isActive}
+                                        onClick={() => openStreamlinedSongsStageTab(item.key)}
+                                        className={`relative inline-flex min-h-[38px] items-center justify-center gap-2 border-b-2 px-2 pb-2 pt-1 text-[11px] font-black uppercase tracking-[0.16em] transition-colors ${
+                                            isActive
+                                                ? 'border-cyan-300 bg-transparent text-white'
+                                                : 'border-transparent bg-transparent text-zinc-400 hover:text-zinc-100'
+                                        }`}
+                                        style={isActive ? streamlinedSongsTabActiveStyle : undefined}
+                                    >
+                                        <i className={`fa-solid ${item.icon} text-[10px]`}></i>
+                                        <span>{item.label}</span>
+                                        {typeof item.badge === 'number' ? (
+                                            <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/12 text-cyan-50' : 'bg-white/8 text-zinc-300'}`}>
+                                                {item.badge}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {streamlinedPerformanceVotingBannerVisible && (
+                            <button
+                                type="button"
+                                data-feature-id="singer-streamlined-performance-vote-banner"
+                                onClick={() => {
+                                    pulseNativeUiFeedback();
+                                    setTab('home');
+                                }}
+                                className="mt-2 flex w-full items-center justify-between gap-3 rounded-2xl border border-amber-300/45 bg-amber-400/12 px-3 py-3 text-left text-amber-50 shadow-[0_10px_28px_rgba(251,191,36,0.18)]"
+                            >
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">Vote live now</div>
+                                    <div className="mt-1 text-sm font-black text-white">A performance is on. Jump back to Party to vote and react.</div>
+                                    <div className="mt-1 truncate text-xs text-amber-100/85">{streamlinedPerformanceVotingBannerTitle}</div>
+                                </div>
+                                <span className="shrink-0 rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black">
+                                    Go Vote
+                                </span>
+                            </button>
+                        )}
+                    </>
                 )}
             </div>
         </div>

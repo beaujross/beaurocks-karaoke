@@ -2690,6 +2690,9 @@ const QuickDraftPanel = ({
     generatorConfig = {},
     updateGeneratorConfig,
     applyGeneratorDraft,
+    applyCurrentRoomDraft,
+    currentRoomDraftSummary = null,
+    currentRoomDraftBusy = false,
     generatorBusy = false,
     generatorOpen = false,
     onToggleGenerator,
@@ -2702,6 +2705,9 @@ const QuickDraftPanel = ({
     const automationLabel = POLICY_PRESETS.find((preset) => preset.id === (generatorConfig.automationPresetId || 'balanced'))?.label || 'Custom';
     const automationPlan = buildRunOfShowAutopilotPlan(generatorConfig);
     const fillerPreviewSongs = (automationPlan.deadAirFiller?.songs || []).slice(0, 3);
+    const currentRoomQueueCount = Math.max(0, Number(currentRoomDraftSummary?.queueCount || 0) || 0);
+    const currentRoomSceneCount = Math.max(0, Number(currentRoomDraftSummary?.sceneCount || 0) || 0);
+    const currentRoomDraftCount = currentRoomQueueCount + currentRoomSceneCount;
 
     return (
         <article className={`${surfaceClass} relative z-20 p-4`}>
@@ -2759,6 +2765,34 @@ const QuickDraftPanel = ({
                         )) : (
                             <div className="text-xs text-zinc-500">Filler suggestions are unavailable.</div>
                         )}
+                    </div>
+                </div>
+            </div>
+            <div className="mt-3 rounded-2xl border border-amber-300/16 bg-amber-500/8 px-3 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Build From Current Room</div>
+                        <div className="mt-1 text-xs text-amber-50/88">
+                            {currentRoomDraftCount > 0
+                                ? `Use ${currentRoomQueueCount} queued song${currentRoomQueueCount === 1 ? '' : 's'} and ${currentRoomSceneCount} TV slide${currentRoomSceneCount === 1 ? '' : 's'} to build tonight's planner fast.`
+                                : 'No requested songs or saved TV slides are ready for a room-based draft yet.'}
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                            {currentRoomQueueCount} queue
+                        </span>
+                        <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                            {currentRoomSceneCount} slides
+                        </span>
+                        <ControlButton
+                            tone="primary"
+                            className="shrink-0 justify-center"
+                            disabled={!canEditFlow || currentRoomDraftBusy || currentRoomDraftCount === 0}
+                            onClick={applyCurrentRoomDraft}
+                        >
+                            {currentRoomDraftBusy ? 'Applying...' : 'Use Current Room Plan'}
+                        </ControlButton>
                     </div>
                 </div>
             </div>
@@ -2850,6 +2884,9 @@ const QuickDraftModal = ({
     generatorConfig = {},
     updateGeneratorConfig,
     applyGeneratorDraft,
+    applyCurrentRoomDraft,
+    currentRoomDraftSummary = null,
+    currentRoomDraftBusy = false,
     generatorBusy = false,
     generatorOpen = false,
     onToggleGenerator,
@@ -2889,6 +2926,9 @@ const QuickDraftModal = ({
                             generatorConfig={generatorConfig}
                             updateGeneratorConfig={updateGeneratorConfig}
                             applyGeneratorDraft={applyGeneratorDraft}
+                            applyCurrentRoomDraft={applyCurrentRoomDraft}
+                            currentRoomDraftSummary={currentRoomDraftSummary}
+                            currentRoomDraftBusy={currentRoomDraftBusy}
                             generatorBusy={generatorBusy}
                             generatorOpen={generatorOpen}
                             onToggleGenerator={onToggleGenerator}
@@ -3613,6 +3653,8 @@ export default function RunOfShowDirectorPanel({
     onUpdatePolicy,
     onUpdateRoles,
     onApplyGeneratedDraft,
+    currentRoomDraftSummary = null,
+    onApplyCurrentRoomDraft,
     onSaveTemplate,
     onApplyTemplate,
     onApplyStarterTemplate,
@@ -3805,6 +3847,7 @@ export default function RunOfShowDirectorPanel({
     const [generatorConfig, setGeneratorConfig] = useState(() => buildGeneratorConfigDefaults(missionControl));
     const [generatorTouched, setGeneratorTouched] = useState(false);
     const [generatorBusy, setGeneratorBusy] = useState(false);
+    const [currentRoomDraftBusy, setCurrentRoomDraftBusy] = useState(false);
     const [quickDraftModalOpen, setQuickDraftModalOpen] = useState(false);
     const [approvalInboxOpen, setApprovalInboxOpen] = useState(true);
     const [liveWaitAtLeastSec, setLiveWaitAtLeastSec] = useState(30);
@@ -5068,6 +5111,18 @@ export default function RunOfShowDirectorPanel({
             setGeneratorBusy(false);
         }
     };
+    const applyCurrentRoomDraft = async () => {
+        if (currentRoomDraftBusy || typeof onApplyCurrentRoomDraft !== 'function') return;
+        setCurrentRoomDraftBusy(true);
+        try {
+            const nextDirector = await onApplyCurrentRoomDraft({ mode: 'replace' });
+            focusNewestItemFromDirector(nextDirector);
+            setQuickDraftModalOpen(false);
+            setGeneratorOpen(false);
+        } finally {
+            setCurrentRoomDraftBusy(false);
+        }
+    };
     const assignLobbyPerformer = (item = {}, candidate = null) => {
         const itemId = String(item?.id || '').trim();
         const uid = String(candidate?.uid || '').trim();
@@ -5756,6 +5811,9 @@ export default function RunOfShowDirectorPanel({
                     await applyGeneratorDraft();
                     setQuickDraftModalOpen(false);
                 }}
+                applyCurrentRoomDraft={applyCurrentRoomDraft}
+                currentRoomDraftSummary={currentRoomDraftSummary}
+                currentRoomDraftBusy={currentRoomDraftBusy}
                 generatorBusy={generatorBusy}
                 generatorOpen={generatorOpen}
                 onToggleGenerator={() => setGeneratorOpen((prev) => !prev)}

@@ -252,6 +252,26 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
     /const showStreamlinedStageNav = isStreamlinedAudienceShell && \['home', 'request', 'social'\]\.includes\(tab\);/,
     "SingerApp should keep the streamlined top nav eligible across home, songs, and stale social states",
   );
+  assert.match(
+    source,
+    /const streamlinedPerformanceVotingBannerVisible = isStreamlinedAudienceShell && karaokePerformanceVotingOpen && tab === 'request';/,
+    "SingerApp should detect when streamlined guests are in Songs while a live performance vote is happening",
+  );
+  assert.match(
+    source,
+    /item\.key === 'home' && showPerformanceVotingPromptCta/,
+    "SingerApp should mark the Party tab as live when voting is open away from home",
+  );
+  assert.match(
+    source,
+    /data-feature-id="singer-streamlined-performance-vote-banner"/,
+    "SingerApp should surface a dedicated voting callout inside streamlined Songs",
+  );
+  assert.match(
+    source,
+    /A performance is on\. Jump back to Party to vote and react\./,
+    "SingerApp should tell streamlined guests exactly why they should leave search and go back to Party",
+  );
   const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
   const omnipresentStageAreaIndex = source.indexOf("/* Omnipresent Stage Area */");
 

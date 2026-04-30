@@ -71,9 +71,15 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(source, /const importRunOfShowCsv = useCallback\(async \(csvText = '', options = \{\}\) => \{/);
   assert.match(source, /buildRunOfShowItemsFromCsvImport\(csvText\)/);
   assert.match(source, /onImportCsv=\{importRunOfShowCsv\}/);
+  assert.match(source, /const applyCurrentRoomRunOfShowDraft = useCallback\(async \(\{ mode = 'replace' \} = \{\}\) => \{/);
+  assert.match(source, /buildCurrentRoomRunOfShowDraft\(\{/);
+  assert.match(source, /window\.confirm\('Replace the current planner with a draft built from this room\\'s queue and saved slides\?'\)/);
+  assert.match(source, /onApplyCurrentRoomDraft=\{applyCurrentRoomRunOfShowDraft\}/);
   assert.match(directorPanelSource, /Release Window/);
   assert.match(directorPanelSource, /Crowd Signal/);
   assert.match(directorPanelSource, /Co-Host Vote/);
+  assert.match(directorPanelSource, /Build From Current Room/);
+  assert.match(directorPanelSource, /Use Current Room Plan/);
 });
 
 test("HostApp restores queue tools after stop and previews the audience app", () => {

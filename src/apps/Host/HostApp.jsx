@@ -71,6 +71,7 @@ import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
+import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
 import {
     getHostMomentCueMeta,
     getHostMomentCueSoundCandidates
@@ -6716,6 +6717,46 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         () => (Array.isArray(songs) ? songs : []).filter((song) => String(song?.status || '').trim().toLowerCase() === 'requested'),
         [songs]
     );
+    const currentRoomDraftSummary = useMemo(() => ({
+        queueCount: Array.isArray(runOfShowQueueCandidates) ? runOfShowQueueCandidates.length : 0,
+        sceneCount: (Array.isArray(scenePresets) ? scenePresets : []).filter((preset) => {
+            const mediaUrl = String(preset?.mediaUrl || preset?.url || '').trim();
+            return !!mediaUrl && !mediaUrl.startsWith('blob:');
+        }).length,
+    }), [runOfShowQueueCandidates, scenePresets]);
+    const applyCurrentRoomRunOfShowDraft = useCallback(async ({ mode = 'replace' } = {}) => {
+        const draft = buildCurrentRoomRunOfShowDraft({
+            eventProfileId: String(room?.eventProfileId || ''),
+            queueSongs: runOfShowQueueCandidates,
+            scenePresets,
+            now: Date.now(),
+        });
+        if (!Array.isArray(draft?.items) || !draft.items.length) {
+            toast('Current room has no requested songs or TV slides to build from.');
+            return null;
+        }
+        const shouldReplace = String(mode || 'replace').trim().toLowerCase() !== 'append';
+        const existingCount = Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items.length : 0;
+        if (shouldReplace && existingCount > 0) {
+            const confirmed = window.confirm('Replace the current planner with a draft built from this room\'s queue and saved slides?');
+            if (!confirmed) return null;
+        }
+        const nextDirector = await applyGeneratedRunOfShowDraft({
+            items: draft.items,
+            mode,
+            activateShow: true,
+        });
+        if (draft?.runOfShowPolicy) {
+            const nextPolicy = normalizeRunOfShowPolicy(draft.runOfShowPolicy);
+            runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
+            setRunOfShowPolicy(nextPolicy);
+            if (!isMarketingDemoFixture) {
+                await updateRoom({ runOfShowPolicy: nextPolicy });
+            }
+        }
+        toast(`${draft.label || 'Current room plan'} applied.`);
+        return nextDirector;
+    }, [applyGeneratedRunOfShowDraft, isMarketingDemoFixture, room?.eventProfileId, runOfShowDirector?.items, runOfShowQueueCandidates, scenePresets, toast, updateRoom]);
     const runOfShowPendingCountsById = useMemo(() => {
         const counts = {};
         (Array.isArray(runOfShowSubmissions) ? runOfShowSubmissions : []).forEach((entry) => {
@@ -7281,7 +7322,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await updateRoom({ runOfShowRoles: nextRoles });
         return nextRoles;
     }, [isMarketingDemoFixture, runOfShowRoles, updateRoom]);
-    const applyGeneratedRunOfShowDraft = useCallback(async ({ items = [], mode = 'replace' } = {}) => {
+    const applyGeneratedRunOfShowDraft = useCallback(async ({ items = [], mode = 'replace', activateShow = false } = {}) => {
         const director = getCurrentRunOfShowDirector();
         const generatedItems = resequenceRunOfShowItems(Array.isArray(items) ? items : []).map((item) => {
             const nextItem = createRunOfShowItem(item?.type || 'buffer', item || {});
@@ -7304,7 +7345,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             lastCompletedItemId: mode === 'replace' ? '' : director.lastCompletedItemId,
             items: nextItems,
         });
-        return persistRunOfShowDirector(nextDirector);
+        return persistRunOfShowDirector(
+            nextDirector,
+            activateShow
+                ? {
+                    programMode: RUN_OF_SHOW_PROGRAM_MODES.runOfShow,
+                    runOfShowEnabled: true,
+                }
+                : {}
+        );
     }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const saveRunOfShowTemplate = useCallback(async (templateName = '') => {
         const safeName = String(templateName || '').trim() || 'Run Of Show Template';
@@ -16901,6 +16950,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     onUpdatePolicy={updateRunOfShowPolicyState}
                                     onUpdateRoles={updateRunOfShowRolesState}
                                     onApplyGeneratedDraft={applyGeneratedRunOfShowDraft}
+                                    currentRoomDraftSummary={currentRoomDraftSummary}
+                                    onApplyCurrentRoomDraft={applyCurrentRoomRunOfShowDraft}
                                     onSaveTemplate={saveRunOfShowTemplate}
                                     onApplyTemplate={applyRunOfShowTemplate}
                                     onApplyStarterTemplate={applyRunOfShowStarterTemplate}
