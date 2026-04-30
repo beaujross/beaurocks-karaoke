@@ -6724,39 +6724,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return !!mediaUrl && !mediaUrl.startsWith('blob:');
         }).length,
     }), [runOfShowQueueCandidates, scenePresets]);
-    const applyCurrentRoomRunOfShowDraft = useCallback(async ({ mode = 'replace' } = {}) => {
-        const draft = buildCurrentRoomRunOfShowDraft({
-            eventProfileId: String(room?.eventProfileId || ''),
-            queueSongs: runOfShowQueueCandidates,
-            scenePresets,
-            now: Date.now(),
-        });
-        if (!Array.isArray(draft?.items) || !draft.items.length) {
-            toast('Current room has no requested songs or TV slides to build from.');
-            return null;
-        }
-        const shouldReplace = String(mode || 'replace').trim().toLowerCase() !== 'append';
-        const existingCount = Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items.length : 0;
-        if (shouldReplace && existingCount > 0) {
-            const confirmed = window.confirm('Replace the current planner with a draft built from this room\'s queue and saved slides?');
-            if (!confirmed) return null;
-        }
-        const nextDirector = await applyGeneratedRunOfShowDraft({
-            items: draft.items,
-            mode,
-            activateShow: true,
-        });
-        if (draft?.runOfShowPolicy) {
-            const nextPolicy = normalizeRunOfShowPolicy(draft.runOfShowPolicy);
-            runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
-            setRunOfShowPolicy(nextPolicy);
-            if (!isMarketingDemoFixture) {
-                await updateRoom({ runOfShowPolicy: nextPolicy });
-            }
-        }
-        toast(`${draft.label || 'Current room plan'} applied.`);
-        return nextDirector;
-    }, [applyGeneratedRunOfShowDraft, isMarketingDemoFixture, room?.eventProfileId, runOfShowDirector?.items, runOfShowQueueCandidates, scenePresets, toast, updateRoom]);
     const runOfShowPendingCountsById = useMemo(() => {
         const counts = {};
         (Array.isArray(runOfShowSubmissions) ? runOfShowSubmissions : []).forEach((entry) => {
@@ -7355,6 +7322,39 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 : {}
         );
     }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const applyCurrentRoomRunOfShowDraft = useCallback(async ({ mode = 'replace' } = {}) => {
+        const draft = buildCurrentRoomRunOfShowDraft({
+            eventProfileId: String(room?.eventProfileId || ''),
+            queueSongs: runOfShowQueueCandidates,
+            scenePresets,
+            now: Date.now(),
+        });
+        if (!Array.isArray(draft?.items) || !draft.items.length) {
+            toast('Current room has no requested songs or TV slides to build from.');
+            return null;
+        }
+        const shouldReplace = String(mode || 'replace').trim().toLowerCase() !== 'append';
+        const existingCount = Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items.length : 0;
+        if (shouldReplace && existingCount > 0) {
+            const confirmed = window.confirm('Replace the current planner with a draft built from this room\'s queue and saved slides?');
+            if (!confirmed) return null;
+        }
+        const nextDirector = await applyGeneratedRunOfShowDraft({
+            items: draft.items,
+            mode,
+            activateShow: true,
+        });
+        if (draft?.runOfShowPolicy) {
+            const nextPolicy = normalizeRunOfShowPolicy(draft.runOfShowPolicy);
+            runOfShowRemoteSyncRef.current.policy = JSON.stringify(nextPolicy);
+            setRunOfShowPolicy(nextPolicy);
+            if (!isMarketingDemoFixture) {
+                await updateRoom({ runOfShowPolicy: nextPolicy });
+            }
+        }
+        toast(`${draft.label || 'Current room plan'} applied.`);
+        return nextDirector;
+    }, [applyGeneratedRunOfShowDraft, isMarketingDemoFixture, room?.eventProfileId, runOfShowDirector?.items, runOfShowQueueCandidates, scenePresets, toast, updateRoom]);
     const saveRunOfShowTemplate = useCallback(async (templateName = '') => {
         const safeName = String(templateName || '').trim() || 'Run Of Show Template';
         if (isMarketingDemoFixture) {

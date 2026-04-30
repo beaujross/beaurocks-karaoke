@@ -74,6 +74,10 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(source, /const applyCurrentRoomRunOfShowDraft = useCallback\(async \(\{ mode = 'replace' \} = \{\}\) => \{/);
   assert.match(source, /buildCurrentRoomRunOfShowDraft\(\{/);
   assert.match(source, /window\.confirm\('Replace the current planner with a draft built from this room\\'s queue and saved slides\?'\)/);
+  assert.ok(
+    source.indexOf("const applyGeneratedRunOfShowDraft = useCallback") < source.indexOf("const applyCurrentRoomRunOfShowDraft = useCallback"),
+    "HostApp should declare applyGeneratedRunOfShowDraft before applyCurrentRoomRunOfShowDraft to avoid runtime TDZ crashes",
+  );
   assert.match(source, /onApplyCurrentRoomDraft=\{applyCurrentRoomRunOfShowDraft\}/);
   assert.match(directorPanelSource, /Release Window/);
   assert.match(directorPanelSource, /Crowd Signal/);
