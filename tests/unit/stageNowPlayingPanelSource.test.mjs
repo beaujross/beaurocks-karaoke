@@ -46,4 +46,14 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     /Customize Timing|Next up beat/,
     "The live stage rail should keep only the overall pace control and not the advanced per-beat settings",
   );
+  assert.match(
+    source,
+    /if \(typeof onEndPerformance === 'function'\) \{\s*onEndPerformance\(current\.id\);\s*return;\s*\}\s*updateStatus\(current\.id, 'performed'\);/s,
+    "The End transport button should delegate to the applause-aware end-performance callback before falling back to a direct status write",
+  );
+  assert.match(
+    source,
+    /if \(typeof onMeasureApplause === 'function'\) \{\s*onMeasureApplause\(\);\s*return;\s*\}\s*updateRoom\(\{ activeMode: room\?\.activeMode === 'applause' \? 'karaoke' : 'applause_countdown', applausePeak: 0 \}\);/s,
+    "The applause control should route through the host-provided applause callback before using the legacy room-mode toggle",
+  );
 });

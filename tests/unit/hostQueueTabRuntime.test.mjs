@@ -395,3 +395,27 @@ test('HostQueueTab mounts the inbox workspace without a host-room runtime crash'
   assert.match(markup, /Host Inbox/);
   assert.match(markup, /Needs Host/);
 });
+
+test('HostQueueTab keeps add-to-queue search controls visible inside the dedicated add workspace', async () => {
+  mockHostQueueTabDependencies();
+  mockDesktopQueueSurfaceTab('add');
+  vi.doMock('../../src/apps/Host/hooks/useQueueTabState.js', async () => {
+    const actual = await vi.importActual('../../src/apps/Host/hooks/useQueueTabState.js');
+    return {
+      ...actual,
+      default: (args) => {
+        const state = actual.default(args);
+        return {
+          ...state,
+          showAddForm: false,
+        };
+      },
+    };
+  });
+
+  const markup = await renderQueueTabMarkup();
+
+  assert.match(markup, /data-feature-id="queue-surface-tab-add-desktop"/);
+  assert.match(markup, /Search songs \(autocomplete source \+ local library\)/);
+  assert.match(markup, /data-feature-id="host-manual-song-input"/);
+});

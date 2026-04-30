@@ -2286,27 +2286,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const handleEndPerformance = useCallback(async (songId = '') => {
         const targetSongId = String(songId || '').trim();
         if (!targetSongId) return;
-        if (!autoDj) {
-            autoDjApplausePendingSongRef.current = '';
-            clearAutoDjApplauseFallback();
-            const runUpdateStatus = updateStatusRef.current;
-            if (!runUpdateStatus) return;
-            await runUpdateStatus(targetSongId, 'performed');
-            pushAutoDjEvent(AUTO_DJ_EVENTS.SCORING_COMPLETE, { songId: targetSongId });
-            pushAutoDjEvent(AUTO_DJ_EVENTS.TRANSITION_COMPLETE, { songId: targetSongId });
-            return;
-        }
         const applauseMode = String(room?.activeMode || '');
-        const applauseRunning = applauseMode === 'applause_countdown' || applauseMode === 'applause';
+        const applauseRunning = applauseMode === 'applause_countdown' || applauseMode === 'applause' || applauseMode === 'applause_result';
         if (applauseRunning && autoDjApplausePendingSongRef.current === targetSongId) {
-            toast('Applause capture in progress. Auto-DJ will end performance after results.');
+            toast('Applause capture in progress. This performance will end after results.');
             return;
         }
         await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
-    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, startApplauseSequence, toast, pushAutoDjEvent]);
+    }, [room?.activeMode, startApplauseSequence, toast]);
 
     useEffect(() => {
-        if (!autoDj) return;
         const pendingSongId = autoDjApplausePendingSongRef.current;
         if (!pendingSongId) return;
         if (room?.activeMode !== 'applause_result') return;
@@ -2324,7 +2313,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 pushAutoDjEvent(AUTO_DJ_EVENTS.FAIL, { songId: pendingSongId, error: error?.message || 'auto_finalize_failed' });
                 hostLogger.warn('Auto-DJ applause finalization failed', error);
             });
-    }, [autoDj, clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
+    }, [clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
     useEffect(() => {
         performanceSessionCompletionKeyRef.current = '';
@@ -2682,6 +2671,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         Number(runOfShowPreflightReport?.criticalCount || 0) + Number(runOfShowPreflightReport?.riskyCount || 0),
     );
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
+    const addToQueueWorkspaceActive = queueSurface.isCompactQueueSurface
+        ? queueSurface.activeCompactTab === 'add'
+        : desktopQueueSurfaceTab === 'add';
+    const addToQueueSectionOpen = addToQueueWorkspaceActive || showAddForm;
 
     useEffect(() => {
         if (!hasRunOfShowQueueHud && desktopQueueSurfaceTab === 'show') {
@@ -2782,7 +2775,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             autoCollapsedRunOfShowAddFormRef.current = false;
             return;
         }
-        if (runOfShowEnabled && hasRunOfShowQueueWork && showAddForm && !autoCollapsedRunOfShowAddFormRef.current) {
+        if (runOfShowEnabled && hasRunOfShowQueueWork && showAddForm && !addToQueueWorkspaceActive && !autoCollapsedRunOfShowAddFormRef.current) {
             setShowAddForm(false);
             autoCollapsedRunOfShowAddFormRef.current = true;
             return;
@@ -2790,7 +2783,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         if (!runOfShowEnabled || !hasRunOfShowQueueWork) {
             autoCollapsedRunOfShowAddFormRef.current = false;
         }
-    }, [hasRunOfShowQueueWork, queueSurface.isCompactQueueSurface, runOfShowEnabled, setShowAddForm, showAddForm]);
+    }, [addToQueueWorkspaceActive, hasRunOfShowQueueWork, queueSurface.isCompactQueueSurface, runOfShowEnabled, setShowAddForm, showAddForm]);
     const handleStopRunOfShowAndRestoreQueueTools = useCallback(async () => {
         const result = await onStopRunOfShow?.();
         autoCollapsedRunOfShowAddFormRef.current = false;
@@ -2803,12 +2796,18 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         <div className="p-3 border-b border-white/10 bg-black/20 relative">
             <SectionHeader
                 label="Add to Queue"
-                open={showAddForm}
-                onToggle={() => setShowAddForm(v => !v)}
+                open={addToQueueSectionOpen}
+                onToggle={() => {
+                    if (addToQueueWorkspaceActive) {
+                        setShowAddForm(true);
+                        return;
+                    }
+                    setShowAddForm(v => !v);
+                }}
                 toneClass="text-base font-black text-[#00C4D9]"
                 featureId="panel-add-to-queue"
             />
-            {showAddForm && (
+            {addToQueueSectionOpen && (
                 <AddToQueueFormBody
                     searchQ={searchQ}
                     setSearchQ={setSearchQ}

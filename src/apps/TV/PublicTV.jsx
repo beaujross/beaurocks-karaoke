@@ -4308,18 +4308,56 @@ const PublicTV = ({ roomCode }) => {
         }
     };
 
+    const applauseMode = String(room?.activeMode || '').trim();
+    const applauseModeActive = applauseMode === 'applause_countdown' || applauseMode === 'applause' || applauseMode === 'applause_result';
+
     // Applause Sequence
     useEffect(() => {
-        if (room?.activeMode === 'applause_countdown' && applauseStep === 'idle') {
+        if (applauseMode === 'applause_countdown' && !['celebrate', 'countdown', 'measuring'].includes(applauseStep)) {
+            if (applauseResetRef.current) {
+                clearTimeout(applauseResetRef.current);
+                applauseResetRef.current = null;
+            }
             setApplauseStep(applauseWarmupSec > 0 ? 'celebrate' : 'countdown');
             setCelebrateCountdown(applauseWarmupSec);
             setCountdown(applauseCountdownSec);
             setMeasure(applauseMeasureSec);
             setApplauseMax(0);
+            return;
         }
-    }, [room?.activeMode, applauseStep, applauseCountdownSec, applauseMeasureSec, applauseWarmupSec]);
+        if (applauseMode === 'applause' && applauseStep === 'idle') {
+            if (applauseResetRef.current) {
+                clearTimeout(applauseResetRef.current);
+                applauseResetRef.current = null;
+            }
+            setApplauseStep('measuring');
+            setMeasure(applauseMeasureSec);
+            return;
+        }
+        if (applauseMode === 'applause_result' && applauseStep === 'idle') {
+            setApplauseMax(Math.max(0, Number(room?.applausePeak || 0)));
+            setApplauseStep('result');
+            if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
+            applauseResetRef.current = setTimeout(() => {
+                setApplauseStep('idle');
+                applauseResetRef.current = null;
+                updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'karaoke' });
+            }, 5000);
+            return;
+        }
+        if (!applauseModeActive && applauseStep !== 'idle') {
+            if (applauseResetRef.current) {
+                clearTimeout(applauseResetRef.current);
+                applauseResetRef.current = null;
+            }
+            setApplauseStep('idle');
+        }
+    }, [applauseCountdownSec, applauseMeasureSec, applauseMode, applauseModeActive, applauseStep, applauseWarmupSec, room?.applausePeak, roomCode]);
     useEffect(() => () => {
-        if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
+        if (applauseResetRef.current) {
+            clearTimeout(applauseResetRef.current);
+            applauseResetRef.current = null;
+        }
     }, []);
 
     useEffect(() => {
@@ -4343,6 +4381,7 @@ const PublicTV = ({ roomCode }) => {
                 if (applauseResetRef.current) clearTimeout(applauseResetRef.current);
                 applauseResetRef.current = setTimeout(() => {
                     setApplauseStep('idle');
+                    applauseResetRef.current = null;
                     updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), { activeMode: 'karaoke' });
                 }, 5000);
             }
