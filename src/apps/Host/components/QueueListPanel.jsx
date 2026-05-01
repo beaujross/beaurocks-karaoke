@@ -597,72 +597,6 @@ const QueueListPanel = ({
                     </div>
             ) : null
             )}
-            <QueueQuickAccessPanel
-                styles={styles}
-                quickControls={quickControls}
-            />
-            <QueueInspector
-                song={selectedSong}
-                styles={styles}
-                onStart={(songId) => updateStatus(songId, 'performing')}
-                onApprovePending={onApprovePending}
-                onMoveNext={onMoveNext}
-                onHoldSinger={onHoldSinger}
-                onRestoreSinger={onRestoreSinger}
-                onOpenEdit={startEdit}
-                onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
-                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
-                runOfShowAssignableSlots={runOfShowAssignableSlots}
-                runOfShowOpenSlots={runOfShowOpenSlots}
-                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
-            />
-            {pending.length > 0 ? (
-                <div className={`mb-3 border-b border-white/10 ${compactViewport ? 'pb-1.5' : 'pb-2'}`}>
-                    <QueueSectionToggle
-                        label="Awaiting Approval"
-                        count={pending.length}
-                        toneClass="text-orange-300"
-                        open={pendingQueueOpen}
-                        onToggle={onTogglePendingQueue}
-                    />
-                    {pendingQueueOpen ? (
-                        <>
-                        {pending.map((s, i) => (
-                            <QueueSongCard
-                                key={s.id}
-                                song={s}
-                                index={i}
-                                dragQueueId={dragQueueId}
-                                dragOverId={dragOverId}
-                                setDragQueueId={setDragQueueId}
-                                setDragOverId={setDragOverId}
-                                reorderQueue={reorderQueue}
-                                touchReorderEnabled={false}
-                                touchReorderMode={false}
-                                handleTouchStart={handleTouchStart}
-                                handleTouchMove={handleTouchMove}
-                                handleTouchEnd={handleTouchEnd}
-                                updateStatus={updateStatus}
-                                onApproveAudienceBacking={onApproveAudienceBacking}
-                                onAvoidAudienceBacking={onAvoidAudienceBacking}
-                                onMoveNext={onMoveNext}
-                                onRestoreSinger={onRestoreSinger}
-                                backingDecisionBusyKey={backingDecisionBusyKey}
-                                statusPill={statusPill}
-                                styles={styles}
-                                compactViewport={compactViewport}
-                                selected={selectedSong?.id === s.id}
-                                onSelect={(song) => setSelectedSongId(song?.id || '')}
-                                runOfShowAssignableSlots={runOfShowAssignableSlots}
-                                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
-                                onApprovePending={onApprovePending}
-                                onDeletePending={onDeletePending}
-                            />
-                        ))}
-                        </>
-                    ) : null}
-                </div>
-            ) : null}
             <div className="mb-3">
                 {touchReorderAvailable && touchReorderMode ? (
                     <div className="mb-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
@@ -713,6 +647,53 @@ const QueueListPanel = ({
                     />
                 )) : null}
             </div>
+            {pending.length > 0 ? (
+                <div className={`mb-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
+                    <QueueSectionToggle
+                        label="Awaiting Approval"
+                        count={pending.length}
+                        toneClass="text-orange-300"
+                        open={pendingQueueOpen}
+                        onToggle={onTogglePendingQueue}
+                    />
+                    {pendingQueueOpen ? (
+                        <>
+                        {pending.map((s, i) => (
+                            <QueueSongCard
+                                key={s.id}
+                                song={s}
+                                index={i}
+                                dragQueueId={dragQueueId}
+                                dragOverId={dragOverId}
+                                setDragQueueId={setDragQueueId}
+                                setDragOverId={setDragOverId}
+                                reorderQueue={reorderQueue}
+                                touchReorderEnabled={false}
+                                touchReorderMode={false}
+                                handleTouchStart={handleTouchStart}
+                                handleTouchMove={handleTouchMove}
+                                handleTouchEnd={handleTouchEnd}
+                                updateStatus={updateStatus}
+                                onApproveAudienceBacking={onApproveAudienceBacking}
+                                onAvoidAudienceBacking={onAvoidAudienceBacking}
+                                onMoveNext={onMoveNext}
+                                onRestoreSinger={onRestoreSinger}
+                                backingDecisionBusyKey={backingDecisionBusyKey}
+                                statusPill={statusPill}
+                                styles={styles}
+                                compactViewport={compactViewport}
+                                selected={selectedSong?.id === s.id}
+                                onSelect={(song) => setSelectedSongId(song?.id || '')}
+                                runOfShowAssignableSlots={runOfShowAssignableSlots}
+                                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                                onApprovePending={onApprovePending}
+                                onDeletePending={onDeletePending}
+                            />
+                        ))}
+                        </>
+                    ) : null}
+                </div>
+            ) : null}
             {assigned.length > 0 ? (
                 <div className={`mt-3 border-t border-white/10 ${compactViewport ? 'pt-2' : 'pt-3'}`}>
                     <QueueSectionToggle
@@ -811,6 +792,25 @@ const QueueListPanel = ({
                     ))}
                 </div>
             ) : null}
+            <QueueQuickAccessPanel
+                styles={styles}
+                quickControls={quickControls}
+            />
+            <QueueInspector
+                song={selectedSong}
+                styles={styles}
+                onStart={(songId) => updateStatus(songId, 'performing')}
+                onApprovePending={onApprovePending}
+                onMoveNext={onMoveNext}
+                onHoldSinger={onHoldSinger}
+                onRestoreSinger={onRestoreSinger}
+                onOpenEdit={startEdit}
+                onRemove={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                runOfShowAssignableSlots={runOfShowAssignableSlots}
+                runOfShowOpenSlots={runOfShowOpenSlots}
+                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
+            />
         </>
     );
 };

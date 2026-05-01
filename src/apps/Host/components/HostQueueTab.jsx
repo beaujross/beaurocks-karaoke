@@ -3383,6 +3383,55 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
                 featureId="panel-queue-list"
             />
+            <QueueListPanel
+                showQueueList={showQueueList}
+                showQueueSummaryBar={showQueueSummaryBar}
+                onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
+                pending={pending}
+                pendingQueueOpen={pendingQueueOpen}
+                onTogglePendingQueue={() => setPendingQueueOpen((v) => !v)}
+                queue={queue}
+                readyQueueOpen={readyQueueOpen}
+                onToggleReadyQueue={() => setReadyQueueOpen((v) => !v)}
+                assigned={assigned}
+                assignedQueueOpen={assignedQueueOpen}
+                onToggleAssignedQueue={() => setAssignedQueueOpen((v) => !v)}
+                held={held}
+                onApprovePending={(songId) => updateStatus(songId, 'requested')}
+                onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
+                onMoveNext={moveSingerNext}
+                onHoldSinger={holdSinger}
+                onRestoreSinger={restoreHeldSinger}
+                dragQueueId={dragQueueId}
+                dragOverId={dragOverId}
+                setDragQueueId={setDragQueueId}
+                setDragOverId={setDragOverId}
+                reorderQueue={reorderQueue}
+                touchReorderAvailable={touchReorderAvailable}
+                touchReorderEnabled={touchReorderEnabled}
+                touchReorderMode={queueSurface.touchReorderMode}
+                handleTouchStart={handleTouchStart}
+                handleTouchMove={handleTouchMove}
+                handleTouchEnd={handleTouchEnd}
+                updateStatus={updateStatus}
+                startEdit={startEdit}
+                onRetryLyrics={retryLyricsForSong}
+                onFetchTimedLyrics={fetchTimedLyricsForSong}
+                onApproveAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'approve')}
+                onAvoidAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'avoid')}
+                backingDecisionBusyKey={backingDecisionBusyKey}
+                statusPill={statusPill}
+                styles={STYLES}
+                compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
+                reviewRequiredCount={reviewQueueItems.length}
+                reviewRequired={reviewRequired}
+                runOfShowAssignableSlots={runOfShowAssignableSlots}
+                runOfShowOpenSlots={runOfShowOpenSlots}
+                queueSurfaceCounts={queueSurface.counts}
+                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
+                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
+                onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
+            />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
                     <div className={`rounded-2xl border p-3 shadow-[0_16px_36px_rgba(0,0,0,0.22)] ${queueFaceOffTone.panelClass}`}>
@@ -3723,8 +3772,43 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         const busy = reviewActionBusyKey.startsWith(`${song.id}:`);
                         const appleMusicId = String(song?.appleMusicId || song?.trackId || '').trim();
                         const canUseAppleSingAlong = !!appleMusicId;
+                        const youtubeTrackCheckEnabled = searchSources?.youtube !== false;
+                        const appleTrackCheckEnabled = searchSources?.itunes !== false;
+                        const prioritizeYouTubeReview = youtubeTrackCheckEnabled || !appleTrackCheckEnabled;
                         const sourceLabel = String(song?.trackSource || song?.source || '').trim().toLowerCase();
                         const requestLooksApple = canUseAppleSingAlong || sourceLabel.includes('apple') || sourceLabel.includes('itunes');
+                        const reviewPrompt = topCandidate
+                            ? `Best match: ${topCandidate.label || String(topCandidate.layer || 'candidate').replace(/_/g, ' ')}`
+                            : prioritizeYouTubeReview
+                                ? requestLooksApple && appleTrackCheckEnabled
+                                    ? 'Find a YouTube backing first. Apple sing-along stays available as fallback.'
+                                    : 'No trusted backing found yet. Use YouTube backing search.'
+                                : requestLooksApple
+                                    ? 'Approve Apple sing-along or open the request editor for another backing.'
+                                    : 'Use the enabled backing tools to resolve this request.';
+                        const reviewActionButtons = [
+                            youtubeTrackCheckEnabled ? {
+                                key: 'youtube',
+                                label: 'Find YouTube Backing',
+                                iconClass: 'fa-brands fa-youtube',
+                                onClick: () => openReviewRequestEditor(song, { openSearch: true }),
+                                className: prioritizeYouTubeReview ? STYLES.btnPrimary : STYLES.btnHighlight,
+                                disabled: busy,
+                            } : null,
+                            appleTrackCheckEnabled ? {
+                                key: 'apple',
+                                label: 'Apple Sing-Along',
+                                iconClass: 'fa-brands fa-apple',
+                                onClick: () => resolveAppleSingAlongReviewRequest(song),
+                                className: prioritizeYouTubeReview ? STYLES.btnSecondary : STYLES.btnPrimary,
+                                disabled: busy || !canUseAppleSingAlong || !appleMusicAuthorized,
+                                title: !canUseAppleSingAlong
+                                    ? 'This request does not include an Apple Music track id'
+                                    : !appleMusicAuthorized
+                                        ? 'Connect Apple Music before approving sing-along playback'
+                                        : 'Approve this as full-song Apple Music sing-along playback',
+                            } : null,
+                        ].filter(Boolean);
                         return (
                             <div key={song.id} className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-black/30 p-3">
                                 <div className="flex items-start justify-between gap-3">
@@ -3737,38 +3821,26 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             )}
                                         </div>
                                         <div className="text-sm text-zinc-400 truncate">{song.artist || 'Unknown'} • {song.singerName || 'Guest'}</div>
-                                        <div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">
-                                            {topCandidate
-                                                ? `Best match: ${topCandidate.label || String(topCandidate.layer || 'candidate').replace(/_/g, ' ')}`
-                                                : requestLooksApple
-                                                    ? 'Choose Apple sing-along or find a karaoke backing.'
-                                                    : 'No trusted backing found yet. Use YouTube backing search.'}
-                                        </div>
+                                        <div className="mt-2 text-xs uppercase tracking-[0.16em] text-zinc-500">{reviewPrompt}</div>
                                     </div>
                                     <div className="text-right text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                                         {song.reviewCandidates?.length || 0} ranked option{(song.reviewCandidates?.length || 0) === 1 ? '' : 's'}
                                     </div>
                                 </div>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                    <button
-                                        type="button"
-                                        disabled={busy || !canUseAppleSingAlong || !appleMusicAuthorized}
-                                        onClick={() => resolveAppleSingAlongReviewRequest(song)}
-                                        title={!canUseAppleSingAlong ? 'This request does not include an Apple Music track id' : !appleMusicAuthorized ? 'Connect Apple Music before approving sing-along playback' : 'Approve this as full-song Apple Music sing-along playback'}
-                                        className={`${STYLES.btnStd} ${STYLES.btnPrimary} min-h-[42px] justify-center px-3 py-2 text-[10px] ${(!canUseAppleSingAlong || !appleMusicAuthorized) ? 'cursor-not-allowed opacity-55' : ''}`}
-                                    >
-                                        <i className="fa-brands fa-apple mr-2"></i>
-                                        Apple Sing-Along
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={busy}
-                                        onClick={() => openReviewRequestEditor(song, { openSearch: true })}
-                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} min-h-[42px] justify-center px-3 py-2 text-[10px]`}
-                                    >
-                                        <i className="fa-brands fa-youtube mr-2"></i>
-                                        Find YouTube Backing
-                                    </button>
+                                <div className={`mt-3 grid gap-2 ${reviewActionButtons.length > 1 ? 'sm:grid-cols-2' : 'sm:grid-cols-1'}`}>
+                                    {reviewActionButtons.map((action) => (
+                                        <button
+                                            key={action.key}
+                                            type="button"
+                                            disabled={action.disabled}
+                                            onClick={action.onClick}
+                                            title={action.title || ''}
+                                            className={`${STYLES.btnStd} ${action.className} min-h-[42px] justify-center px-3 py-2 text-[10px] ${action.disabled ? 'cursor-not-allowed opacity-55' : ''}`}
+                                        >
+                                            <i className={`${action.iconClass} mr-2`}></i>
+                                            {action.label}
+                                        </button>
+                                    ))}
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     <button
@@ -3889,55 +3961,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     }) : null}
                 </div>
             )}
-            <QueueListPanel
-                showQueueList={showQueueList}
-                showQueueSummaryBar={showQueueSummaryBar}
-                onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
-                pending={pending}
-                pendingQueueOpen={pendingQueueOpen}
-                onTogglePendingQueue={() => setPendingQueueOpen((v) => !v)}
-                queue={queue}
-                readyQueueOpen={readyQueueOpen}
-                onToggleReadyQueue={() => setReadyQueueOpen((v) => !v)}
-                assigned={assigned}
-                assignedQueueOpen={assignedQueueOpen}
-                onToggleAssignedQueue={() => setAssignedQueueOpen((v) => !v)}
-                held={held}
-                onApprovePending={(songId) => updateStatus(songId, 'requested')}
-                onDeletePending={(songId) => deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', songId))}
-                onMoveNext={moveSingerNext}
-                onHoldSinger={holdSinger}
-                onRestoreSinger={restoreHeldSinger}
-                dragQueueId={dragQueueId}
-                dragOverId={dragOverId}
-                setDragQueueId={setDragQueueId}
-                setDragOverId={setDragOverId}
-                reorderQueue={reorderQueue}
-                touchReorderAvailable={touchReorderAvailable}
-                touchReorderEnabled={touchReorderEnabled}
-                touchReorderMode={queueSurface.touchReorderMode}
-                handleTouchStart={handleTouchStart}
-                handleTouchMove={handleTouchMove}
-                handleTouchEnd={handleTouchEnd}
-                updateStatus={updateStatus}
-                startEdit={startEdit}
-                onRetryLyrics={retryLyricsForSong}
-                onFetchTimedLyrics={fetchTimedLyricsForSong}
-                onApproveAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'approve')}
-                onAvoidAudienceBacking={(song) => resolveAudienceSelectedBacking(song, 'avoid')}
-                backingDecisionBusyKey={backingDecisionBusyKey}
-                statusPill={statusPill}
-                styles={STYLES}
-                compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
-                reviewRequiredCount={reviewQueueItems.length}
-                reviewRequired={reviewRequired}
-                runOfShowAssignableSlots={runOfShowAssignableSlots}
-                runOfShowOpenSlots={runOfShowOpenSlots}
-                queueSurfaceCounts={queueSurface.counts}
-                onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
-                onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
-                onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
-            />
             <div data-feature-id="panel-tv-moments">
                 {scenePresetsSection}
             </div>

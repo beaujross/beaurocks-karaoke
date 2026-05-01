@@ -74,7 +74,7 @@ const QueueYouTubeSearchModal = ({
     if (!open) return null;
 
     return (
-        <div className="absolute inset-0 z-[70] bg-black/70 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-none">
+        <div className="fixed inset-0 z-[210] bg-black/70 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-none">
             <div className={`${styles.panel} p-6 w-full max-w-4xl border-white/20 max-h-[94vh] flex flex-col overflow-hidden pointer-events-auto`}>
                 <div className="flex justify-between items-center mb-4">
                     <div className={styles.header}>Search YouTube</div>
