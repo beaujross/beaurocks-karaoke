@@ -4,7 +4,6 @@ import { isAudienceSelectedUnverifiedResolution } from '../../../lib/requestMode
 const StageNowPlayingPanel = ({
     room,
     current,
-    lastPerformance,
     hasLyrics,
     lobbyCount,
     queueCount,
@@ -41,190 +40,19 @@ const StageNowPlayingPanel = ({
     onEndPerformance,
     onReturnCurrentToQueue,
     progressStageToNext,
+    lastTrackCheckItem = null,
+    onTrackCheckAction,
     showStageSummaryHeader = true,
     styles,
     emoji
 }) => {
     const [showStageDetails, setShowStageDetails] = React.useState(false);
-    const [postPerformancePaceDraft, setPostPerformancePaceDraft] = React.useState(50);
-    const [postPerformancePaceDragging, setPostPerformancePaceDragging] = React.useState(false);
-    const [pendingPostPerformancePace, setPendingPostPerformancePace] = React.useState(null);
     const currentBackingUrl = String(currentMediaUrl || current?.mediaUrl || '').trim();
-    const lastBackingUrl = String(lastPerformance?.mediaUrl || '').trim();
     const currentHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(currentBackingUrl);
-    const lastHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(lastBackingUrl);
     const currentAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(current?.resolutionStatus);
     const currentBackingDecisionBusy = currentAudienceSelectedUnverified && String(backingDecisionBusyKey || '').startsWith(`${current?.id}:`);
     const transportButtonClass = 'min-h-[54px] rounded-lg border border-white/10 bg-black/35 px-2 py-2 text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-45';
     const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
-    const normalizeTimingValue = (value, { fallback, min, max }) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) return fallback;
-        return Math.max(min, Math.min(max, Math.round(numeric)));
-    };
-    const applauseWarmupSec = normalizeTimingValue(room?.applauseWarmupSec, { fallback: 5, min: 0, max: 8 });
-    const applauseCountdownSec = normalizeTimingValue(room?.applauseCountdownSec, { fallback: 5, min: 1, max: 8 });
-    const applauseMeasureSec = normalizeTimingValue(room?.applauseMeasureSec, { fallback: 5, min: 2, max: 10 });
-    const recapBreakdownMs = normalizeTimingValue(room?.performanceRecapBreakdownMs, { fallback: 7000, min: 3000, max: 12000 });
-    const recapLeaderboardMs = normalizeTimingValue(room?.performanceRecapLeaderboardMs, { fallback: 7000, min: 3000, max: 12000 });
-    const recapNextUpMs = normalizeTimingValue(room?.performanceRecapNextUpMs, { fallback: 6000, min: 3000, max: 12000 });
-    const normalizeSpeedPercent = (value, { min, max }) => {
-        if (max <= min) return 50;
-        const ratio = (max - value) / (max - min);
-        return Math.max(0, Math.min(100, Math.round(ratio * 100)));
-    };
-    const postPerformancePace = Math.round((
-        normalizeSpeedPercent(applauseWarmupSec, { min: 0, max: 8 })
-        + normalizeSpeedPercent(applauseCountdownSec, { min: 1, max: 8 })
-        + normalizeSpeedPercent(applauseMeasureSec, { min: 2, max: 10 })
-        + normalizeSpeedPercent(recapBreakdownMs, { min: 3000, max: 12000 })
-        + normalizeSpeedPercent(recapLeaderboardMs, { min: 3000, max: 12000 })
-        + normalizeSpeedPercent(recapNextUpMs, { min: 3000, max: 12000 })
-    ) / 6);
-    const buildPostPerformanceTimingPatch = React.useCallback((rawValue, fallback = postPerformancePace) => {
-        const pace = normalizeTimingValue(rawValue, { fallback, min: 0, max: 100 });
-        const scaleRange = (min, max, step = 1) => {
-            const span = max - min;
-            const scaled = max - ((pace / 100) * span);
-            return Math.round(scaled / step) * step;
-        };
-        return {
-            applauseWarmupSec: scaleRange(0, 8),
-            applauseCountdownSec: scaleRange(1, 8),
-            applauseMeasureSec: scaleRange(2, 10),
-            performanceRecapBreakdownMs: scaleRange(3000, 12000, 1000),
-            performanceRecapLeaderboardMs: scaleRange(3000, 12000, 1000),
-            performanceRecapNextUpMs: scaleRange(3000, 12000, 1000),
-        };
-    }, [postPerformancePace]);
-    const usingDraftPace = postPerformancePaceDragging || pendingPostPerformancePace !== null;
-    const effectivePostPerformancePace = usingDraftPace
-        ? normalizeTimingValue(postPerformancePaceDraft, { fallback: postPerformancePace, min: 0, max: 100 })
-        : postPerformancePace;
-    const effectiveTimingPatch = usingDraftPace
-        ? buildPostPerformanceTimingPatch(effectivePostPerformancePace, postPerformancePace)
-        : null;
-    const effectiveApplauseWarmupSec = effectiveTimingPatch?.applauseWarmupSec ?? applauseWarmupSec;
-    const effectiveApplauseCountdownSec = effectiveTimingPatch?.applauseCountdownSec ?? applauseCountdownSec;
-    const effectiveApplauseMeasureSec = effectiveTimingPatch?.applauseMeasureSec ?? applauseMeasureSec;
-    const effectiveRecapBreakdownMs = effectiveTimingPatch?.performanceRecapBreakdownMs ?? recapBreakdownMs;
-    const effectiveRecapLeaderboardMs = effectiveTimingPatch?.performanceRecapLeaderboardMs ?? recapLeaderboardMs;
-    const effectiveRecapNextUpMs = effectiveTimingPatch?.performanceRecapNextUpMs ?? recapNextUpMs;
-    const postPerformancePaceLabel = effectivePostPerformancePace >= 68
-        ? 'Fast'
-        : effectivePostPerformancePace <= 32
-            ? 'Relaxed'
-            : 'Balanced';
-    React.useEffect(() => {
-        if (pendingPostPerformancePace !== null) {
-            const pendingPatch = buildPostPerformanceTimingPatch(pendingPostPerformancePace, postPerformancePace);
-            const pendingPatchApplied = (
-                applauseWarmupSec === pendingPatch.applauseWarmupSec
-                && applauseCountdownSec === pendingPatch.applauseCountdownSec
-                && applauseMeasureSec === pendingPatch.applauseMeasureSec
-                && recapBreakdownMs === pendingPatch.performanceRecapBreakdownMs
-                && recapLeaderboardMs === pendingPatch.performanceRecapLeaderboardMs
-                && recapNextUpMs === pendingPatch.performanceRecapNextUpMs
-            );
-            if (pendingPatchApplied) {
-                setPendingPostPerformancePace(null);
-                setPostPerformancePaceDraft(postPerformancePace);
-            }
-            return;
-        }
-        if (!postPerformancePaceDragging) {
-            setPostPerformancePaceDraft(postPerformancePace);
-        }
-    }, [
-        applauseCountdownSec,
-        applauseMeasureSec,
-        applauseWarmupSec,
-        buildPostPerformanceTimingPatch,
-        pendingPostPerformancePace,
-        postPerformancePace,
-        postPerformancePaceDragging,
-        recapBreakdownMs,
-        recapLeaderboardMs,
-        recapNextUpMs
-    ]);
-    const commitPostPerformancePace = React.useCallback(async (rawValue) => {
-        const nextPace = normalizeTimingValue(rawValue, { fallback: postPerformancePace, min: 0, max: 100 });
-        setPostPerformancePaceDraft(nextPace);
-        setPostPerformancePaceDragging(false);
-        if (pendingPostPerformancePace === nextPace || nextPace === postPerformancePace) return;
-        setPendingPostPerformancePace(nextPace);
-        try {
-            await updateRoom(buildPostPerformanceTimingPatch(nextPace, postPerformancePace));
-        } catch (_error) {
-            setPendingPostPerformancePace(null);
-        }
-    }, [buildPostPerformanceTimingPatch, pendingPostPerformancePace, postPerformancePace, updateRoom]);
-
-    const postPerformanceTimingCard = (
-        <div className="mt-3 bg-black/30 border border-white/10 rounded-lg p-3">
-            <div className="flex items-start justify-between gap-3">
-                <div>
-                    <div className="text-sm uppercase tracking-[0.3em] text-zinc-400">Post-Performance Timing</div>
-                    <div className="mt-1 text-[11px] text-zinc-500">Control the overall pace here. Exact beat lengths live in Admin room settings.</div>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                    <button
-                        onClick={() => updateRoom({ showPerformanceRecap: room?.showPerformanceRecap === false })}
-                        className={`${styles.btnStd} ${room?.showPerformanceRecap === false ? styles.btnNeutral : styles.btnHighlight} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em] whitespace-nowrap`}
-                        title="Toggle the post-performance recap sequence on Public TV"
-                    >
-                        {room?.showPerformanceRecap === false ? 'Recap Off' : 'Recap On'}
-                    </button>
-                </div>
-            </div>
-            <div className="mt-3 rounded-xl border border-cyan-400/20 bg-cyan-500/8 px-3 py-3">
-                <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-                    <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Post-song Timing</div>
-                        <div className="mt-1 text-xs text-zinc-300">Set the overall speed for applause, recap, leaderboard, and next-up beats. Exact durations are in Admin.</div>
-                    </div>
-                    <span className="inline-flex min-w-[96px] items-center justify-center rounded-full border border-cyan-300/25 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                        {postPerformancePaceLabel}
-                    </span>
-                </div>
-                <div className="mt-3">
-                    <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={effectivePostPerformancePace}
-                        onPointerDown={() => setPostPerformancePaceDragging(true)}
-                        onPointerUp={(event) => { void commitPostPerformancePace(event.currentTarget.value); }}
-                        onPointerCancel={() => setPostPerformancePaceDragging(false)}
-                        onChange={(event) => setPostPerformancePaceDraft(Number(event.target.value))}
-                        onBlur={(event) => { void commitPostPerformancePace(event.currentTarget.value); }}
-                        onKeyUp={(event) => {
-                            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
-                                void commitPostPerformancePace(event.currentTarget.value);
-                            }
-                        }}
-                        className="post-performance-timing-slider h-3 w-full cursor-pointer appearance-none rounded-lg bg-zinc-800"
-                        style={{ background: `linear-gradient(90deg, #22d3ee ${effectivePostPerformancePace}%, #27272a ${effectivePostPerformancePace}%)` }}
-                    />
-                    <div className="mt-2 flex items-center justify-between text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">
-                        <span>Relaxed</span>
-                        <span>Balanced</span>
-                        <span>Fast</span>
-                    </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.16em] lg:grid-cols-6">
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Warm-up {effectiveApplauseWarmupSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Countdown {effectiveApplauseCountdownSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Meter {effectiveApplauseMeasureSec}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Recap {Math.round(effectiveRecapBreakdownMs / 1000)}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Leaderboard {Math.round(effectiveRecapLeaderboardMs / 1000)}s</span>
-                    <span className="rounded-full border border-white/10 bg-black/25 px-2 py-1 text-center text-zinc-300">Next Up {Math.round(effectiveRecapNextUpMs / 1000)}s</span>
-                </div>
-            </div>
-        </div>
-    );
-
     return (
         <>
         {showStageSummaryHeader ? (
@@ -597,23 +425,22 @@ const StageNowPlayingPanel = ({
                 {currentUsesAppleBacking && appleMusicStatus ? (
                     <div className="mt-1 mb-3 text-sm text-zinc-400">{appleMusicStatus}</div>
                 ) : null}
-                {postPerformanceTimingCard}
             </div>
         ) : (
             <div className="space-y-3">
                 <div className="text-center py-4 text-zinc-500">Stage Empty</div>
-                {(lastHasYoutubeBacking && typeof onRateBacking === 'function') ? (
+                {(lastTrackCheckItem && typeof onTrackCheckAction === 'function') ? (
                     <div className="rounded-xl border border-white/10 bg-black/25 px-3 py-3">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Last Track Check</div>
-                                <div className="mt-1 text-sm font-bold text-white truncate">{lastPerformance?.songTitle || 'Recent performance'}</div>
-                                <div className="text-xs text-zinc-400 truncate">{lastPerformance?.artist || 'YouTube track'}</div>
+                                <div className="mt-1 text-sm font-bold text-white truncate">{lastTrackCheckItem.songTitle || 'Recent performance'}</div>
+                                <div className="text-xs text-zinc-400 truncate">{lastTrackCheckItem.artist || 'YouTube track'}</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => onRateBacking(lastPerformance, 'up')}
+                                    onClick={() => onTrackCheckAction(lastTrackCheckItem, 'prefer')}
                                     className={`${feedbackChipClass} border-emerald-300/35 bg-emerald-500/12 text-emerald-100`}
                                 >
                                     <i className="fa-solid fa-thumbs-up"></i>
@@ -621,17 +448,32 @@ const StageNowPlayingPanel = ({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => onRateBacking(lastPerformance, 'down')}
+                                    onClick={() => onTrackCheckAction(lastTrackCheckItem, 'avoid')}
                                     className={`${feedbackChipClass} border-rose-300/35 bg-rose-500/12 text-rose-100`}
                                 >
                                     <i className="fa-solid fa-thumbs-down"></i>
                                     Bad Track
                                 </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onTrackCheckAction(lastTrackCheckItem, 'inbox')}
+                                    className={`${feedbackChipClass} border-cyan-300/35 bg-cyan-500/12 text-cyan-100`}
+                                >
+                                    <i className="fa-solid fa-inbox"></i>
+                                    Inbox
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => onTrackCheckAction(lastTrackCheckItem, 'skip')}
+                                    className={`${feedbackChipClass} border-white/10 bg-black/20 text-zinc-200`}
+                                >
+                                    <i className="fa-solid fa-forward"></i>
+                                    Skip
+                                </button>
                             </div>
                         </div>
                     </div>
                 ) : null}
-                {postPerformanceTimingCard}
             </div>
         )}
     </>

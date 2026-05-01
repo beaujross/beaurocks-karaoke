@@ -327,18 +327,13 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
 
   assert.match(
     source,
-    /Pick your emoji, add your name, and you will land in Songs ready to search\./,
-    "SingerApp join should explain the immediate next step instead of leaving the first action implicit",
+    /Choose your emoji and enter your name to jump into Songs\./,
+    "SingerApp join should keep the immediate next step clear without the extra step strip",
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /Pick Emoji/,
-    "SingerApp join should break the arrival into visible emoji, name, and join steps",
-  );
-  assert.match(
-    source,
-    /Add Name/,
-    "SingerApp join should expose the name step explicitly",
+    /Pick Emoji|Add Name|Festival Join Ready/,
+    "SingerApp join should remove the old step labels and extra ready pill from the festival join screen",
   );
   assert.match(
     source,
@@ -384,6 +379,16 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
     source,
     /Adding you to the room now\. This can take a moment\./,
     "SingerApp join flow should explain that the room entry is still in progress",
+  );
+  assert.match(
+    source,
+    /data-singer-night-guide-button/,
+    "SingerApp festival join should keep the night-guide CTA available on the join screen",
+  );
+  assert.match(
+    source,
+    /renderNightGuideModal/,
+    "SingerApp festival join should open the night guide inside the app instead of a new tab",
   );
   assert.match(
     source,

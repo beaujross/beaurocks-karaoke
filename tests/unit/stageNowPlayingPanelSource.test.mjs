@@ -18,6 +18,11 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
+    /Last Track Check[\s\S]*Use Again[\s\S]*Bad Track[\s\S]*Inbox[\s\S]*Skip/s,
+    "The last-track review card should allow deferring into inbox or skipping entirely",
+  );
+  assert.match(
+    source,
     /Transport[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stage Options/,
     "End and next actions should remain in the compact transport block above secondary stage options",
   );
@@ -31,20 +36,15 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     /Performance Controls/,
     "The old lower performance-control section should not push end controls below the fold",
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /performanceRecapNextUpMs/,
-    "Post-performance timing controls should include the new Next Up beat field",
-  );
-  assert.match(
-    source,
-    /Exact beat lengths live in Admin room settings/,
-    "Live stage timing should point hosts to Admin for exact beat lengths instead of expanding into a settings surface",
+    /Post-Performance Timing|post-performance-timing-slider|Recap On|Recap Off/,
+    "The live stage rail should not expose post-performance timing or recap configuration controls",
   );
   assert.doesNotMatch(
     source,
-    /Customize Timing|Next up beat/,
-    "The live stage rail should keep only the overall pace control and not the advanced per-beat settings",
+    /performanceRecapNextUpMs|Exact beat lengths live in Admin room settings/,
+    "Timing configuration copy and per-beat fields should live in Admin, not the stage runtime",
   );
   assert.match(
     source,

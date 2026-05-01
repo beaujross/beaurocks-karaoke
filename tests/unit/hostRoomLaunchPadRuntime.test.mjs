@@ -145,6 +145,43 @@ test('HostRoomLaunchPad gives AAHF a dedicated event-focus strip with live and r
   assert.match(markup, />Reset Room</);
 });
 
+test('HostRoomLaunchPad lands on AAHF even when another room is pinned locally', () => {
+  globalThis.window = {
+    localStorage: {
+      getItem: () => JSON.stringify(['PIN1']),
+      setItem: noop,
+    },
+  };
+
+  const markup = renderLaunchPad({
+    recentHostRooms: [
+      {
+        code: 'PIN1',
+        roomName: 'Pinned Priority Room',
+        updatedAtMs: 4000,
+        createdAtMs: 2000,
+        closedAtMs: 0,
+        archived: false,
+        publicRoom: true,
+      },
+      {
+        code: 'AAHF',
+        roomName: 'AAHF Kick-Off',
+        updatedAtMs: 3000,
+        createdAtMs: 1500,
+        closedAtMs: 0,
+        archived: false,
+        publicRoom: true,
+        roomStartsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+      },
+    ],
+  });
+
+  assert.match(markup, /AAHF Kick-Off/);
+  assert.match(markup, /data-room-browser-bucket="upcoming"/);
+  assert.doesNotMatch(markup, /Pinned Priority Room/);
+});
+
 test('HostRoomLaunchPad keeps create flow collapsed while manage workspace is active by default', () => {
   const markup = renderLaunchPad({
     recentHostRooms: [

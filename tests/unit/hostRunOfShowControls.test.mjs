@@ -79,11 +79,21 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
     "HostApp should declare applyGeneratedRunOfShowDraft before applyCurrentRoomRunOfShowDraft to avoid runtime TDZ crashes",
   );
   assert.match(source, /onApplyCurrentRoomDraft=\{applyCurrentRoomRunOfShowDraft\}/);
+  assert.match(source, /const markScenePresetPresented = useCallback\(async \(mediaScene = \{\}, options = \{\}\) => \{/);
+  assert.match(source, /lastPresentedAtMs:\s*presentedAtMs,/);
+  assert.match(source, /presentedCount:\s*nextPresentedCount/);
+  assert.match(source, /await markScenePresetPresented\(\{/);
+  assert.ok(
+    source.indexOf("const markScenePresetPresented = useCallback") < source.indexOf("const startRunOfShowItem = useCallback"),
+    "HostApp should declare markScenePresetPresented before startRunOfShowItem to avoid host runtime TDZ crashes",
+  );
   assert.match(directorPanelSource, /Release Window/);
   assert.match(directorPanelSource, /Crowd Signal/);
   assert.match(directorPanelSource, /Co-Host Vote/);
-  assert.match(directorPanelSource, /Build From Current Room/);
-  assert.match(directorPanelSource, /Use Current Room Plan/);
+  assert.match(directorPanelSource, /Media Library/);
+  assert.match(directorPanelSource, /Shown tonight/);
+  assert.match(directorPanelSource, /Utilities/);
+  assert.match(directorPanelSource, /Capture Live Room/);
 });
 
 test("HostApp restores queue tools after stop and previews the audience app", () => {
@@ -109,16 +119,18 @@ test("HostApp restores queue tools after stop and previews the audience app", ()
   assert.match(hostSource, /const shouldApplyRunOfShowRemoteSync = Date\.now\(\) - runOfShowLocalEditAtRef\.current > 1500;/);
 });
 
-test("Host chrome routes live automation access back into the queue tab", () => {
+test("Host chrome keeps launch utilities but strips dead runtime redirects", () => {
   const hostSource = readFileSync(hostAppPath, "utf8");
   const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
-  assert.match(chromeSource, /data-feature-id="deck-open-queue-controls"/);
-  assert.match(chromeSource, /data-feature-id="deck-crowd-pulse"/);
-  assert.match(chromeSource, /Crowd Pulse/);
-  assert.match(chromeSource, /Queue Controls/);
-  assert.match(chromeSource, /roomReadinessStatusLabel = 'Room'/);
-  assert.match(chromeSource, /fa-solid fa-rocket/);
+  assert.doesNotMatch(chromeSource, /data-feature-id="deck-open-queue-controls"/);
+  assert.doesNotMatch(chromeSource, /data-feature-id="deck-crowd-pulse"/);
+  assert.doesNotMatch(chromeSource, /Crowd Pulse/);
+  assert.doesNotMatch(chromeSource, /Queue Controls/);
+  assert.doesNotMatch(chromeSource, /label=\{roomReadinessStatusLabel\}/);
+  assert.doesNotMatch(chromeSource, /onClick=\{onOpenAppleMusicSettings\}/);
+  assert.doesNotMatch(chromeSource, /onClick=\{onOpenAiSettings\}/);
+  assert.doesNotMatch(chromeSource, /onClick=\{onOpenAccessSettings\}/);
   assert.match(chromeSource, /Launch TV/);
   assert.match(chromeSource, /Launch Mobile/);
   assert.match(chromeSource, /Print Guides/);
@@ -132,9 +144,11 @@ test("Host chrome routes live automation access back into the queue tab", () => 
   assert.match(chromeSource, /\/print\/cohost-guide\.html/);
   assert.match(chromeSource, /\/print\/aahf-host-walkthrough\.html/);
   assert.doesNotMatch(chromeSource, /roomReadinessLaunchBusy \? 'Launching\.\.\.' : 'Launch'/);
-  assert.doesNotMatch(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
-  assert.doesNotMatch(chromeSource, /Auto DJ Queue/);
-  assert.match(hostSource, /onOpenQueueControls=\{focusQueueLiveControls\}/);
+  assert.match(chromeSource, /data-feature-id="deck-automation-menu-toggle"/);
+  assert.match(chromeSource, /Automation/);
+  assert.match(hostSource, /btnInfo: "bg-\[#00C4D9\]\/12 text-cyan-100 border-cyan-400\/30/);
+  assert.match(hostSource, /btnSuccess: "bg-emerald-500\/14 text-emerald-100 border-emerald-400\/35/);
+  assert.match(chromeSource, /missionRecommendation\?\.id !== 'crowd_check'/);
 });
 
 test("HostApp keeps the queue runtime mounted when the host leaves the queue view", () => {
@@ -276,14 +290,15 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /const getItemExecutionMeta = \(item = \{\}\) => \{/);
   assert.match(queueHudSource, /getRunOfShowItemCategoryLabel/);
   assert.match(queueHudSource, /launchLabel: modeKey \? `Launches \$\{modeKey\.replaceAll\('_', ' '\)\}` : 'Interactive launch'/);
+  assert.match(queueHudSource, /const \[detailsOpen, setDetailsOpen\] = React\.useState\(false\)/);
   assert.match(queueHudSource, /const \[previewItemId, setPreviewItemId\] = React\.useState\(''\)/);
   assert.match(queueHudSource, /const renderSlotCard = \(item = null, fallbackLabel = '', fallbackSummary = ''\) => \(/);
   assert.match(queueHudSource, /Actions/);
-  assert.match(queueHudSource, /Hide List/);
-  assert.match(queueHudSource, /Show List/);
-  assert.match(queueHudSource, /Moment Plan/);
+  assert.match(queueHudSource, /Hide Details/);
+  assert.match(queueHudSource, /Show Details/);
   assert.match(queueHudSource, /Next 3 set/);
-  assert.match(queueHudSource, /Order can flex\./);
+  assert.match(queueHudSource, /horizonSummary/);
+  assert.doesNotMatch(queueHudSource, /Moment Plan|Order can flex\./);
   assert.match(queueHudSource, /Full List/);
   assert.match(queueHudSource, />\s*Previous\s*</);
   assert.match(queueHudSource, />\s*Stop\s*</);
@@ -292,10 +307,13 @@ test("Run-of-show game cards launch through the shared live game mapper", () => 
   assert.match(queueHudSource, /Fix/);
   assert.match(queueHudSource, /Preview/);
   assert.match(queueHudSource, /Edit/);
-  assert.match(queueHudSource, /Order can flex/);
   assert.doesNotMatch(queueHudSource, /\{moreOpen \? 'Less' : 'More'\}/);
   assert.doesNotMatch(chromeSource, /compactRunOfShowToolsOpen/);
   assert.doesNotMatch(chromeSource, /\? \(compactRunOfShowDense \? 'Hide' : 'Less'\) : 'More'/);
+  assert.match(directorPanelSource, /Planning Tools/);
+  assert.match(directorPanelSource, /Live Adjustments/);
+  assert.match(directorPanelSource, /Board Actions/);
+  assert.match(directorPanelSource, /scrollIntoView\(\{ behavior: 'smooth', block: 'nearest' \}\)/);
 });
 
 test("Host-facing moment language uses sting instead of cue where it would collide with queue", () => {
@@ -347,8 +365,8 @@ test("Host queue review presents Apple sing-along and YouTube backing as primary
 test("Scene image uploads stay on the callable host upload path", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 20 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 20 MB or smaller\.'\);/);
   assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
@@ -396,20 +414,21 @@ test("Run-of-show automation respects room auto mode and pauses for missing sing
   assert.match(source, /toast\('Singer ready\. Automation resumed\.'\);/);
 });
 
-test("HostApp auto-dismisses the post-performance backing prompt if the host ignores it", () => {
+test("HostApp auto-routes the post-performance backing prompt into inbox if the host ignores it", () => {
   const source = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(source, /const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;/);
   assert.match(source, /if \(!postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
-  assert.match(source, /setTimeout\(\(\) => \{\s*setPostPerformanceBackingPrompt\(\(currentPrompt\) => \(/);
-  assert.match(source, /Closes automatically after a few seconds\./);
+  assert.match(source, /setTimeout\(\(\) => \{\s*if \(String\(postPerformanceBackingPrompt\?\.performanceKey \|\| ''\)\.trim\(\) !== activePerformanceKey\) return;\s*deferTrackCheckToInbox\(postPerformanceBackingPrompt\);/s);
+  assert.match(source, /Moves to the inbox automatically after a few seconds\./);
+  assert.match(source, /handlePostPerformanceBackingPromptAction\(null, 'inbox'\)/);
 });
 
 test("HostApp routes scene images through the host callable without a direct-storage fallback", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 20 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 20 MB or smaller\.'\);/);
   assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
@@ -419,15 +438,22 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
 
   assert.match(queueTabSource, /data-feature-id="panel-tv-moments"/);
-  assert.match(queueTabSource, /TV Moments/);
-  assert.match(queueTabSource, /Queue Next Moment/);
+  assert.match(queueTabSource, /Media Library/);
+  assert.match(queueTabSource, /Scenes/);
+  assert.match(queueTabSource, /SFX/);
+  assert.match(queueTabSource, /BG Music/);
+  assert.match(queueTabSource, /Queue Next Scene/);
+  assert.match(queueTabSource, /sceneLibrarySeedPack\.label/);
   assert.match(queueTabSource, /Use In Run Of Show/);
   assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);
+  assert.match(hostSource, /const syncAahfSceneLibrarySeedPack = useCallback\(async \(\{ silent = false \} = \{\}\) => \{/);
+  assert.match(hostSource, /AAHF_SCENE_LIBRARY_SEED_ASSETS/);
   assert.match(hostSource, /const useScenePresetInRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
   assert.match(hostSource, /const uploadMediaFileToRunOfShow = useCallback\(async \(file, options = \{\}\) => \{/);
   assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join Run Of Show\./);
   assert.match(hostSource, /onQueueScenePreset:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
   assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*useScenePresetInRunOfShow/);
+  assert.match(hostSource, /sceneLibrarySeedPack:\s*isAahfSceneLibraryTargetRoom\(roomCode\)/);
   assert.match(hostSource, /runOfShowSelectedItemId/);
   assert.match(hostSource, /onSelectionChange=\{setRunOfShowSelectedItemId\}/);
   assert.match(hostSource, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
@@ -435,7 +461,7 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
   assert.match(
     queueTabSource,
-    /<QueueListPanel[\s\S]*\/>\s*<div data-feature-id="panel-tv-moments">[\s\S]*TV Moments/,
-    "TV Moments should render below the queue board instead of above it",
+    /<QueueListPanel[\s\S]*\/>\s*<div data-feature-id="panel-tv-moments">[\s\S]*Media Library/,
+    "Media Library should render below the queue board instead of above it",
   );
 });

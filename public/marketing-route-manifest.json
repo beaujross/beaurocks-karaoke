@@ -1,21 +1,33 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-03-07T20:51:19.318Z",
+  "generatedAt": "2026-05-01T02:16:09.922Z",
   "counts": {
     "venues": 32,
-    "events": 71,
-    "sessions": 13,
+    "events": 73,
+    "sessions": 9,
     "profiles": 1,
-    "regions": 3,
-    "cities": 9,
-    "detailRoutes": 127
+    "hosts": 1,
+    "performers": 1,
+    "regions": 5,
+    "cities": 12,
+    "detailRoutes": 107
   },
   "geoRegionTokens": [
-    "kitsap_wa",
+    "ca_los_angeles",
     "nationwide",
-    "wa_kitsap"
+    "ny_new_york",
+    "wa_kitsap",
+    "wa_seattle"
   ],
   "geoCityPairs": [
+    {
+      "state": "ca",
+      "city": "los-angeles"
+    },
+    {
+      "state": "ny",
+      "city": "new-york"
+    },
     {
       "state": "wa",
       "city": "bainbridge-island"
@@ -50,10 +62,16 @@
     },
     {
       "state": "wa",
+      "city": "seattle"
+    },
+    {
+      "state": "wa",
       "city": "silverdale"
     }
   ],
   "detailRoutes": [
+    "/events/event_beaurocks_bremerton_live_band_2026",
+    "/events/event_beaurocks_poulsbo_other_2026",
     "/events/event_kitsap_bainbridge_island_fletcher_bay_winery_fri",
     "/events/event_kitsap_bainbridge_island_fletcher_bay_winery_sun",
     "/events/event_kitsap_bainbridge_island_the_plate_pint_fri",
@@ -126,29 +144,7 @@
     "/events/event_kitsap_silverdale_our_place_pub_sat",
     "/events/event_kitsap_silverdale_our_place_pub_wed",
     "/hosts/12scDWBbxVb6cYostveztDKMsji2",
-    "/hosts/12scdwbbxvb6cyostveztdkmsji2",
-    "/hosts/4c9kg08tu7cz5ofbdfnoqqo32ne3",
-    "/hosts/euxbvn2xiqhwmq3dxarhkoiycg03",
-    "/hosts/iaqmx8odg9dyhqhzoilqvxywnj22",
-    "/hosts/itx6ow2tgduf9q9e2adiitojz9m2",
-    "/hosts/lwcaqu8klmz3io2gr2mzyjjdzcl2",
-    "/hosts/m4qnzut2apbjiqglz8ee9qvfxus2",
-    "/hosts/ry9mwuhv2cdgc3aqn9bgirc9oca2",
-    "/hosts/t45k9ptzepyavpuaxcrdpb9szak2",
     "/performers/12scDWBbxVb6cYostveztDKMsji2",
-    "/sessions/room_2c2v",
-    "/sessions/room_7d3m",
-    "/sessions/room_7z55",
-    "/sessions/room_actm",
-    "/sessions/room_b828",
-    "/sessions/room_dydm",
-    "/sessions/room_k6nw",
-    "/sessions/room_qtpx",
-    "/sessions/room_v3gh",
-    "/sessions/room_v6wy",
-    "/sessions/room_wh12",
-    "/sessions/room_xn9b",
-    "/sessions/session_aahf_karaoke_kickoff_2026",
     "/venues/venue_kitsap_bainbridge_island_fletcher_bay_winery",
     "/venues/venue_kitsap_bainbridge_island_the_plate_pint",
     "/venues/venue_kitsap_belfair_casey_s_bar_grill",

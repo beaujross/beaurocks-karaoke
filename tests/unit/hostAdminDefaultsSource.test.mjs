@@ -50,8 +50,13 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /orderBy\('timestamp', 'desc'\),\s*limit\(200\)/,
+    /where\('roomCode', '==', roomCode\),\s*limit\(200\)/,
     'Host activity feed should stay bounded on the server instead of subscribing to the full room activity collection',
+  );
+  assert.match(
+    hostAppSource,
+    /\.sort\(\(a, b\) => toMs\(b\?\.timestamp\) - toMs\(a\?\.timestamp\)\)/,
+    'Host activity feed should still normalize newest-first ordering before rendering the bounded activity slice',
   );
   assert.match(
     hostAppSource,

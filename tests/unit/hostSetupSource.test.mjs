@@ -121,35 +121,20 @@ test('host panel presents readiness and one launch action before deeper setup', 
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
   const topChromeSource = readFileSync(topChromePath, 'utf8');
 
-  assert.match(
-    topChromeSource,
-    /roomReadinessSummary = ''/,
-    'Host top chrome should accept a compact room readiness summary',
-  );
-  assert.match(
-    topChromeSource,
-    /roomReadinessStatusLabel = 'Room'/,
-    'Host top chrome should expose a compact room readiness status label',
-  );
-  assert.match(
-    topChromeSource,
-    /Queue Controls/,
-    'Readiness handoff should still point hosts to queue controls for live tweaks',
-  );
   assert.doesNotMatch(
     hostAppSource,
     /<HostRoomReadinessPanel/,
     'Host app should stop rendering the old standalone room readiness strip above the queue',
   );
-  assert.match(
+  assert.doesNotMatch(
     topChromeSource,
     /label=\{roomReadinessStatusLabel\}/,
-    'Readiness status should live alongside the top chrome status lights',
+    'Host top chrome should not render a second readiness-status chip once setup moved out of the live surface',
   );
-  assert.match(
+  assert.doesNotMatch(
     topChromeSource,
-    /fa-solid fa-rocket/,
-    'Readiness status should use a dedicated launch/readiness indicator in top chrome',
+    /Queue Controls/,
+    'Host top chrome should not duplicate queue live controls as a top-level launch surface',
   );
   assert.match(
     topChromeSource,
@@ -169,7 +154,7 @@ test('host panel presents readiness and one launch action before deeper setup', 
   assert.match(
     hostAppSource,
     /const roomReadinessState = useMemo\(\(\) => \{/,
-    'Host app should derive a compact room readiness state for the chrome',
+    'Host app should still derive room readiness state for setup and admin handoff',
   );
   assert.match(
     hostAppSource,

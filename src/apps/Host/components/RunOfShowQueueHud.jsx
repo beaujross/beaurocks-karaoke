@@ -161,7 +161,7 @@ export default function RunOfShowQueueHud({
     onToggleAutomationPause,
     styles,
 }) {
-    const [laterOpen, setLaterOpen] = React.useState(true);
+    const [detailsOpen, setDetailsOpen] = React.useState(false);
     const [previewItemId, setPreviewItemId] = React.useState('');
     const normalizedDirector = React.useMemo(
         () => normalizeRunOfShowDirector(director || {}),
@@ -293,8 +293,12 @@ export default function RunOfShowQueueHud({
     const handlePreviewToggle = (itemId = '') => {
         const safeItemId = String(itemId || '').trim();
         if (!safeItemId) return;
+        setDetailsOpen(true);
         setPreviewItemId((current) => (current === safeItemId ? '' : safeItemId));
     };
+    const horizonSummary = horizonItems.length
+        ? horizonItems.map((item, index) => `${index === 0 ? 'Now' : index === 1 ? 'Next' : 'Then'}: ${item?.title || 'Open slot'}`).join('  |  ')
+        : 'Keep the next 3 moments ready.';
     const renderSlotCard = (item = null, fallbackLabel = '', fallbackSummary = '') => (
         <button
             type="button"
@@ -327,11 +331,10 @@ export default function RunOfShowQueueHud({
     );
 
     return (
-        <div className="mb-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-3 shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
+        <div className="mb-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-zinc-950 to-fuchsia-500/[0.08] px-3 py-2.5 shadow-[0_12px_32px_rgba(0,0,0,0.22)]">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                    <div className="text-[10px] uppercase tracking-[0.26em] text-cyan-200/80">Moment Plan</div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${hudToneClass}`}>
                             {hudState.title}
                         </span>
@@ -348,13 +351,13 @@ export default function RunOfShowQueueHud({
                             Next 3 set {filledHorizonCount}/3
                         </span>
                     </div>
-                    <div className="mt-2 text-sm text-zinc-300">{hudState.detail}</div>
+                    <div className="mt-1 truncate text-sm text-zinc-200">{horizonSummary}</div>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
                         <span>Plan {formatTotalDuration(actualTotalDurationSec)}</span>
                         <span>{hudItems.length} item{hudItems.length === 1 ? '' : 's'}</span>
+                        {issueHorizonCount > 0 ? <span>{issueHorizonCount} issue{issueHorizonCount === 1 ? '' : 's'}</span> : null}
                         {enabled ? <span>Live queue runs the room</span> : <span>Ready</span>}
                     </div>
-                    <div className="mt-2 text-xs text-zinc-400">Order can flex.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
                     {primaryAction?.label ? (
@@ -382,10 +385,10 @@ export default function RunOfShowQueueHud({
                     ) : null}
                     <button
                         type="button"
-                        onClick={() => setLaterOpen((value) => !value)}
+                        onClick={() => setDetailsOpen((value) => !value)}
                         className={`${styles?.btnStd} ${styles?.btnNeutral} px-3 py-1.5 text-[11px] normal-case tracking-[0.04em]`}
                     >
-                        {laterOpen ? 'Hide List' : 'Show List'}
+                        {detailsOpen ? 'Hide Details' : 'Show Details'}
                     </button>
                     {enabled && typeof onRewind === 'function' ? (
                         <button
@@ -424,25 +427,27 @@ export default function RunOfShowQueueHud({
                 </div>
             </div>
 
-            <div className="mt-3 grid gap-2 xl:grid-cols-3">
-                {renderSlotCard(
-                    nowItem,
-                    nowItem?.nowLabel || 'Now',
-                    enabled ? 'Nothing live yet' : 'Plan not started',
-                )}
-                {renderSlotCard(
-                    nextVisibleItem,
-                    nextVisibleItem?.nextLabel || 'Next',
-                    'Nothing set',
-                )}
-                {renderSlotCard(
-                    thirdVisibleItem,
-                    'Then',
-                    'Keep one more ready',
-                )}
-            </div>
+            {detailsOpen ? (
+                <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                    {renderSlotCard(
+                        nowItem,
+                        nowItem?.nowLabel || 'Now',
+                        enabled ? 'Nothing live yet' : 'Plan not started',
+                    )}
+                    {renderSlotCard(
+                        nextVisibleItem,
+                        nextVisibleItem?.nextLabel || 'Next',
+                        'Nothing set',
+                    )}
+                    {renderSlotCard(
+                        thirdVisibleItem,
+                        'Then',
+                        'Keep one more ready',
+                    )}
+                </div>
+            ) : null}
 
-            {previewItem ? (
+            {detailsOpen && previewItem ? (
                 <div className="mt-3 rounded-2xl border border-cyan-300/18 bg-black/25 px-3 py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -538,7 +543,7 @@ export default function RunOfShowQueueHud({
                 </div>
             ) : null}
 
-            {laterOpen && hudItems.length ? (
+            {detailsOpen && hudItems.length ? (
                 <div className="mt-3">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                         <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Full List</div>

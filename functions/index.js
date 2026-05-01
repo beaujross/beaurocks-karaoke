@@ -18281,6 +18281,7 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
   enforceAppCheckIfEnabled(request, "submit_audience_queue_song");
   const callerUid = requireAuth(request);
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const requestedTargetSingerUid = sanitizeQueueText(request.data?.targetSingerUid || "", "", 180);
   const clientRequestId = normalizeQueueRequestId(request.data?.clientRequestId || request.data?.requestId || "");
   const songTitle = sanitizeQueueText(request.data?.songTitle || request.data?.title || "", "", 180);
   const artist = sanitizeQueueText(request.data?.artist || "", "Unknown", 180);
@@ -18308,16 +18309,19 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
   const rootRef = getRootRef();
   const db = admin.firestore();
   const roomRef = rootRef.collection("rooms").doc(roomCode);
-  const roomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const callerRoomUserRef = getRoomUserRef({ rootRef, roomCode, uid: callerUid });
+  const targetSingerUid = requestedTargetSingerUid || callerUid;
+  const targetRoomUserRef = getRoomUserRef({ rootRef, roomCode, uid: targetSingerUid });
   const queueRef = rootRef.collection("karaoke_songs").doc(`queue_${roomCode}_${callerUid}_${clientRequestId}`);
   const queueQuery = rootRef.collection("karaoke_songs")
     .where("roomCode", "==", roomCode);
 
   const result = await db.runTransaction(async (tx) => {
-    const [existingSnap, roomSnap, roomUserSnap, queueSnap] = await Promise.all([
+    const [existingSnap, roomSnap, callerRoomUserSnap, targetRoomUserSnap, queueSnap] = await Promise.all([
       tx.get(queueRef),
       tx.get(roomRef),
-      tx.get(roomUserRef),
+      tx.get(callerRoomUserRef),
+      targetSingerUid === callerUid ? tx.get(callerRoomUserRef) : tx.get(targetRoomUserRef),
       tx.get(queueQuery),
     ]);
 
@@ -18337,27 +18341,39 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
     if (!roomSnap.exists) {
       throw new HttpsError("not-found", "Room code not found.");
     }
-    if (!roomUserSnap.exists) {
+    if (!callerRoomUserSnap.exists) {
       throw new HttpsError("permission-denied", "Join the room before sending a song request.");
     }
 
     const roomData = roomSnap.data() || {};
-    const roomUserData = roomUserSnap.data() || {};
-    const singerName = sanitizeQueueText(roomUserData.name || request.data?.singerName || "", "Guest", 100);
-    const singerAvatar = sanitizeQueueText(roomUserData.avatar || request.data?.emoji || "", "", 40);
+    const callerRoomUserData = callerRoomUserSnap.data() || {};
+    const queueingForAnotherSinger = targetSingerUid !== callerUid;
+    if (queueingForAnotherSinger) {
+      const callerRole = getRoomRunOfShowRole({ roomData, callerUid });
+      if (![RUN_OF_SHOW_OPERATOR_ROLES.coHost, RUN_OF_SHOW_OPERATOR_ROLES.host].includes(callerRole)) {
+        throw new HttpsError("permission-denied", "Only co-hosts can queue songs for another singer.");
+      }
+      if (!targetRoomUserSnap.exists) {
+        throw new HttpsError("not-found", "That singer is no longer in the room.");
+      }
+    }
+
+    const targetRoomUserData = targetRoomUserSnap.data() || callerRoomUserData;
+    const singerName = sanitizeQueueText(targetRoomUserData.name || request.data?.singerName || "", "Guest", 100);
+    const singerAvatar = sanitizeQueueText(targetRoomUserData.avatar || request.data?.emoji || "", "", 40);
     const queueSongs = queueSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }));
     const queuedCount = queueSongs.filter((entry) =>
-      songBelongsToQueueUser(entry, callerUid, singerName)
+      songBelongsToQueueUser(entry, targetSingerUid, singerName)
       && ["requested", "pending", "performing"].includes(String(entry.status || ""))
     ).length;
     const performedCount = queueSongs.filter((entry) =>
-      songBelongsToQueueUser(entry, callerUid, singerName)
+      songBelongsToQueueUser(entry, targetSingerUid, singerName)
       && String(entry.status || "") === "performed"
     ).length;
     const limitState = getQueueLimitState({
       queueSettings: roomData?.queueSettings || {},
       songs: queueSongs,
-      uid: callerUid,
+      uid: targetSingerUid,
       name: singerName,
     });
     if (limitState.hardBlocked) {
@@ -18403,7 +18419,7 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
       artist,
       albumArtUrl,
       singerName,
-      singerUid: callerUid,
+      singerUid: targetSingerUid,
       emoji: singerAvatar,
       status: queueState.status,
       timestamp: serverNow,
@@ -18445,7 +18461,7 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
     };
 
     tx.create(queueRef, docData);
-    tx.set(roomUserRef, { lastActiveAt: serverNow }, { merge: true });
+    tx.set(callerRoomUserRef, { lastActiveAt: serverNow }, { merge: true });
 
     return {
       ok: true,

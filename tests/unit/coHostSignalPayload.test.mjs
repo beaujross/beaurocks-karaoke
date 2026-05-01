@@ -38,7 +38,7 @@ test('co-host signal helpers build live performance context with elapsed time an
 });
 
 test('co-host signal payload attaches performance data when a song is live and falls back to room scope otherwise', () => {
-  const liveMeta = getCoHostSignalMeta('track_up');
+  const liveMeta = getCoHostSignalMeta('track_issue');
   const livePayload = buildCoHostSignalActivityPayload({
     meta: liveMeta,
     roomCode: 'AAHF',

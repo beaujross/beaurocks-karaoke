@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import HostRoomLaunchPadBrowser from './HostRoomLaunchPadBrowser';
 
 const ROOM_BROWSER_PIN_STORAGE_KEY = 'bross_host_room_browser_pins_v1';
@@ -198,6 +198,16 @@ const getRecommendedRoomAction = (roomItem = {}) => {
         detail: 'The room looks ready to run from the live host panel.',
         action: 'live'
     };
+};
+
+const findBucketForRoomCode = (roomCode = '', buckets = []) => {
+    const normalizedCode = String(roomCode || '').trim().toUpperCase();
+    if (!normalizedCode) return '';
+    const match = buckets.find((bucket) => (
+        Array.isArray(bucket?.rooms)
+        && bucket.rooms.some((roomItem) => String(roomItem?.code || '').trim().toUpperCase() === normalizedCode)
+    ));
+    return match?.id || '';
 };
 
 const SectionShell = ({ eyebrow, title, detail, children }) => (
@@ -540,9 +550,6 @@ const HostRoomLaunchPad = ({
     canPermanentlyDeleteRooms = false,
 }) => {
     const [browserNowMs, setBrowserNowMs] = useState(() => Date.now());
-    const [roomBrowserFilter, setRoomBrowserFilter] = useState('ready');
-    const [roomBrowserSearch, setRoomBrowserSearch] = useState('');
-    const [selectedRoomCode, setSelectedRoomCode] = useState('');
     const [pinnedRoomCodes, setPinnedRoomCodes] = useState(() => {
         if (typeof window === 'undefined') return [];
         try {
@@ -555,6 +562,31 @@ const HostRoomLaunchPad = ({
         }
     });
     const pinnedRoomCodeSet = new Set(pinnedRoomCodes);
+    const activeRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) <= 0);
+    const cleanupRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) > 0);
+    const archivedRooms = recentHostRooms.filter((roomItem) => roomItem.archived);
+    const pastRooms = [...cleanupRooms, ...archivedRooms];
+    const upcomingRooms = activeRooms.filter((roomItem) => Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000));
+    const tonightRooms = activeRooms.filter((roomItem) => !upcomingRooms.some((entry) => entry.code === roomItem.code));
+    const eventFocusRoom = [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom) || null;
+    const featuredRoom = eventFocusRoom
+        || [...recentHostRooms].find((roomItem) => pinnedRoomCodeSet.has(String(roomItem.code || '').trim().toUpperCase()))
+        || tonightRooms[0]
+        || upcomingRooms[0]
+        || cleanupRooms[0]
+        || archivedRooms[0]
+        || null;
+    const roomBrowserBuckets = [
+        { id: 'ready', label: 'Ready', detail: 'Rooms you can run now', rooms: tonightRooms },
+        { id: 'upcoming', label: 'Upcoming', detail: 'Scheduled ahead of time', rooms: upcomingRooms },
+        { id: 'past', label: 'Past', detail: 'Closed and archived rooms', rooms: pastRooms },
+        { id: 'all', label: 'All rooms', detail: 'Everything in your workspace', rooms: recentHostRooms }
+    ];
+    const defaultRoomBrowserFilter = findBucketForRoomCode(featuredRoom?.code, roomBrowserBuckets) || 'ready';
+    const [roomBrowserFilter, setRoomBrowserFilter] = useState(() => defaultRoomBrowserFilter);
+    const [roomBrowserSearch, setRoomBrowserSearch] = useState('');
+    const [selectedRoomCode, setSelectedRoomCode] = useState(() => String(featuredRoom?.code || '').trim().toUpperCase());
+    const landingFocusAppliedRef = useRef(false);
     React.useEffect(() => {
         if (typeof window === 'undefined') return;
         try {
@@ -569,6 +601,14 @@ const HostRoomLaunchPad = ({
         }, 60000);
         return () => window.clearInterval(intervalId);
     }, []);
+    useEffect(() => {
+        const featuredRoomCode = String(featuredRoom?.code || '').trim().toUpperCase();
+        const targetBucketId = findBucketForRoomCode(featuredRoomCode, roomBrowserBuckets);
+        if (!featuredRoomCode || !targetBucketId || landingFocusAppliedRef.current) return;
+        landingFocusAppliedRef.current = true;
+        setRoomBrowserFilter(targetBucketId);
+        setSelectedRoomCode((prev) => String(prev || '').trim().toUpperCase() || featuredRoomCode);
+    }, [featuredRoom?.code, roomBrowserBuckets]);
     const togglePinnedRoom = (roomCode = '') => {
         const normalizedCode = String(roomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
@@ -578,20 +618,6 @@ const HostRoomLaunchPad = ({
                 : [normalizedCode, ...prev]
         ));
     };
-    const activeRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) <= 0);
-    const cleanupRooms = recentHostRooms.filter((roomItem) => !roomItem.archived && Number(roomItem.closedAtMs || 0) > 0);
-    const archivedRooms = recentHostRooms.filter((roomItem) => roomItem.archived);
-    const pastRooms = [...cleanupRooms, ...archivedRooms];
-    const upcomingRooms = activeRooms.filter((roomItem) => Number(roomItem.roomStartsAtMs || roomItem.discoverStartsAtMs || 0) > browserNowMs + (90 * 60 * 1000));
-    const tonightRooms = activeRooms.filter((roomItem) => !upcomingRooms.some((entry) => entry.code === roomItem.code));
-    const eventFocusRoom = [...tonightRooms, ...upcomingRooms, ...cleanupRooms, ...archivedRooms].find(isAahfRoom) || null;
-    const featuredRoom = [...recentHostRooms].find((roomItem) => pinnedRoomCodeSet.has(String(roomItem.code || '').trim().toUpperCase()))
-        || eventFocusRoom
-        || tonightRooms[0]
-        || upcomingRooms[0]
-        || cleanupRooms[0]
-        || archivedRooms[0]
-        || null;
     const launchDisabled = creatingRoom || !canStartLauncherRoom;
     const selectedPresetMeta = PRESET_UI_META[resolvedLaunchPresetId]
         || PRESET_UI_META[selectedLaunchPreset?.basePresetId]
@@ -602,16 +628,16 @@ const HostRoomLaunchPad = ({
         { label: 'Upcoming', value: upcomingRooms.length },
         { label: 'Past', value: pastRooms.length }
     ];
-    const roomBrowserBuckets = [
-        { id: 'ready', label: 'Ready', detail: 'Rooms you can run now', rooms: tonightRooms },
-        { id: 'upcoming', label: 'Upcoming', detail: 'Scheduled ahead of time', rooms: upcomingRooms },
-        { id: 'past', label: 'Past', detail: 'Closed and archived rooms', rooms: pastRooms },
-        { id: 'all', label: 'All rooms', detail: 'Everything in your workspace', rooms: recentHostRooms }
-    ];
     const activeRoomBucket = roomBrowserBuckets.find((bucket) => bucket.id === roomBrowserFilter) || roomBrowserBuckets[0];
     const normalizedRoomBrowserSearch = normalizeLaunchSearchToken(roomBrowserSearch);
+    const featuredRoomCode = String(featuredRoom?.code || '').trim().toUpperCase();
     const roomBrowserResults = [...(activeRoomBucket?.rooms || [])]
         .sort((left, right) => {
+            const leftCode = String(left.code || '').trim().toUpperCase();
+            const rightCode = String(right.code || '').trim().toUpperCase();
+            const leftFeatured = !!featuredRoomCode && leftCode === featuredRoomCode;
+            const rightFeatured = !!featuredRoomCode && rightCode === featuredRoomCode;
+            if (leftFeatured !== rightFeatured) return Number(rightFeatured) - Number(leftFeatured);
             const leftPinned = pinnedRoomCodeSet.has(String(left.code || '').trim().toUpperCase());
             const rightPinned = pinnedRoomCodeSet.has(String(right.code || '').trim().toUpperCase());
             if (leftPinned !== rightPinned) return Number(rightPinned) - Number(leftPinned);

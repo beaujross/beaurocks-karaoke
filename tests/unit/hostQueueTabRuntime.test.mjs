@@ -218,9 +218,9 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
-  assert.match(markup, /TV Moments/);
+  assert.match(markup, /Media Library/);
   assert.match(markup, /data-feature-id="open-tv-library"/);
-  assert.match(markup, /Open TV Library/);
+  assert.match(markup, /Open Media Library/);
 });
 
 test('HostQueueTab still renders the runtime shell when its UI is hidden', async () => {
@@ -234,8 +234,8 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
-  assert.match(markup, /TV Moments/);
-  assert.match(markup, /Open TV Library/);
+  assert.match(markup, /Media Library/);
+  assert.match(markup, /Open Media Library/);
 });
 
 test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', async () => {
@@ -294,12 +294,25 @@ test('HostQueueTab renders one unified desktop content rail with queue add inbox
   assert.match(markup, />Inbox</);
   assert.match(markup, /data-feature-id="queue-surface-tab-show-desktop"/);
   assert.match(markup, /Planner/);
-  assert.match(markup, /Moment Plan/);
-  assert.match(markup, /Next 3/);
+  assert.doesNotMatch(markup, /Moment Plan/);
 });
 
 test('HostInboxPanel renders a consolidated inbox for co-host notes moderation and chat', async () => {
   const markup = await renderInboxMarkup({
+    systemInboxItems: [
+      {
+        id: 'track-check-1',
+        type: 'track_check',
+        source: 'System',
+        title: 'Dont Stop Believin',
+        body: 'Deferred from stage. Review when you have a beat and decide whether to use this backing again.',
+        context: 'Journey',
+        ageLabel: 'Later',
+        onApprove: noop,
+        onReject: noop,
+        onDismiss: noop,
+      },
+    ],
     coHostSignals: [
       {
         id: 'track_up',
@@ -353,6 +366,8 @@ test('HostInboxPanel renders a consolidated inbox for co-host notes moderation a
   assert.match(markup, /Host Inbox/);
   assert.match(markup, /Needs Host/);
   assert.match(markup, /Everything Else/);
+  assert.match(markup, /Dont Stop Believin/);
+  assert.match(markup, /Journey/);
   assert.match(markup, /Track needs a bump/);
   assert.match(markup, /Guest selfie/);
   assert.match(markup, /Taylor/);

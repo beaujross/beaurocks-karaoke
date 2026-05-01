@@ -325,6 +325,40 @@ const getTimestampMs = (value) => {
   return 0;
 };
 
+const getTrackCheckIdentity = (value = {}) => ({
+  performanceKey: String(value?.performanceKey || '').trim(),
+  videoId: String(value?.videoId || '').trim(),
+});
+
+const trackChecksMatch = (left = null, right = null) => {
+  if (!left || !right) return false;
+  const leftIdentity = getTrackCheckIdentity(left);
+  const rightIdentity = getTrackCheckIdentity(right);
+  if (leftIdentity.performanceKey && rightIdentity.performanceKey) {
+    return leftIdentity.performanceKey === rightIdentity.performanceKey;
+  }
+  return !!leftIdentity.videoId && leftIdentity.videoId === rightIdentity.videoId;
+};
+
+const buildTrackCheckPromptFromPerformance = (performance = null) => {
+  const mediaUrl = String(performance?.mediaUrl || '').trim();
+  const videoId = parseYouTubeVideoId(mediaUrl);
+  const timestampMs = getTimestampMs(performance?.timestamp);
+  if (!videoId || !timestampMs) return null;
+  return {
+    performanceKey: `${videoId}:${timestampMs}`,
+    videoId,
+    timestamp: timestampMs,
+    songTitle: String(performance?.songTitle || 'Recent performance').trim() || 'Recent performance',
+    artist: String(performance?.artist || 'YouTube backing').trim() || 'YouTube backing',
+    albumArtUrl: String(performance?.albumArtUrl || '').trim(),
+    songLike: {
+      ...(performance || {}),
+      mediaUrl,
+    },
+  };
+};
+
 const summarizePopTriviaVotes = (entries = []) => {
   const participantKeys = new Set();
   const answerKeys = new Set();
@@ -355,7 +389,8 @@ const isDirectChatMessage = (message = {}) => (
 const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSceneLibraryModalChange, crowdPulse = null, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const MAX_DEFERRED_TRACK_CHECKS = 6;
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -427,6 +462,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [scenePresetTitle, setScenePresetTitle] = useState('');
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
     const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
+    const [mediaLibraryTab, setMediaLibraryTab] = useState('scenes');
     const [sceneLibraryView, setSceneLibraryView] = useState('grid');
     const [scenePresetDrafts, setScenePresetDrafts] = useState({});
     const [scenePresetSavingId, setScenePresetSavingId] = useState('');
@@ -488,6 +524,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [backingDecisionBusyKey, setBackingDecisionBusyKey] = useState('');
     const [postPerformanceBackingPrompt, setPostPerformanceBackingPrompt] = useState(null);
     const [postPerformanceBackingPromptBusy, setPostPerformanceBackingPromptBusy] = useState(false);
+    const [deferredTrackChecks, setDeferredTrackChecks] = useState([]);
+    const [dismissedTrackCheckKeys, setDismissedTrackCheckKeys] = useState([]);
     const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
@@ -498,6 +536,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             Array.isArray(moderationQueueItems) ? moderationQueueItems.length : 0,
             Number(moderationCounts?.totalPending || 0),
         )
+        + (Array.isArray(deferredTrackChecks) ? deferredTrackChecks.length : 0)
         + Math.max(0, Number(dmUnread || 0))
     );
     const inboxFeedCount = Math.max(0, Number(chatUnread || 0));
@@ -507,9 +546,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         .slice(0, 3)
         .map((preset) => String(preset?.title || '').trim())
         .filter(Boolean);
+    const hasSceneLibrarySeedPack = !!sceneLibrarySeedPack?.label && Number(sceneLibrarySeedPack?.assetCount || 0) > 0;
+    const mediaLibraryTabs = [
+        { id: 'scenes', label: 'Scenes', helper: `${scenePresetCount} saved` },
+        { id: 'sfx', label: 'SFX', helper: 'Soundboard uploads' },
+        { id: 'bg', label: 'BG Music', helper: 'Walk-in + reset beds' },
+    ];
     const sceneLibraryGridClass = sceneLibraryView === 'list'
         ? 'grid gap-3'
-        : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]';
+        : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]';
     const setScenePresetDraftField = useCallback((presetId, field, value) => {
         setScenePresetDrafts((prev) => ({
             ...prev,
@@ -1087,7 +1132,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     });
     const isAudioUrl = useCallback((url) => /\.(mp3|m4a|wav|ogg|aac|flac)$/i.test(url || ''), []);
     const {
-        parseYouTubeId,
+        parseYouTubeId: _parseYouTubeId,
         resolveDurationForUrl,
         searchYouTube,
         openYtSearch,
@@ -1411,6 +1456,54 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [roomCode, trustedCatalog]);
     persistTrustedCatalogChoiceRef.current = persistTrustedCatalogChoice;
 
+    const removeDeferredTrackCheck = useCallback((trackCheck = null) => {
+        const resolvedTrackCheck = trackCheck?.performanceKey
+            ? trackCheck
+            : buildTrackCheckPromptFromPerformance(trackCheck);
+        if (!resolvedTrackCheck) return;
+        setDeferredTrackChecks((currentItems) => (Array.isArray(currentItems) ? currentItems : []).filter((item) => !trackChecksMatch(item, resolvedTrackCheck)));
+    }, []);
+    const dismissTrackCheck = useCallback((trackCheck = null) => {
+        const resolvedTrackCheck = trackCheck?.performanceKey
+            ? trackCheck
+            : buildTrackCheckPromptFromPerformance(trackCheck);
+        if (resolvedTrackCheck?.performanceKey) {
+            setDismissedTrackCheckKeys((currentKeys) => [
+                resolvedTrackCheck.performanceKey,
+                ...(Array.isArray(currentKeys) ? currentKeys : []).filter((key) => key !== resolvedTrackCheck.performanceKey),
+            ].slice(0, MAX_DEFERRED_TRACK_CHECKS * 2));
+        }
+        removeDeferredTrackCheck(resolvedTrackCheck);
+        setPostPerformanceBackingPrompt((currentPrompt) => (
+            trackChecksMatch(currentPrompt, resolvedTrackCheck) ? null : currentPrompt
+        ));
+        setPostPerformanceBackingPromptBusy(false);
+    }, [removeDeferredTrackCheck]);
+    const focusInboxWorkspace = useCallback(() => {
+        setDesktopQueueSurfaceTab('inbox');
+        queueSurface.activateCompactTab('inbox');
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            const node = document.querySelector('[data-feature-id="panel-inbox"]');
+            node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    }, [queueSurface]);
+    const deferTrackCheckToInbox = useCallback((trackCheck = null, { focusInbox = false } = {}) => {
+        const resolvedTrackCheck = trackCheck?.performanceKey
+            ? trackCheck
+            : buildTrackCheckPromptFromPerformance(trackCheck);
+        if (!resolvedTrackCheck) return;
+        setDeferredTrackChecks((currentItems) => [
+            resolvedTrackCheck,
+            ...(Array.isArray(currentItems) ? currentItems : []).filter((item) => !trackChecksMatch(item, resolvedTrackCheck)),
+        ].slice(0, MAX_DEFERRED_TRACK_CHECKS));
+        setPostPerformanceBackingPrompt((currentPrompt) => (
+            trackChecksMatch(currentPrompt, resolvedTrackCheck) ? null : currentPrompt
+        ));
+        setPostPerformanceBackingPromptBusy(false);
+        if (focusInbox) focusInboxWorkspace();
+    }, [focusInboxWorkspace]);
+
     const rateBackingPreference = useCallback(async (songLike, rating = 'up') => {
         const result = await saveHostBackingPreferenceForRoom({
             roomCode,
@@ -1428,29 +1521,35 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             toast('Backing feedback is currently only saved for YouTube tracks.');
             return;
         }
+        dismissTrackCheck(songLike);
         setPostPerformanceBackingPrompt((currentPrompt) => (
             currentPrompt && currentPrompt.videoId === result.videoId ? null : currentPrompt
         ));
         toast(result.preference === 'down' ? 'Saved: skip this track next time.' : 'Saved: use this track again.');
-    }, [persistTrustedCatalogChoice, queueTabUpsertYtIndexEntries, roomCode, toast, trustedCatalog, ytIndex]);
+    }, [dismissTrackCheck, persistTrustedCatalogChoice, queueTabUpsertYtIndexEntries, roomCode, toast, trustedCatalog, ytIndex]);
 
-    const handlePostPerformanceBackingPromptAction = useCallback(async (action = 'skip') => {
+    const handlePostPerformanceBackingPromptAction = useCallback(async (trackCheck = null, action = 'skip') => {
         const normalizedAction = String(action || 'skip').trim().toLowerCase();
-        const activePrompt = postPerformanceBackingPrompt;
+        const activePrompt = trackCheck?.performanceKey
+            ? trackCheck
+            : postPerformanceBackingPrompt;
         if (!activePrompt) return;
+        if (normalizedAction === 'inbox' || normalizedAction === 'later' || normalizedAction === 'defer') {
+            deferTrackCheckToInbox(activePrompt, { focusInbox: true });
+            return;
+        }
         if (normalizedAction === 'skip') {
-            setPostPerformanceBackingPrompt(null);
-            setPostPerformanceBackingPromptBusy(false);
+            dismissTrackCheck(activePrompt);
             return;
         }
         setPostPerformanceBackingPromptBusy(true);
         try {
             await rateBackingPreference(activePrompt.songLike, normalizedAction === 'avoid' ? 'down' : 'up');
-            setPostPerformanceBackingPrompt(null);
+            dismissTrackCheck(activePrompt);
         } finally {
             setPostPerformanceBackingPromptBusy(false);
         }
-    }, [postPerformanceBackingPrompt, rateBackingPreference]);
+    }, [deferTrackCheckToInbox, dismissTrackCheck, postPerformanceBackingPrompt, rateBackingPreference]);
 
     const resolveAudienceSelectedBacking = useCallback(async (songLike, action = 'approve') => {
         const safeAction = String(action || 'approve').trim().toLowerCase();
@@ -1483,31 +1582,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     useEffect(() => {
         setPostPerformanceBackingPrompt(null);
         setPostPerformanceBackingPromptBusy(false);
+        setDeferredTrackChecks([]);
+        setDismissedTrackCheckKeys([]);
         postPerformanceBackingPromptKeyRef.current = '';
     }, [roomCode]);
 
     useEffect(() => {
-        const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
-        const lastPerformanceUrl = String(room?.lastPerformance?.mediaUrl || '').trim();
-        const videoId = parseYouTubeId(lastPerformanceUrl);
-        if (!lastPerformanceTs || !videoId) return;
-        const performanceKey = `${videoId}:${lastPerformanceTs}`;
-        if (postPerformanceBackingPromptKeyRef.current === performanceKey) return;
-        postPerformanceBackingPromptKeyRef.current = performanceKey;
+        const nextPrompt = buildTrackCheckPromptFromPerformance(room?.lastPerformance || null);
+        if (!nextPrompt?.performanceKey) return;
+        if ((Array.isArray(dismissedTrackCheckKeys) ? dismissedTrackCheckKeys : []).includes(nextPrompt.performanceKey)) return;
+        if ((Array.isArray(deferredTrackChecks) ? deferredTrackChecks : []).some((item) => trackChecksMatch(item, nextPrompt))) return;
+        if (postPerformanceBackingPromptKeyRef.current === nextPrompt.performanceKey) return;
+        postPerformanceBackingPromptKeyRef.current = nextPrompt.performanceKey;
         setPostPerformanceBackingPromptBusy(false);
-        setPostPerformanceBackingPrompt({
-            performanceKey,
-            videoId,
-            songTitle: room?.lastPerformance?.songTitle || 'Recent performance',
-            artist: room?.lastPerformance?.artist || 'YouTube backing',
-            albumArtUrl: room?.lastPerformance?.albumArtUrl || '',
-            songLike: {
-                ...(room?.lastPerformance || {}),
-                mediaUrl: lastPerformanceUrl,
-            }
-        });
+        setPostPerformanceBackingPrompt(nextPrompt);
     }, [
-        parseYouTubeId,
+        deferredTrackChecks,
+        dismissedTrackCheckKeys,
         room?.lastPerformance,
         room?.lastPerformance?.albumArtUrl,
         room?.lastPerformance?.artist,
@@ -1520,14 +1611,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const activePerformanceKey = String(postPerformanceBackingPrompt?.performanceKey || '').trim();
         if (!activePerformanceKey) return () => {};
         const timer = setTimeout(() => {
-            setPostPerformanceBackingPrompt((currentPrompt) => (
-                String(currentPrompt?.performanceKey || '').trim() === activePerformanceKey
-                    ? null
-                    : currentPrompt
-            ));
+            if (String(postPerformanceBackingPrompt?.performanceKey || '').trim() !== activePerformanceKey) return;
+            deferTrackCheckToInbox(postPerformanceBackingPrompt);
         }, POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS);
         return () => clearTimeout(timer);
-    }, [postPerformanceBackingPrompt, postPerformanceBackingPromptBusy]);
+    }, [deferTrackCheckToInbox, postPerformanceBackingPrompt, postPerformanceBackingPromptBusy]);
 
     useEffect(() => {
         if (!roomCode || typeof onUpsertYtIndexEntries !== 'function') return;
@@ -2744,26 +2832,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         0,
         Number(runOfShowPreflightReport?.criticalCount || 0) + Number(runOfShowPreflightReport?.riskyCount || 0),
     );
-    const plannerHorizonItems = useMemo(() => {
-        const items = Array.isArray(normalizedDecisionDirector?.items) ? normalizedDecisionDirector.items : [];
-        const activeItems = items.filter((item) => {
-            const status = String(item?.status || '').trim().toLowerCase();
-            return status !== 'complete' && status !== 'skipped';
-        });
-        return activeItems.slice(0, 3);
-    }, [normalizedDecisionDirector?.items]);
-    const plannerHorizonCount = plannerHorizonItems.length;
-    const plannerLeadTitle = String(
-        runOfShowLiveItem?.title
-        || runOfShowStagedItem?.title
-        || plannerHorizonItems[0]?.title
-        || ''
-    ).trim();
-    const plannerFollowTitle = String(
-        runOfShowNextItem?.title
-        || plannerHorizonItems.find((item) => item?.id && item.id !== runOfShowLiveItem?.id && item.id !== runOfShowStagedItem?.id)?.title
-        || ''
-    ).trim();
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
     const addToQueueWorkspaceActive = queueSurface.isCompactQueueSurface
         ? queueSurface.activeCompactTab === 'add'
@@ -2786,12 +2854,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             });
         };
         const focusInbox = () => {
-            setDesktopQueueSurfaceTab('inbox');
-            queueSurface.activateCompactTab('inbox');
-            window.requestAnimationFrame(() => {
-                const node = document.querySelector('[data-feature-id="panel-inbox"]');
-                node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
+            focusInboxWorkspace();
         };
         window.addEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
         window.addEventListener('beaurocks:focus-host-inbox', focusInbox);
@@ -2799,7 +2862,30 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             window.removeEventListener('beaurocks:focus-queue-live-controls', focusQueueControls);
             window.removeEventListener('beaurocks:focus-host-inbox', focusInbox);
         };
-    }, [queueSurface]);
+    }, [focusInboxWorkspace, queueSurface]);
+    const deferredTrackCheckInboxItems = useMemo(() => (
+        (Array.isArray(deferredTrackChecks) ? deferredTrackChecks : []).map((trackCheck) => ({
+            id: `track-check-${trackCheck.performanceKey}`,
+            type: 'track_check',
+            source: 'System',
+            title: trackCheck.songTitle || 'Track check',
+            body: 'Deferred from stage. Review when you have a beat and decide whether to use this backing again.',
+            context: trackCheck.artist || 'YouTube backing',
+            ageLabel: 'Later',
+            trackCheck,
+            busy: postPerformanceBackingPromptBusy,
+            onApprove: () => void handlePostPerformanceBackingPromptAction(trackCheck, 'prefer'),
+            onReject: () => void handlePostPerformanceBackingPromptAction(trackCheck, 'avoid'),
+            onDismiss: () => void handlePostPerformanceBackingPromptAction(trackCheck, 'skip'),
+        }))
+    ), [deferredTrackChecks, handlePostPerformanceBackingPromptAction, postPerformanceBackingPromptBusy]);
+    const visibleLastTrackCheck = useMemo(() => {
+        const nextTrackCheck = buildTrackCheckPromptFromPerformance(room?.lastPerformance || null);
+        if (!nextTrackCheck?.performanceKey) return null;
+        if ((Array.isArray(dismissedTrackCheckKeys) ? dismissedTrackCheckKeys : []).includes(nextTrackCheck.performanceKey)) return null;
+        if ((Array.isArray(deferredTrackChecks) ? deferredTrackChecks : []).some((item) => trackChecksMatch(item, nextTrackCheck))) return null;
+        return nextTrackCheck;
+    }, [deferredTrackChecks, dismissedTrackCheckKeys, room?.lastPerformance]);
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
     const getQueueWorkspaceTabButtonClass = (active = false) => (
         `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
@@ -2848,6 +2934,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 moderationActions={moderationActions}
                 moderationBusyAction={moderationBusyAction}
                 moderationNeedsAttention={moderationNeedsAttention}
+                systemInboxItems={deferredTrackCheckInboxItems}
                 chatUnread={chatUnread}
                 dmUnread={dmUnread}
                 users={users}
@@ -2951,7 +3038,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
 
     const runOfShowQueueHudSection = hasRunOfShowQueueHud ? (
-        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5' : 'p-3'} custom-scrollbar`}>
+        <div className={`${compactViewport ? 'p-2.5' : 'p-3'}`}>
             <RunOfShowQueueHud
                 enabled={runOfShowEnabled}
                 director={runOfShowDirector}
@@ -2975,41 +3062,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             />
         </div>
     ) : null;
-    const plannerStatusStrip = hasRunOfShowQueueHud && desktopQueueSurfaceTab !== 'show' ? (
-        <div className="mx-3 mt-3 rounded-2xl border border-cyan-300/18 bg-gradient-to-r from-cyan-500/[0.08] via-black/20 to-fuchsia-500/[0.08] px-3 py-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">Moment Plan</span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${
-                            plannerHorizonCount >= 3 && runOfShowNeedsAttentionCount === 0
-                                ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100'
-                                : 'border-amber-300/25 bg-amber-500/10 text-amber-100'
-                        }`}>
-                            Next 3 {plannerHorizonCount}/3
-                        </span>
-                        {runOfShowNeedsAttentionCount > 0 ? (
-                            <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-amber-100">
-                                {runOfShowNeedsAttentionCount} issue{runOfShowNeedsAttentionCount === 1 ? '' : 's'}
-                            </span>
-                        ) : null}
-                    </div>
-                    <div className="mt-1 truncate text-xs text-zinc-300">
-                        {plannerLeadTitle
-                            ? `Now: ${plannerLeadTitle}${plannerFollowTitle ? ` | Next: ${plannerFollowTitle}` : ''}`
-                            : 'Planner loaded.'}
-                    </div>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setDesktopQueueSurfaceTab('show')}
-                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[11px]`}
-                >
-                    Planner
-                </button>
-            </div>
-        </div>
-    ) : null;
     const activeMediaScene = room?.announcement?.active && String(room?.announcement?.type || '').trim().toLowerCase() === 'media_scene'
         ? room.announcement
         : null;
@@ -3018,8 +3070,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             <div className="border-b border-white/10 px-4 py-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">TV Moments Library</div>
-                        <div className="mt-1 max-w-2xl text-sm text-zinc-300">Save TV scenes once, then run or queue them.</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Media Library</div>
+                        <div className="mt-1 max-w-2xl text-sm text-zinc-300">One reusable host-media home for Public TV scenes, future soundboard drops, and background beds.</div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
@@ -3027,12 +3079,39 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         {activeMediaScene ? (
                             <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">Live on TV</span>
                         ) : null}
+                        {hasSceneLibrarySeedPack ? (
+                            <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">{sceneLibrarySeedPack.assetCount} in {sceneLibrarySeedPack.label}</span>
+                        ) : null}
                     </div>
                 </div>
+                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                    {mediaLibraryTabs.map((tabItem) => {
+                        const active = mediaLibraryTab === tabItem.id;
+                        return (
+                            <button
+                                key={tabItem.id}
+                                type="button"
+                                onClick={() => setMediaLibraryTab(tabItem.id)}
+                                className={`rounded-2xl border px-3 py-3 text-left transition ${active ? 'border-cyan-300/35 bg-cyan-500/12 shadow-[0_12px_30px_rgba(34,211,238,0.12)]' : 'border-white/10 bg-black/20 hover:border-cyan-300/20'}`}
+                            >
+                                <div className={`text-[10px] font-black uppercase tracking-[0.18em] ${active ? 'text-cyan-100' : 'text-zinc-300'}`}>{tabItem.label}</div>
+                                <div className="mt-1 text-xs text-zinc-500">{tabItem.helper}</div>
+                            </button>
+                        );
+                    })}
+                </div>
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3 text-xs text-zinc-300">
+                    {mediaLibraryTab === 'scenes'
+                        ? 'Scenes are live now. Use this lane for flyers, sponsor cards, loops, donation beats, and Public TV takeovers.'
+                        : mediaLibraryTab === 'sfx'
+                            ? 'SFX lane is where upload, preview, assign-to-pad, trim, and gain management should live for custom soundboard drops.'
+                            : 'BG Music lane is where upload, preview, tag, set defaults, and choose what Auto BG can pull from should live.'}
+                </div>
+                {mediaLibraryTab === 'scenes' ? (
                 <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
                     <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/6 p-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Batch Upload</div>
-                        <div className="mt-1 text-xs text-zinc-400">Drop in one file or a whole set of sponsor cards, donation prompts, or next-up slides at once.</div>
+                        <div className="mt-1 text-xs text-zinc-400">Drop in one file or a whole set of sponsor cards, donation prompts, videos, or next-up slides at once.</div>
                         <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto]">
                             <input value={scenePresetTitle} onChange={(event) => setScenePresetTitle(event.target.value)} className={STYLES.input} placeholder="Optional custom title for a single upload" />
                             <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px] ${scenePresetUploading ? 'pointer-events-none opacity-60' : ''}`}>
@@ -3050,12 +3129,28 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 {scenePresetUploading ? `Uploading ${Math.round(scenePresetUploadProgress || 0)}%` : 'Upload Scenes'}
                             </label>
                         </div>
+                        {hasSceneLibrarySeedPack ? (
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-fuchsia-300/16 bg-fuchsia-500/8 px-3 py-3">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100">{sceneLibrarySeedPack.label}</div>
+                                    <div className="mt-1 text-xs text-zinc-300">The earlier AAHF flyer and video pack can stay synced here automatically so the host does not need to rebuild that library by hand.</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={scenePresetSeedPending}
+                                    onClick={() => onSeedScenePresetLibrary?.({ silent: false })}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${scenePresetSeedPending ? 'cursor-not-allowed opacity-60' : ''}`}
+                                >
+                                    {scenePresetSeedPending ? 'Syncing Pack...' : `Sync ${sceneLibrarySeedPack.label}`}
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-200">Defaults + View</div>
-                                <div className="mt-1 text-xs text-zinc-500">Batch default. Fine-tune each scene after upload.</div>
+                                <div className="mt-1 text-xs text-zinc-500">Batch default. Use pads for quick-fire scene launching or switch to list for editing.</div>
                             </div>
                             <div className="inline-flex rounded-full border border-white/10 bg-black/25 p-1 text-[10px] font-black uppercase tracking-[0.14em]">
                                 <button
@@ -3063,7 +3158,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     onClick={() => setSceneLibraryView('grid')}
                                     className={`rounded-full px-2.5 py-1 transition ${sceneLibraryView === 'grid' ? 'bg-cyan-500/18 text-cyan-100' : 'text-zinc-400'}`}
                                 >
-                                    Grid
+                                    Pads
                                 </button>
                                 <button
                                     type="button"
@@ -3080,6 +3175,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </div>
                     </div>
                 </div>
+                ) : null}
                 {activeMediaScene ? (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
                         <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
@@ -3090,6 +3186,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 ) : null}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
+                {mediaLibraryTab === 'scenes' ? (
                 <div className={sceneLibraryGridClass}>
                     {(scenePresets || []).map((preset) => {
                         const draft = scenePresetDrafts[preset.id] || {
@@ -3097,17 +3194,36 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             durationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
                         };
                         const saveDisabled = scenePresetSavingId === preset.id;
+                        const isGridPad = sceneLibraryView === 'grid';
+                        const isVideoScene = String(preset?.mediaType || '').trim().toLowerCase() === 'video';
+                        const isLiveScene = activeMediaScene && (
+                            String(activeMediaScene?.id || '').trim() === String(preset?.id || '').trim()
+                            || String(activeMediaScene?.mediaUrl || '').trim() === String(preset?.mediaUrl || '').trim()
+                        );
                         return (
-                            <div key={preset.id || preset.mediaUrl} className={`rounded-2xl border border-white/10 bg-zinc-950/55 p-3 ${sceneLibraryView === 'list' ? 'lg:flex lg:items-start lg:gap-4' : ''}`}>
-                                <div className={`flex gap-3 ${sceneLibraryView === 'list' ? 'lg:min-w-0 lg:flex-1' : ''}`}>
-                                    <div className={`shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${sceneLibraryView === 'list' ? 'h-24 w-36' : 'h-20 w-28'}`}>
-                                        {preset.mediaType === 'video'
+                            <div
+                                key={preset.id || preset.mediaUrl}
+                                className={`rounded-2xl border bg-zinc-950/55 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] ${isGridPad ? 'border-cyan-300/18 bg-[linear-gradient(180deg,rgba(14,20,31,0.96),rgba(8,8,14,0.98))]' : 'border-white/10'} ${sceneLibraryView === 'list' ? 'lg:flex lg:items-start lg:gap-4' : ''}`}
+                            >
+                                <div className={`${isGridPad ? '' : `flex gap-3 ${sceneLibraryView === 'list' ? 'lg:min-w-0 lg:flex-1' : ''}`}`}>
+                                    <div className={`shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35 ${sceneLibraryView === 'list' ? 'h-24 w-36' : 'aspect-[4/3] w-full'}`}>
+                                        {isVideoScene
                                             ? <video src={preset.mediaUrl} className="h-full w-full object-cover" muted playsInline />
                                             : <img src={preset.mediaUrl} alt="" className="h-full w-full object-cover" />}
                                     </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
-                                            {preset.mediaType === 'video' ? 'Video' : 'Image'} scene
+                                    <div className={`min-w-0 flex-1 ${isGridPad ? 'mt-3' : ''}`}>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] ${isVideoScene ? 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100' : 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'}`}>
+                                                {isVideoScene ? 'Video scene' : 'Still scene'}
+                                            </span>
+                                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                {Math.max(5, Math.min(600, Number(draft.durationSec || 20) || 20))}s
+                                            </span>
+                                            {isLiveScene ? (
+                                                <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                                    Live
+                                                </span>
+                                            ) : null}
                                         </div>
                                         <input
                                             value={draft.title}
@@ -3115,7 +3231,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             className={`${STYLES.input} mt-2 h-10 px-3 text-sm font-black`}
                                             placeholder="Scene title"
                                         />
-                                        <div className="mt-2 flex items-center gap-2">
+                                        <div className={`mt-2 flex items-center gap-2 ${isGridPad ? 'justify-between' : ''}`}>
                                             <input
                                                 type="number"
                                                 min="5"
@@ -3132,17 +3248,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         </div>
                                     </div>
                                 </div>
-                                <div className={`mt-3 flex flex-wrap gap-2 ${sceneLibraryView === 'list' ? 'lg:mt-0 lg:w-[17rem] lg:shrink-0 lg:justify-end' : ''}`}>
-                                    <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}>
-                                        Run Now
+                                <div className={`mt-3 ${isGridPad ? 'grid grid-cols-2 gap-2' : `flex flex-wrap gap-2 ${sceneLibraryView === 'list' ? 'lg:mt-0 lg:w-[17rem] lg:shrink-0 lg:justify-end' : ''}`}`}>
+                                    <button type="button" onClick={() => onLaunchScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px]`}>
+                                        Run Live
                                     </button>
-                                    <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
-                                        Queue Next Moment
+                                    <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-2 text-[10px]`}>
+                                        Queue Next Scene
                                     </button>
-                                    <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
+                                    <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px]`}>
                                         Use In Run Of Show
                                     </button>
-                                    <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                                    <button type="button" onClick={() => onDeleteScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
                                         Delete
                                     </button>
                                 </div>
@@ -3156,12 +3272,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
                                         <i className="fa-solid fa-photo-film text-lg"></i>
                                     </div>
-                                    <div className="mt-4 text-xl font-black text-white">Start a real TV slide library</div>
-                                    <div className="mt-2 text-sm leading-6 text-zinc-400">Upload a batch once, set the timing, then reuse those scenes all night instead of rebuilding ad cards, donation prompts, and transition art on the fly.</div>
+                                    <div className="mt-4 text-xl font-black text-white">Build the first scene bank</div>
+                                    <div className="mt-2 text-sm leading-6 text-zinc-400">Upload or sync a batch once, set the timing, then reuse those scene pads all night instead of rebuilding flyers, donation prompts, and transition art on the fly.</div>
                                 </div>
                                 <div className="grid gap-2 text-sm text-zinc-300 lg:w-[22rem]">
                                     <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
-                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Sponsor + House Slides</div>
+                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Sponsor + House Scenes</div>
                                         <div className="mt-1 text-xs text-zinc-500">Poster art, thank-you cards, branded interstitials, and room reset graphics.</div>
                                     </div>
                                     <div className="rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
@@ -3177,6 +3293,44 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         </div>
                     ) : null}
                 </div>
+                ) : (
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                        <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
+                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                <i className={`fa-solid ${mediaLibraryTab === 'sfx' ? 'fa-wave-square' : 'fa-music'} text-lg`}></i>
+                            </div>
+                            <div className="mt-4 text-xl font-black text-white">
+                                {mediaLibraryTab === 'sfx' ? 'Build a custom soundboard lane' : 'Build a background-music lane'}
+                            </div>
+                            <div className="mt-2 text-sm leading-6 text-zinc-400">
+                                {mediaLibraryTab === 'sfx'
+                                    ? 'This lane should hold uploaded stingers, crowd drops, intros, and one-shot cues that the host can assign to soundboard pads and fire instantly.'
+                                    : 'This lane should hold walk-in music, reset beds, donation unders, and room loops that can be previewed, defaulted, and fed into Auto BG.'}
+                            </div>
+                        </div>
+                        <div className="grid gap-3">
+                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
+                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Planned Controls</div>
+                                <div className="mt-2 text-sm text-zinc-300">
+                                    {mediaLibraryTab === 'sfx'
+                                        ? 'Upload, preview, trim, gain, assign to pad, reorder pads, and remove.'
+                                        : 'Upload, preview, tag, loop, set default, choose Auto BG eligibility, and remove.'}
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
+                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Why Here</div>
+                                <div className="mt-2 text-sm text-zinc-300">
+                                    {mediaLibraryTab === 'sfx'
+                                        ? 'Sound effects belong beside scenes because they are reusable host assets, but they need a soundboard-first management surface instead of scene timing controls.'
+                                        : 'Background tracks belong beside scenes because they are reusable host assets, but they need playback defaults and automation rules instead of Public TV actions.'}
+                                </div>
+                            </div>
+                            <div className="rounded-2xl border border-dashed border-fuchsia-300/20 bg-fuchsia-500/8 px-4 py-4 text-sm text-fuchsia-100">
+                                Structure is in place here now. The asset-management actions for this lane still need to be wired.
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -3184,15 +3338,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Moments</div>
-                    <div className="mt-1 text-xs text-zinc-400">Open the library to run, queue, or edit TV scenes.</div>
+                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">Media Library</div>
+                    <div className="mt-1 text-xs text-zinc-400">Open the media library to manage scenes now and stage SFX and background-music lanes in one place.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                         {scenePresetCount} saved
                     </span>
                     <button type="button" data-feature-id="open-tv-library" onClick={() => setSceneLibraryOpen(true)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
-                        Open TV Library
+                        Open Media Library
                     </button>
                 </div>
             </div>
@@ -3214,7 +3368,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
             ) : (
                 <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-3 text-xs text-zinc-500">
-                    No TV slides saved yet. Start a library for sponsor cards, hype art, donation prompts, and next-up boards.
+                    No reusable media saved yet. Start with scene pads for sponsor cards, hype art, donation prompts, and next-up boards.
                 </div>
             )}
         </div>
@@ -3791,7 +3945,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
         <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
-            {plannerStatusStrip}
             <div className={queueWorkspaceTabListClass}>
                 {renderQueueWorkspaceTabButton({
                     id: 'queue',
@@ -3983,27 +4136,29 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {sceneLibraryOpen ? (
                 <div
                     data-feature-id="tv-moments-library-modal"
-                    className="fixed inset-0 z-[140] bg-black/78 backdrop-blur-sm p-4 md:p-6 flex items-start justify-center"
+                    className="fixed inset-0 z-[140] overflow-y-auto bg-black/78 backdrop-blur-sm p-2 sm:p-3 md:p-4"
                     onClick={() => setSceneLibraryOpen(false)}
                 >
-                    <div
-                        className="mt-6 flex h-[min(92vh,64rem)] w-full max-w-6xl min-h-0 flex-col"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-cyan-300/20 bg-zinc-950/92 px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.42)] backdrop-blur-sm">
-                            <div>
-                                <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">TV Moments Library</div>
-                                <div className="mt-1 text-sm text-zinc-400">Upload, time, edit, and deploy reusable Public TV slides without keeping this workbench open in the main queue layout.</div>
+                    <div className="flex min-h-full items-start justify-center py-2 sm:py-4 md:py-6">
+                        <div
+                            className="flex h-[min(96vh,64rem)] w-full max-w-6xl min-h-[32rem] min-w-0 flex-col"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/20 bg-zinc-950/92 px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.42)] backdrop-blur-sm">
+                                <div className="min-w-0">
+                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Media Library</div>
+                                    <div className="mt-1 text-sm text-zinc-400">Upload, time, edit, and deploy reusable host media without losing the live queue layout.</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSceneLibraryOpen(false)}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                                >
+                                    Close Media Library
+                                </button>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setSceneLibraryOpen(false)}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
-                            >
-                                Close Library
-                            </button>
+                            {scenePresetLibrarySection}
                         </div>
-                        {scenePresetLibrarySection}
                     </div>
                 </div>
             ) : null}
@@ -4071,13 +4226,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 <div className="mt-0.5 text-base font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
                                 <div className="text-[13px] text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
                                 <div className="mt-1.5 text-[13px] text-zinc-400">Would you use this track again?</div>
-                                <div className="mt-0.5 text-[10px] text-zinc-500">Closes automatically after a few seconds.</div>
+                                <div className="mt-0.5 text-[10px] text-zinc-500">Moves to the inbox automatically after a few seconds.</div>
                             </div>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-1.5">
                             <button
                                 type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction('prefer')}
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'prefer')}
                                 disabled={postPerformanceBackingPromptBusy}
                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
@@ -4086,7 +4241,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </button>
                             <button
                                 type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction('avoid')}
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'avoid')}
                                 disabled={postPerformanceBackingPromptBusy}
                                 className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
@@ -4095,7 +4250,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </button>
                             <button
                                 type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction('skip')}
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'inbox')}
+                                disabled={postPerformanceBackingPromptBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                <i className="fa-solid fa-inbox"></i>
+                                Inbox
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'skip')}
                                 disabled={postPerformanceBackingPromptBusy}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
@@ -4163,6 +4327,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 setCustomBonus={setCustomBonus}
                                 addBonusToCurrent={addBonusToCurrent}
                                 onRateBacking={rateBackingPreference}
+                                lastTrackCheckItem={visibleLastTrackCheck}
+                                onTrackCheckAction={handlePostPerformanceBackingPromptAction}
                                 onResolveAudienceBacking={resolveAudienceSelectedBacking}
                                 backingDecisionBusyKey={backingDecisionBusyKey}
                                 updateStatus={updateStatus}

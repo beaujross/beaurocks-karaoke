@@ -59,6 +59,16 @@ import {
     getRunOfShowStagedItem,
     normalizeRunOfShowDirector
 } from '../../lib/runOfShowDirector';
+
+function isVipSongForUsers(song, roomUsers = []) {
+    if (!song) return false;
+    const match = roomUsers.find((user) =>
+        (song.singerUid && user.uid === song.singerUid)
+        || (song.singerName && user.name === song.singerName)
+        || (song.name && user.name === song.name)
+    );
+    return !!match?.isVip || (match?.vipLevel || 0) > 0;
+}
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import {
     getVolleyOrbTvInstructionCopy,
@@ -1669,7 +1679,7 @@ const PerformanceNextUpOverlay = ({
 
                     <div className="mt-10 grid gap-4 md:grid-cols-3 2xl:gap-6">
                         {lineup.length > 0 ? lineup.map((song, index) => {
-                            const isVip = isVipSong(song);
+                            const isVip = !!song?.isVip || (song?.vipLevel || 0) > 0;
                             const accentStyle = index === 0
                                 ? theme.progressStyle
                                 : { backgroundImage: `linear-gradient(90deg, ${withAudienceBrandAlpha(theme.primaryColor, 0.4)} 0%, ${withAudienceBrandAlpha(theme.secondaryColor, 0.22)} 100%)` };
@@ -2036,6 +2046,14 @@ const PublicTV = ({ roomCode }) => {
         [tvAudienceBrandTheme]
     );
     const tvBrandTitle = tvAudienceBrandTheme.appTitle || 'BeauRocks Karaoke';
+    const isAahfTvTheme = useMemo(() => {
+        const safeTitle = String(tvBrandTitle || '').trim().toLowerCase();
+        return safeTitle.includes('aahf')
+            || (
+                String(tvAudienceBrandTheme.primaryColor || '').trim().toUpperCase() === '#E05A44'
+                && String(tvAudienceBrandTheme.secondaryColor || '').trim().toUpperCase() === '#F4C94A'
+            );
+    }, [tvAudienceBrandTheme.primaryColor, tvAudienceBrandTheme.secondaryColor, tvBrandTitle]);
     const isCustomTvBrand = String(tvBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
     const tvPoweredByLabel = isCustomTvBrand ? 'Powered by: BeauRocks Karaoke' : '';
     const tvBrandEyebrow = isCustomTvBrand ? tvBrandTitle : 'BROSS Entertainment';
@@ -4837,15 +4855,6 @@ const PublicTV = ({ roomCode }) => {
         ? currentPerformanceHypeScore + Math.max(0, Number(current?.applauseScore || 0)) + Math.max(0, Number(current?.hostBonus || 0))
         : 0;
     const showScoring = room?.showScoring !== false;
-    function isVipSong(song) {
-        if (!song) return false;
-        const match = roomUsers.find(u =>
-            (song.singerUid && u.uid === song.singerUid) ||
-            (song.singerName && u.name === song.singerName) ||
-            (song.name && u.name === song.name)
-        );
-        return !!match?.isVip || (match?.vipLevel || 0) > 0;
-    }
     const spotlightUser = room?.spotlightUser?.id
         ? roomUsers.find((u) => resolveRoomUserUid(u) === room.spotlightUser.id)
         : null;
@@ -5306,15 +5315,28 @@ const PublicTV = ({ roomCode }) => {
         () => ({
             ...tvBrandPalette.rootStyle,
             height: '100dvh',
-            backgroundColor: '#050304',
-            backgroundImage: [
-                `radial-gradient(circle at 16% 14%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.26)} 0%, transparent 28%)`,
-                `radial-gradient(circle at 86% 10%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.18)} 0%, transparent 24%)`,
-                `radial-gradient(circle at 52% 102%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.18)} 0%, transparent 36%)`,
-                'linear-gradient(180deg, rgba(22, 8, 8, 0.56) 0%, rgba(5, 3, 4, 0.92) 38%, rgba(3, 2, 2, 1) 100%)',
-            ].join(', ')
+            ...(isAahfTvTheme
+                ? {
+                    backgroundColor: '#140606',
+                    backgroundImage: [
+                        `radial-gradient(circle at 14% 16%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.46)} 0%, transparent 30%)`,
+                        `radial-gradient(circle at 76% 10%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.3)} 0%, transparent 24%)`,
+                        `radial-gradient(circle at 88% 56%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.accentColor, 0.28)} 0%, transparent 26%)`,
+                        `radial-gradient(circle at 46% 108%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.34)} 0%, transparent 40%)`,
+                        `linear-gradient(135deg, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.32)} 0%, rgba(74, 18, 14, 0.88) 24%, rgba(28, 9, 8, 0.94) 56%, rgba(8, 4, 5, 1) 100%)`,
+                    ].join(', ')
+                }
+                : {
+                    backgroundColor: '#050304',
+                    backgroundImage: [
+                        `radial-gradient(circle at 16% 14%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.26)} 0%, transparent 28%)`,
+                        `radial-gradient(circle at 86% 10%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.secondaryColor, 0.18)} 0%, transparent 24%)`,
+                        `radial-gradient(circle at 52% 102%, ${withAudienceBrandAlpha(tvAudienceBrandTheme.primaryColor, 0.18)} 0%, transparent 36%)`,
+                        'linear-gradient(180deg, rgba(22, 8, 8, 0.56) 0%, rgba(5, 3, 4, 0.92) 38%, rgba(3, 2, 2, 1) 100%)',
+                    ].join(', ')
+                })
         }),
-        [tvAudienceBrandTheme.primaryColor, tvAudienceBrandTheme.secondaryColor, tvBrandPalette.rootStyle]
+        [isAahfTvTheme, tvAudienceBrandTheme.accentColor, tvAudienceBrandTheme.primaryColor, tvAudienceBrandTheme.secondaryColor, tvBrandPalette.rootStyle]
     );
     const waveformOpacity = current ? 'opacity-50' : 'opacity-95';
     const {
@@ -7626,7 +7648,7 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                                 <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2">
                                     {allQueue.map((s, i) => {
-                                        const vip = isVipSong(s);
+                                        const vip = isVipSongForUsers(s, roomUsers);
                                         return (
                                         <div key={s.id} className="bg-zinc-800/50 p-3 rounded-xl flex items-center gap-3 border border-white/5">
                                             <div className="font-bebas text-xl md:text-2xl text-zinc-500 w-7 md:w-8 text-center">#{i+1}</div>
@@ -7762,7 +7784,7 @@ const PublicTV = ({ roomCode }) => {
                                                         </div>
                                                     )}
                                                     {nextUp.map((s, i) => {
-                                                        const vip = isVipSong(s);
+                                                        const vip = isVipSongForUsers(s, roomUsers);
                                                         return (
                                                             <div key={s.id} className="bg-zinc-700/45 p-3 md:p-4 rounded-2xl flex items-center gap-3 md:gap-4 border-l-4 border-pink-500">
                                                                 <div className="font-bebas text-3xl md:text-4xl text-zinc-400 leading-none">#{i+1}</div>

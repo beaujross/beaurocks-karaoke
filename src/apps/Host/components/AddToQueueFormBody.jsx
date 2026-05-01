@@ -415,7 +415,7 @@ const AddToQueueFormBody = ({
                                 onClick={() => onOpenTvLibrary?.()}
                                 className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
                             >
-                                Open TV Library
+                                Open Media Library
                             </button>
                         ) : null}
                         {plannerLaunchMode && typeof onOpenPlanner === 'function' ? (
@@ -597,7 +597,7 @@ const AddToQueueFormBody = ({
                         </div>
                     )) : (
                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-5 text-sm text-zinc-400 xl:col-span-2">
-                            No saved TV moments yet. Use `Search YouTube` or `Open TV Library`.
+                            No saved scenes yet. Use `Search YouTube` or `Open Media Library`.
                         </div>
                     )}
                 </div>
@@ -642,7 +642,7 @@ const AddToQueueFormBody = ({
                         Queued: {quickAddNotice.songTitle}
                     </div>
                     <div className="mt-1 text-xs text-zinc-300">{quickAddNotice.statusText}</div>
-                    {Boolean(quickAddNotice.lyricsGenerationResolution) ? (
+                    {quickAddNotice.lyricsGenerationResolution ? (
                         <div className="mt-1 text-[10px] uppercase tracking-[0.1em] text-emerald-100/80">
                             Resolution: {quickAddNotice.lyricsGenerationResolution}
                         </div>

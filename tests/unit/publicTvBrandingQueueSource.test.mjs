@@ -22,6 +22,16 @@ test('PublicTV falls back to the festival sunburst theme when no explicit room b
     /const tvShellStyle = useMemo\(\s*\(\) => \(\{[\s\S]*\.\.\.tvBrandPalette\.rootStyle,/,
     'The main TV shell should derive its background from the resolved brand palette.',
   );
+  assert.match(
+    tvSource,
+    /const isAahfTvTheme = useMemo\(/,
+    'PublicTV should detect the AAHF TV theme so festival rooms can push a more vivid blossom background.',
+  );
+  assert.match(
+    tvSource,
+    /isAahfTvTheme[\s\S]*withAudienceBrandAlpha\(tvAudienceBrandTheme\.primaryColor, 0\.46\)/,
+    'AAHF TV branding should use a much stronger coral bloom in the shell background.',
+  );
 });
 
 test('PublicTV queue sidebar promotes queue count and estimated wait as dedicated stat cards', () => {

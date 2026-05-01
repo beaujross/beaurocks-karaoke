@@ -1181,7 +1181,7 @@ const getSourceMeta = (sourceType = '') => (
 
 const ControlButton = ({ children, tone = 'default', className = '', ...props }) => {
     const toneClass = tone === 'primary'
-        ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
+        ? 'border-transparent bg-gradient-to-r from-cyan-300 via-cyan-200 to-sky-100 text-slate-950 shadow-[0_0_18px_rgba(34,211,238,0.24)]'
         : tone === 'success'
             ? 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
             : tone === 'warning'
@@ -1190,6 +1190,16 @@ const ControlButton = ({ children, tone = 'default', className = '', ...props })
                     ? 'border-rose-300/35 bg-rose-500/12 text-rose-100'
                     : 'border-white/10 bg-white/5 text-zinc-100';
     return <button type="button" {...props} className={`inline-flex items-center justify-center gap-2 rounded-full border px-3 py-1.5 min-h-[42px] touch-manipulation text-[10px] font-black uppercase tracking-[0.18em] disabled:opacity-40 ${toneClass} ${className}`}>{children}</button>;
+};
+
+const formatPresentedAtLabel = (value = 0) => {
+    const timestamp = Math.max(0, Number(value || 0) || 0);
+    if (!timestamp) return '';
+    try {
+        return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch {
+        return '';
+    }
 };
 
 const RunOfShowAdvanceModePicker = ({
@@ -2692,6 +2702,8 @@ const QuickDraftPanel = ({
     applyGeneratorDraft,
     applyCurrentRoomDraft,
     currentRoomDraftSummary = null,
+    scenePresets = [],
+    onAddScenePresetToRunOfShow,
     currentRoomDraftBusy = false,
     generatorBusy = false,
     generatorOpen = false,
@@ -2708,6 +2720,16 @@ const QuickDraftPanel = ({
     const currentRoomQueueCount = Math.max(0, Number(currentRoomDraftSummary?.queueCount || 0) || 0);
     const currentRoomSceneCount = Math.max(0, Number(currentRoomDraftSummary?.sceneCount || 0) || 0);
     const currentRoomDraftCount = currentRoomQueueCount + currentRoomSceneCount;
+    const [sceneLibraryExpanded, setSceneLibraryExpanded] = useState(false);
+    const plannerScenePresets = (Array.isArray(scenePresets) ? scenePresets : []).slice()
+        .sort((a, b) => {
+            const aPresented = Math.max(0, Number(a?.lastPresentedAtMs || 0) || 0);
+            const bPresented = Math.max(0, Number(b?.lastPresentedAtMs || 0) || 0);
+            const aCreated = Math.max(0, Number(a?.createdAtMs || 0) || 0);
+            const bCreated = Math.max(0, Number(b?.createdAtMs || 0) || 0);
+            return Math.max(bPresented, bCreated) - Math.max(aPresented, aCreated);
+        });
+    const visiblePlannerScenePresets = sceneLibraryExpanded ? plannerScenePresets : plannerScenePresets.slice(0, 4);
 
     return (
         <article className={`${surfaceClass} relative z-20 p-4`}>
@@ -2768,30 +2790,96 @@ const QuickDraftPanel = ({
                     </div>
                 </div>
             </div>
-            <div className="mt-3 rounded-2xl border border-amber-300/16 bg-amber-500/8 px-3 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Build From Current Room</div>
-                        <div className="mt-1 text-xs text-amber-50/88">
-                            {currentRoomDraftCount > 0
-                                ? `Use ${currentRoomQueueCount} queued song${currentRoomQueueCount === 1 ? '' : 's'} and ${currentRoomSceneCount} TV slide${currentRoomSceneCount === 1 ? '' : 's'} to build tonight's planner fast.`
-                                : 'No requested songs or saved TV slides are ready for a room-based draft yet.'}
+            <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.85fr)]">
+                <div className="rounded-2xl border border-cyan-300/14 bg-cyan-500/[0.06] px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Scene Library</div>
+                            <div className="mt-1 text-xs text-zinc-300">
+                                Insert saved slides and videos directly into the plan instead of bouncing back through the live queue.
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-cyan-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                {plannerScenePresets.length} saved
+                            </span>
+                            {plannerScenePresets.length > 4 ? (
+                                <ControlButton onClick={() => setSceneLibraryExpanded((prev) => !prev)}>
+                                    {sceneLibraryExpanded ? 'Show Less' : 'Show All'}
+                                </ControlButton>
+                            ) : null}
                         </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
-                            {currentRoomQueueCount} queue
-                        </span>
-                        <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
-                            {currentRoomSceneCount} slides
-                        </span>
+                    {visiblePlannerScenePresets.length ? (
+                        <div className="mt-3 grid gap-2">
+                            {visiblePlannerScenePresets.map((preset) => {
+                                const shownTonight = Math.max(0, Number(preset?.lastPresentedAtMs || 0) || 0) > 0;
+                                const presentedAtLabel = formatPresentedAtLabel(preset?.lastPresentedAtMs);
+                                const presentedCount = Math.max(0, Number(preset?.presentedCount || 0) || 0);
+                                return (
+                                    <div key={preset.id || preset.mediaUrl} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                                        <div className="min-w-0">
+                                            <div className="truncate text-sm font-semibold text-white">{preset.title || 'Scene'}</div>
+                                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+                                                <span>{String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'Video' : 'Image'} scene</span>
+                                                <span>{Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20))}s</span>
+                                                {shownTonight ? (
+                                                    <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-0.5 text-emerald-100">
+                                                        <i className="fa-solid fa-check mr-1"></i>Shown tonight
+                                                    </span>
+                                                ) : null}
+                                                {presentedCount > 0 ? <span>{presentedCount}x shown</span> : null}
+                                                {presentedAtLabel ? <span>Last shown {presentedAtLabel}</span> : null}
+                                            </div>
+                                        </div>
+                                        <ControlButton
+                                            tone="primary"
+                                            className="shrink-0 justify-center"
+                                            disabled={!canEditFlow || typeof onAddScenePresetToRunOfShow !== 'function'}
+                                            onClick={() => onAddScenePresetToRunOfShow?.(preset)}
+                                        >
+                                            Use In Plan
+                                        </ControlButton>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="mt-3 rounded-2xl border border-dashed border-white/10 bg-black/20 px-3 py-3 text-xs text-zinc-500">
+                            No saved TV slides yet. Upload them once in Media Library, then use this planner library as the main way to place sponsor cards and flyers into the night.
+                        </div>
+                    )}
+                </div>
+                <div className="rounded-2xl border border-amber-300/16 bg-amber-500/8 px-3 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-200">Utilities</div>
+                            <div className="mt-1 text-xs text-amber-50/88">
+                                Capture the current room only when you need a recovery draft or a fast bootstrap from live state. It is not the primary planning model.
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                {currentRoomQueueCount} queue
+                            </span>
+                            <span className="rounded-full border border-amber-300/22 bg-black/20 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                                {currentRoomSceneCount} slides
+                            </span>
+                        </div>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-amber-300/12 bg-black/20 px-3 py-3 text-xs text-zinc-200">
+                        {currentRoomDraftCount > 0
+                            ? `Current room can contribute ${currentRoomQueueCount} queued song${currentRoomQueueCount === 1 ? '' : 's'} and ${currentRoomSceneCount} saved slide${currentRoomSceneCount === 1 ? '' : 's'} if you need to rebuild from what is already active.`
+                            : 'No requested songs or saved TV slides are ready for a room capture right now.'}
+                    </div>
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
                         <ControlButton
-                            tone="primary"
+                            tone="warning"
                             className="shrink-0 justify-center"
                             disabled={!canEditFlow || currentRoomDraftBusy || currentRoomDraftCount === 0}
                             onClick={applyCurrentRoomDraft}
                         >
-                            {currentRoomDraftBusy ? 'Applying...' : 'Use Current Room Plan'}
+                            {currentRoomDraftBusy ? 'Capturing...' : 'Capture Live Room'}
                         </ControlButton>
                     </div>
                 </div>
@@ -2886,6 +2974,8 @@ const QuickDraftModal = ({
     applyGeneratorDraft,
     applyCurrentRoomDraft,
     currentRoomDraftSummary = null,
+    scenePresets = [],
+    onAddScenePresetToRunOfShow,
     currentRoomDraftBusy = false,
     generatorBusy = false,
     generatorOpen = false,
@@ -2928,6 +3018,8 @@ const QuickDraftModal = ({
                             applyGeneratorDraft={applyGeneratorDraft}
                             applyCurrentRoomDraft={applyCurrentRoomDraft}
                             currentRoomDraftSummary={currentRoomDraftSummary}
+                            scenePresets={scenePresets}
+                            onAddScenePresetToRunOfShow={onAddScenePresetToRunOfShow}
                             currentRoomDraftBusy={currentRoomDraftBusy}
                             generatorBusy={generatorBusy}
                             generatorOpen={generatorOpen}
@@ -3655,6 +3747,8 @@ export default function RunOfShowDirectorPanel({
     onApplyGeneratedDraft,
     currentRoomDraftSummary = null,
     onApplyCurrentRoomDraft,
+    scenePresets = [],
+    onAddScenePresetToRunOfShow,
     onSaveTemplate,
     onApplyTemplate,
     onApplyStarterTemplate,
@@ -3906,6 +4000,8 @@ export default function RunOfShowDirectorPanel({
     const [buildMapOpen, setBuildMapOpen] = useState(false);
     const [topBoardCollapsed, setTopBoardCollapsed] = useState(items.length > 0);
     const [boardActionsOpen, setBoardActionsOpen] = useState(false);
+    const liveAdjustmentsRef = useRef(null);
+    const planningToolsRef = useRef(null);
     const [pendingSetupScrollItemId, setPendingSetupScrollItemId] = useState('');
     const [repairFocus, setRepairFocus] = useState(null);
     const [sectionOpenState, setSectionOpenState] = useState({});
@@ -4011,6 +4107,14 @@ export default function RunOfShowDirectorPanel({
                     : 'host can advance now')
                 : `host advances after ${formatDurationSec(liveAdjustmentHostAdvanceMinSec) || `${liveAdjustmentHostAdvanceMinSec}s`}`)
             : '';
+    useEffect(() => {
+        if (!liveControlsOpen) return;
+        liveAdjustmentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, [liveControlsOpen, liveAdjustmentTarget?.id]);
+    useEffect(() => {
+        if (!workspaceToolsOpen) return;
+        planningToolsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, [workspaceToolsOpen]);
     const handleExtendLiveAdjustment = async (deltaSec = 30) => {
         if (!liveAdjustmentTarget?.id || typeof onUpdateItem !== 'function') return;
         await onUpdateItem(liveAdjustmentTarget.id, {
@@ -5507,7 +5611,7 @@ export default function RunOfShowDirectorPanel({
                                         aria-expanded={workspaceToolsOpen}
                                         className="gap-2"
                                     >
-                                        <span>{workspaceToolsOpen ? 'Hide Tools' : 'Tools'}</span>
+                                        <span>{workspaceToolsOpen ? 'Hide Planning Tools' : 'Planning Tools'}</span>
                                         <i className={`fa-solid fa-chevron-down transition-transform ${workspaceToolsOpen ? 'rotate-180' : ''}`}></i>
                                     </ControlButton>
                                 </>
@@ -5545,7 +5649,7 @@ export default function RunOfShowDirectorPanel({
                                         onClick={() => setLiveControlsOpen((prev) => !prev)}
                                         className="hidden rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25 sm:inline-flex"
                                     >
-                                        {liveControlsOpen ? 'Hide Controls' : 'More Controls'}
+                                        {liveControlsOpen ? 'Hide Live Adjustments' : 'Live Adjustments'}
                                     </button>
                                 </>
                             ) : null}
@@ -5564,7 +5668,7 @@ export default function RunOfShowDirectorPanel({
                                 aria-expanded={boardActionsOpen}
                                 className="inline-flex min-h-[42px] items-center justify-center rounded-full border border-white/10 bg-black/25 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-200 hover:border-cyan-300/25 sm:hidden"
                             >
-                                More
+                                {boardActionsOpen ? 'Hide Board Actions' : 'Board Actions'}
                                 <i className={`fa-solid fa-chevron-down ml-2 transition-transform ${boardActionsOpen ? 'rotate-180' : ''}`}></i>
                             </button>
                         </div>
@@ -5597,7 +5701,7 @@ export default function RunOfShowDirectorPanel({
                                     onClick={() => setLiveControlsOpen((prev) => !prev)}
                                     className="rounded-full border border-white/10 bg-black/25 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-zinc-200 hover:border-cyan-300/25"
                                 >
-                                    {liveControlsOpen ? 'Hide Controls' : 'More Controls'}
+                                    {liveControlsOpen ? 'Hide Live Adjustments' : 'Live Adjustments'}
                                 </button>
                             </>
                         ) : null}
@@ -5645,6 +5749,7 @@ export default function RunOfShowDirectorPanel({
                         />
                         {isRunOfShowActive && studioMode === 'run' && liveControlsOpen && liveAdjustmentTarget ? (
                             <div
+                                ref={liveAdjustmentsRef}
                                 data-live-adjustment-panel="true"
                                 className="rounded-[20px] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(7,20,34,0.92),rgba(12,18,31,0.88))] px-3 py-3"
                             >
@@ -5813,6 +5918,8 @@ export default function RunOfShowDirectorPanel({
                 }}
                 applyCurrentRoomDraft={applyCurrentRoomDraft}
                 currentRoomDraftSummary={currentRoomDraftSummary}
+                scenePresets={scenePresets}
+                onAddScenePresetToRunOfShow={onAddScenePresetToRunOfShow}
                 currentRoomDraftBusy={currentRoomDraftBusy}
                 generatorBusy={generatorBusy}
                 generatorOpen={generatorOpen}
@@ -5985,7 +6092,7 @@ export default function RunOfShowDirectorPanel({
             ) : null}
 
             {workspaceToolsOpen ? (
-                <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+                <div ref={planningToolsRef} className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
                     <UtilityDrawer
                         eyebrow="Planning Controls"
                         title="Automation + pressure rules"

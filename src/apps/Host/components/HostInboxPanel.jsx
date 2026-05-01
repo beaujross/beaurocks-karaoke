@@ -158,6 +158,35 @@ const InboxItemCard = ({
                 </div>
             ) : null}
 
+            {item.type === 'track_check' ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => item.onApprove?.()}
+                        disabled={!!item.busy || typeof item.onApprove !== 'function'}
+                        className={`${styles?.btnStd || ''} ${styles?.btnHighlight || ''} text-[10px] px-3 py-1.5 ${item.busy || typeof item.onApprove !== 'function' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Use Again
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => item.onReject?.()}
+                        disabled={!!item.busy || typeof item.onReject !== 'function'}
+                        className={`${styles?.btnStd || ''} text-[10px] px-3 py-1.5 border border-rose-300/35 bg-rose-500/12 text-rose-100 ${item.busy || typeof item.onReject !== 'function' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Bad Track
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => item.onDismiss?.()}
+                        disabled={!!item.busy || typeof item.onDismiss !== 'function'}
+                        className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} text-[10px] px-3 py-1.5 ${item.busy || typeof item.onDismiss !== 'function' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                    >
+                        Skip
+                    </button>
+                </div>
+            ) : null}
+
             {canReply ? (
                 <div className="mt-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -270,6 +299,7 @@ const InboxBucket = ({
 export default function HostInboxPanel({
     roomCode = '',
     hostBase = '',
+    systemInboxItems = [],
     coHostSignals = [],
     roomChatMessages = [],
     hostDmMessages = [],
@@ -383,7 +413,12 @@ export default function HostInboxPanel({
         }))
     ), [roomChatGroups]);
 
-    const needsHostItems = [...moderationItems, ...coHostItems, ...dmItems];
+    const systemItems = useMemo(() => (
+        Array.isArray(systemInboxItems)
+            ? systemInboxItems.slice(0, 4)
+            : []
+    ), [systemInboxItems]);
+    const needsHostItems = [...systemItems, ...moderationItems, ...coHostItems, ...dmItems];
     const everythingElseItems = roomFeedItems;
     const needsHostCount = needsHostItems.length;
     const everythingElseCount = everythingElseItems.length;

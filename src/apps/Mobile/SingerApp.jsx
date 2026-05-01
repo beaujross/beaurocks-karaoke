@@ -152,6 +152,7 @@ import {
     buildCoHostSignalActivityPayload,
     buildCurrentPerformanceSignalContext,
     buildPerformanceReactionMeta,
+    formatElapsedClock,
     getAudienceSongArtworkUrl,
     timestampToMs
 } from './lib/coHostSignalPayload.js';
@@ -1001,6 +1002,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const audienceBrandTitle = audienceBrandTheme.appTitle || 'BeauRocks Karaoke';
     const isCustomAudienceBrand = String(audienceBrandTitle || '').trim().toLowerCase() !== 'beaurocks karaoke';
     const poweredByBeauRocksLabel = isCustomAudienceBrand ? 'Powered by: BeauRocks Karaoke' : '';
+    const marketingSiteUrl = 'https://beaurocks.app';
     const accessBrandLabel = isCustomAudienceBrand ? `${audienceBrandTitle} Access` : 'BeauRocks Access';
     const premiumAccessLabel = isCustomAudienceBrand ? 'Festival Pass' : 'VIP';
     const premiumBadgeShortLabel = isCustomAudienceBrand ? 'PASS' : 'VIP';
@@ -1315,6 +1317,7 @@ const SingerApp = ({ roomCode, uid }) => {
 
     // Form state for profile editing
     const [form, setForm] = useState({ name: '', emoji: DEFAULT_EMOJI, song: '', artist: '', art: '', backingUrl: '' });
+    const [coHostQueueTargetUid, setCoHostQueueTargetUid] = useState('');
     const [requestCollabOpen, setRequestCollabOpen] = useState(false);
     const NAME_LIMIT = 18;
     const clampName = (value) => value.slice(0, NAME_LIMIT);
@@ -1482,6 +1485,7 @@ const SingerApp = ({ roomCode, uid }) => {
 
     // Email-link account + VIP state
     const [showPhoneModal, setShowPhoneModal] = useState(!!initialAudienceDemoFixture?.showPhoneModal);
+    const [showNightGuide, setShowNightGuide] = useState(false);
     const [avatarUnlockModal, setAvatarUnlockModal] = useState(null);
     const [accountEmail, setAccountEmail] = useState('');
     const [emailLinkSent, setEmailLinkSent] = useState(false);
@@ -2813,6 +2817,51 @@ const SingerApp = ({ roomCode, uid }) => {
         };
     }, [room?.eventCredits]);
     const isRunOfShowCoHost = runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
+    const audienceQueueActorUid = useMemo(
+        () => String(activeUid || user?.uid || '').trim(),
+        [activeUid, user?.uid]
+    );
+    const coHostQueueTargetOptions = useMemo(() => {
+        const optionMap = new Map();
+        const selfUid = String(audienceQueueActorUid || '').trim();
+        const selfName = String(user?.name || form.name || 'Me').trim() || 'Me';
+        const selfAvatar = user?.avatar || form.emoji || DEFAULT_EMOJI;
+        if (selfUid) {
+            optionMap.set(selfUid, {
+                uid: selfUid,
+                name: selfName,
+                avatar: selfAvatar,
+                isSelf: true,
+            });
+        }
+        (Array.isArray(allUsers) ? allUsers : []).forEach((entry) => {
+            const entryUid = String(entry?.uid || '').trim();
+            if (!entryUid) return;
+            const existing = optionMap.get(entryUid);
+            optionMap.set(entryUid, {
+                uid: entryUid,
+                name: String(entry?.name || existing?.name || 'Guest').trim() || 'Guest',
+                avatar: entry?.avatar || existing?.avatar || DEFAULT_EMOJI,
+                isSelf: entryUid === selfUid,
+            });
+        });
+        return [...optionMap.values()].sort((left, right) => {
+            if (left.isSelf && !right.isSelf) return -1;
+            if (!left.isSelf && right.isSelf) return 1;
+            return String(left.name || '').localeCompare(String(right.name || ''));
+        });
+    }, [allUsers, audienceQueueActorUid, form.emoji, form.name, user?.avatar, user?.name]);
+    const activeCoHostQueueTargetUid = useMemo(() => {
+        if (!isRunOfShowCoHost) return audienceQueueActorUid;
+        if (coHostQueueTargetUid && coHostQueueTargetOptions.some((entry) => entry.uid === coHostQueueTargetUid)) {
+            return coHostQueueTargetUid;
+        }
+        return audienceQueueActorUid || coHostQueueTargetOptions[0]?.uid || '';
+    }, [audienceQueueActorUid, coHostQueueTargetOptions, coHostQueueTargetUid, isRunOfShowCoHost]);
+    const activeCoHostQueueTarget = useMemo(
+        () => coHostQueueTargetOptions.find((entry) => entry.uid === activeCoHostQueueTargetUid) || null,
+        [activeCoHostQueueTargetUid, coHostQueueTargetOptions]
+    );
     const coHostCreditPolicy = normalizeCoHostCreditPolicy(activeEventCredits.coHostCreditPolicy || '');
     const coHostUnlimitedCredits = isRunOfShowCoHost && coHostCreditPolicy === CO_HOST_CREDIT_POLICIES.unlimited;
     const coHostFreeReactions = isRunOfShowCoHost
@@ -2826,6 +2875,17 @@ const SingerApp = ({ roomCode, uid }) => {
         : coHostFreeReactions
             ? 'Co-host reactions free'
             : '';
+    useEffect(() => {
+        if (!isRunOfShowCoHost) {
+            if (coHostQueueTargetUid) setCoHostQueueTargetUid('');
+            return;
+        }
+        if (!coHostQueueTargetUid) return;
+        const stillValid = coHostQueueTargetOptions.some((entry) => entry.uid === coHostQueueTargetUid);
+        if (!stillValid) {
+            setCoHostQueueTargetUid('');
+        }
+    }, [coHostQueueTargetOptions, coHostQueueTargetUid, isRunOfShowCoHost]);
     const eventPromoSummary = useMemo(() => {
         const promoCampaigns = Array.isArray(activeEventCredits.promoCampaigns) ? activeEventCredits.promoCampaigns : [];
         return {
@@ -2912,18 +2972,12 @@ const SingerApp = ({ roomCode, uid }) => {
         ? 'Optional: Save With Email'
         : 'Optional: Continue With Email';
     const joinAccessHelperText = festivalGuestJoinNoEmail
-        ? 'Join now. No BeauRocks email is required for AAHF tonight. Any festival updates should come from AAHF, not from BeauRocks.'
+        ? 'Join now. No BeauRocks email is required for AAHF tonight.'
         : simplifyFestivalSupportAccess
         ? 'Join now. Email save-in stays optional, and festival support happens later without slowing your first request.'
         : allowsDonationAccess
             ? 'Join now. Email save-in and room support stay available after you are inside.'
             : 'Join now. Email save-in stays available after you are inside.';
-    const festivalNightGuideUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}${import.meta.env.BASE_URL || '/'}print/aahf-audience-guide.html`
-        : '/print/aahf-audience-guide.html';
-    const joinConnectedLabel = hasSupporterAccess && !isVipAccount
-        ? `${supporterAccessLabel} Access Ready`
-        : 'Email Sync Ready';
     const joinReadyName = clampName(String(form.name || '').trim());
     const joinCanSubmit = !!activeUid && !!joinReadyName;
     const joinButtonLabel = isJoining
@@ -7058,13 +7112,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
             const collabOpen = options?.collabOpen === true || (!!requestCollabOpen && options?.collabOpen !== false);
             const bracketRoundPick = options?.skipBracketRoundSong === true ? null : getActiveBracketRoundSongPickContext();
+            const targetSingerUid = String(activeCoHostQueueTarget?.uid || audienceQueueActorUid || '').trim();
+            const targetSingerIsSelf = !targetSingerUid || targetSingerUid === audienceQueueActorUid;
+            const targetSingerName = String(activeCoHostQueueTarget?.name || user?.name || 'Guest').trim() || 'Guest';
+            const targetSingerAvatar = activeCoHostQueueTarget?.avatar || user?.avatar || DEFAULT_EMOJI;
             const queuePayload = {
                 roomCode,
                 songTitle: song,
                 artist,
                 albumArtUrl: artwork || '',
-                singerName: user.name,
-                emoji: user.avatar,
+                singerName: targetSingerName,
+                emoji: targetSingerAvatar,
+                targetSingerUid: !targetSingerIsSelf ? targetSingerUid : null,
                 songId: songId || null,
                 trackId,
                 trackSource: resolvedTrackSource,
@@ -7115,17 +7174,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setManualRequestComposerOpen(false);
             setCatalogSearchOpen(false);
             setSongsTab('queue');
-            setLastSongRequestFeedback({
-                requestId: createdSongId,
-                songTitle: song,
-                artist: artist || 'Unknown',
-                status: createdStatus,
-                playbackReady: createdPlaybackReady,
-                resolutionStatus: createdResolutionStatus,
-                resolutionLayer: createdResolutionLayer,
-                collabOpen: createdCollabOpen,
-                requestedAt: Date.now()
-            });
+            if (targetSingerIsSelf) {
+                setLastSongRequestFeedback({
+                    requestId: createdSongId,
+                    songTitle: song,
+                    artist: artist || 'Unknown',
+                    status: createdStatus,
+                    playbackReady: createdPlaybackReady,
+                    resolutionStatus: createdResolutionStatus,
+                    resolutionLayer: createdResolutionLayer,
+                    collabOpen: createdCollabOpen,
+                    requestedAt: Date.now()
+                });
+            }
             const requestStateMeta = getAudienceRequestStateMeta({
                 status: createdStatus,
                 playbackReady: createdPlaybackReady,
@@ -7136,13 +7197,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     ? 'Already queued.'
                     : bracketRoundPick
                     ? 'Bracket song picked.'
+                    : !targetSingerIsSelf
+                    ? `Queued for ${targetSingerName}.`
                     : requiresBackingHostReview(createdResolutionStatus)
                     ? (resolvedAppleMusicId ? 'Queued. Matching karaoke backing.' : 'Queued. Host review needed.')
                     : isAudienceSelectedUnverifiedResolution(createdResolutionStatus)
                         ? 'Queued. Unverified backing selected.'
                         : `Queued. ${requestStateMeta.label}.`
             );
-            logActivity(`requested ${song}`, EMOJI.musicNotes);
+            logActivity(targetSingerIsSelf ? `requested ${song}` : `queued ${song} for ${targetSingerName}`, EMOJI.musicNotes);
             syncPoints(true);
         } catch (err) {
             console.warn('Singer queue submit failed', err);
@@ -8118,10 +8181,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 </div>
                 {!isCustomAudienceBrand ? (
                     <button
-                        onClick={() => window.open('https://beauross.com', '_blank')}
+                        onClick={() => window.open(marketingSiteUrl, '_blank', 'noopener,noreferrer')}
                         className="w-full bg-gradient-to-r from-cyan-500 to-sky-400 text-black py-3 rounded-xl font-bold transition-colors text-base tracking-wide min-h-[48px] mb-4"
                     >
-                        Visit beauross.com
+                        Visit beaurocks.app
                     </button>
                 ) : null}
                 <div className="bg-black/30 border border-white/10 rounded-2xl p-4 mb-4">
@@ -8135,6 +8198,55 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     </button>
                 </div>
                 <button onClick={() => setShowAbout(false)} className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-xl font-bold transition-colors text-base tracking-wide min-h-[48px]">Close</button>
+            </div>
+        </div>
+    );
+
+    const renderNightGuideModal = () => (
+        <div className="fixed inset-0 z-[155] flex items-center justify-center bg-black/75 p-4 font-saira">
+            <div className="max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[30px] border border-amber-200/30 bg-[linear-gradient(180deg,_rgba(38,25,17,0.96)_0%,_rgba(17,17,21,0.98)_100%)] p-5 text-left shadow-[0_28px_80px_rgba(0,0,0,0.5)]">
+                <div className="mb-4 flex items-start gap-3">
+                    <img
+                        src={audienceBrandLogoUrl}
+                        alt={audienceBrandTitle}
+                        className="h-14 w-14 rounded-2xl border border-white/10 bg-black/25 object-contain p-2"
+                    />
+                    <div className="min-w-0">
+                        <div className="text-[11px] font-black uppercase tracking-[0.3em] text-amber-200/80">AAHF Night Guide</div>
+                        <div className="text-2xl font-black leading-tight text-white">Tonight&apos;s format, points, and prizes</div>
+                        <div className="mt-1 text-sm text-zinc-300">Fast version: join AAHF, request a song, and stay in the room for boosts and award moments.</div>
+                    </div>
+                </div>
+                <div className="space-y-3">
+                    <div className="rounded-3xl border border-amber-300/20 bg-amber-400/10 p-4">
+                        <div className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-100">Format</div>
+                        <div className="mt-2 text-lg font-black text-white">Open karaoke queue</div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-200">Tap Songs, send your request, and use your phone as your queue screen for the rest of the night. Between singers, the host may open quick votes, selfie moments, or short crowd breaks.</div>
+                    </div>
+                    <div className="rounded-3xl border border-cyan-300/20 bg-cyan-400/10 p-4">
+                        <div className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-100">Points</div>
+                        <div className="mt-2 text-sm leading-6 text-zinc-200">Guests start with <span className="font-black text-white">200</span> room credits. Staying active adds <span className="font-black text-white">+25 every 10 minutes</span>, up to <span className="font-black text-white">+150</span> extra.</div>
+                        <div className="mt-2 text-sm leading-6 text-zinc-200">Official AAHF boosts can add <span className="font-black text-white">+150</span> for website check-in and <span className="font-black text-white">+250</span> for social promo moments.</div>
+                    </div>
+                    <div className="rounded-3xl border border-pink-300/20 bg-pink-400/10 p-4">
+                        <div className="text-[11px] font-black uppercase tracking-[0.26em] text-pink-100">Prizes</div>
+                        <div className="mt-2 text-lg font-black text-white">Hourly award moments</div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-200">Top performances get award moments about once an hour at the next clean break. Request early, cheer loudly, and stay ready.</div>
+                    </div>
+                    <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+                        <div className="text-[11px] font-black uppercase tracking-[0.26em] text-zinc-300">Room code</div>
+                        <div className="mt-2 text-xl font-black tracking-[0.2em] text-white">AAHF</div>
+                        <div className="mt-1 text-sm leading-6 text-zinc-300">If you ever land on a code prompt, enter AAHF. Support and donations stay optional and never block karaoke join.</div>
+                    </div>
+                </div>
+                <button
+                    type="button"
+                    data-singer-night-guide-close
+                    onClick={() => setShowNightGuide(false)}
+                    className="mt-5 w-full rounded-2xl bg-white/12 py-3 text-base font-bold text-white transition hover:bg-white/16"
+                >
+                    Back to Join
+                </button>
             </div>
         </div>
     );
@@ -8263,68 +8375,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     />
                 </button>
                 {poweredByBeauRocksLabel ? (
-                    <div className="mb-2 text-[11px] font-black uppercase tracking-[0.26em]" style={{ color: `${audienceBrandTheme.secondaryColor}E6` }}>
+                    <div className="mb-2 rounded-full border border-white/12 bg-black/28 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.26em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
                         {poweredByBeauRocksLabel}
                     </div>
                 ) : null}
-                <div className="max-w-sm text-center">
-                    <div className="text-sm mb-1 font-semibold" style={{ color: `${audienceBrandTheme.secondaryColor}F2` }}>Pick the emoji that feels most you.</div>
-                    <div className="text-sm leading-6 text-zinc-100/90">
-                        Pick your emoji, add your name, and you will land in Songs ready to search.
+                <div className="max-w-sm rounded-3xl border border-white/12 bg-black/24 px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
+                    <div className="text-sm font-semibold leading-6 text-white/92">
+                        Choose your emoji and enter your name to jump into Songs.
                     </div>
-                </div>
-                <div className="mt-3 grid w-full max-w-sm grid-cols-3 gap-2 text-left">
-                    {[
-                        {
-                            key: 'emoji',
-                            label: 'Pick Emoji',
-                            detail: selectedAvatar?.label || 'Avatar',
-                            complete: !!activeAvatarPreviewEmoji,
-                            active: !joinReadyName,
-                        },
-                        {
-                            key: 'name',
-                            label: 'Add Name',
-                            detail: joinReadyName || 'Queue name',
-                            complete: !!joinReadyName,
-                            active: !!activeAvatarPreviewEmoji && !joinReadyName,
-                        },
-                        {
-                            key: 'join',
-                            label: 'Join Room',
-                            detail: activeUid ? 'Ready' : 'Connecting',
-                            complete: joinCanSubmit,
-                            active: joinCanSubmit,
-                        }
-                    ].map((step) => {
-                        const stepStyle = step.complete
-                            ? {
-                                borderColor: `${audienceBrandTheme.secondaryColor}66`,
-                                background: `${audienceBrandTheme.secondaryColor}22`,
-                                color: '#ffffff',
-                            }
-                            : step.active
-                                ? {
-                                    borderColor: `${audienceBrandTheme.primaryColor}66`,
-                                    background: `${audienceBrandTheme.primaryColor}22`,
-                                    color: '#ffffff',
-                                }
-                                : {
-                                    borderColor: 'rgba(255,255,255,0.08)',
-                                    background: 'rgba(0,0,0,0.22)',
-                                    color: 'rgba(228,228,231,0.92)',
-                                };
-                        return (
-                            <div key={step.key} className="rounded-2xl border px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,0.18)]" style={stepStyle}>
-                                <div className="text-[9px] font-black uppercase tracking-[0.24em]">
-                                    {step.label}
-                                </div>
-                                <div className="mt-1 text-sm font-bold leading-tight">
-                                    {step.detail}
-                                </div>
-                            </div>
-                        );
-                    })}
                 </div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
                 <div className="w-screen -mx-6 px-0 relative">
@@ -8420,9 +8478,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     <button
                         type="button"
                         data-singer-night-guide-button
-                        onClick={() => {
-                            window.open(festivalNightGuideUrl, '_blank', 'noopener,noreferrer');
-                        }}
+                        onClick={() => setShowNightGuide(true)}
                         className="mt-3 text-sm font-bold text-amber-100 underline decoration-amber-300/70 underline-offset-4"
                     >
                         See tonight&apos;s format, points, and prizes
@@ -8436,12 +8492,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     >
                         {joinEmailActionLabel}
                     </button>
-                ) : (
-                    <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-cyan-100">
-                        <i className="fa-solid fa-circle-check"></i>
-                        {festivalGuestJoinNoEmail ? 'Festival Join Ready' : joinConnectedLabel}
-                    </div>
-                )}
+                ) : null}
                 {returningProfile && showReturningPrompt ? (
                     <button
                         onClick={() => {
@@ -8457,13 +8508,18 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         Rejoin
                     </button>
                 ) : null}
-                <div className="mt-4 text-xs text-zinc-200 tracking-[0.12em] uppercase">
+                <button
+                    type="button"
+                    onClick={() => window.open(marketingSiteUrl, '_blank', 'noopener,noreferrer')}
+                    className="mt-4 text-xs tracking-[0.12em] uppercase text-zinc-200 underline decoration-white/35 underline-offset-4 transition hover:text-white"
+                >
                     {isCustomAudienceBrand
-                        ? `${audienceBrandTitle} live experience - Powered by BeauRocks Karaoke`
+                        ? 'Powered by BeauRocks Karaoke'
                         : '(c) 2026 BeauRocks Karaoke. All rights reserved.'}
-                </div>
+                </button>
             </div>
         </div>
+        {showNightGuide ? renderNightGuideModal() : null}
         {showRulesModal ? (
             <div className="fixed inset-0 bg-black/58 z-[170] flex items-center justify-center p-5 font-saira">
                 <div className="bg-gradient-to-br from-[#1a0f1f] via-[#23152f] to-[#11131a] border border-pink-300/28 rounded-[1.7rem] p-5 w-full max-w-sm shadow-[0_18px_44px_rgba(0,0,0,0.46)]">
@@ -11407,6 +11463,47 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             toast('Could not send that co-host signal right now.');
         }
     };
+    const renderCoHostQueueAssistCard = (mode = 'full') => {
+        if (!isRunOfShowCoHost || !coHostQueueTargetOptions.length) return null;
+        const compact = mode === 'compact';
+        return (
+            <div
+                data-feature-id="cohost-queue-target-picker"
+                className={`rounded-2xl border border-amber-300/20 bg-amber-500/10 ${compact ? 'px-3 py-3' : 'px-4 py-4'}`}
+            >
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Co-Host Queue Assist</div>
+                        <div className={`mt-1 font-black text-white ${compact ? 'text-sm' : 'text-base'}`}>
+                            Add songs for yourself or anyone already in the room.
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-300">
+                            Current target: {activeCoHostQueueTarget?.name || 'You'}
+                        </div>
+                    </div>
+                    <div className="shrink-0 rounded-full border border-amber-300/20 bg-black/25 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-amber-100">
+                        {activeCoHostQueueTarget?.isSelf ? 'Self' : 'Helping'}
+                    </div>
+                </div>
+                <div className="mt-3">
+                    <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">
+                        Who this request is for
+                    </label>
+                    <select
+                        value={activeCoHostQueueTargetUid}
+                        onChange={(event) => setCoHostQueueTargetUid(event.target.value)}
+                        className={audienceFormInputClass}
+                    >
+                        {coHostQueueTargetOptions.map((entry) => (
+                            <option key={entry.uid} value={entry.uid}>
+                                {entry.isSelf ? `Me - ${entry.name}` : entry.name}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+        );
+    };
 
     if(!user && !isMarketingDemoFixture) return joinScreen;
 
@@ -11626,12 +11723,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     ? [currentPerformanceSignalContext.singerName, currentPerformanceSignalContext.artistName].filter(Boolean).join(' - ')
                                                     : 'No live performance. Signals still carry a timestamp.'}
                                             </div>
+                                            <div className="mt-1 text-[11px] text-zinc-400">
+                                                Audio-only notes. The app timestamps them and ties them to the live performance when one is up.
+                                            </div>
                                             <div className="mt-1 inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-amber-100/78">
                                                 <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-0.5">
                                                     {currentPerformanceSignalContext.isLive ? 'Live Performance' : 'Room Note'}
                                                 </span>
                                                 {currentPerformanceSignalContext.elapsedLabel ? (
                                                     <span>{currentPerformanceSignalContext.elapsedLabel}</span>
+                                                ) : currentPerformanceSignalContext.isLive ? (
+                                                    <span>{formatElapsedClock(0)} in</span>
                                                 ) : null}
                                             </div>
                                         </div>
@@ -11644,7 +11746,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <i className="fa-solid fa-xmark"></i>
                                     </button>
                                 </div>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                <div className="mt-3 grid grid-cols-1 gap-2">
                                     {audioCoHostSignals.map((signal) => {
                                         const cooldownUntil = Number(coHostSignalCooldownById?.[signal.id] || 0);
                                         const coolingDown = cooldownUntil > coHostSignalNowMs;
@@ -11674,12 +11776,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                         {coolingDown ? `${remainingSec}s` : 'Send'}
                                                     </span>
                                                 </div>
+                                                <div className={`mt-1 text-[11px] ${coolingDown ? 'text-zinc-500' : 'text-zinc-300'}`}>
+                                                    {signal.hostLabel}
+                                                </div>
                                             </button>
                                         );
                                     })}
                                 </div>
                                 <div className="mt-2 text-[10px] text-zinc-400">
-                                    Audio-only notes. The app timestamps them and ties them to the live performance when one is up.
+                                    Fewer buttons on purpose. Use one broad note and the host can handle the exact adjustment.
                                 </div>
                             </div>
                         ) : null}
@@ -13429,6 +13534,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                         </div>
+                                        <div className="mt-3">
+                                            {renderCoHostQueueAssistCard('compact')}
+                                        </div>
                                     </div>
                                     <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar touch-scroll-y px-3 py-3">
                                         {searchQ.trim().length < 3 ? (
@@ -13781,6 +13889,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 placeholder="Artist"
                                             />
                                         </div>
+                                        {renderCoHostQueueAssistCard('compact')}
                                         {audienceManualBackingAllowed && (
                                             <div className="space-y-3 rounded-2xl border border-cyan-300/15 bg-cyan-500/5 px-4 py-4">
                                                 <div className="flex items-start justify-between gap-3">
@@ -13846,6 +13955,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                             <h2 className="text-2xl font-bebas text-cyan-400">Request Song</h2>
                                         </div>
                                     )}
+                                    {renderCoHostQueueAssistCard(isStreamlinedAudienceShell ? 'compact' : 'full')}
                                     <div className="space-y-2">
                                         <button
                                             id="song-search"
@@ -13994,6 +14104,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         )}
                         {songsTab === 'browse' && (
                             <div className="flex flex-col h-full gap-6 pt-2">
+                                {renderCoHostQueueAssistCard(isStreamlinedAudienceShell ? 'compact' : 'full')}
                                 {isStreamlinedAudienceShell ? (
                                     <div className="space-y-3">
                                         <div className="rounded-[1.75rem] border border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,16,30,0.96),rgba(10,10,18,0.94))] px-4 py-4 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
@@ -14261,6 +14372,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     placeholder="Filter by title or artist"
                                                 />
                                             </div>
+                                            <div className="mt-3">
+                                                {renderCoHostQueueAssistCard('compact')}
+                                            </div>
                                         </div>
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
@@ -14337,6 +14451,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     placeholder="Filter Top 100 by title or artist"
                                                 />
                                             </div>
+                                            <div className="mt-3">
+                                                {renderCoHostQueueAssistCard('compact')}
+                                            </div>
                                         </div>
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">
                                             <div className="grid grid-cols-1 gap-3">
@@ -14391,6 +14508,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     className={audienceSearchInputClass}
                                                     placeholder="Filter room library"
                                                 />
+                                            </div>
+                                            <div className="mt-3">
+                                                {renderCoHostQueueAssistCard('compact')}
                                             </div>
                                         </div>
                                         <div className="flex-1 min-h-0 px-5 pb-6 custom-scrollbar touch-scroll-y">

@@ -31,7 +31,7 @@ import {
 } from './queueAutocomplete';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
-    addDoc, deleteDoc, serverTimestamp, limit, orderBy, getDocs, getDoc, setDoc, writeBatch,
+    addDoc, deleteDoc, serverTimestamp, limit, getDocs, getDoc, setDoc, writeBatch,
     runTransaction,
     storage, storageRef, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject,
     auth,
@@ -285,6 +285,29 @@ const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable bec
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
+const AAHF_SCENE_LIBRARY_SEED_ASSETS = Object.freeze([
+    { fileName: 'JAPANESE HERITAGE NIGHT.png', title: 'Japanese Heritage Night', mediaUrl: '/images/JAPANESE HERITAGE NIGHT.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-dance-4.11.png', title: 'AAHF Dance 4.11', mediaUrl: '/images/aahf-dance-4.11.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-festivaleventlist-flyer.png', title: 'AAHF Festival Event List Flyer', mediaUrl: '/images/aahf-festivaleventlist-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-festivalfinale-al.png', title: 'AAHF Festival Finale AL', mediaUrl: '/images/aahf-festivalfinale-al.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-karaoke.png', title: 'AAHF Karaoke', mediaUrl: '/images/aahf-karaoke.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-mahjongboathouse-flyer.png', title: 'AAHF Mahjong Boathouse Flyer', mediaUrl: '/images/aahf-mahjongboathouse-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-monologues-flyer.png', title: 'AAHF Monologues Flyer', mediaUrl: '/images/aahf-monologues-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-morales-flyer.png', title: 'AAHF Morales Flyer', mediaUrl: '/images/aahf-morales-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-strawberryfestival-flyer.png', title: 'AAHF Strawberry Festival Flyer', mediaUrl: '/images/aahf-strawberryfestival-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'aahf-strawberyfields-flyer.png', title: 'AAHF Strawberry Fields Flyer', mediaUrl: '/images/aahf-strawberyfields-flyer.png', mediaType: 'image', durationSec: 20 },
+    { fileName: 'AHB Show for 12.17.mp4', title: 'AHB Show for 12.17', mediaUrl: '/images/AHB Show for 12.17.mp4', mediaType: 'video', durationSec: 300 },
+    { fileName: '2nd Annual Asian Arts & Heritage Festival 4.2025.mp4', title: '2nd Annual Asian Arts & Heritage Festival 4.2025', mediaUrl: '/images/2nd Annual Asian Arts & Heritage Festival 4.2025.mp4', mediaType: 'video', durationSec: 300 },
+]);
+const isAahfSceneLibraryTargetRoom = (roomCode = '') => String(roomCode || '').trim().toUpperCase() === 'AAHF';
+const normalizeSceneLibrarySeedToken = (value = '') => String(value || '').trim().toLowerCase();
+const buildSceneLibrarySeedMediaUrl = (mediaPath = '') => {
+    try {
+        return new URL(String(mediaPath || '').trim(), getSurfaceBaseHref('app')).toString();
+    } catch {
+        return String(mediaPath || '').trim();
+    }
+};
 const HOST_PORTAL_RELEASE_BRIEF = Object.freeze({
     headline: 'Host portal refresh',
     dateLabel: 'March 21, 2026',
@@ -4225,6 +4248,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [scenePresetUploading, setScenePresetUploading] = useState(false);
     const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
     const [sceneLibraryModalOpen, setSceneLibraryModalOpen] = useState(false);
+    const [scenePresetsHydrated, setScenePresetsHydrated] = useState(false);
+    const [scenePresetSeedPending, setScenePresetSeedPending] = useState(false);
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
     const [autoOpenGameId, setAutoOpenGameId] = useState('');
     const [_appleMusicReady, setAppleMusicReady] = useState(false);
@@ -4661,6 +4686,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [activeWorkspaceSection, sceneLibraryModalOpen, scenePresets, tab, trackHostOperatorEvent]);
     const hallOfFameTimerRef = useRef(null);
     const layoutDefaultedRef = useRef(false);
+    const aahfSceneSeedAttemptRef = useRef('');
     const [clearingRoom, setClearingRoom] = useState(false);
     const [exportingRoom, setExportingRoom] = useState(false);
     const [closingRoom, setClosingRoom] = useState(false);
@@ -6005,6 +6031,43 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (ready) requestRunOfShowAutomationRecheck();
         return persistedDirector;
     }, [deriveRunOfShowEditableStatus, getCurrentRunOfShowDirector, persistRunOfShowDirector, requestRunOfShowAutomationRecheck, roomCode]);
+    const markScenePresetPresented = useCallback(async (mediaScene = {}, options = {}) => {
+        if (!roomCode) return null;
+        const sourceUploadId = String(
+            mediaScene?.sourceUploadId
+            || mediaScene?.mediaSceneSourceUploadId
+            || mediaScene?.id
+            || ''
+        ).trim();
+        const storagePath = String(
+            mediaScene?.storagePath
+            || mediaScene?.mediaSceneStoragePath
+            || ''
+        ).trim();
+        const matchedPreset = (Array.isArray(scenePresets) ? scenePresets : []).find((preset) => {
+            const presetSourceUploadId = String(preset?.sourceUploadId || preset?.id || '').trim();
+            const presetStoragePath = String(preset?.storagePath || '').trim();
+            return (sourceUploadId && presetSourceUploadId === sourceUploadId)
+                || (storagePath && presetStoragePath && presetStoragePath === storagePath);
+        });
+        if (!matchedPreset?.id) return null;
+        const presentedAtMs = Math.max(0, Number(options?.presentedAtMs || nowMs()) || nowMs());
+        const nextPresentedCount = Math.max(1, Number(matchedPreset?.presentedCount || 0) + 1);
+        const patch = {
+            lastPresentedAtMs: presentedAtMs,
+            lastPresentedRoomCode: roomCode,
+            presentedCount: nextPresentedCount
+        };
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', matchedPreset.id), patch).catch((error) => {
+            hostLogger.warn('Could not record scene preset presentation history', error);
+        });
+        setScenePresets((current) => (Array.isArray(current) ? current : []).map((preset) => (
+            preset?.id === matchedPreset.id
+                ? { ...preset, ...patch }
+                : preset
+        )));
+        return patch;
+    }, [hostLogger, roomCode, scenePresets]);
     const startRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const currentDirector = getCurrentRunOfShowDirector();
         const requestedItem = currentDirector.items.find((item) => item.id === itemId) || null;
@@ -6502,43 +6565,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }
         };
     }, []);
-    const markScenePresetPresented = useCallback(async (mediaScene = {}, options = {}) => {
-        if (!roomCode) return null;
-        const sourceUploadId = String(
-            mediaScene?.sourceUploadId
-            || mediaScene?.mediaSceneSourceUploadId
-            || mediaScene?.id
-            || ''
-        ).trim();
-        const storagePath = String(
-            mediaScene?.storagePath
-            || mediaScene?.mediaSceneStoragePath
-            || ''
-        ).trim();
-        const matchedPreset = (Array.isArray(scenePresets) ? scenePresets : []).find((preset) => {
-            const presetSourceUploadId = String(preset?.sourceUploadId || preset?.id || '').trim();
-            const presetStoragePath = String(preset?.storagePath || '').trim();
-            return (sourceUploadId && presetSourceUploadId === sourceUploadId)
-                || (storagePath && presetStoragePath && presetStoragePath === storagePath);
-        });
-        if (!matchedPreset?.id) return null;
-        const presentedAtMs = Math.max(0, Number(options?.presentedAtMs || nowMs()) || nowMs());
-        const nextPresentedCount = Math.max(1, Number(matchedPreset?.presentedCount || 0) + 1);
-        const patch = {
-            lastPresentedAtMs: presentedAtMs,
-            lastPresentedRoomCode: roomCode,
-            presentedCount: nextPresentedCount
-        };
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', matchedPreset.id), patch).catch((error) => {
-            hostLogger.warn('Could not record scene preset presentation history', error);
-        });
-        setScenePresets((current) => (Array.isArray(current) ? current : []).map((preset) => (
-            preset?.id === matchedPreset.id
-                ? { ...preset, ...patch }
-                : preset
-        )));
-        return patch;
-    }, [hostLogger, roomCode, scenePresets]);
     const queueScenePresetAsMoment = useCallback(async (preset = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(preset);
         if (!mediaUrl || mediaUrl.startsWith('blob:')) {
@@ -6726,6 +6752,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackHostOperatorEvent,
         toast
     ]);
+    const applyScenePresetToRunOfShow = useScenePresetInRunOfShow;
     const runOfShowAssignableSlots = useMemo(
         () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
             .filter((item) => item?.type === 'performance')
@@ -8989,6 +9016,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     // Data Sync
     useEffect(() => {
         if(!roomCode || isMarketingDemoFixture || qaHostFixtureId) return;
+        setScenePresetsHydrated(false);
         const unsubRoom = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), s => {
             if(s.exists()) setRoom(s.data());
         });
@@ -9022,6 +9050,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 items.sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
                 setScenePresets(items);
+                setScenePresetsHydrated(true);
             }
         );
         
@@ -9032,6 +9061,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
         return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); unsubScenePresets(); };
     }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId]);
+    useEffect(() => {
+        if (isMarketingDemoFixture || qaHostFixtureId) {
+            setScenePresetsHydrated(true);
+        }
+    }, [isMarketingDemoFixture, qaHostFixtureId]);
     useEffect(() => () => {
         localUploadsRef.current.forEach(url => URL.revokeObjectURL(url));
         localUploadsRef.current = [];
@@ -11943,6 +11977,87 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return null;
         }
     }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast, trackHostOperatorEvent]);
+    const syncAahfSceneLibrarySeedPack = useCallback(async ({ silent = false } = {}) => {
+        if (!isAahfSceneLibraryTargetRoom(roomCode)) {
+            return { addedCount: 0, skipped: true };
+        }
+        const existingKeys = new Set(
+            (Array.isArray(scenePresets) ? scenePresets : []).flatMap((preset) => ([
+                normalizeSceneLibrarySeedToken(preset?.fileName),
+                normalizeSceneLibrarySeedToken(preset?.title),
+                normalizeSceneLibrarySeedToken(preset?.mediaUrl),
+            ])).filter(Boolean)
+        );
+        const missingAssets = AAHF_SCENE_LIBRARY_SEED_ASSETS.filter((asset) => {
+            const mediaUrl = buildSceneLibrarySeedMediaUrl(asset.mediaUrl);
+            return !existingKeys.has(normalizeSceneLibrarySeedToken(asset.fileName))
+                && !existingKeys.has(normalizeSceneLibrarySeedToken(asset.title))
+                && !existingKeys.has(normalizeSceneLibrarySeedToken(mediaUrl));
+        });
+        if (!missingAssets.length) {
+            return { addedCount: 0, skipped: true };
+        }
+        setScenePresetSeedPending(true);
+        try {
+            let addedCount = 0;
+            for (let index = 0; index < missingAssets.length; index += 1) {
+                const asset = missingAssets[index];
+                const payload = {
+                    roomCode,
+                    title: asset.title,
+                    mediaUrl: buildSceneLibrarySeedMediaUrl(asset.mediaUrl),
+                    mediaType: asset.mediaType,
+                    durationSec: asset.durationSec,
+                    storagePath: '',
+                    fileName: asset.fileName,
+                    size: 0,
+                    sourceUploadId: '',
+                    createdAt: serverTimestamp(),
+                    createdAtMs: nowMs() + index,
+                    createdBy: hostName || room?.hostName || 'AAHF Scene Seed'
+                };
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+                addedCount += 1;
+            }
+            if (!silent && addedCount > 0) {
+                toast(`Added ${addedCount} AAHF scene${addedCount === 1 ? '' : 's'} to the library.`);
+            }
+            return { addedCount, skipped: false };
+        } catch (error) {
+            hostLogger.error('Could not seed the AAHF scene library pack', error);
+            if (!silent) {
+                toast('Could not sync the AAHF scene library pack.');
+            }
+            return { addedCount: 0, skipped: false, error };
+        } finally {
+            setScenePresetSeedPending(false);
+        }
+    }, [hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast]);
+    useEffect(() => {
+        if (!scenePresetsHydrated || !isAahfSceneLibraryTargetRoom(roomCode) || isMarketingDemoFixture || qaHostFixtureId) {
+            return;
+        }
+        const seededAssetCount = (Array.isArray(scenePresets) ? scenePresets : []).filter((preset) => (
+            AAHF_SCENE_LIBRARY_SEED_ASSETS.some((asset) => normalizeSceneLibrarySeedToken(asset.fileName) === normalizeSceneLibrarySeedToken(preset?.fileName))
+        )).length;
+        if (seededAssetCount >= AAHF_SCENE_LIBRARY_SEED_ASSETS.length) {
+            aahfSceneSeedAttemptRef.current = roomCode;
+            return;
+        }
+        if (aahfSceneSeedAttemptRef.current === roomCode || scenePresetSeedPending) {
+            return;
+        }
+        aahfSceneSeedAttemptRef.current = roomCode;
+        void syncAahfSceneLibrarySeedPack({ silent: true });
+    }, [
+        isMarketingDemoFixture,
+        qaHostFixtureId,
+        roomCode,
+        scenePresetSeedPending,
+        scenePresets,
+        scenePresetsHydrated,
+        syncAahfSceneLibrarySeedPack,
+    ]);
     const uploadMediaFileToTvLibrary = useCallback(async (file, options = {}) => {
         const uploaded = await uploadRoomMediaAsset(file, {
             title: String(options?.title || '').trim(),
@@ -11960,9 +12075,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             successToast: false
         });
         if (!uploaded) return null;
-        await useScenePresetInRunOfShow(uploaded);
+        await applyScenePresetToRunOfShow(uploaded);
         return uploaded;
-    }, [uploadRoomMediaAsset, useScenePresetInRunOfShow]);
+    }, [applyScenePresetToRunOfShow, uploadRoomMediaAsset]);
     const reconcileDeletedMediaReferences = useCallback(async (asset = {}) => {
         const assetIdentity = buildRoomMediaIdentity(asset);
         if (!hasRoomMediaIdentity(assetIdentity)) return false;
@@ -16457,6 +16572,221 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         </div>
     );
 
+    const toggleAutoDjQuick = async () => {
+        const previous = !!autoDj;
+        const next = !previous;
+        setAutoDj(next);
+        try {
+            await updateRoom({ autoDj: next });
+        } catch (error) {
+            console.error('Failed to update Auto-DJ from host chrome', error);
+            setAutoDj(previous);
+            toast('Could not update Auto-DJ.');
+        }
+    };
+
+    const toggleAutoBgMusicQuick = async () => {
+        const previous = !!autoBgMusic;
+        const next = !previous;
+        setAutoBgMusic(next);
+        try {
+            await updateRoom({ autoBgMusic: next });
+            if (next && !playingBg) {
+                setBgMusicState(true);
+            }
+        } catch (error) {
+            console.error('Failed to update auto background music from host chrome', error);
+            setAutoBgMusic(previous);
+            toast('Could not update auto background music.');
+        }
+    };
+
+    const toggleAutoPlayMediaQuick = async () => {
+        const previous = !!autoPlayMedia;
+        const next = !previous;
+        setAutoPlayMedia(next);
+        try {
+            await updateRoom({ autoPlayMedia: next });
+        } catch (error) {
+            console.error('Failed to update auto stage playback from host chrome', error);
+            setAutoPlayMedia(previous);
+            toast('Could not update auto stage playback.');
+        }
+    };
+
+    const toggleAutoEndQuick = async () => {
+        const previous = !!autoEndOnTrackFinish;
+        const next = !previous;
+        setAutoEndOnTrackFinish(next);
+        try {
+            await updateRoom({ autoEndOnTrackFinish: next });
+        } catch (error) {
+            console.error('Failed to update auto end from host chrome', error);
+            setAutoEndOnTrackFinish(previous);
+            toast('Could not update auto end.');
+        }
+    };
+
+    const toggleAutoBonusQuick = async () => {
+        const previous = !!autoBonusEnabled;
+        const next = !previous;
+        setAutoBonusEnabled(next);
+        try {
+            await updateRoom({ autoBonusEnabled: next });
+        } catch (error) {
+            console.error('Failed to update auto bonus from host chrome', error);
+            setAutoBonusEnabled(previous);
+            toast('Could not update auto bonus.');
+        }
+    };
+
+    const toggleAutoLyricsOnQueueQuick = async () => {
+        const previous = !!autoLyricsOnQueue;
+        const next = !previous;
+        setAutoLyricsOnQueue(next);
+        try {
+            await updateRoom({ autoLyricsOnQueue: next });
+        } catch (error) {
+            console.error('Failed to update auto lyrics from host chrome', error);
+            setAutoLyricsOnQueue(previous);
+            toast('Could not update auto lyrics.');
+        }
+    };
+
+    const togglePopTriviaQuick = async () => {
+        const previous = !!popTriviaEnabled;
+        const next = !previous;
+        setPopTriviaEnabled(next);
+        try {
+            await updateRoom({ popTriviaEnabled: next });
+        } catch (error) {
+            console.error('Failed to update Pop Trivia from host chrome', error);
+            setPopTriviaEnabled(previous);
+            toast('Could not update Pop Trivia.');
+        }
+    };
+
+    const updateQueueSettingsQuick = async (patch = {}) => {
+        const previous = {
+            limitMode: String(queueLimitMode || 'none'),
+            limitCount: Math.max(0, Number(queueLimitCount || 0)),
+            rotation: String(queueRotation || 'round_robin'),
+            firstTimeBoost: !!queueFirstTimeBoost,
+        };
+        const next = {
+            limitMode: String((patch.limitMode ?? previous.limitMode) || 'none'),
+            limitCount: Math.max(0, Number((patch.limitCount ?? previous.limitCount) || 0)),
+            rotation: String((patch.rotation ?? previous.rotation) || 'round_robin'),
+            firstTimeBoost: patch.firstTimeBoost ?? previous.firstTimeBoost,
+        };
+        setQueueLimitMode(next.limitMode);
+        setQueueLimitCount(next.limitCount);
+        setQueueRotation(next.rotation);
+        setQueueFirstTimeBoost(!!next.firstTimeBoost);
+        try {
+            await updateRoom({
+                queueSettings: {
+                    limitMode: next.limitMode,
+                    limitCount: next.limitCount,
+                    rotation: next.rotation,
+                    firstTimeBoost: !!next.firstTimeBoost,
+                }
+            });
+        } catch (error) {
+            console.error('Failed to update queue settings from host chrome', error);
+            setQueueLimitMode(previous.limitMode);
+            setQueueLimitCount(previous.limitCount);
+            setQueueRotation(previous.rotation);
+            setQueueFirstTimeBoost(previous.firstTimeBoost);
+            toast('Could not update queue settings.');
+        }
+    };
+
+    const toggleBouncerModeQuick = async () => {
+        const next = !room?.bouncerMode;
+        try {
+            await updateRoom({ bouncerMode: next });
+        } catch (error) {
+            console.error('Failed to update bouncer mode from host chrome', error);
+            toast('Could not update host approval mode.');
+        }
+    };
+
+    const setRequestModeQuick = async (nextValue = '') => {
+        const previous = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
+        const safeMode = normalizeRoomRequestMode(nextValue, nextValue === REQUEST_MODES.guestBackingOptional);
+        const allowSingerTrackSelectNext = safeMode === REQUEST_MODES.guestBackingOptional;
+        setRequestMode(safeMode);
+        try {
+            await updateRoom({
+                requestMode: safeMode,
+                allowSingerTrackSelect: allowSingerTrackSelectNext,
+                audienceBackingMode: deriveAudienceBackingMode({
+                    requestMode: safeMode,
+                    allowSingerTrackSelect: allowSingerTrackSelectNext,
+                }),
+                unknownBackingPolicy: deriveUnknownBackingPolicy({
+                    requestMode: safeMode,
+                    allowSingerTrackSelect: allowSingerTrackSelectNext,
+                }),
+            });
+        } catch (error) {
+            console.error('Failed to update request mode from host chrome', error);
+            setRequestMode(previous);
+            toast('Could not update audience request mode.');
+        }
+    };
+
+    const setReadyCheckDurationQuick = async (nextValue = 10) => {
+        const previous = Math.max(3, Number(readyCheckDurationSec || 10) || 10);
+        const next = Math.max(3, Math.min(30, Number(nextValue || previous) || previous));
+        setReadyCheckDurationSec(next);
+        try {
+            await updateRoom({ readyCheckDurationSec: next });
+        } catch (error) {
+            console.error('Failed to update ready check duration from host chrome', error);
+            setReadyCheckDurationSec(previous);
+            toast('Could not update ready check duration.');
+        }
+    };
+
+    const quickAutomationControls = {
+        autoDj: !!autoDj,
+        autoPlayMedia: !!autoPlayMedia,
+        autoBgMusic: !!autoBgMusic,
+        autoEndOnTrackFinish: !!autoEndOnTrackFinish,
+        autoBonusEnabled: !!autoBonusEnabled,
+        autoLyricsOnQueue: !!autoLyricsOnQueue,
+        autoPartyEnabled: !!autoCrowdMomentsEnabled,
+        popTriviaEnabled: !!popTriviaEnabled,
+        onToggleAutoDj: toggleAutoDjQuick,
+        onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,
+        onToggleAutoBgMusic: toggleAutoBgMusicQuick,
+        onToggleAutoEnd: toggleAutoEndQuick,
+        onToggleAutoBonus: toggleAutoBonusQuick,
+        onToggleAutoLyricsOnQueue: toggleAutoLyricsOnQueueQuick,
+        onToggleAutoParty: toggleAutoPartyEnabled,
+        onTogglePopTrivia: togglePopTriviaQuick,
+    };
+
+    const quickRoomControls = {
+        bouncerMode: !!room?.bouncerMode,
+        queueLimitMode,
+        queueLimitCount: Math.max(0, Number(queueLimitCount || 0)),
+        queueRotation,
+        queueFirstTimeBoost: !!queueFirstTimeBoost,
+        requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
+        readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
+        queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
+        queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
+        requestModeOptions: REQUEST_MODE_OPTIONS,
+        onToggleBouncerMode: toggleBouncerModeQuick,
+        onUpdateQueueSettings: updateQueueSettingsQuick,
+        onSetRequestMode: setRequestModeQuick,
+        onSetReadyCheckDuration: setReadyCheckDurationQuick,
+        onTriggerReadyCheck: startReadyCheck,
+    };
+
     const queueTabProps = {
         songs,
         room,
@@ -16569,7 +16899,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onAddScenePresetToRunOfShow: useScenePresetInRunOfShow,
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
+        onSeedScenePresetLibrary: syncAahfSceneLibrarySeedPack,
         onSceneLibraryModalChange: setSceneLibraryModalOpen,
+        sceneLibrarySeedPack: isAahfSceneLibraryTargetRoom(roomCode)
+            ? { label: 'AAHF Festival Pack', assetCount: AAHF_SCENE_LIBRARY_SEED_ASSETS.length }
+            : null,
+        scenePresetSeedPending,
         crowdPulse,
         coHostSignals: recentCoHostSignals,
         moderationQueueItems: moderationInbox.queueItems,
@@ -16845,6 +17180,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         setSettingsTab('general');
                     }}
                     onOpenQueueControls={focusQueueLiveControls}
+                    quickAutomationControls={quickAutomationControls}
+                    quickRoomControls={quickRoomControls}
                     roomReadinessSummary={roomReadinessState.summary}
                     roomReadinessStatusLabel={roomReadinessState.statusLabel}
                     roomReadinessActive={roomReadinessState.active}
@@ -16893,7 +17230,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     scenePresets={scenePresets}
                     onLaunchScenePreset={launchScenePreset}
                     onQueueScenePreset={queueScenePresetAsMoment}
-                    onAddScenePresetToRunOfShow={useScenePresetInRunOfShow}
+                    onAddScenePresetToRunOfShow={applyScenePresetToRunOfShow}
                     onClearScenePreset={clearScenePreset}
                     onReplayPurchaseCelebration={replayLatestPurchaseCelebration}
                 />
@@ -17029,7 +17366,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     currentRoomDraftSummary={currentRoomDraftSummary}
                                     onApplyCurrentRoomDraft={applyCurrentRoomRunOfShowDraft}
                                     scenePresets={scenePresets}
-                                    onAddScenePresetToRunOfShow={useScenePresetInRunOfShow}
+                                    onAddScenePresetToRunOfShow={applyScenePresetToRunOfShow}
                                     onSaveTemplate={saveRunOfShowTemplate}
                                     onApplyTemplate={applyRunOfShowTemplate}
                                     onApplyStarterTemplate={applyRunOfShowStarterTemplate}
@@ -17168,6 +17505,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             const userUid = resolveRoomUserUid(u);
                                             const userToken = resolveLobbyUserToken(u);
                                             const isVip = u.isVip || (u.vipLevel || 0) > 0;
+                                            const isCoHost = !!(userUid && (runOfShowRoles?.coHosts || []).includes(userUid));
                                             const isSelected = selectedLobbyUserToken === userToken;
                                             const isLocked = lockedLobbyUserToken === userToken;
                                             return (
@@ -17208,10 +17546,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         </div>
                                                         {isLocked && <span className="text-[10px] uppercase tracking-widest text-cyan-200">Lock</span>}
                                                     </div>
-                                                    <div className="mt-1 text-[10px] text-zinc-400">{u.points || 0} pts{isVip ? ' | VIP' : ''}{userUid ? '' : ' | Offline'}</div>
+                                                    <div className="mt-1 text-[10px] text-zinc-400">{u.points || 0} pts{isVip ? ' | VIP' : ''}{isCoHost ? ' | CO-HOST' : ''}{userUid ? '' : ' | Offline'}</div>
                                                 </button>
                                             );
                                         })}
+                                    </div>
+                                    <div className="mt-2 text-[11px] text-zinc-400">
+                                        Tip: select a guest card, then use <span className="text-white">Make Co-Host</span> in the controls below.
                                     </div>
                                     {pendingFirstSongAssistCount > 0 && (
                                         <div className="mt-3 rounded-xl border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
@@ -20336,7 +20677,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
                                                     TV Library
                                                 </button>
-                                                <button onClick={() => useScenePresetInRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                <button onClick={() => applyScenePresetToRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
                                                     Use In Run Of Show
                                                 </button>
                                             </>
@@ -20388,7 +20729,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
                                                         TV Library
                                                     </button>
-                                                    <button onClick={() => useScenePresetInRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
+                                                    <button onClick={() => applyScenePresetToRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
                                                         Use In Run Of Show
                                                     </button>
                                                 </>

@@ -8,6 +8,7 @@ import sharp from "sharp";
 import {
   buildMarketingPath,
   MARKETING_ROUTE_PAGES,
+  parseMarketingRouteFromHref,
 } from "../src/apps/Marketing/routing.js";
 import {
   buildMarketingSocialSlug,
@@ -160,6 +161,17 @@ const canonicalizeRegionToken = (value = "") => {
 };
 
 const nowIso = () => new Date().toISOString();
+const samePath = (left = "", right = "") => path.resolve(String(left || "")) === path.resolve(String(right || ""));
+const readJsonFileIfExists = async (filePath = "") => {
+  const target = cleanText(filePath);
+  if (!target || !fsSync.existsSync(target)) return null;
+  try {
+    const raw = await fs.readFile(target, "utf8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
 
 const cleanBasePath = (() => {
   const raw = readEnv("BASE_URL", "/");
@@ -388,6 +400,171 @@ const loadRouteDataFromFirestore = async () => {
   };
 };
 
+const normalizeLegacyCityPairs = (entries = []) =>
+  (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const state = normalizeToken(entry.state || "");
+      const city = normalizeCityToken(entry.city || "");
+      if (!state || !city) return null;
+      return { state, city };
+    })
+    .filter(Boolean);
+
+const loadLegacyManifestCache = async (outputDir) => {
+  const candidates = [
+    path.join(trackedPublicDir, "marketing-route-manifest.json"),
+    path.join(outputDir, "marketing-route-manifest.json"),
+  ];
+  for (const candidate of candidates) {
+    const parsed = await readJsonFileIfExists(candidate);
+    if (!parsed || typeof parsed !== "object") continue;
+    if (!Array.isArray(parsed.detailRoutes)) continue;
+    return parsed;
+  }
+  return null;
+};
+
+const loadSeoManifestCache = async (outputDir) => {
+  const candidates = [
+    path.join(trackedPublicDir, "seo-route-manifest.json"),
+    path.join(outputDir, "seo-route-manifest.json"),
+  ];
+  for (const candidate of candidates) {
+    const parsed = await readJsonFileIfExists(candidate);
+    if (!parsed || typeof parsed !== "object") continue;
+    if (!Array.isArray(parsed.records) || !parsed.records.length) continue;
+    return parsed;
+  }
+  return null;
+};
+
+const buildCachedRouteSpecsFromLegacyManifest = (manifest = {}) => {
+  const specs = [];
+
+  PUBLIC_CORE_ROUTE_PAGES.forEach((page) => {
+    specs.push({ route: { page, id: "", params: {} }, entity: null });
+  });
+
+  (Array.isArray(manifest.geoRegionTokens) ? manifest.geoRegionTokens : []).forEach((regionToken) => {
+    const route = parseMarketingRouteFromHref(buildMarketingPath({
+      page: MARKETING_ROUTE_PAGES.geoRegion,
+      id: regionToken,
+      params: { regionToken },
+    }));
+    specs.push({ route, entity: { geoLabel: regionToken } });
+  });
+
+  normalizeLegacyCityPairs(manifest.geoCityPairs).forEach((entry) => {
+    const route = parseMarketingRouteFromHref(buildMarketingPath({
+      page: MARKETING_ROUTE_PAGES.geoCity,
+      id: `${entry.state}:${entry.city}`,
+      params: { state: entry.state, city: entry.city },
+    }));
+    specs.push({ route, entity: null });
+  });
+
+  (Array.isArray(manifest.detailRoutes) ? manifest.detailRoutes : []).forEach((routePath) => {
+    const route = parseMarketingRouteFromHref(routePath);
+    if (!route?.page) return;
+    specs.push({ route, entity: null });
+  });
+
+  const deduped = new Map();
+  specs.forEach((spec) => {
+    const key = buildMarketingPath(spec.route);
+    if (!deduped.has(key)) deduped.set(key, spec);
+  });
+  return Array.from(deduped.values());
+};
+
+const normalizeCachedSeoRecord = (record = {}, baseUrl = readSiteUrl()) => {
+  const route = record?.route?.page
+    ? {
+      page: String(record.route.page || "").trim(),
+      id: cleanText(record.route.id),
+      params: record.route.params && typeof record.route.params === "object" ? record.route.params : {},
+    }
+    : parseMarketingRouteFromHref(record.routePath || "/");
+  const baseRecord = buildSeoRouteRecord(route, { baseUrl });
+  const robots = cleanText(record.robots, baseRecord.robots);
+  const imageInput = record?.image && typeof record.image === "object" ? record.image : {};
+  const imagePath = cleanText(
+    imageInput.path,
+    cleanText(imageInput.url).startsWith(baseUrl)
+      ? cleanText(imageInput.url).slice(baseUrl.length)
+      : baseRecord.image.path
+  );
+  const imageUrl = cleanText(
+    imageInput.url,
+    imagePath
+      ? `${baseUrl}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`
+      : baseRecord.image.url
+  );
+  const indexable = robots.toLowerCase().includes("noindex") ? false : (record.indexable !== false && baseRecord.indexable);
+
+  return {
+    ...baseRecord,
+    route,
+    routePath: buildMarketingPath(route),
+    title: cleanText(record.title, baseRecord.title),
+    description: cleanText(record.description, baseRecord.description),
+    canonicalUrl: cleanText(record.canonicalUrl, baseRecord.canonicalUrl),
+    robots,
+    ogType: cleanText(record.ogType, baseRecord.ogType),
+    siteName: cleanText(record.siteName, baseRecord.siteName),
+    image: {
+      ...baseRecord.image,
+      url: imageUrl || baseRecord.image.url,
+      width: Number(imageInput.width || baseRecord.image.width || MARKETING_SOCIAL_IMAGE_WIDTH),
+      height: Number(imageInput.height || baseRecord.image.height || MARKETING_SOCIAL_IMAGE_HEIGHT),
+      alt: cleanText(imageInput.alt, baseRecord.image.alt),
+      path: imagePath || baseRecord.image.path,
+    },
+    jsonLd: Array.isArray(record.jsonLd) && record.jsonLd.length ? record.jsonLd : baseRecord.jsonLd,
+    indexable,
+    sitemapImages: indexable && imageUrl ? [imageUrl] : [],
+  };
+};
+
+const summarizeRouteDataFromRecords = (records = [], source = "seo_cache") => {
+  const byPage = records.reduce((acc, record) => {
+    const page = String(record?.route?.page || "").trim();
+    if (!page) return acc;
+    acc[page] = (acc[page] || 0) + 1;
+    return acc;
+  }, {});
+  const regionTokens = new Set();
+  const cityPairs = new Set();
+  records.forEach((record) => {
+    const page = String(record?.route?.page || "").trim();
+    if (page === MARKETING_ROUTE_PAGES.geoRegion) {
+      const token = canonicalizeRegionToken(record?.route?.params?.regionToken || record?.route?.id || "");
+      if (token) regionTokens.add(token);
+    }
+    if (page === MARKETING_ROUTE_PAGES.geoCity) {
+      const state = normalizeToken(record?.route?.params?.state || "");
+      const city = normalizeCityToken(record?.route?.params?.city || "");
+      if (state && city) cityPairs.add(`${state}:${city}`);
+    }
+  });
+
+  return {
+    source,
+    generatedAt: nowIso(),
+    counts: {
+      totalRoutes: records.length,
+      detailRoutes: records.filter((record) => ROUTE_DETAIL_PAGES.has(record?.route?.page)).length,
+      byPage,
+    },
+    regionTokens: Array.from(regionTokens).sort(),
+    cityPairs: Array.from(cityPairs).sort().map((entry) => {
+      const [state, city] = String(entry || "").split(":");
+      return { state, city };
+    }),
+  };
+};
+
 const buildRouteSpecs = (routeData = {}) => {
   const staticRoutes = PUBLIC_CORE_ROUTE_PAGES.map((page) => ({
     route: { page, id: "", params: {} },
@@ -600,8 +777,12 @@ const buildForFansCardOverlaySvg = ({
   `);
 };
 
-const createSocialCard = async ({ route = {}, entity = null, outputDir = trackedPublicDir }) => {
-  const candidates = getCardBackgroundCandidates(route, entity);
+const createSocialCard = async ({ route = {}, entity = null, routeRecord = null, outputDir = trackedPublicDir }) => {
+  const preferredImagePath = cleanText(routeRecord?.image?.path || routeRecord?.image?.url || "");
+  const candidates = [
+    ...(preferredImagePath ? [preferredImagePath] : []),
+    ...getCardBackgroundCandidates(route, entity),
+  ];
   let backgroundBuffer = null;
   for (const candidate of candidates) {
     backgroundBuffer = await loadBufferForImage(candidate, outputDir);
@@ -612,7 +793,7 @@ const createSocialCard = async ({ route = {}, entity = null, outputDir = tracked
   const logoPath = localPathForPublicAsset(MARKETING_LOGO_CARD_PATH, outputDir);
   const logoBuffer = logoPath ? await fs.readFile(logoPath) : null;
 
-  const routeRecord = buildSeoRouteRecord(route, {
+  const resolvedRouteRecord = routeRecord || buildSeoRouteRecord(route, {
     baseUrl: readSiteUrl(),
     entity,
   });
@@ -623,12 +804,12 @@ const createSocialCard = async ({ route = {}, entity = null, outputDir = tracked
 
   const overlay = route.page === MARKETING_ROUTE_PAGES.forFans
     ? buildForFansCardOverlaySvg({
-      title: routeRecord.title.replace(/\s*\|\s*BeauRocks.*$/, ""),
-      description: routeRecord.description,
+      title: resolvedRouteRecord.title.replace(/\s*\|\s*BeauRocks.*$/, ""),
+      description: resolvedRouteRecord.description,
     })
     : buildCardOverlaySvg({
-      title: routeRecord.title.replace(/\s*\|\s*BeauRocks.*$/, ""),
-      description: routeRecord.description,
+      title: resolvedRouteRecord.title.replace(/\s*\|\s*BeauRocks.*$/, ""),
+      description: resolvedRouteRecord.description,
       kicker: PAGE_KICKER[String(route.page || "")] || "BeauRocks",
       logoUrl: logoBuffer ? `data:image/png;base64,${logoBuffer.toString("base64")}` : "",
     });
@@ -764,35 +945,104 @@ const buildSeoManifest = (routeData = {}, records = []) => ({
   records,
 });
 
+const syncTrackedSeoCache = async ({
+  outputDir,
+  legacyManifest,
+  seoManifest,
+  sitemapXml,
+  robotsTxt,
+} = {}) => {
+  if (samePath(outputDir, trackedPublicDir)) return;
+  await fs.writeFile(path.join(trackedPublicDir, "marketing-route-manifest.json"), JSON.stringify(legacyManifest, null, 2), "utf8");
+  await fs.writeFile(path.join(trackedPublicDir, "seo-route-manifest.json"), JSON.stringify(seoManifest, null, 2), "utf8");
+  await fs.writeFile(path.join(trackedPublicDir, "sitemap.xml"), sitemapXml, "utf8");
+  await fs.writeFile(path.join(trackedPublicDir, "robots.txt"), robotsTxt, "utf8");
+};
+
 const run = async () => {
   const siteUrl = readSiteUrl();
   const outputDir = resolveOutputDir();
-  const routeData = await loadRouteDataFromFirestore();
-  const routeSpecs = buildRouteSpecs(routeData);
   const templatePath = fsSync.existsSync(path.join(outputDir, "index.html"))
     ? path.join(outputDir, "index.html")
     : path.join(projectRoot, "index.html");
   const templateHtml = await fs.readFile(templatePath, "utf8");
 
+  let routeData = null;
+  let routeSpecs = [];
+  let cachedRecords = [];
+  try {
+    routeData = await loadRouteDataFromFirestore();
+    routeSpecs = buildRouteSpecs(routeData);
+  } catch (error) {
+    const seoCache = await loadSeoManifestCache(outputDir);
+    if (seoCache?.records?.length) {
+      cachedRecords = seoCache.records.map((record) => normalizeCachedSeoRecord(record, siteUrl));
+      routeData = summarizeRouteDataFromRecords(cachedRecords, seoCache.source || "seo_manifest_cache");
+      process.stdout.write(
+        `SEO generator: Firestore unavailable, using cached seo-route-manifest.json with ${cachedRecords.length} records.\n`
+      );
+    } else {
+      const legacyCache = await loadLegacyManifestCache(outputDir);
+      if (!legacyCache) throw error;
+      routeData = {
+        source: legacyCache.source || "legacy_manifest_cache",
+        generatedAt: nowIso(),
+        counts: legacyCache.counts || {},
+        regionTokens: Array.isArray(legacyCache.geoRegionTokens) ? legacyCache.geoRegionTokens : [],
+        cityPairs: normalizeLegacyCityPairs(legacyCache.geoCityPairs),
+      };
+      routeSpecs = buildCachedRouteSpecsFromLegacyManifest(legacyCache);
+      process.stdout.write(
+        `SEO generator: Firestore unavailable, using cached marketing-route-manifest.json with ${routeSpecs.length} routes.\n`
+      );
+    }
+  }
+
   const records = [];
-  for (const spec of routeSpecs) {
-    const socialCardPath = await createSocialCard({
-      route: spec.route,
-      entity: spec.entity,
-      outputDir,
-    });
-    const record = buildSeoRouteRecord(spec.route, {
-      baseUrl: siteUrl,
-      entity: {
-        ...(spec.entity || {}),
-        socialCardPath,
-      },
-    });
-    records.push({
-      ...record,
-      lastmod: nowIso(),
-      priority: getRoutePriority(record.route.page),
-    });
+  if (cachedRecords.length) {
+    for (const cachedRecord of cachedRecords) {
+      const socialCardPath = await createSocialCard({
+        route: cachedRecord.route,
+        entity: {
+          socialCardPath: cachedRecord.image?.path || "",
+          socialCardAlt: cachedRecord.image?.alt || "",
+          id: cachedRecord.route?.id || "",
+        },
+        routeRecord: cachedRecord,
+        outputDir,
+      });
+      records.push({
+        ...cachedRecord,
+        image: {
+          ...(cachedRecord.image || {}),
+          path: socialCardPath,
+          url: `${siteUrl}${socialCardPath}`,
+        },
+        sitemapImages: cachedRecord.indexable ? [`${siteUrl}${socialCardPath}`] : [],
+        lastmod: nowIso(),
+        priority: getRoutePriority(cachedRecord.route.page),
+      });
+    }
+  } else {
+    for (const spec of routeSpecs) {
+      const socialCardPath = await createSocialCard({
+        route: spec.route,
+        entity: spec.entity,
+        outputDir,
+      });
+      const record = buildSeoRouteRecord(spec.route, {
+        baseUrl: siteUrl,
+        entity: {
+          ...(spec.entity || {}),
+          socialCardPath,
+        },
+      });
+      records.push({
+        ...record,
+        lastmod: nowIso(),
+        priority: getRoutePriority(record.route.page),
+      });
+    }
   }
 
   const legacyManifest = buildLegacyManifest(routeData, records);
@@ -804,6 +1054,13 @@ const run = async () => {
   await fs.writeFile(path.join(outputDir, "seo-route-manifest.json"), JSON.stringify(seoManifest, null, 2), "utf8");
   await fs.writeFile(path.join(outputDir, "sitemap.xml"), sitemapXml, "utf8");
   await fs.writeFile(path.join(outputDir, "robots.txt"), robotsTxt, "utf8");
+  await syncTrackedSeoCache({
+    outputDir,
+    legacyManifest,
+    seoManifest,
+    sitemapXml,
+    robotsTxt,
+  });
 
   for (const record of records) {
     await writePrerenderedHtml({

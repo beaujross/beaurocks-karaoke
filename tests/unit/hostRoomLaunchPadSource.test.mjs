@@ -76,6 +76,10 @@ test('AAHF rooms get a dedicated event-focus shortcut in the launchpad', () => {
   const launchPadSource = readFileSync(launchPadPath, 'utf8');
 
   assert.match(launchPadSource, /const eventFocusRoom = \[\.\.\.tonightRooms, \.\.\.upcomingRooms, \.\.\.cleanupRooms, \.\.\.archivedRooms\]\.find\(isAahfRoom\) \|\| null;/);
+  assert.match(launchPadSource, /const featuredRoom = eventFocusRoom\s*\|\|\s*\[\.\.\.recentHostRooms\]\.find\(\(roomItem\) => pinnedRoomCodeSet\.has/);
+  assert.match(launchPadSource, /const defaultRoomBrowserFilter = findBucketForRoomCode\(featuredRoom\?\.code, roomBrowserBuckets\) \|\| 'ready';/);
+  assert.match(launchPadSource, /const \[selectedRoomCode, setSelectedRoomCode\] = useState\(\(\) => String\(featuredRoom\?\.code \|\| ''\)\.trim\(\)\.toUpperCase\(\)\);/);
+  assert.match(launchPadSource, /setRoomBrowserFilter\(targetBucketId\);/);
   assert.match(browserSource, /Event Focus/);
   assert.match(browserSource, /Keep AAHF one click away while you prep the festival night, jump into the show plan, and clear test data before doors\./);
   assert.match(browserSource, />\s*Open Host Panel\s*</);

@@ -9,6 +9,8 @@ const ROOM_CODE = "ROOM1";
 const HOST_UID = "host-uid";
 const GUEST_UID = "guest-uid";
 const OTHER_UID = "other-uid";
+const CO_HOST_UID = "cohost-uid";
+const TARGET_UID = "target-uid";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -42,6 +44,8 @@ async function resetState(roomPatch = {}) {
     roomRef.delete().catch(() => {}),
     roomUserRefFor(GUEST_UID).delete().catch(() => {}),
     roomUserRefFor(OTHER_UID).delete().catch(() => {}),
+    roomUserRefFor(CO_HOST_UID).delete().catch(() => {}),
+    roomUserRefFor(TARGET_UID).delete().catch(() => {}),
   ]);
 
   await roomRef.set({
@@ -210,6 +214,108 @@ async function run() {
       const queueSnap = await queueRefFor(GUEST_UID, "has_backing").get();
       assert.equal(queueSnap.get("playbackReady"), true);
       assert.equal(queueSnap.get("status"), "requested");
+    }],
+
+    ["audience queue song lets co-host queue for another joined singer", async () => {
+      await resetState({
+        runOfShowRoles: {
+          coHosts: [CO_HOST_UID],
+        },
+      });
+      await roomUserRefFor(CO_HOST_UID).set({
+        roomCode: ROOM_CODE,
+        uid: CO_HOST_UID,
+        name: "Co Host",
+        avatar: "sparkles",
+      });
+      await roomUserRefFor(TARGET_UID).set({
+        roomCode: ROOM_CODE,
+        uid: TARGET_UID,
+        name: "Target Singer",
+        avatar: "microphone",
+      });
+
+      const result = await submitAudienceQueueSong.run(requestFor(CO_HOST_UID, {
+        roomCode: ROOM_CODE,
+        clientRequestId: "cohost_target_request",
+        targetSingerUid: TARGET_UID,
+        songTitle: "Rhiannon",
+        artist: "Fleetwood Mac",
+      }));
+
+      assert.equal(result.ok, true);
+      const queueSnap = await queueRefFor(CO_HOST_UID, "cohost_target_request").get();
+      assert.equal(queueSnap.exists, true);
+      assert.equal(queueSnap.get("singerUid"), TARGET_UID);
+      assert.equal(queueSnap.get("singerName"), "Target Singer");
+      assert.equal(queueSnap.get("submittedByUid"), CO_HOST_UID);
+    }],
+
+    ["audience queue song blocks non-co-hosts from queueing for another singer", async () => {
+      await resetState();
+      await roomUserRefFor(TARGET_UID).set({
+        roomCode: ROOM_CODE,
+        uid: TARGET_UID,
+        name: "Target Singer",
+        avatar: "microphone",
+      });
+
+      await expectHttpsError(
+        () => submitAudienceQueueSong.run(requestFor(GUEST_UID, {
+          roomCode: ROOM_CODE,
+          clientRequestId: "guest_target_request",
+          targetSingerUid: TARGET_UID,
+          songTitle: "Landslide",
+          artist: "Fleetwood Mac",
+        })),
+        "permission-denied"
+      );
+    }],
+
+    ["audience queue song applies queue limits to the targeted singer", async () => {
+      await resetState({
+        queueSettings: {
+          limitMode: "per_night",
+          limitCount: 1,
+          rotation: "round_robin",
+          firstTimeBoost: true,
+        },
+        runOfShowRoles: {
+          coHosts: [CO_HOST_UID],
+        },
+      });
+      await roomUserRefFor(CO_HOST_UID).set({
+        roomCode: ROOM_CODE,
+        uid: CO_HOST_UID,
+        name: "Co Host",
+        avatar: "sparkles",
+      });
+      await roomUserRefFor(TARGET_UID).set({
+        roomCode: ROOM_CODE,
+        uid: TARGET_UID,
+        name: "Target Singer",
+        avatar: "microphone",
+      });
+      await db.doc(`${ROOT}/karaoke_songs/existing_target_song`).set({
+        roomCode: ROOM_CODE,
+        singerUid: TARGET_UID,
+        singerName: "Target Singer",
+        songTitle: "Existing",
+        artist: "Singer",
+        status: "requested",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      await expectHttpsError(
+        () => submitAudienceQueueSong.run(requestFor(CO_HOST_UID, {
+          roomCode: ROOM_CODE,
+          clientRequestId: "target_over_limit",
+          targetSingerUid: TARGET_UID,
+          songTitle: "Go Your Own Way",
+          artist: "Fleetwood Mac",
+        })),
+        "resource-exhausted"
+      );
     }],
   ];
 

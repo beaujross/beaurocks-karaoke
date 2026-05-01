@@ -21,10 +21,10 @@ test('AAHF-style rooms simplify audience access and keep support out of the prim
     /No BeauRocks email is required for AAHF tonight\./,
     'Festival join helper copy should say that BeauRocks email is not required',
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
     /Any festival updates should come from AAHF, not from BeauRocks\./,
-    'Festival join helper copy should make it clear that follow-up communication belongs to the festival',
+    'Festival join helper copy should not leak internal follow-up messaging',
   );
   assert.match(
     source,
@@ -49,20 +49,15 @@ test('AAHF-style rooms keep support optional inside access and points flows', ()
     /Support AAHF separately without slowing down your karaoke join\./,
     'Access modal should keep fundraiser support available but clearly secondary to joining',
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
     /Festival Join Ready/,
-    'Festival no-email rooms should show a ready state instead of a BeauRocks email CTA on the join screen',
-  );
-  assert.match(
-    source,
-    /festivalNightGuideUrl/,
-    'Festival join should derive a direct audience night-guide URL from the current origin and base path',
+    'Festival no-email rooms should drop the extra ready pill from the join screen',
   );
   assert.match(
     source,
     /data-singer-night-guide-button/,
-    'Festival join should expose a dedicated CTA that opens the audience night guide before join',
+    'Festival join should expose a dedicated CTA that opens the audience night guide inside the app',
   );
   assert.match(
     source,
@@ -71,8 +66,28 @@ test('AAHF-style rooms keep support optional inside access and points flows', ()
   );
   assert.match(
     source,
-    /print\/aahf-audience-guide\.html/,
-    'Festival join should point guests at the AAHF audience guide print route rather than a generic landing page',
+    /renderNightGuideModal/,
+    'Festival join should render an in-app night-guide modal instead of punting to the print route',
+  );
+  assert.match(
+    source,
+    /Guests start with <span className="font-black text-white">200<\/span> room credits\./,
+    'Night guide modal should bring the audience points summary into the web app',
+  );
+  assert.match(
+    source,
+    /Hourly award moments/,
+    'Night guide modal should keep the prize summary visible inside the app',
+  );
+  assert.match(
+    source,
+    /setShowNightGuide\(true\)/,
+    'Festival guide CTA should open the in-app modal directly',
+  );
+  assert.match(
+    source,
+    /setShowNightGuide\(false\)/,
+    'Festival guide modal should provide an in-app way back to join',
   );
   assert.match(
     source,
@@ -93,5 +108,10 @@ test('AAHF-style rooms keep support optional inside access and points flows', ()
     source,
     /Get More Points/,
     'Simplified festival points modal should preserve the existing points-shop path instead of removing it outright',
+  );
+  assert.match(
+    source,
+    /window\.open\(marketingSiteUrl, '_blank', 'noopener,noreferrer'\)/,
+    'Festival join footer should link Powered by BeauRocks Karaoke to the marketing front page',
   );
 });
