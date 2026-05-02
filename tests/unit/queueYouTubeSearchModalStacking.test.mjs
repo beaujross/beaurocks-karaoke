@@ -23,4 +23,24 @@ test('queue YouTube search modal stacks above the queue editor drawer', () => {
     /fixed inset-0 z-\[210\]/,
     'YouTube search modal should use a viewport-level overlay above the queue editor',
   );
+  assert.match(
+    queueYouTubeSearchModalSource,
+    /data-feature-id="queue-youtube-results-scroll"[\s\S]*overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar/,
+    'YouTube search modal results should live inside their own bounded scroll surface',
+  );
+  assert.match(
+    queueYouTubeSearchModalSource,
+    /fixed inset-0 z-\[210\] flex items-start justify-center overflow-y-auto overscroll-contain/,
+    'YouTube search modal overlay should still be reachable on shorter host viewports',
+  );
+  assert.match(
+    queueYouTubeSearchModalSource,
+    /aria-label="Close YouTube search"/,
+    'YouTube search modal should expose a plainly labeled close action in the visible header chrome',
+  );
+  assert.match(
+    queueYouTubeSearchModalSource,
+    /data-feature-id="queue-youtube-close-footer"/,
+    'YouTube search modal should keep a second close action at the bottom so the host is not trapped after scrolling',
+  );
 });

@@ -29,6 +29,7 @@ const CREDIT_EARNING_MODE_VALUES = new Set(Object.values(CREDIT_EARNING_MODES));
 const CO_HOST_CREDIT_POLICY_VALUES = new Set(Object.values(CO_HOST_CREDIT_POLICIES));
 const SUPPORT_CELEBRATION_STYLE_VALUES = new Set(Object.values(SUPPORT_CELEBRATION_STYLES));
 const SUPPORT_REWARD_SCOPES = new Set(['buyer', 'room', 'buyer_and_room']);
+const GIVEBUTTER_WIDGET_EMBED_PATTERN = /<givebutter-widget\b[^>]*\bid=(['"]?)([A-Za-z0-9_-]+)\1[^>]*>/i;
 
 const normalizeSupportOfferId = (value = '', fallback = 'offer') =>
     String(value || fallback)
@@ -40,6 +41,23 @@ const normalizeSupportOfferId = (value = '', fallback = 'offer') =>
 const normalizeSupportRewardScope = (value = '') => {
     const token = String(value || '').trim().toLowerCase();
     return SUPPORT_REWARD_SCOPES.has(token) ? token : 'buyer';
+};
+
+const normalizeGivebutterWidgetId = (value = '') =>
+    String(value || '')
+        .trim()
+        .replace(/[^A-Za-z0-9_-]/g, '')
+        .slice(0, 64);
+
+const extractGivebutterWidgetId = (...values) => {
+    for (const entry of values) {
+        const raw = String(entry || '').trim();
+        if (!raw) continue;
+        if (/^[A-Za-z0-9_-]{4,64}$/.test(raw)) return raw;
+        const match = raw.match(GIVEBUTTER_WIDGET_EMBED_PATTERN);
+        if (match?.[2]) return normalizeGivebutterWidgetId(match[2]);
+    }
+    return '';
 };
 
 const normalizeHttpUrl = (value = '') => {
@@ -73,6 +91,7 @@ export const normalizeRoomSupportConfig = (input = {}) => {
                 awardBadge: !!offer.awardBadge,
                 supportUrl: normalizeHttpUrl(offer.supportUrl || ''),
                 supportEmbedUrl: normalizeHttpUrl(offer.supportEmbedUrl || ''),
+                supportWidgetId: extractGivebutterWidgetId(offer.supportWidgetId || '', offer.supportEmbedUrl || ''),
                 supportCampaignCode: String(offer.supportCampaignCode || '').trim(),
                 supportFundCode: String(offer.supportFundCode || '').trim(),
             };
@@ -83,6 +102,7 @@ export const normalizeRoomSupportConfig = (input = {}) => {
         supportLabel: String(source.supportLabel || '').trim(),
         supportUrl: normalizeHttpUrl(source.supportUrl || ''),
         supportEmbedUrl: normalizeHttpUrl(source.supportEmbedUrl || ''),
+        supportWidgetId: extractGivebutterWidgetId(source.supportWidgetId || '', source.supportEmbedUrl || ''),
         supportCampaignCode: String(source.supportCampaignCode || '').trim(),
         supportPoints: Math.max(0, Number(source.supportPoints || 0) || 0),
         supportBadge: source.supportBadge !== false,
@@ -137,14 +157,14 @@ export const normalizeAudienceExperience = (input = {}) => {
 
 export const buildAudienceSupportOffer = (eventCredits = {}) => {
     const support = normalizeRoomSupportConfig(eventCredits);
-    const hasSurface = !!support.supportUrl || !!support.supportEmbedUrl;
+    const hasSurface = !!support.supportUrl || !!support.supportEmbedUrl || !!support.supportWidgetId;
     const hasCampaign = support.supportProvider === 'givebutter' && !!support.supportCampaignCode;
     const hasOffers = support.supportOffers.length > 0;
     if (!hasSurface && !hasCampaign && !hasOffers) return null;
     return {
         ...support,
         label: support.supportLabel || 'Support This Room',
-        hasEmbed: !!support.supportEmbedUrl,
+        hasEmbed: !!support.supportEmbedUrl || !!support.supportWidgetId,
         launchUrl: support.supportEmbedUrl || support.supportUrl,
     };
 };

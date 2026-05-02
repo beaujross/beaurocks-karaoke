@@ -84,8 +84,8 @@ export const DEFAULT_EVENT_CREDITS_CONFIG = Object.freeze({
     },
 });
 
-const AAHF_GIVEBUTTER_URL = 'https://givebutter.com/aahf-kickoff';
-const AAHF_GIVEBUTTER_CAMPAIGN_CODE = 'aahf_kickoff';
+const AAHF_GIVEBUTTER_URL = 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra';
+const AAHF_GIVEBUTTER_CAMPAIGN_CODE = 'festival-kick-off-karaoke-party-y1ogra';
 
 export const EVENT_CREDITS_PRESETS = Object.freeze({
     off: {

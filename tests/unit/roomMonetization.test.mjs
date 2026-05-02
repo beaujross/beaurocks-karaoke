@@ -100,7 +100,7 @@ describe('roomMonetization', () => {
     test('builds donation-backed audience offers from event credits', () => {
         const offer = buildAudienceSupportOffer({
             supportProvider: 'givebutter',
-            supportUrl: 'https://givebutter.com/aahf-kickoff',
+            supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
             supportOffers: [
                 { id: 'solo_boost', label: 'Solo Boost', amount: 5, points: 1200, rewardScope: 'buyer' },
             ],
@@ -119,23 +119,39 @@ describe('roomMonetization', () => {
         const offer = buildAudienceSupportOffer({
             supportProvider: 'givebutter',
             supportLabel: 'Support AAHF Festival',
-            supportUrl: 'https://givebutter.com/aahf-kickoff',
+            supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
             supportOffers: [],
             supportBadge: false,
         });
 
         expect(offer).toMatchObject({
             label: 'Support AAHF Festival',
-            launchUrl: 'https://givebutter.com/aahf-kickoff',
+            launchUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
             supportBadge: false,
         });
         expect(offer?.supportOffers).toEqual([]);
     });
 
+    test('extracts Givebutter widget ids from embed snippets without losing the support link', () => {
+        const offer = buildAudienceSupportOffer({
+            supportProvider: 'givebutter',
+            supportLabel: 'Support AAHF Festival',
+            supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
+            supportEmbedUrl: '<givebutter-widget id="LZoPWY"></givebutter-widget>',
+            supportCampaignCode: 'festival-kick-off-karaoke-party-y1ogra',
+        });
+
+        expect(offer).toMatchObject({
+            supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
+            supportWidgetId: 'LZoPWY',
+            hasEmbed: true,
+        });
+    });
+
     test('builds Givebutter launch URLs with donate path and amount', () => {
-        expect(buildGivebutterSupportLaunchUrl('https://givebutter.com/aahf-kickoff', {
+        expect(buildGivebutterSupportLaunchUrl('https://givebutter.com/festival-kick-off-karaoke-party-y1ogra', {
             amount: 10,
             fundCode: '12345',
-        })).toBe('https://givebutter.com/aahf-kickoff/donate?amount=10&fund=12345');
+        })).toBe('https://givebutter.com/festival-kick-off-karaoke-party-y1ogra/donate?amount=10&fund=12345');
     });
 });

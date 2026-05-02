@@ -48,7 +48,7 @@ const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
 
 setGlobalOptions({
   region: "us-west1",
-  maxInstances: 2,
+  maxInstances: 10,
   timeoutSeconds: 30,
   memory: "256MiB",
 });
@@ -78,8 +78,9 @@ const LYRICS_TIMED_ADAPTER_ENABLED_DEFAULT = String(process.env.LYRICS_TIMED_ADA
   .toLowerCase() === "true";
 
 const rateState = new Map();
-const GLOBAL_LIMITS = { perMinute: 120, perHour: 1000 };
+const GLOBAL_LIMITS = { perMinute: 600, perHour: 5000 };
 const DEFAULT_LIMITS = { perMinute: 30, perHour: 300 };
+const EVENT_JOIN_LIMITS = { perMinute: 240, perHour: 2400 };
 const SECURITY_RATE_LIMITS_COLLECTION = "security_rate_limits";
 const securitySignalState = new Map();
 const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
@@ -1317,6 +1318,9 @@ const buildRoomPurchaseCelebrationPayload = ({
   buyerName = "",
   buyerAvatar = "",
   label = "",
+  title = "",
+  subtitle = "",
+  subLabel = "",
   points = 0,
   badgeAwarded = false,
   sourceProvider = "",
@@ -1334,14 +1338,20 @@ const buildRoomPurchaseCelebrationPayload = ({
     buyerName: safeBuyerName,
     buyerAvatar: safeBuyerAvatar,
     by: safeBuyerName,
-    title: `${safeBuyerName} just boosted the room`,
+    title: safeDirectoryString(title || `${safeBuyerName} just boosted the room`, 180) || `${safeBuyerName} just boosted the room`,
     label: safeLabel,
-    subtitle: badgeAwarded
-      ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
-      : safeLabel,
-    subLabel: badgeAwarded
-      ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
-      : safeLabel,
+    subtitle: safeDirectoryString(
+      subtitle || (badgeAwarded
+        ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
+        : safeLabel),
+      180
+    ) || safeLabel,
+    subLabel: safeDirectoryString(
+      subLabel || subtitle || (badgeAwarded
+        ? `${safeLabel} - ${MONEYBAGS_BADGE_LABEL} unlocked`
+        : safeLabel),
+      180
+    ) || safeLabel,
     points: safePoints,
     badgeAwarded: !!badgeAwarded,
     badgeLabel: MONEYBAGS_BADGE_LABEL,
@@ -1797,6 +1807,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "activeScreen",
   "allowSingerTrackSelect",
   "announcement",
+  "applauseSubject",
   "applauseCountdownSec",
   "applauseMeasureSec",
   "applausePeak",
@@ -2113,6 +2124,7 @@ const HOST_ROOM_ARRAY_ROOT_KEYS = new Set([
 ]);
 const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "announcement",
+  "applauseSubject",
   "appleMusicPlayback",
   "bingoFocus",
   "bingoMysteryRng",
@@ -14145,7 +14157,7 @@ const buildAudienceVipProfilePatch = (input = null, previous = {}) => {
 };
 
 exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
-  checkRateLimit(request.rawRequest, "join_room_audience", { perMinute: 50, perHour: 300 });
+  checkRateLimit(request.rawRequest, "join_room_audience", EVENT_JOIN_LIMITS);
   enforceAppCheckIfEnabled(request, "join_room_audience");
   const callerUid = requireAuth(request);
   const roomCode = normalizeRoomCode(request.data?.roomCode || "");
@@ -17921,6 +17933,120 @@ exports.awardRoomPoints = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.triggerHostSupportDrop = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "trigger_host_support_drop", { perMinute: 24, perHour: 240 });
+  const callerUid = requireAuth(request);
+  const payload = normalizeHostSupportDropPayload(request.data || {});
+  if (!payload.roomCode) {
+    throw new HttpsError("invalid-argument", "roomCode is required.");
+  }
+  if (payload.scope === "user" && !payload.targetUid) {
+    throw new HttpsError("invalid-argument", "targetUid is required for user rewards.");
+  }
+  if (payload.points <= 0 && payload.amountCents <= 0) {
+    throw new HttpsError("invalid-argument", "Provide points or amount for the support drop.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const access = await db.runTransaction(async (tx) => ensureRoomHostAccess({
+    tx,
+    rootRef,
+    roomCode: payload.roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can trigger support drops.",
+  }));
+
+  const roomRef = access.roomRef;
+  const roomData = access.roomData || {};
+  const fallbackDonorName = normalizeOptionalName(roomData.hostName || "Host", "Host");
+  const donorName = payload.anonymous
+    ? "Anonymous Supporter"
+    : normalizeOptionalName(payload.donorName || fallbackDonorName, fallbackDonorName);
+  const label = payload.label || (payload.scope === "user" ? "Support Spotlight" : "Room Support Burst");
+
+  let awardedCount = 0;
+  let targetName = "";
+
+  if (payload.scope === "user") {
+    const targetRef = rootRef.collection("room_users").doc(`${payload.roomCode}_${payload.targetUid}`);
+    const targetSnap = await targetRef.get();
+    if (!targetSnap.exists) {
+      throw new HttpsError("not-found", "Target guest is not in the room.");
+    }
+    const targetData = targetSnap.data() || {};
+    targetName = normalizeOptionalName(targetData.name || "Guest", "Guest");
+    awardedCount = payload.points > 0 ? 1 : 0;
+    if (payload.points > 0) {
+      await targetRef.set({
+        points: admin.firestore.FieldValue.increment(payload.points),
+        lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+  } else if (payload.points > 0) {
+    const roomUsersSnap = await rootRef.collection("room_users").where("roomCode", "==", payload.roomCode).get();
+    awardedCount = roomUsersSnap.size;
+    await chunkFirestoreUpdates(roomUsersSnap.docs, async (chunk) => {
+      const batch = db.batch();
+      chunk.forEach((docSnap) => {
+        batch.set(docSnap.ref, {
+          points: admin.firestore.FieldValue.increment(payload.points),
+          lastActiveAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
+      await batch.commit();
+    });
+  }
+
+  const celebrationTitle = payload.scope === "user"
+    ? `${donorName} just backed ${targetName || "a guest"}`
+    : `${donorName} just backed the whole room`;
+  const celebrationSubtitle = payload.points > 0
+    ? (payload.scope === "user"
+      ? `${label} - ${targetName || "Guest"} +${payload.points} pts`
+      : `${label} - everyone +${payload.points} pts`)
+    : label;
+  const celebrationId = `host_support_${payload.roomCode}_${Date.now()}`;
+
+  await roomRef.set({
+    purchaseCelebration: buildRoomPurchaseCelebrationPayload({
+      id: celebrationId,
+      buyerName: donorName,
+      label,
+      title: celebrationTitle,
+      subtitle: celebrationSubtitle,
+      subLabel: celebrationSubtitle,
+      points: payload.points,
+      badgeAwarded: payload.awardBadge,
+      sourceProvider: "host_manual",
+      rewardScope: payload.scope === "user" ? "buyer" : "room",
+      amountCents: payload.amountCents,
+      celebrationStyle: payload.celebrationStyle,
+    }),
+  }, { merge: true });
+
+  await rootRef.collection("activities").add({
+    roomCode: payload.roomCode,
+    user: donorName,
+    text: payload.scope === "user"
+      ? `${donorName} backed ${targetName || "a guest"}${payload.points > 0 ? ` - +${payload.points} pts` : ""}`
+      : `${donorName} backed the room${payload.points > 0 ? ` - everyone +${payload.points} pts` : ""}`,
+    icon: "$",
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    ok: true,
+    roomCode: payload.roomCode,
+    scope: payload.scope,
+    awardedCount,
+    points: payload.points,
+    donorName,
+    targetName: targetName || "",
+    celebrationId,
+  };
+});
+
 exports.setSelfieSubmissionApproval = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "selfie_approval", { perMinute: 40, perHour: 400 });
   const callerUid = request.auth?.uid || "";
@@ -20711,6 +20837,41 @@ const normalizeGivebutterWebhookPayload = (payload = {}) => {
     amountCents,
     externalId,
     rawSubject: source,
+  };
+};
+
+const chunkFirestoreUpdates = async (entries = [], applyChunk = async () => {}) => {
+  const safeEntries = Array.isArray(entries) ? entries : [];
+  for (let idx = 0; idx < safeEntries.length; idx += 400) {
+    const chunk = safeEntries.slice(idx, idx + 400);
+    if (!chunk.length) continue;
+    await applyChunk(chunk);
+  }
+};
+
+const normalizeHostSupportDropScope = (value = "") => {
+  const token = normalizeDirectoryToken(value || "", 40);
+  return token === "user" ? "user" : "room";
+};
+
+const normalizeHostSupportDropPayload = (input = {}) => {
+  const amountDollars = Number(input?.amountDollars || 0);
+  const fallbackAmountCents = Number.isFinite(amountDollars) && amountDollars > 0
+    ? Math.round(amountDollars * 100)
+    : 0;
+  return {
+    roomCode: normalizeRoomCode(input?.roomCode || ""),
+    scope: normalizeHostSupportDropScope(input?.scope || input?.rewardScope || ""),
+    targetUid: normalizeUidToken(input?.targetUid || ""),
+    donorName: safeDirectoryString(input?.donorName || input?.buyerName || "", 180),
+    anonymous: input?.anonymous === true,
+    label: safeDirectoryString(input?.label || "", 120),
+    points: clampNumber(input?.points, 0, 50000, 0),
+    amountCents: clampNumber(input?.amountCents ?? fallbackAmountCents, 0, 100000000, 0),
+    awardBadge: input?.awardBadge === true,
+    celebrationStyle: normalizeSupportCelebrationStyle(
+      input?.celebrationStyle || SUPPORT_CELEBRATION_STYLES.moneybagsBurst
+    ),
   };
 };
 

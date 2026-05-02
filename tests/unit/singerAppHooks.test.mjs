@@ -125,6 +125,16 @@ test("SingerApp keeps event bonus messaging automatic and renders reaction coold
   );
   assert.match(
     source,
+    /supportWidgetId: String\(source\.supportWidgetId \|\| ''\)\.trim\(\)/,
+    "SingerApp should preserve a room-level Givebutter widget id in the active event credits config",
+  );
+  assert.match(
+    source,
+    /React\.createElement\('givebutter-widget', \{ id: roomSupportWidgetId \}\)/,
+    "SingerApp should render a Givebutter widget inside the support modal when a widget id is configured",
+  );
+  assert.match(
+    source,
     /Every \$1 donated tonight via Givebutter credits the entire room with about/,
     "SingerApp donation section should explain the room-wide points effect of Givebutter support",
   );
@@ -270,7 +280,7 @@ test("SingerApp keeps streamlined audience shell inside party and songs flows", 
   );
   assert.match(
     source,
-    /A performance is on\. Jump back to Party to vote and react\./,
+    /A TV scene is live\. Jump back to Party to clap vote\.|A performance is on\. Jump back to Party to vote and react\./,
     "SingerApp should tell streamlined guests exactly why they should leave search and go back to Party",
   );
   const streamlinedStageNavRenderIndex = source.indexOf("{streamlinedStageNav}");
@@ -517,8 +527,8 @@ test("SingerApp keeps streamlined empty-stage party focused on guidance instead 
   );
   assert.match(
     source,
-    /if \(!currentSinger && !applauseModeActive\) return toast\('Reactions wake up once someone is on stage\.'\);/,
-    "SingerApp should hard-stop reaction spending if no singer is on stage",
+    /if \(!currentSinger && !applauseModeActive && !takeoverClapVotingActive\) return toast\('Reactions wake up once someone is on stage or a scene goes live\.'\);/,
+    "SingerApp should keep scene takeovers eligible for live reaction spending while idle rooms stay blocked",
   );
 });
 
@@ -750,6 +760,36 @@ test("SingerApp applies host-configured reaction cooldowns and co-host credit po
     source,
     /displayValue=\{coHostUnlimitedCredits \? '∞' : null\}/,
     "SingerApp should visually show unlimited co-host credits in the audience points pill",
+  );
+});
+
+test("SingerApp opens free clap voting for generic TV scene takeovers", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const sceneReactionVotingActive = !!room\?\.announcement\?\.active && !!announcementTakeoverScene;/,
+    "SingerApp should detect generic TV and run-of-show scene takeovers from the room announcement payload",
+  );
+  assert.match(
+    source,
+    /const takeoverClapVotingActive = sceneReactionVotingActive[\s\S]*takeoverReactionMode !== 'off'[\s\S]*!currentSinger;/,
+    "SingerApp should only switch into scene clap-vote mode when the scene explicitly allows it and is not piggybacking on a live singer",
+  );
+  assert.match(
+    source,
+    /if \(takeoverClapVotingActive && safeType === 'clap'\) nextCost = 0;/,
+    "SingerApp scene takeover clap votes should be free to tap",
+  );
+  assert.match(
+    source,
+    /const performanceReactionsReady = !!currentSinger \|\| applauseModeActive \|\| takeoverClapVotingActive;/,
+    "SingerApp should treat scene clap voting as a live participation lane instead of an empty idle state",
+  );
+  assert.match(
+    source,
+    /Scene Clap Voting/,
+    "SingerApp should label the scene takeover clap-vote state explicitly for the audience",
   );
 });
 

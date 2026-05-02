@@ -71,14 +71,36 @@ const QueueYouTubeSearchModal = ({
     onClose,
     emoji
 }) => {
+    React.useEffect(() => {
+        if (!open) return undefined;
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') onClose?.();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [open, onClose]);
+
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-[210] bg-black/70 flex items-center justify-center p-6 backdrop-blur-sm pointer-events-none">
-            <div className={`${styles.panel} p-6 w-full max-w-4xl border-white/20 max-h-[94vh] flex flex-col overflow-hidden pointer-events-auto`}>
-                <div className="flex justify-between items-center mb-4">
+        <div
+            className="fixed inset-0 z-[210] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/70 p-4 backdrop-blur-sm sm:items-center sm:p-6"
+            onClick={onClose}
+        >
+            <div
+                className={`${styles.panel} flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden border-white/20 p-6 sm:max-h-[94vh]`}
+                onClick={(event) => event.stopPropagation()}
+            >
+                <div className="-mx-6 -mt-6 mb-4 flex items-center justify-between gap-3 border-b border-white/10 bg-zinc-950/94 px-6 py-4 backdrop-blur">
                     <div className={styles.header}>Search YouTube</div>
-                    <button onClick={onClose} className={`${styles.btnStd} ${styles.btnNeutral} px-3`}>X</button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Close YouTube search"
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-3`}
+                    >
+                        Close
+                    </button>
                 </div>
 
                 <div className="flex items-center justify-between gap-2 mb-4">
@@ -115,49 +137,54 @@ const QueueYouTubeSearchModal = ({
                         {ytSearchError}
                     </div>
                 )}
-                <div className="flex-1 min-h-0">
+                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     {ytResults.length > 0 && (
-                        <div className="grid grid-cols-1 gap-3 max-h-[72vh] overflow-y-auto custom-scrollbar pr-1 pb-2 xl:grid-cols-2">
-                            {ytResults.map(video => {
-                                const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
-                                const isTesting = embedStatus === 'testing';
-                                const statusMeta = getEmbedStatusMeta(embedStatus);
+                        <div
+                            data-feature-id="queue-youtube-results-scroll"
+                            className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar pr-1 pb-2"
+                        >
+                            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                {ytResults.map(video => {
+                                    const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
+                                    const isTesting = embedStatus === 'testing';
+                                    const statusMeta = getEmbedStatusMeta(embedStatus);
 
-                                return (
-                                    <div key={video.id} className={`bg-zinc-800/50 hover:bg-zinc-700 p-3 rounded-lg border transition-all flex gap-3 items-start ${statusMeta.tone}`}>
-                                        <img src={video.thumbnail} className="w-24 h-16 rounded object-cover flex-shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-white truncate">{video.title}</div>
-                                            <div className="text-sm text-zinc-400 truncate">{video.channel}</div>
+                                    return (
+                                        <div key={video.id} className={`bg-zinc-800/50 hover:bg-zinc-700 p-3 rounded-lg border transition-all flex gap-3 items-start ${statusMeta.tone}`}>
+                                            <img src={video.thumbnail} className="w-24 h-16 rounded object-cover flex-shrink-0" />
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-white truncate">{video.title}</div>
+                                                <div className="text-sm text-zinc-400 truncate">{video.channel}</div>
 
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <span className={statusMeta.chipClass}>
-                                                    <i className={`fa-solid ${statusMeta.chipIcon} mr-1`}></i>
-                                                    {statusMeta.chipLabel}
-                                                </span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); testEmbedVideo(video); }}
-                                                    disabled={isTesting}
-                                                    className={`text-sm px-2 py-0.5 rounded ${statusMeta.recheckClass}`}
-                                                >
-                                                    {isTesting ? emoji.refresh : emoji.test} {statusMeta.recheckLabel}
-                                                </button>
-                                                <button
-                                                    onClick={() => selectYouTubeVideo(video)}
-                                                    disabled={isTesting}
-                                                    className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${statusMeta.actionClass} ${isTesting ? 'cursor-wait opacity-70' : ''}`}
-                                                >
-                                                    {embedStatus === 'fail' ? <i className="fa-solid fa-up-right-from-square"></i> : null}
-                                                    {statusMeta.actionLabel}
-                                                </button>
-                                            </div>
-                                            <div className="mt-1 text-[11px] text-zinc-400">
-                                                {statusMeta.helper}
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className={statusMeta.chipClass}>
+                                                        <i className={`fa-solid ${statusMeta.chipIcon} mr-1`}></i>
+                                                        {statusMeta.chipLabel}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); testEmbedVideo(video); }}
+                                                        disabled={isTesting}
+                                                        className={`text-sm px-2 py-0.5 rounded ${statusMeta.recheckClass}`}
+                                                    >
+                                                        {isTesting ? emoji.refresh : emoji.test} {statusMeta.recheckLabel}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => selectYouTubeVideo(video)}
+                                                        disabled={isTesting}
+                                                        className={`ml-auto text-sm px-3 py-0.5 rounded font-bold flex items-center gap-1 ${statusMeta.actionClass} ${isTesting ? 'cursor-wait opacity-70' : ''}`}
+                                                    >
+                                                        {embedStatus === 'fail' ? <i className="fa-solid fa-up-right-from-square"></i> : null}
+                                                        {statusMeta.actionLabel}
+                                                    </button>
+                                                </div>
+                                                <div className="mt-1 text-[11px] text-zinc-400">
+                                                    {statusMeta.helper}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -173,6 +200,17 @@ const QueueYouTubeSearchModal = ({
                         No YouTube karaoke results. Try a different keyword or paste a direct YouTube URL.
                     </div>
                 )}
+
+                <div className="mt-4 flex justify-end border-t border-white/10 pt-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        data-feature-id="queue-youtube-close-footer"
+                        className={`${styles.btnStd} ${styles.btnNeutral} px-4`}
+                    >
+                        Close Search
+                    </button>
+                </div>
             </div>
         </div>
     );

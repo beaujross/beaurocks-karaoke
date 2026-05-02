@@ -63,7 +63,7 @@ import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { useToast } from '../../context/ToastContext';
-import { BG_TRACKS, SOUNDS } from '../../lib/gameDataConstants';
+import { SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { POINTS_PACKS } from '../../billing/catalog';
@@ -76,6 +76,13 @@ import {
     getHostMomentCueMeta,
     getHostMomentCueSoundCandidates
 } from '../../lib/hostMomentCues';
+import {
+    buildHostAudioUploadTrackId,
+    buildRoomBgTrackOptions,
+    getHostAudioLibraryItemLabel,
+    normalizeHostAudioLibraryCategory,
+    normalizeHostAudioLibraryItemMetadata,
+} from '../../lib/hostAudioLibrary';
 import {
     AUDIENCE_BACKING_MODES,
     REQUEST_MODE_OPTIONS,
@@ -114,7 +121,7 @@ import {
     normalizeYouTubePlaybackState,
     YOUTUBE_PLAYBACK_STATUSES
 } from '../../lib/youtubePlaybackStatus';
-import { getBgTrackById } from '../../lib/bgTrackOptions';
+import { getBgTrackById, getNextBgTrackIndex } from '../../lib/bgTrackOptions';
 import { createLogger } from '../../lib/logger';
 import {
     getAppCheckRetryDelayMs,
@@ -220,6 +227,12 @@ import {
     roomMediaIdentityMatches
 } from './runOfShowMediaCleanup';
 import {
+    buildMediaSceneSoundtrackPayload,
+    hasMediaSceneConfiguredSoundtrack,
+    normalizeMediaSceneAudienceReactionMode,
+    normalizeMediaSceneSoundtrackConfig
+} from '../../lib/mediaSceneConfig';
+import {
     getRoomFlowSnapshot
 } from './roomFlowOrchestrator';
 import {
@@ -275,6 +288,8 @@ const STORM_SEQUENCE = HOST_APP_CONFIG.STORM_SEQUENCE;
 const STROBE_COUNTDOWN_MS = HOST_APP_CONFIG.STROBE_COUNTDOWN_MS;
 const STROBE_ACTIVE_MS = HOST_APP_CONFIG.STROBE_ACTIVE_MS;
 const TIP_POINTS_PER_DOLLAR = 100;
+const SUPPORT_DROP_RATE_PRESETS = Object.freeze([50, 100, 150, 200]);
+const SUPPORT_DROP_AMOUNT_PRESETS = Object.freeze([5, 10, 20, 25]);
 const YOUTUBE_PLAYLIST_MAX_TOTAL = 1000;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
@@ -4412,6 +4427,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }))
             .filter((item) => item.url && item.mediaType !== 'image')
     ), [isAudioUrl, localLibrary]);
+    const roomAudioLibraryItems = useMemo(() => (
+        (Array.isArray(localLibrary) ? localLibrary : [])
+            .filter((item) => item?._cloud && String(item?.mediaType || '').trim().toLowerCase() === 'audio')
+            .map((item) => ({
+                ...item,
+                ...normalizeHostAudioLibraryItemMetadata(item),
+            }))
+            .sort((left, right) => (
+                Number(right?.createdAtMs || right?.createdAt?.seconds * 1000 || 0)
+                - Number(left?.createdAtMs || left?.createdAt?.seconds * 1000 || 0)
+            ))
+    ), [localLibrary]);
+    const soundboardLibraryItems = useMemo(() => (
+        roomAudioLibraryItems.filter((item) => {
+            const metadata = normalizeHostAudioLibraryItemMetadata(item);
+            return metadata.audioLibraryCategory === 'sfx' && metadata.includeOnSoundboard !== false;
+        })
+    ), [roomAudioLibraryItems]);
+    const customSoundboardSounds = useMemo(() => (
+        soundboardLibraryItems.map((item, index) => ({
+            id: String(item?.id || `soundboard_upload_${index}`),
+            name: getHostAudioLibraryItemLabel(item),
+            icon: item?.hostMomentCueId
+                ? (getHostMomentCueMeta(item.hostMomentCueId)?.icon || 'fa-wave-square')
+                : 'fa-wave-square',
+            url: String(item?.url || item?.mediaUrl || '').trim(),
+            sourceType: 'upload',
+            hostMomentCueId: String(item?.hostMomentCueId || '').trim().toLowerCase(),
+        })).filter((item) => item.url)
+    ), [soundboardLibraryItems]);
+    const bgLibraryItems = useMemo(() => (
+        roomAudioLibraryItems.filter((item) => (
+            normalizeHostAudioLibraryCategory(item?.audioLibraryCategory || item?.libraryCategory) === 'bg'
+        ))
+    ), [roomAudioLibraryItems]);
+    const roomBgTrackOptions = useMemo(() => buildRoomBgTrackOptions(bgLibraryItems), [bgLibraryItems]);
+    const autoBgTrackOptions = useMemo(() => (
+        roomBgTrackOptions.filter((track) => track?.autoEligible !== false)
+    ), [roomBgTrackOptions]);
     const roomLibraryItems = useMemo(() => {
         const merged = mergeUniqueQueueSearchResults(
             roomUploadLibraryItems,
@@ -4442,6 +4496,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         uploads: roomLibraryItems.filter((entry) => entry.source === 'local' && entry._cloud).length,
         offline: roomLibraryItems.filter((entry) => entry.source === 'local' && entry.offlineReady).length,
     }), [roomLibraryItems]);
+    const activeBgTrack = roomBgTrackOptions[currentTrackIdx] || roomBgTrackOptions[0] || null;
+    const activeBgTrackUploadId = String(activeBgTrack?.sourceUploadId || '').trim();
     const getYtDiagnosticsKey = useCallback((entry = {}) => (
         String(entry?.videoId || entry?.id || entry?.mediaUrl || entry?.url || '').trim()
     ), []);
@@ -4859,6 +4915,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return 'md';
         }
     });
+    const stagePreviewAutoCollapseRef = useRef(false);
+    useEffect(() => {
+        if (tab !== 'stage') {
+            stagePreviewAutoCollapseRef.current = false;
+            return;
+        }
+        if (stagePreviewAutoCollapseRef.current) return;
+        stagePreviewAutoCollapseRef.current = true;
+        setAudiencePreviewCollapsed(true);
+        setPublicTvPreviewCollapsed(true);
+    }, [tab]);
     const [autoBgFadeOutMs, setAutoBgFadeOutMs] = useState(900);
     const [autoBgFadeInMs, setAutoBgFadeInMs] = useState(900);
     const [autoBgMixDuringSong, setAutoBgMixDuringSong] = useState(0);
@@ -4916,6 +4983,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [tipAmount, setTipAmount] = useState('');
     const [tipGiftUserId, setTipGiftUserId] = useState('');
     const [tipGiftAmount, setTipGiftAmount] = useState('');
+    const [supportDropDonorName, setSupportDropDonorName] = useState('');
+    const [supportDropAmount, setSupportDropAmount] = useState('');
+    const [supportDropPoints, setSupportDropPoints] = useState('');
+    const [supportDropRate, setSupportDropRate] = useState('');
+    const [supportDropTargetUid, setSupportDropTargetUid] = useState('');
+    const [supportDropAnonymous, setSupportDropAnonymous] = useState(false);
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
@@ -4953,6 +5026,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [invoiceNotes, setInvoiceNotes] = useState('');
     const [showNightSetupWizard, setShowNightSetupWizard] = useState(false);
     const [nightSetupStep, setNightSetupStep] = useState(0);
+    const roomTipPointRate = Math.max(0, Math.round(Number(room?.tipPointRate ?? TIP_POINTS_PER_DOLLAR) || TIP_POINTS_PER_DOLLAR));
+    const supportDropAmountValue = Math.max(0, Number.parseFloat(supportDropAmount || '0') || 0);
+    const supportDropHasExplicitPoints = String(supportDropPoints || '').trim() !== '';
+    const supportDropRateValue = Math.max(0, Math.round(Number(supportDropRate || roomTipPointRate) || roomTipPointRate));
+    const supportDropSuggestedPoints = supportDropAmountValue > 0 && supportDropRateValue > 0
+        ? Math.round(supportDropAmountValue * supportDropRateValue)
+        : 0;
     const [nightSetupApplying, setNightSetupApplying] = useState(false);
     const [nightSetupPresetId, setNightSetupPresetId] = useState('casual');
     const [nightSetupQueueLimitMode, setNightSetupQueueLimitMode] = useState('none');
@@ -5360,6 +5440,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const bgCtxRef = useRef(null);
     const bgAnalyserRef = useRef(null);
     const bgSourceRef = useRef(null);
+    const initialBgTrackUrlRef = useRef(roomBgTrackOptions[0]?.url || '');
     const bgMeterRafRef = useRef(null);
     const bgMeterPhaseRef = useRef(0);
     const stageMeterRafRef = useRef(null);
@@ -5368,6 +5449,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const stageMicAnalyserRef = useRef(null);
     const stageMicStreamRef = useRef(null);
     const playingBgRef = useRef(false);
+    const currentTrackIdxRef = useRef(0);
     const stageActivationPendingRef = useRef(false);
     const stageActivationTimerRef = useRef(null);
     const stageMicRafRef = useRef(null);
@@ -5560,6 +5642,27 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             durationSec: Math.max(6, Math.min(120, Number(item?.plannedDurationSec || 10) || 10))
         };
     }, []);
+    const buildMediaSceneReactionConfig = useCallback((source = {}) => ({
+        mode: normalizeMediaSceneAudienceReactionMode(source?.sceneAudienceReactionMode || source?.audienceReactionMode)
+    }), []);
+    const syncTakeoverSoundtrackPayload = useCallback(async (soundtrack = null, action = 'start') => {
+        const sourceType = String(soundtrack?.sourceType || '').trim().toLowerCase();
+        if (action === 'stop') {
+            if (sourceType === 'apple_music') {
+                await stopAppleMusic?.();
+                await updateRoom({ appleMusicPlayback: null });
+            }
+            return;
+        }
+        if (sourceType !== 'apple_music') return;
+        const appleMusicId = String(soundtrack?.appleMusicId || '').trim();
+        if (!appleMusicId) return;
+        await playAppleMusicTrack(appleMusicId, {
+            title: String(soundtrack?.label || '').trim(),
+            artist: '',
+            duration: Math.max(0, Number(soundtrack?.durationSec || 0) || 0)
+        });
+    }, [playAppleMusicTrack, stopAppleMusic, updateRoom]);
     const buildRunOfShowStartRoomUpdates = useCallback((item = {}, startedAtMs = nowMs()) => {
         const roomUpdates = { tvPreviewOverlay: null };
         const interactiveRunOfShowType = ['trivia_break', 'would_you_rather_break', 'game_break'].includes(item?.type);
@@ -5581,6 +5684,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 backgroundMedia: item.presentationPlan?.backgroundMedia || '',
                 accentTheme: item.presentationPlan?.accentTheme || 'cyan',
                 soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, startedAtMs),
+                reactionConfig: buildMediaSceneReactionConfig(item?.presentationPlan || {}),
                 durationSec,
                 startedAtMs,
                 mediaScene: isMediaScene && item?.presentationPlan?.mediaSceneUrl
@@ -5671,7 +5775,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? item.roomMomentPlan.lightMode
             : 'off';
         return roomUpdates;
-    }, [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions, users]);
+    }, [buildMediaSceneReactionConfig, buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions, users]);
     useEffect(() => () => {
         if (runOfShowPerformanceIntroTimerRef.current) {
             clearTimeout(runOfShowPerformanceIntroTimerRef.current);
@@ -5909,14 +6013,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : '',
         modeKey: item?.modeLaunchPlan?.modeKey || '',
         options: parseRunOfShowOptions(item?.modeLaunchPlan?.launchConfig || {}),
-        backgroundMedia: item?.presentationPlan?.backgroundMedia || '',
-        accentTheme: item?.presentationPlan?.accentTheme || 'cyan',
-        soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, nowMs()),
-        takeoverScene: item?.presentationPlan?.takeoverScene || item?.type || 'preview',
-        mediaScene: String(item?.presentationPlan?.takeoverScene || item?.type || '').trim().toLowerCase() === 'media_scene'
-            && item?.presentationPlan?.mediaSceneUrl
-            ? {
-                mediaUrl: item.presentationPlan.mediaSceneUrl,
+                backgroundMedia: item?.presentationPlan?.backgroundMedia || '',
+                accentTheme: item?.presentationPlan?.accentTheme || 'cyan',
+                soundtrack: buildRunOfShowTakeoverSoundtrackPayload(item, nowMs()),
+                reactionConfig: buildMediaSceneReactionConfig(item?.presentationPlan || {}),
+                takeoverScene: item?.presentationPlan?.takeoverScene || item?.type || 'preview',
+                mediaScene: String(item?.presentationPlan?.takeoverScene || item?.type || '').trim().toLowerCase() === 'media_scene'
+                    && item?.presentationPlan?.mediaSceneUrl
+                    ? {
+                        mediaUrl: item.presentationPlan.mediaSceneUrl,
                 mediaType: String(item?.presentationPlan?.mediaSceneType || '').trim().toLowerCase() === 'video' ? 'video' : 'image',
                 fit: String(item?.presentationPlan?.mediaSceneFit || '').trim().toLowerCase() === 'cover' ? 'cover' : 'contain',
                 sourceUploadId: String(item?.presentationPlan?.mediaSceneSourceUploadId || '').trim(),
@@ -5926,23 +6031,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : null,
         durationSec: Math.max(6, Math.min(20, Number(item?.plannedDurationSec || 10) || 10)),
         startedAtMs: nowMs()
-    }), [buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
+    }), [buildMediaSceneReactionConfig, buildRunOfShowTakeoverSoundtrackPayload, parseRunOfShowOptions]);
     const syncRunOfShowTakeoverSoundtrack = useCallback(async (item = {}, action = 'start') => {
         const soundtrack = buildRunOfShowTakeoverSoundtrackPayload(item, nowMs());
-        if (action === 'stop') {
-            if (soundtrack?.sourceType === 'apple_music' || String(item?.presentationPlan?.soundtrackSourceType || '').trim().toLowerCase() === 'apple_music') {
-                await stopAppleMusic?.();
-                await updateRoom({ appleMusicPlayback: null });
-            }
-            return;
-        }
-        if (!soundtrack || soundtrack.sourceType !== 'apple_music' || !soundtrack.appleMusicId) return;
-        await playAppleMusicTrack(soundtrack.appleMusicId, {
-            title: soundtrack.label || item?.title || '',
-            artist: '',
-            duration: soundtrack.durationSec
-        });
-    }, [buildRunOfShowTakeoverSoundtrackPayload, playAppleMusicTrack, stopAppleMusic, updateRoom]);
+        await syncTakeoverSoundtrackPayload(soundtrack, action);
+    }, [buildRunOfShowTakeoverSoundtrackPayload, syncTakeoverSoundtrackPayload]);
     const previewRunOfShowItem = useCallback(async (itemId) => {
         const director = getCurrentRunOfShowDirector();
         const item = director.items.find((entry) => entry.id === itemId);
@@ -6500,6 +6593,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const mediaUrl = String(preset?.mediaUrl || '').trim();
         const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
         const title = String(preset?.title || '').trim() || (mediaType === 'video' ? 'Video Scene' : 'Image Scene');
+        const soundtrackConfig = normalizeMediaSceneSoundtrackConfig(preset);
+        const soundtrackEnabled = hasMediaSceneConfiguredSoundtrack(soundtrackConfig);
+        const sceneAudienceReactionMode = normalizeMediaSceneAudienceReactionMode(preset?.sceneAudienceReactionMode || preset?.audienceReactionMode);
         return {
             title,
             notes: '',
@@ -6519,7 +6615,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mediaSceneFit: 'contain',
                 mediaSceneSourceUploadId: String(preset?.sourceUploadId || preset?.id || '').trim(),
                 mediaSceneStoragePath: String(preset?.storagePath || '').trim(),
-                mediaSceneFileName: String(preset?.fileName || '').trim()
+                mediaSceneFileName: String(preset?.fileName || '').trim(),
+                soundtrackSourceType: soundtrackConfig.soundtrackSourceType,
+                soundtrackLabel: soundtrackConfig.soundtrackLabel,
+                soundtrackMediaUrl: soundtrackConfig.soundtrackMediaUrl,
+                soundtrackYoutubeId: soundtrackConfig.soundtrackYoutubeId,
+                soundtrackAppleMusicId: soundtrackConfig.soundtrackAppleMusicId,
+                soundtrackBgTrackId: soundtrackConfig.soundtrackBgTrackId,
+                soundtrackAutoPlay: soundtrackEnabled,
+                sceneAudienceReactionMode,
             },
             roomMomentPlan: {
                 activeScreen: 'stage',
@@ -6539,6 +6643,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const currentRoomMomentPlan = item?.roomMomentPlan && typeof item.roomMomentPlan === 'object'
             ? item.roomMomentPlan
             : {};
+        const soundtrackConfig = normalizeMediaSceneSoundtrackConfig(preset);
+        const soundtrackEnabled = hasMediaSceneConfiguredSoundtrack(soundtrackConfig);
+        const sceneAudienceReactionMode = normalizeMediaSceneAudienceReactionMode(preset?.sceneAudienceReactionMode || preset?.audienceReactionMode);
         return {
             title: String(item?.title || '').trim() || fallbackTitle,
             plannedDurationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || item?.plannedDurationSec || 20) || 20)),
@@ -6554,7 +6661,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mediaSceneFit: 'contain',
                 mediaSceneSourceUploadId: String(preset?.sourceUploadId || preset?.id || '').trim(),
                 mediaSceneStoragePath: String(preset?.storagePath || '').trim(),
-                mediaSceneFileName: String(preset?.fileName || '').trim()
+                mediaSceneFileName: String(preset?.fileName || '').trim(),
+                soundtrackSourceType: soundtrackConfig.soundtrackSourceType,
+                soundtrackLabel: soundtrackConfig.soundtrackLabel,
+                soundtrackMediaUrl: soundtrackConfig.soundtrackMediaUrl,
+                soundtrackYoutubeId: soundtrackConfig.soundtrackYoutubeId,
+                soundtrackAppleMusicId: soundtrackConfig.soundtrackAppleMusicId,
+                soundtrackBgTrackId: soundtrackConfig.soundtrackBgTrackId,
+                soundtrackAutoPlay: soundtrackEnabled,
+                sceneAudienceReactionMode,
             },
             roomMomentPlan: {
                 activeScreen: 'stage',
@@ -7994,12 +8109,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     // Audio Init
     useEffect(() => {
-        const audio = new Audio(BG_TRACKS[0].url);
-        audio.loop = true;
+        const audio = new Audio(initialBgTrackUrlRef.current || '');
+        audio.loop = false;
         audio.volume = 0.3;
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
         bgAudio.current = audio;
+        return () => {
+            audio.pause();
+            bgAudio.current = null;
+        };
     }, []);
     useEffect(() => {
         const resume = () => {
@@ -8113,6 +8232,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     useEffect(() => {
         playingBgRef.current = playingBg;
     }, [playingBg]);
+    useEffect(() => {
+        currentTrackIdxRef.current = currentTrackIdx;
+    }, [currentTrackIdx]);
+    useEffect(() => {
+        if (!roomBgTrackOptions.length) return;
+        if (currentTrackIdxRef.current >= roomBgTrackOptions.length) {
+            currentTrackIdxRef.current = 0;
+            setCurrentTrackIdx(0);
+            return;
+        }
+        if (!bgAudio.current || playingBgRef.current) return;
+        const nextTrack = roomBgTrackOptions[currentTrackIdxRef.current] || roomBgTrackOptions[0];
+        if (nextTrack?.url) {
+            bgAudio.current.src = nextTrack.url;
+        }
+    }, [roomBgTrackOptions]);
     useEffect(() => () => {
         if (stageActivationTimerRef.current) {
             clearTimeout(stageActivationTimerRef.current);
@@ -9481,6 +9616,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     }, [missionControlEnabled, missionAdvancedOverrides]);
 
+    useEffect(() => {
+        if (!bgAudio.current || playingBgRef.current || !activeBgTrack?.url) return;
+        bgAudio.current.src = activeBgTrack.url;
+    }, [activeBgTrack?.url]);
     const setBgMusicState = useCallback((next) => {
         if (!bgAudio.current) return;
         if (playingBgRef.current === next) return;
@@ -9494,8 +9633,79 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } else {
             bgAudio.current.pause();
         }
-        updateRoom({ bgMusicPlaying: next, bgMusicUrl: BG_TRACKS[currentTrackIdx].url });
-    }, [currentTrackIdx, updateRoom]);
+        updateRoom({ bgMusicPlaying: next, bgMusicUrl: activeBgTrack?.url || '' });
+    }, [activeBgTrack?.url, updateRoom]);
+    const selectBgTrack = useCallback(async (
+        trackId = '',
+        {
+            shouldPlay = false,
+            syncRoom = false,
+        } = {}
+    ) => {
+        if (!bgAudio.current || !roomBgTrackOptions.length) return null;
+        const safeTrackId = String(trackId || '').trim().toLowerCase();
+        const nextIdx = roomBgTrackOptions.findIndex((track) => String(track?.id || '').trim().toLowerCase() === safeTrackId);
+        if (nextIdx < 0) return null;
+        const nextTrack = roomBgTrackOptions[nextIdx];
+        if (!nextTrack?.url) return null;
+
+        currentTrackIdxRef.current = nextIdx;
+        setCurrentTrackIdx(nextIdx);
+        bgAudio.current.src = nextTrack.url;
+
+        if (shouldPlay) {
+            playingBgRef.current = true;
+            setPlayingBg(true);
+            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
+                bgCtxRef.current.resume().catch(() => {});
+            }
+            bgAudio.current.play().catch(() => {});
+        }
+
+        if (syncRoom) {
+            await updateRoom({
+                bgMusicPlaying: shouldPlay ? true : playingBgRef.current,
+                bgMusicUrl: nextTrack.url
+            });
+        }
+        return nextTrack;
+    }, [roomBgTrackOptions, updateRoom]);
+    const advanceBgTrack = useCallback(({ shouldPlay = playingBgRef.current, syncRoom = shouldPlay } = {}) => {
+        if (!bgAudio.current || !roomBgTrackOptions.length) return;
+
+        const nextIdx = getNextBgTrackIndex(currentTrackIdxRef.current, roomBgTrackOptions.length);
+        const nextTrack = roomBgTrackOptions[nextIdx];
+        if (!nextTrack?.url) return;
+
+        currentTrackIdxRef.current = nextIdx;
+        setCurrentTrackIdx(nextIdx);
+        bgAudio.current.src = nextTrack.url;
+
+        if (shouldPlay) {
+            if (bgCtxRef.current && bgCtxRef.current.state === 'suspended') {
+                bgCtxRef.current.resume().catch(() => {});
+            }
+            bgAudio.current.play().catch(() => {});
+        }
+
+        if (syncRoom) {
+            updateRoom({ bgMusicPlaying: shouldPlay, bgMusicUrl: nextTrack.url });
+        }
+    }, [roomBgTrackOptions, updateRoom]);
+    useEffect(() => {
+        const audio = bgAudio.current;
+        if (!audio) return;
+
+        const handleEnded = () => {
+            if (!playingBgRef.current) return;
+            advanceBgTrack({ shouldPlay: true, syncRoom: true });
+        };
+
+        audio.addEventListener('ended', handleEnded);
+        return () => {
+            audio.removeEventListener('ended', handleEnded);
+        };
+    }, [advanceBgTrack]);
 
     const {
         applyNightSetupWizard,
@@ -10271,14 +10481,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         setBgMusicState(!playingBg);
     };
-    const skipBg = () => { const next = (currentTrackIdx + 1) % BG_TRACKS.length; setCurrentTrackIdx(next); bgAudio.current.src = BG_TRACKS[next].url; if(playingBg) { bgAudio.current.play(); updateRoom({ bgMusicUrl: BG_TRACKS[next].url }); }};
+    const skipBg = useCallback(() => {
+        advanceBgTrack({ shouldPlay: playingBgRef.current, syncRoom: playingBgRef.current });
+    }, [advanceBgTrack]);
     useEffect(() => {
         if (!autoBgMusic) return;
         if (stageActivationPendingRef.current) return;
         if (!currentSong && !playingBgRef.current) {
+            const preferredTrack = activeBgTrack?.autoEligible === false
+                ? (autoBgTrackOptions[0] || roomBgTrackOptions[0] || null)
+                : activeBgTrack;
+            if (preferredTrack?.id && preferredTrack.id !== activeBgTrack?.id) {
+                void selectBgTrack(preferredTrack.id, { shouldPlay: true, syncRoom: true });
+                return;
+            }
             setBgMusicState(true);
         }
-    }, [autoBgMusic, currentSong, playingBg, setBgMusicState]);
+    }, [activeBgTrack, autoBgMusic, autoBgTrackOptions, currentSong, playingBg, roomBgTrackOptions, selectBgTrack, setBgMusicState]);
 
     useEffect(() => {
         if (!autoBgMusic) return;
@@ -10377,6 +10596,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         sfxPulseRef.current = setTimeout(() => setSfxLevel(0), 600);
     }, [sfxMuted, sfxVolume]);
     const momentSoundUrls = useMemo(() => {
+        const customMomentSoundMap = customSoundboardSounds.reduce((acc, sound) => {
+            const cueId = String(sound?.hostMomentCueId || '').trim().toLowerCase();
+            if (!cueId || acc[cueId] || !sound?.url) return acc;
+            acc[cueId] = sound.url;
+            return acc;
+        }, {});
         const findSoundUrl = (...soundNames) => {
             const targetNames = soundNames
                 .flat()
@@ -10385,10 +10610,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             return SOUNDS.find((sound) => targetNames.includes(String(sound?.name || '').trim().toLowerCase()))?.url || '';
         };
         return ['hype', 'celebrate', 'reveal', 'next_up', 'reset'].reduce((acc, cueId) => {
-            acc[cueId] = findSoundUrl(getHostMomentCueSoundCandidates(cueId));
+            acc[cueId] = customMomentSoundMap[cueId] || findSoundUrl(getHostMomentCueSoundCandidates(cueId));
             return acc;
         }, {});
-    }, []);
+    }, [customSoundboardSounds]);
     const clearHostMomentEffects = useCallback(async ({ keepMode = false } = {}) => {
         const activeRoom = roomRef.current || {};
         const lightMode = String(activeRoom?.lightMode || '').trim().toLowerCase();
@@ -10510,6 +10735,51 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } catch (e) {
             hostLogger.error(e);
             toast('Gift failed');
+        }
+    };
+    const triggerSupportDrop = async ({ scope = 'room' } = {}) => {
+        if (!roomCode) return;
+        const normalizedScope = scope === 'user' ? 'user' : 'room';
+        let points = Math.max(0, Math.round(Number(supportDropPoints || 0) || 0));
+        const amountValue = Math.max(0, Number.parseFloat(supportDropAmount || '0') || 0);
+        const amountCents = Math.round(amountValue * 100);
+        const donorName = String(supportDropDonorName || '').trim();
+        const targetUid = normalizedScope === 'user' ? String(supportDropTargetUid || '').trim() : '';
+        if (!supportDropHasExplicitPoints && amountValue > 0 && supportDropSuggestedPoints > 0) {
+            points = supportDropSuggestedPoints;
+        }
+        if (normalizedScope === 'user' && !targetUid) {
+            toast('Pick a guest to spotlight.');
+            return;
+        }
+        if (points <= 0 && amountCents <= 0) {
+            toast('Add points or a donation amount first.');
+            return;
+        }
+        try {
+            const target = normalizedScope === 'user' ? findRoomUserByUid(users, targetUid) : null;
+            const label = normalizedScope === 'user' ? 'Support Spotlight' : 'Room Support Burst';
+            await callFunction('triggerHostSupportDrop', {
+                roomCode,
+                scope: normalizedScope,
+                targetUid,
+                donorName,
+                anonymous: supportDropAnonymous,
+                label,
+                points,
+                amountCents,
+                celebrationStyle: 'moneybags_burst',
+            });
+            toast(normalizedScope === 'user'
+                ? `Support drop live for ${target?.name || 'guest'}.`
+                : 'Room support burst is live.');
+            setSupportDropAmount('');
+            if (normalizedScope === 'user') {
+                setSupportDropTargetUid('');
+            }
+        } catch (error) {
+            hostLogger.error('Support drop failed', error);
+            toast('Could not launch support drop.');
         }
     };
     const startReadyCheck = useCallback(async (options = {}) => {
@@ -11875,6 +12145,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             } else {
                 ({ storagePath, mediaUrl } = await directUpload());
             }
+            const audioLibraryMetadata = mediaType === 'audio'
+                ? normalizeHostAudioLibraryItemMetadata(options)
+                : normalizeHostAudioLibraryItemMetadata({});
             const payload = {
                 roomCode,
                 title,
@@ -11885,7 +12158,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 mediaType,
                 storagePath,
                 size: file.size || 0,
+                audioLibraryCategory: audioLibraryMetadata.audioLibraryCategory,
+                soundboardLabel: audioLibraryMetadata.soundboardLabel,
+                includeOnSoundboard: audioLibraryMetadata.includeOnSoundboard,
+                hostMomentCueId: audioLibraryMetadata.hostMomentCueId,
+                bgAutoEligible: audioLibraryMetadata.bgAutoEligible,
                 createdAt: serverTimestamp(),
+                createdAtMs: nowMs(),
                 createdBy: room?.hostName || 'Host'
             };
             const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), payload);
@@ -11953,6 +12232,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             mediaUrl,
             mediaType,
             durationSec,
+            audienceReactionMode: normalizeMediaSceneAudienceReactionMode(item?.sceneAudienceReactionMode || item?.audienceReactionMode),
+            sceneAudienceReactionMode: normalizeMediaSceneAudienceReactionMode(item?.sceneAudienceReactionMode || item?.audienceReactionMode),
+            soundtrackSourceType: '',
+            soundtrackLabel: '',
+            soundtrackMediaUrl: '',
+            soundtrackYoutubeId: '',
+            soundtrackAppleMusicId: '',
+            soundtrackBgTrackId: '',
             storagePath: String(item?.storagePath || '').trim(),
             fileName: String(item?.fileName || '').trim(),
             size: Number(item?.size || 0) || 0,
@@ -12078,6 +12365,68 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         await applyScenePresetToRunOfShow(uploaded);
         return uploaded;
     }, [applyScenePresetToRunOfShow, uploadRoomMediaAsset]);
+    const uploadAudioFilesToLibrary = useCallback(async (fileList, options = {}) => {
+        const files = Array.from(fileList || []).filter(Boolean);
+        if (!files.length) return { uploadedCount: 0 };
+        const audioLibraryCategory = normalizeHostAudioLibraryCategory(options?.audioLibraryCategory);
+        let uploadedCount = 0;
+        for (const file of files) {
+            const contentType = String(file?.type || '').trim().toLowerCase();
+            if (!contentType.startsWith('audio/')) {
+                toast('Only audio files belong in the SFX and BG libraries.');
+                continue;
+            }
+            const uploaded = await uploadRoomMediaAsset(file, {
+                audioLibraryCategory,
+                includeOnSoundboard: audioLibraryCategory === 'sfx',
+                bgAutoEligible: audioLibraryCategory === 'bg',
+                successToast: false
+            });
+            if (uploaded) uploadedCount += 1;
+        }
+        if (uploadedCount > 0) {
+            toast(`Added ${uploadedCount} audio upload${uploadedCount === 1 ? '' : 's'} to the ${audioLibraryCategory === 'bg' ? 'BG music' : 'SFX'} library.`);
+        }
+        return { uploadedCount };
+    }, [toast, uploadRoomMediaAsset]);
+    const updateAudioLibraryItem = useCallback(async (item = {}, patch = {}) => {
+        const itemId = String(item?.id || '').trim();
+        if (!itemId || item?._cloud !== true) return null;
+        const nextCategory = normalizeHostAudioLibraryCategory(
+            patch?.audioLibraryCategory ?? item?.audioLibraryCategory ?? item?.libraryCategory
+        );
+        const metadata = normalizeHostAudioLibraryItemMetadata({
+            ...item,
+            ...patch,
+            audioLibraryCategory: nextCategory,
+        });
+        const nextTitle = patch?.title == null
+            ? String(item?.title || '').trim()
+            : String(patch.title || '').trim();
+        const updatePayload = {
+            title: nextTitle || String(item?.title || '').trim() || 'Audio Upload',
+            audioLibraryCategory: metadata.audioLibraryCategory,
+            soundboardLabel: metadata.soundboardLabel,
+            includeOnSoundboard: metadata.includeOnSoundboard,
+            hostMomentCueId: metadata.hostMomentCueId,
+            bgAutoEligible: metadata.bgAutoEligible,
+        };
+        try {
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads', itemId), updatePayload);
+            setLocalLibrary((prev) => (
+                (Array.isArray(prev) ? prev : []).map((entry) => (
+                    String(entry?.id || '').trim() === itemId
+                        ? { ...entry, ...updatePayload }
+                        : entry
+                ))
+            ));
+            return { ...item, ...updatePayload };
+        } catch (error) {
+            hostLogger.error('Could not update audio library item', error);
+            toast('Could not save that audio library item.');
+            return null;
+        }
+    }, [toast]);
     const reconcileDeletedMediaReferences = useCallback(async (asset = {}) => {
         const assetIdentity = buildRoomMediaIdentity(asset);
         if (!hasRoomMediaIdentity(assetIdentity)) return false;
@@ -12268,6 +12617,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Failed to delete upload');
         }
     };
+    const startBgLibraryTrack = useCallback((item = {}, options = {}) => {
+        const trackId = buildHostAudioUploadTrackId(item);
+        if (!trackId) return null;
+        return selectBgTrack(trackId, {
+            shouldPlay: options?.shouldPlay !== false,
+            syncRoom: options?.syncRoom !== false,
+        });
+    }, [selectBgTrack]);
     const launchMediaSceneAsset = useCallback(async (item = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(item);
         if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
@@ -12277,30 +12634,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const mediaType = getRoomMediaType(item);
         const durationSec = Math.max(5, Math.min(600, Number(options?.durationSec || item?.durationSec || 20) || 20));
         const startedAtMs = nowMs();
+        const soundtrack = buildMediaSceneSoundtrackPayload(item, startedAtMs, getRoomMediaTitle(item), durationSec);
+        const reactionConfig = buildMediaSceneReactionConfig({
+            sceneAudienceReactionMode: item?.sceneAudienceReactionMode || item?.audienceReactionMode
+        });
         try {
+            const announcementPayload = {
+                active: true,
+                id: `media_scene_${startedAtMs}`,
+                type: 'media_scene',
+                title: getRoomMediaTitle(item),
+                headline: getRoomMediaTitle(item),
+                subhead: '',
+                takeoverScene: 'media_scene',
+                accentTheme: 'cyan',
+                durationSec,
+                startedAtMs,
+                soundtrack,
+                reactionConfig,
+                mediaScene: {
+                    mediaUrl,
+                    mediaType,
+                    fit: 'contain',
+                    sourceUploadId: String(item?.sourceUploadId || item?.id || '').trim(),
+                    storagePath: String(item?.storagePath || '').trim(),
+                    fileName: String(item?.fileName || '').trim()
+                }
+            };
             await updateRoom({
                 tvPreviewOverlay: null,
-                announcement: {
-                    active: true,
-                    id: `media_scene_${startedAtMs}`,
-                    type: 'media_scene',
-                    title: getRoomMediaTitle(item),
-                    headline: getRoomMediaTitle(item),
-                    subhead: '',
-                    takeoverScene: 'media_scene',
-                    accentTheme: 'cyan',
-                    durationSec,
-                    startedAtMs,
-                    mediaScene: {
-                        mediaUrl,
-                        mediaType,
-                        fit: 'contain',
-                        sourceUploadId: String(item?.sourceUploadId || item?.id || '').trim(),
-                        storagePath: String(item?.storagePath || '').trim(),
-                        fileName: String(item?.fileName || '').trim()
-                    }
-                }
+                announcement: announcementPayload
             });
+            await syncTakeoverSoundtrackPayload(soundtrack, 'start');
             await markScenePresetPresented({
                 sourceUploadId: String(item?.sourceUploadId || item?.id || '').trim(),
                 storagePath: String(item?.storagePath || '').trim()
@@ -12316,7 +12681,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             hostLogger.error('Could not launch scene preset', error);
             toast('Could not send scene to Public TV.');
         }
-    }, [getRoomMediaTitle, hostLogger, markScenePresetPresented, toast, trackHostOperatorEvent, updateRoom]);
+    }, [buildMediaSceneReactionConfig, canUseRoomMediaAsScene, getRoomMediaTitle, getRoomMediaType, hostLogger, markScenePresetPresented, syncTakeoverSoundtrackPayload, toast, trackHostOperatorEvent, updateRoom]);
     const createScenePresetFromFile = async (file, options = {}) => {
         if (!file || !roomCode) return null;
         const mediaType = String(file.type || '').trim().toLowerCase().startsWith('video/')
@@ -12364,6 +12729,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
     const clearScenePreset = async () => {
         try {
+            await syncTakeoverSoundtrackPayload(room?.announcement?.soundtrack || null, 'stop');
             await updateRoom({ announcement: null, tvPreviewOverlay: null });
             toast('Scene cleared from Public TV.');
         } catch (error) {
@@ -12405,9 +12771,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!preset?.id) return null;
         const nextTitle = String(updates?.title ?? preset?.title ?? '').trim();
         const nextDurationSec = Math.max(5, Math.min(600, Number(updates?.durationSec ?? preset?.durationSec ?? 20) || 20));
+        const reactionMode = normalizeMediaSceneAudienceReactionMode(
+            updates?.sceneAudienceReactionMode
+            ?? updates?.audienceReactionMode
+            ?? preset?.sceneAudienceReactionMode
+            ?? preset?.audienceReactionMode
+        );
+        const soundtrackConfig = normalizeMediaSceneSoundtrackConfig({
+            soundtrackSourceType: updates?.soundtrackSourceType ?? preset?.soundtrackSourceType ?? '',
+            soundtrackInputValue: updates?.soundtrackInputValue,
+            soundtrackLabel: updates?.soundtrackLabel ?? preset?.soundtrackLabel ?? '',
+            soundtrackMediaUrl: updates?.soundtrackMediaUrl ?? preset?.soundtrackMediaUrl ?? '',
+            soundtrackYoutubeId: updates?.soundtrackYoutubeId ?? preset?.soundtrackYoutubeId ?? '',
+            soundtrackAppleMusicId: updates?.soundtrackAppleMusicId ?? preset?.soundtrackAppleMusicId ?? '',
+            soundtrackBgTrackId: updates?.soundtrackBgTrackId ?? preset?.soundtrackBgTrackId ?? '',
+        });
         const payload = {
             title: nextTitle || (String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'Video Scene' : 'Image Scene'),
             durationSec: nextDurationSec,
+            audienceReactionMode: reactionMode,
+            sceneAudienceReactionMode: reactionMode,
+            soundtrackSourceType: soundtrackConfig.soundtrackSourceType,
+            soundtrackLabel: soundtrackConfig.soundtrackLabel,
+            soundtrackMediaUrl: soundtrackConfig.soundtrackMediaUrl,
+            soundtrackYoutubeId: soundtrackConfig.soundtrackYoutubeId,
+            soundtrackAppleMusicId: soundtrackConfig.soundtrackAppleMusicId,
+            soundtrackBgTrackId: soundtrackConfig.soundtrackBgTrackId,
             updatedAt: serverTimestamp(),
             updatedAtMs: nowMs(),
         };
@@ -16905,6 +17294,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? { label: 'AAHF Festival Pack', assetCount: AAHF_SCENE_LIBRARY_SEED_ASSETS.length }
             : null,
         scenePresetSeedPending,
+        audioLibraryItems: roomAudioLibraryItems,
+        customSoundboardSounds,
+        onUploadAudioLibraryFiles: uploadAudioFilesToLibrary,
+        onUpdateAudioLibraryItem: updateAudioLibraryItem,
+        onDeleteAudioLibraryItem: deleteCloudUpload,
+        onStartBgTrack: startBgLibraryTrack,
+        currentBgTrackUploadId: activeBgTrackUploadId,
         crowdPulse,
         coHostSignals: recentCoHostSignals,
         moderationQueueItems: moderationInbox.queueItems,
@@ -17125,7 +17521,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     chatUnread={chatUnread}
                     setBgMusicState={setBgMusicState}
                     toggleBgMute={toggleBgMute}
-                    currentTrackName={BG_TRACKS[currentTrackIdx]?.name || 'BG Track'}
+                    currentTrackName={activeBgTrack?.name || 'BG Track'}
                     mixFader={mixFader}
                     handleMixFaderChange={handleMixFaderChange}
                     startReadyCheck={startReadyCheck}
@@ -17855,6 +18251,128 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     +{points} pts
                                                 </button>
                                             ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className={`${STYLES.panel} p-4 border-white/10 mt-3`}>
+                                    <div className="text-sm text-zinc-400 mb-3 font-bold uppercase tracking-wider">Support Drops</div>
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <input
+                                                value={supportDropDonorName}
+                                                onChange={e => setSupportDropDonorName(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                                placeholder="Supporter name"
+                                            />
+                                            <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-300">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={supportDropAnonymous}
+                                                    onChange={(e) => setSupportDropAnonymous(e.target.checked)}
+                                                />
+                                                Anonymous spotlight
+                                            </label>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            <input
+                                                value={supportDropAmount}
+                                                onChange={e => setSupportDropAmount(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                                placeholder="$ Donation amount"
+                                            />
+                                            <input
+                                                value={supportDropPoints}
+                                                onChange={e => setSupportDropPoints(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                                placeholder="Pts (blank = auto)"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Quick amount</div>
+                                                {SUPPORT_DROP_AMOUNT_PRESETS.map((amount) => (
+                                                    <button
+                                                        key={`support-drop-amount-${amount}`}
+                                                        type="button"
+                                                        onClick={() => setSupportDropAmount(String(amount))}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2.5 py-1 text-xs`}
+                                                    >
+                                                        ${amount}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Auto-calc</div>
+                                                {SUPPORT_DROP_RATE_PRESETS.map((rate) => (
+                                                    <button
+                                                        key={`support-drop-rate-${rate}`}
+                                                        type="button"
+                                                        onClick={() => setSupportDropRate(String(rate))}
+                                                        className={`${STYLES.btnStd} ${supportDropRateValue === rate ? STYLES.btnHighlight : STYLES.btnSecondary} px-2.5 py-1 text-xs`}
+                                                    >
+                                                        {rate}/$1
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSupportDropRate('')}
+                                                    className={`${STYLES.btnStd} ${!supportDropRate ? STYLES.btnHighlight : STYLES.btnSecondary} px-2.5 py-1 text-xs`}
+                                                >
+                                                    Room default
+                                                </button>
+                                                {supportDropSuggestedPoints > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSupportDropPoints(String(supportDropSuggestedPoints))}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1 text-xs`}
+                                                    >
+                                                        Use +{supportDropSuggestedPoints} pts
+                                                    </button>
+                                                ) : null}
+                                                {supportDropHasExplicitPoints ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSupportDropPoints('')}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2.5 py-1 text-xs`}
+                                                    >
+                                                        Clear manual pts
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                            <div className="text-xs text-zinc-500">
+                                                {supportDropSuggestedPoints > 0
+                                                    ? `Reward Whole Room will auto-use +${supportDropSuggestedPoints} pts from $${supportDropAmountValue.toFixed(2)} at ${supportDropRateValue} pts per $1 when the points field is blank.`
+                                                    : `Leave points blank to auto-calc from the donation amount at ${supportDropRateValue} pts per $1.`}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                            <select
+                                                value={supportDropTargetUid}
+                                                onChange={(e) => setSupportDropTargetUid(e.target.value)}
+                                                className={`${STYLES.input} w-full`}
+                                            >
+                                                <option value="">Select guest for spotlight...</option>
+                                                {users.map((u) => (
+                                                    <option key={u.uid || u.id} value={resolveRoomUserUid(u)}>
+                                                        {u.name || 'Guest'}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                onClick={() => triggerSupportDrop({ scope: 'user' })}
+                                                className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}
+                                            >
+                                                Spotlight Guest
+                                            </button>
+                                            <button
+                                                onClick={() => triggerSupportDrop({ scope: 'room' })}
+                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}
+                                            >
+                                                Reward Whole Room
+                                            </button>
+                                        </div>
+                                        <div className="text-xs text-zinc-500">
+                                            Launches the moneybags Public TV moment and logs the support hit. Guest spotlight rewards one person; room reward applies the same point amount to everyone currently joined.
                                         </div>
                                     </div>
                                 </div>
@@ -18678,6 +19196,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       Show post-performance recap sequence on TV
                                   </label>
                                   <div className="host-form-helper">Turns the full post-song TV sequence on or off.</div>
+                                  <div className="host-form-helper">TV now uses one warm-up beat before the live applause meter opens.</div>
                               </div>
                               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                                   <label className="space-y-2">
@@ -18691,10 +19210,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                               <option key={`admin-applause-warmup-${value}`} value={value}>{value}s</option>
                                           ))}
                                       </select>
-                                      <div className="host-form-helper">Delay before the applause countdown starts.</div>
+                                      <div className="host-form-helper">First warm-up beat before the live meter opens.</div>
                                   </label>
                                   <label className="space-y-2">
-                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Applause countdown</div>
+                                      <div className="text-sm uppercase tracking-widest text-zinc-400">Warm-up extension</div>
                                       <select
                                           value={Math.max(1, Math.min(8, Math.round(Number(room?.applauseCountdownSec ?? 5) || 5)))}
                                           onChange={async (e) => { await updateRoom({ applauseCountdownSec: Number(e.target.value) }); }}
@@ -18704,7 +19223,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                               <option key={`admin-applause-countdown-${value}`} value={value}>{value}s</option>
                                           ))}
                                       </select>
-                                      <div className="host-form-helper">Countdown length before the applause meter goes live.</div>
+                                      <div className="host-form-helper">Adds extra warm-up time before the live meter opens.</div>
                                   </label>
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Applause meter live</div>
@@ -18717,7 +19236,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                               <option key={`admin-applause-measure-${value}`} value={value}>{value}s</option>
                                           ))}
                                       </select>
-                                      <div className="host-form-helper">How long the applause meter listens after the countdown.</div>
+                                      <div className="host-form-helper">How long the applause meter listens before showing peak.</div>
                                   </label>
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Recap beat</div>

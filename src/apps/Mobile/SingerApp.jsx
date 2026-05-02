@@ -138,6 +138,10 @@ import {
     normalizeAudienceFeatureAccess,
     resolveAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
+import {
+    getMediaSceneAudienceReactionMeta,
+    normalizeMediaSceneAudienceReactionMode,
+} from '../../lib/mediaSceneConfig.js';
 import { buildQaAudienceFixture } from './qaAudienceFixtures';
 import { resolveAudienceSessionUid } from '../../lib/audienceSessionIdentity';
 import {
@@ -310,6 +314,7 @@ const GUITAR_LANE_THEME = [
     { label: 'V', accent: 'from-emerald-200 via-teal-300 to-cyan-400', border: 'border-emerald-200/60', glow: 'shadow-[0_0_20px_rgba(45,212,191,0.35)]' }
 ];
 const DEFAULT_GUITAR_LANE_THEME = GUITAR_LANE_THEME[0];
+const GIVEBUTTER_WIDGET_SCRIPT_SRC = 'https://widgets.givebutter.com/latest.umd.cjs';
 const getSafeGuitarLaneIndex = (laneIndex, laneCount = GUITAR_LANE_THEME.length) => {
     const normalizedLaneCount = Math.max(1, Math.trunc(Number(laneCount) || GUITAR_LANE_THEME.length || 1));
     const numericLaneIndex = Math.trunc(Number(laneIndex));
@@ -420,6 +425,18 @@ const isQueueNetworkError = (error) => {
     );
 };
 
+const isQueueRateLimitError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    return (
+        code.includes('resource-exhausted')
+        || code.includes('429')
+        || message.includes('rate limit')
+        || message.includes('server is busy')
+        || message.includes('too many')
+    );
+};
+
 const getQueueSubmitErrorMessage = (error, fallback = 'Could not send request.') => {
     if (isQueueAppCheckError(error)) return 'Security token expired. Refresh and try again.';
     if (isQueueUnauthenticatedError(error)) return 'Session expired. Sign in again and retry.';
@@ -440,6 +457,7 @@ const getJoinErrorMessage = (error) => {
     if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
     if (isQueueUnauthenticatedError(error)) return 'Session is still connecting. Try again.';
     if (isQueuePermissionDeniedError(error)) return 'Join is still syncing. Wait a second and tap Join again.';
+    if (isQueueRateLimitError(error)) return 'Join traffic is heavy right now. Wait 10 seconds, then retry. If venue Wi-Fi is crowded, try cellular.';
     if (isQueueNetworkError(error)) return 'Network issue while joining. Try again.';
     return 'Could not join room. Try again.';
 };
@@ -952,6 +970,22 @@ const SingerApp = ({ roomCode, uid }) => {
     const [songs, setSongs] = useState(Array.isArray(initialAudienceDemoFixture?.songs) ? initialAudienceDemoFixture.songs : []);
     const [tab, setTab] = useState(initialAudienceDemoFixture?.tab || 'home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
+    const announcementTakeoverScene = useMemo(
+        () => String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase(),
+        [room?.announcement?.takeoverScene, room?.announcement?.type]
+    );
+    const sceneReactionVotingActive = !!room?.announcement?.active && !!announcementTakeoverScene;
+    const takeoverReactionMode = useMemo(
+        () => normalizeMediaSceneAudienceReactionMode(room?.announcement?.reactionConfig?.mode),
+        [room?.announcement?.reactionConfig?.mode]
+    );
+    const takeoverReactionMeta = useMemo(
+        () => getMediaSceneAudienceReactionMeta(takeoverReactionMode),
+        [takeoverReactionMode]
+    );
+    const takeoverClapVotingActive = sceneReactionVotingActive
+        && takeoverReactionMode !== 'off'
+        && !currentSinger;
     const shellVariant = useMemo(
         () => normalizeAudienceShellVariant(room?.audienceShellVariant),
         [room?.audienceShellVariant]
@@ -1617,26 +1651,41 @@ const SingerApp = ({ roomCode, uid }) => {
     useEffect(() => {
         const activeMode = String(room?.activeMode || '').trim();
         const applauseActive = activeMode === 'applause_countdown' || activeMode === 'applause' || activeMode === 'applause_result';
-        if (!applauseActive) {
+        if (!applauseActive && !takeoverClapVotingActive) {
             applauseSessionKeyRef.current = '';
             setApplauseTapCount(0);
             setApplauseTapPulseAt(0);
             return;
         }
-        const sessionKey = [
-            currentSinger?.id || room?.lastPerformance?.id || 'no-performance',
-            timestampToMs(currentSinger?.performingStartedAt) || timestampToMs(currentSinger?.timestamp) || 0,
-        ].join(':');
+        const sessionKey = applauseActive
+            ? [
+                room?.applauseSubject?.id || currentSinger?.id || room?.lastPerformance?.id || 'no-performance',
+                timestampToMs(room?.applauseSubject?.performingStartedAt)
+                    || timestampToMs(room?.applauseSubject?.timestamp)
+                    || timestampToMs(currentSinger?.performingStartedAt)
+                    || timestampToMs(currentSinger?.timestamp)
+                    || timestampToMs(room?.lastPerformance?.timestamp)
+                    || 0,
+            ].join(':')
+            : [
+                'scene_clap_vote',
+                String(room?.announcement?.id || room?.announcement?.runOfShowItemId || announcementTakeoverScene || 'scene'),
+                Number(room?.announcement?.startedAtMs || 0),
+            ].join(':');
         if (applauseSessionKeyRef.current === sessionKey) return;
         applauseSessionKeyRef.current = sessionKey;
         setApplauseTapCount(0);
         setApplauseTapPulseAt(0);
     }, [
-        currentSinger?.id,
-        currentSinger?.performingStartedAt,
-        currentSinger?.timestamp,
+        announcementTakeoverScene,
+        currentSinger,
+        room?.announcement?.id,
+        room?.announcement?.runOfShowItemId,
+        room?.announcement?.startedAtMs,
         room?.activeMode,
-        room?.lastPerformance?.id
+        room?.applauseSubject,
+        room?.lastPerformance,
+        takeoverClapVotingActive
     ]);
     const [composedPhoto, setComposedPhoto] = useState(null);
     const [dismissedPhotoTs, setDismissedPhotoTs] = useState(0);
@@ -2772,6 +2821,7 @@ const SingerApp = ({ roomCode, uid }) => {
             supportLabel: String(source.supportLabel || '').trim(),
             supportUrl: String(source.supportUrl || '').trim(),
             supportEmbedUrl: String(source.supportEmbedUrl || '').trim(),
+            supportWidgetId: String(source.supportWidgetId || '').trim(),
             supportCampaignCode: String(source.supportCampaignCode || '').trim(),
             supportPoints: Math.max(0, Number(source.supportPoints || 0) || 0),
             supportBadge: source.supportBadge !== false,
@@ -2919,6 +2969,8 @@ const SingerApp = ({ roomCode, uid }) => {
     const supporterAccessLabel = isCustomAudienceBrand ? 'Festival Supporter' : 'VIP';
     const supportCtaLabel = roomSupportOffer?.label
         || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
+    const roomSupportWidgetId = String(roomSupportOffer?.supportWidgetId || '').trim();
+    const roomSupportHasEmbed = !!roomSupportOffer?.supportEmbedUrl || !!roomSupportWidgetId;
     const isDonationFirstAccess = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.donation;
     const allowsDonationAccess = !!roomSupportOffer
         && (
@@ -2937,6 +2989,17 @@ const SingerApp = ({ roomCode, uid }) => {
         && audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account
         && audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open
         && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
+    useEffect(() => {
+        if (!supportEmbedOpen || !roomSupportWidgetId || typeof document === 'undefined') return undefined;
+        const existing = document.querySelector(`script[src="${GIVEBUTTER_WIDGET_SCRIPT_SRC}"]`);
+        if (existing) return undefined;
+        const script = document.createElement('script');
+        script.src = GIVEBUTTER_WIDGET_SCRIPT_SRC;
+        script.async = true;
+        script.dataset.givebutterWidget = 'true';
+        document.body.appendChild(script);
+        return undefined;
+    }, [roomSupportWidgetId, supportEmbedOpen]);
     const hasSupporterAccess = allowsDonationAccess
         && (
             !!user?.roomBoostBadge
@@ -3046,15 +3109,15 @@ const SingerApp = ({ roomCode, uid }) => {
     const openVipUpgrade = useCallback((preferredPath = 'auto') => {
         const wantsEmail = preferredPath === 'email' || (preferredPath === 'auto' && simplifyFestivalSupportAccess);
         if (!wantsEmail && allowsDonationAccess) {
-            setSupportEmbedOpen(!!roomSupportOffer?.supportEmbedUrl);
+            setSupportEmbedOpen(roomSupportHasEmbed);
             setShowPoints(true);
-            if (!roomSupportOffer?.supportEmbedUrl && roomSupportOffer?.supportUrl) {
+            if (!roomSupportHasEmbed && roomSupportOffer?.supportUrl) {
                 window.open(roomSupportOffer.supportUrl, '_blank', 'noopener,noreferrer');
             }
             return;
         }
         openEmailAccessModal();
-    }, [allowsDonationAccess, openEmailAccessModal, roomSupportOffer, simplifyFestivalSupportAccess]);
+    }, [allowsDonationAccess, openEmailAccessModal, roomSupportHasEmbed, roomSupportOffer, simplifyFestivalSupportAccess]);
     const eventCreditsSummary = useMemo(() => {
         if (!roomCode) {
             return {
@@ -3353,7 +3416,7 @@ const SingerApp = ({ roomCode, uid }) => {
                             })}
                         </div>
                     )}
-                    {supportEmbedOpen && roomSupportOffer?.supportEmbedUrl && (
+                    {supportEmbedOpen && roomSupportHasEmbed && (
                         <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 bg-black/40">
                             <div className="flex items-center justify-between border-b border-white/10 bg-black/35 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-300">
                                 <span>Givebutter Donation Form</span>
@@ -3364,11 +3427,17 @@ const SingerApp = ({ roomCode, uid }) => {
                                     Hide
                                 </button>
                             </div>
-                            <iframe
-                                src={roomSupportOffer.supportEmbedUrl}
-                                title="Givebutter support"
-                                className="h-[480px] w-full bg-white"
-                            />
+                            {roomSupportWidgetId ? (
+                                <div className="min-h-[520px] bg-white p-3" data-feature-id="givebutter-widget-container">
+                                    {React.createElement('givebutter-widget', { id: roomSupportWidgetId })}
+                                </div>
+                            ) : (
+                                <iframe
+                                    src={roomSupportOffer.supportEmbedUrl}
+                                    title="Givebutter support"
+                                    className="h-[480px] w-full bg-white"
+                                />
+                            )}
                         </div>
                     )}
                 </div>
@@ -4447,7 +4516,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         && popTriviaCorrectPoints > 0
         && popTriviaAwardSyncedDelta <= 0
     );
-    const karaokePerformanceVotingOpen = !!currentSinger && (!room?.activeMode || room.activeMode === 'karaoke');
+    const karaokePerformanceVotingOpen = (!!currentSinger || takeoverClapVotingActive) && (!room?.activeMode || room.activeMode === 'karaoke');
     const showPerformanceVotingPromptCta = karaokePerformanceVotingOpen && tab !== 'home';
     const showPopTriviaStandaloneSheet = !!popTriviaCardKey && showPopTriviaCard;
     const showPopTriviaPromptCta = !!popTriviaQuestion && popTriviaMyVote === null && showPopTriviaCard && !showPopTriviaStandaloneSheet;
@@ -4460,13 +4529,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (showPerformanceVotingPromptCta && showPopTriviaPromptCta) {
             return {
                 icon: 'fa-bolt',
-                label: 'Stage + Trivia Live: Tap To Vote'
+                label: takeoverClapVotingActive ? 'Scene + Trivia Live: Tap To Vote' : 'Stage + Trivia Live: Tap To Vote'
             };
         }
         if (showPerformanceVotingPromptCta) {
             return {
-                icon: 'fa-microphone-lines',
-                label: 'Stage Live: Voting Open'
+                icon: takeoverClapVotingActive ? 'fa-tv' : 'fa-microphone-lines',
+                label: takeoverClapVotingActive ? 'TV Scene Live: Clap Vote Open' : 'Stage Live: Voting Open'
             };
         }
         if (showPopTriviaPromptCta) {
@@ -4476,7 +4545,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             };
         }
         return null;
-    }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta]);
+    }, [showPerformanceVotingPromptCta, showPopTriviaPromptCta, takeoverClapVotingActive]);
     useEffect(() => {
         setStageHomePanelExpanded(false);
     }, [currentSinger?.id, popTriviaCardKey, lobbyVolleySceneActive, karaokePerformanceVotingOpen]);
@@ -6045,13 +6114,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setShowPoints(true);
             return;
         }
-        if (roomSupportOffer?.supportEmbedUrl) {
+        if (roomSupportHasEmbed) {
             setSupportEmbedOpen(true);
             setShowPoints(true);
             return;
         }
         startGivebutterSupportCheckout(roomSupportOffer);
-    }, [roomSupportOffer, startGivebutterSupportCheckout]);
+    }, [roomSupportHasEmbed, roomSupportOffer, startGivebutterSupportCheckout]);
 
     const startPersonalPackCheckout = useCallback(async (pack) => {
         if (pack?.offerType === 'support_offer') {
@@ -6835,8 +6904,12 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         let nextCost = Math.max(0, Number(cost || 0) || 0);
         const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
         if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_result') && safeType === 'clap') nextCost = 0;
+        if (takeoverClapVotingActive && safeType !== 'clap') {
+            return toast('Only clap voting is active for this scene.');
+        }
+        if (takeoverClapVotingActive && safeType === 'clap') nextCost = 0;
         if (coHostFreeReactions) nextCost = 0;
-        if (!currentSinger && !applauseModeActive) return toast('Reactions wake up once someone is on stage.');
+        if (!currentSinger && !applauseModeActive && !takeoverClapVotingActive) return toast('Reactions wake up once someone is on stage or a scene goes live.');
         if(!user || !canAffordRoomCost(nextCost)) return toast(`Need ${nextCost} pts!`); 
         const now = Date.now();
         const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
@@ -6848,7 +6921,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, reactionTapCooldownMs));
         }
         markActive();
-        if ((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') && safeType === 'clap') {
+        if (((room?.activeMode === 'applause' || room?.activeMode === 'applause_countdown') || takeoverClapVotingActive) && safeType === 'clap') {
             setApplauseTapCount(prev => prev + 1);
             setApplauseTapPulseAt(now);
         }
@@ -11015,7 +11088,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const groupedActiveMessages = groupChatMessages(activeMessages, { mergeWindowMs: 12 * 60 * 1000 });
     const noSingerOnStage = !currentSinger;
     const applauseModeActive = ['applause', 'applause_countdown', 'applause_result'].includes(String(room?.activeMode || '').trim().toLowerCase());
-    const performanceReactionsReady = !!currentSinger || applauseModeActive;
+    const performanceReactionsReady = !!currentSinger || applauseModeActive || takeoverClapVotingActive;
     const hideOmnipresentStageAreaForStreamlinedIdle = isStreamlinedAudienceShell && noSingerOnStage && !lobbyVolleySceneActive;
     const showHomeIdlePartyCard = tab === 'home' && noSingerOnStage && !lobbyVolleySceneActive && !isStreamlinedAudienceShell;
     const showStreamlinedIdleRequestCard = shouldShowStreamlinedIdleRequestCard({
@@ -11077,7 +11150,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const streamlinedPerformanceVotingBannerVisible = isStreamlinedAudienceShell && karaokePerformanceVotingOpen && tab === 'request';
     const streamlinedPerformanceVotingBannerTitle = currentSinger?.singerName
         ? `${currentSinger.singerName}${currentSinger?.songTitle ? ` - ${currentSinger.songTitle}` : ''}`
-        : 'Performance voting is live';
+        : (takeoverClapVotingActive
+            ? (room?.announcement?.headline || room?.announcement?.title || 'TV scene clap voting is live')
+            : 'Performance voting is live');
     const stagePanelCollapsed = !!stagePanelCollapsedByTab[activePrimaryStageTab];
     const forceExpandedHomeStageCard = showAudienceVideoInline || showAudienceVideoFullscreen || inlineLyrics || viewLyrics;
     const homeStageInteractionState = showPopTriviaCard
@@ -11313,7 +11388,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             >
                                 <div className="min-w-0">
                                     <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-200">Vote live now</div>
-                                    <div className="mt-1 text-sm font-black text-white">A performance is on. Jump back to Party to vote and react.</div>
+                                    <div className="mt-1 text-sm font-black text-white">
+                                        {takeoverClapVotingActive
+                                            ? 'A TV scene is live. Jump back to Party to clap vote.'
+                                            : 'A performance is on. Jump back to Party to vote and react.'}
+                                    </div>
                                     <div className="mt-1 truncate text-xs text-amber-100/85">{streamlinedPerformanceVotingBannerTitle}</div>
                                 </div>
                                 <span className="shrink-0 rounded-full bg-amber-300 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-black">
@@ -12852,7 +12931,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </button>
                                 </div>
                             </>
-                        ) : noSingerOnStage ? (
+                        ) : noSingerOnStage && !performanceReactionsReady ? (
                              <>
                                  <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                                      <div className="flex items-center justify-between gap-3">
@@ -12882,65 +12961,97 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                              </>
                          ) : (
                              <>
-                                 <div className="grid grid-cols-2 gap-4">
-                                     <button data-feature-id="reaction-fire-button" disabled={isReactionCoolingDown('fire')} onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden rounded-2xl border-2 border-orange-500/80 bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:bg-orange-500 active:scale-95'} ${cooldownFlashKey === 'fire' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
-                                         <span className={`${getReactionOptionIconClass('fire')} mb-2`}>{getEmojiChar('fire')}</span>
-                                         <span className="font-bold text-orange-200 text-base">HYPE</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{reactionCostLabel(REACTION_COSTS.fire)}</div>
-                                     </button>
-                                     <button data-feature-id="reaction-heart-button" disabled={isReactionCoolingDown('heart')} onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden rounded-2xl border-2 border-pink-500/80 bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:bg-pink-500 active:scale-95'} ${cooldownFlashKey === 'heart' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
-                                         <span className={`${getReactionOptionIconClass('heart')} mb-2`}>{getEmojiChar('heart')}</span>
-                                         <span className="font-bold text-pink-200 text-base">LOVE</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{reactionCostLabel(REACTION_COSTS.heart)}</div>
-                                     </button>
-                                     <button data-feature-id="reaction-clap-button" disabled={isReactionCoolingDown('clap')} onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
-                                         <span className={`${getReactionOptionIconClass('clap')} mb-2`}>{getEmojiChar('clap')}</span>
-                                         <span className="font-bold text-cyan-200 text-base">CLAP</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{reactionCostLabel(REACTION_COSTS.clap)}</div>
-                                     </button>
-                                     <button data-feature-id="reaction-drink-button" disabled={isReactionCoolingDown('drink')} onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden rounded-2xl border-2 border-blue-400/80 bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:bg-blue-500 active:scale-95'} ${cooldownFlashKey === 'drink' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
-                                         {renderReactionCooldownFill('drink', 'bg-blue-300/25', 'border-blue-300/35 bg-black/55 text-blue-50')}
-                                         <span className={`${getReactionOptionIconClass('drink')} mb-2`}>{getEmojiChar('drink')}</span>
-                                         <span className="font-bold text-blue-200 text-base">CHEERS</span>
-                                         <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{reactionCostLabel(REACTION_COSTS.drink)}</div>
-                                     </button>
-                                 </div>
-                                 {coHostReactionPolicyLabel ? (
-                                     <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-amber-100">
-                                         {coHostReactionPolicyLabel}
-                                     </div>
-                                 ) : null}
-                                 <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
-                                     const accent = {
-                                         rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
-                                         diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
-                                         money: 'border-rose-300/80 text-rose-100 bg-rose-500/10 shadow-[0_0_26px_rgba(251,113,133,0.45)]',
-                                         crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
-                                     }[t];
-                                     const cost = REACTION_COSTS[t];
-                                     return (
-                                     <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
-                                            {premiumReactionsUnlocked ? renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50') : null}
-                                            <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
-                                            <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'BLOOM'}[t]}</span>
-                                            <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
-                                                 {reactionCostLabel(cost)}
+                                {takeoverClapVotingActive ? (
+                                    <>
+                                        <div className="rounded-2xl border border-fuchsia-300/24 bg-gradient-to-br from-fuchsia-500/12 via-[#0a1020] to-cyan-500/12 p-4 shadow-[0_0_22px_rgba(217,70,239,0.14)]">
+                                            <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Scene Clap Voting</div>
+                                            <div className="mt-1 text-lg font-black text-white">
+                                                {room?.announcement?.headline || room?.announcement?.title || 'TV scene live'}
+                                            </div>
+                                            <div className="mt-1 text-sm text-zinc-300">
+                                                {room?.announcement?.subhead
+                                                    ? `${room.announcement.subhead} ${takeoverReactionMeta.detail}`
+                                                    : takeoverReactionMeta.detail}
+                                            </div>
+                                            <div className="mt-3 text-xs uppercase tracking-[0.16em] text-cyan-100/80">
+                                                {applauseTapCount === 0 ? 'Tap clap to cast your vote.' : `${applauseTapCount} clap vote${applauseTapCount === 1 ? '' : 's'} sent`}
+                                            </div>
+                                        </div>
+                                        <button
+                                            data-feature-id="scene-clap-vote-button"
+                                            disabled={isReactionCoolingDown('clap')}
+                                            onClick={() => react('clap', 0)}
+                                            className={`relative w-full overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-4 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}
+                                        >
+                                            {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
+                                            <span className={`${getReactionOptionIconClass('clap')} mb-2`}>{getEmojiChar('clap')}</span>
+                                            <span className="font-bold text-cyan-200 text-lg">CLAP VOTE</span>
+                                            <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold border border-white/10 bg-black/35 text-white">FREE</div>
+                                        </button>
+                                    </>
+                                ) : (
+                                     <>
+                                         <div className="grid grid-cols-2 gap-4">
+                                             <button data-feature-id="reaction-fire-button" disabled={isReactionCoolingDown('fire')} onClick={()=>react('fire', REACTION_COSTS.fire)} className={`relative overflow-hidden rounded-2xl border-2 border-orange-500/80 bg-gradient-to-b from-orange-500/20 via-orange-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('fire') ? 'cursor-not-allowed opacity-75' : 'active:bg-orange-500 active:scale-95'} ${cooldownFlashKey === 'fire' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                                 {renderReactionCooldownFill('fire', 'bg-orange-300/25', 'border-orange-300/35 bg-black/55 text-orange-50')}
+                                                 <span className={`${getReactionOptionIconClass('fire')} mb-2`}>{getEmojiChar('fire')}</span>
+                                                 <span className="font-bold text-orange-200 text-base">HYPE</span>
+                                                 <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-orange-500/25 text-orange-100">{reactionCostLabel(REACTION_COSTS.fire)}</div>
+                                             </button>
+                                             <button data-feature-id="reaction-heart-button" disabled={isReactionCoolingDown('heart')} onClick={()=>react('heart', REACTION_COSTS.heart)} className={`relative overflow-hidden rounded-2xl border-2 border-pink-500/80 bg-gradient-to-b from-pink-500/20 via-pink-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('heart') ? 'cursor-not-allowed opacity-75' : 'active:bg-pink-500 active:scale-95'} ${cooldownFlashKey === 'heart' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                                 {renderReactionCooldownFill('heart', 'bg-pink-300/25', 'border-pink-300/35 bg-black/55 text-pink-50')}
+                                                 <span className={`${getReactionOptionIconClass('heart')} mb-2`}>{getEmojiChar('heart')}</span>
+                                                 <span className="font-bold text-pink-200 text-base">LOVE</span>
+                                                 <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-pink-500/25 text-pink-100">{reactionCostLabel(REACTION_COSTS.heart)}</div>
+                                             </button>
+                                             <button data-feature-id="reaction-clap-button" disabled={isReactionCoolingDown('clap')} onClick={()=>react('clap', REACTION_COSTS.clap)} className={`relative overflow-hidden rounded-2xl border-2 border-cyan-400/80 bg-gradient-to-b from-cyan-500/20 via-cyan-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('clap') ? 'cursor-not-allowed opacity-75' : 'active:bg-[#00C4D9] active:scale-95'} ${cooldownFlashKey === 'clap' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                                 {renderReactionCooldownFill('clap', 'bg-cyan-200/25', 'border-cyan-200/35 bg-black/55 text-cyan-50')}
+                                                 <span className={`${getReactionOptionIconClass('clap')} mb-2`}>{getEmojiChar('clap')}</span>
+                                                 <span className="font-bold text-cyan-200 text-base">CLAP</span>
+                                                 <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-[#00C4D9]/25 text-cyan-100">{reactionCostLabel(REACTION_COSTS.clap)}</div>
+                                             </button>
+                                             <button data-feature-id="reaction-drink-button" disabled={isReactionCoolingDown('drink')} onClick={()=>react('drink', REACTION_COSTS.drink)} className={`relative overflow-hidden rounded-2xl border-2 border-blue-400/80 bg-gradient-to-b from-blue-500/20 via-blue-500/10 to-black/50 p-3 flex flex-col items-center transition-all shadow-[0_10px_24px_rgba(0,0,0,0.45)] ${isReactionCoolingDown('drink') ? 'cursor-not-allowed opacity-75' : 'active:bg-blue-500 active:scale-95'} ${cooldownFlashKey === 'drink' ? 'ring-2 ring-red-400 animate-pulse' : ''}`}>
+                                                 {renderReactionCooldownFill('drink', 'bg-blue-300/25', 'border-blue-300/35 bg-black/55 text-blue-50')}
+                                                 <span className={`${getReactionOptionIconClass('drink')} mb-2`}>{getEmojiChar('drink')}</span>
+                                                 <span className="font-bold text-blue-200 text-base">CHEERS</span>
+                                                 <div className="mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-500/25 text-blue-100">{reactionCostLabel(REACTION_COSTS.drink)}</div>
+                                             </button>
+                                         </div>
+                                         {coHostReactionPolicyLabel ? (
+                                             <div className="rounded-2xl border border-amber-300/20 bg-amber-500/10 px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.18em] text-amber-100">
+                                                 {coHostReactionPolicyLabel}
                                              </div>
-                                             {!premiumReactionsUnlocked && (
-                                                 <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
-                                                     <i className="fa-solid fa-lock text-[11px]"></i>
-                                                    <span className="leading-none">{allowsDonationAccess ? supporterAccessLabel : premiumAccessLabel}</span>
-                                                 </div>
-                                             )}
-                                         </button>
-                                     );
-                                 })}</div>
-                                 {!premiumReactionsUnlocked && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
-                                     {allowsDonationAccess ? `UNLOCK ${supporterAccessLabel.toUpperCase()} PERKS` : `UNLOCK ${premiumAccessLabel.toUpperCase()} WITH EMAIL +5000 PTS ${emoji(0x1F4E7)}`}
-                                 </button>}
+                                         ) : null}
+                                         <div className="grid grid-cols-2 gap-4">{['rocket','diamond','money','crown'].map(t => {
+                                             const accent = {
+                                                 rocket: 'border-pink-400/80 text-pink-200 bg-pink-500/10 shadow-[0_0_24px_rgba(236,72,153,0.45)]',
+                                                 diamond: 'border-cyan-300/80 text-cyan-200 bg-cyan-500/10 shadow-[0_0_24px_rgba(34,211,238,0.45)]',
+                                                 money: 'border-rose-300/80 text-rose-100 bg-rose-500/10 shadow-[0_0_26px_rgba(251,113,133,0.45)]',
+                                                 crown: 'border-[#00C4D9]/60 text-cyan-100 bg-[#00C4D9]/10 shadow-[0_0_26px_rgba(0,196,217,0.4)]'
+                                             }[t];
+                                             const cost = REACTION_COSTS[t];
+                                             return (
+                                             <button key={t} disabled={isReactionCoolingDown(t) && premiumReactionsUnlocked} onClick={()=>premiumReactionsUnlocked ? react(t, cost) : openVipUpgrade()} className={`relative overflow-hidden p-3 rounded-2xl flex flex-col items-center border transition-all ${premiumReactionsUnlocked ? `bg-gradient-to-b from-white/5 via-black/40 to-black/70 ${accent}` : 'bg-zinc-900 border-zinc-700 opacity-60'} ${isReactionCoolingDown(t) && premiumReactionsUnlocked ? 'cursor-not-allowed opacity-75' : 'active:scale-95'}`}>
+                                                    {premiumReactionsUnlocked ? renderReactionCooldownFill(t, 'bg-cyan-300/18', 'border-white/15 bg-black/55 text-cyan-50') : null}
+                                                    <span className={`${getReactionOptionIconClass(t)} mb-2`}>{getEmojiChar(t)}</span>
+                                                    <span className="font-bold text-base uppercase">{{rocket:'BOOST',diamond:'GEM',crown:'ROYAL',money:'BLOOM'}[t]}</span>
+                                                    <div className={`mt-1 px-2 py-0.5 rounded-full text-[12px] font-bold ${accent} border-none`}>
+                                                         {reactionCostLabel(cost)}
+                                                     </div>
+                                                     {!premiumReactionsUnlocked && (
+                                                         <div className="absolute top-2 right-2 text-[11px] text-cyan-200 bg-black/60 border border-cyan-500/50 px-2 py-1 rounded-full flex items-center gap-1 leading-none">
+                                                             <i className="fa-solid fa-lock text-[11px]"></i>
+                                                            <span className="leading-none">{allowsDonationAccess ? supporterAccessLabel : premiumAccessLabel}</span>
+                                                         </div>
+                                                     )}
+                                                 </button>
+                                             );
+                                         })}</div>
+                                         {!premiumReactionsUnlocked && <button onClick={()=>openVipUpgrade()} className="w-full bg-gradient-to-r from-[#00C4D9] via-[#26D7E8] to-[#5BE8F2] text-black py-4 rounded-xl font-bold shadow-[0_0_25px_rgba(0,196,217,0.35)] mt-1 animate-pulse">
+                                             {allowsDonationAccess ? `UNLOCK ${supporterAccessLabel.toUpperCase()} PERKS` : `UNLOCK ${premiumAccessLabel.toUpperCase()} WITH EMAIL +5000 PTS ${emoji(0x1F4E7)}`}
+                                         </button>}
+                                     </>
+                                 )}
                              </>
                          )}
                          {room?.multiplier >= 4 && <button onClick={()=>submitSong("Secret Track", "The Host", "")} className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-4 rounded-xl font-bold animate-pulse shadow-lg border-2 border-white">SECRET SONG UNLOCKED! {EMOJI.gift}</button>}

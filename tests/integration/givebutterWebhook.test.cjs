@@ -72,11 +72,11 @@ async function resetState({
       eventId: "aahf_kickoff",
       eventLabel: "AAHF Karaoke Kick-Off",
       sourceProvider: "givebutter",
-      sourceCampaignCode: "aahf_kickoff",
+      sourceCampaignCode: "festival-kick-off-karaoke-party-y1ogra",
       supportProvider: supportEnabled ? "givebutter" : "",
       supportLabel: supportEnabled ? "Support AAHF Festival" : "",
-      supportUrl: supportEnabled ? "https://givebutter.com/aahf-kickoff" : "",
-      supportCampaignCode: supportEnabled ? "aahf_kickoff" : "",
+      supportUrl: supportEnabled ? "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra" : "",
+      supportCampaignCode: supportEnabled ? "festival-kick-off-karaoke-party-y1ogra" : "",
       audienceAccessMode: "email_or_donation",
       supportCelebrationStyle: "moneybags_burst",
     },
@@ -88,19 +88,19 @@ async function resetState({
     eventId: "aahf_kickoff",
     eventLabel: "AAHF Karaoke Kick-Off",
     sourceProvider: "givebutter",
-    sourceCampaignCode: "aahf_kickoff",
+    sourceCampaignCode: "festival-kick-off-karaoke-party-y1ogra",
     generalAdmissionPoints: 200,
     supportProvider: supportEnabled ? "givebutter" : "",
     supportLabel: supportEnabled ? "Support AAHF Festival" : "",
-    supportUrl: supportEnabled ? "https://givebutter.com/aahf-kickoff" : "",
-    supportCampaignCode: supportEnabled ? "aahf_kickoff" : "",
+    supportUrl: supportEnabled ? "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra" : "",
+    supportCampaignCode: supportEnabled ? "festival-kick-off-karaoke-party-y1ogra" : "",
     supportPoints: 0,
     supportBadge: true,
     supportCelebrationStyle: "moneybags_burst",
     supportOffers: supportEnabled ? [
-      { id: "solo_boost", label: "Solo Boost", amount: 5, points: 1200, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/aahf-kickoff", supportCampaignCode: "aahf_kickoff" },
-      { id: "stage_starter", label: "Stage Starter", amount: 10, points: 3000, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/aahf-kickoff", supportCampaignCode: "aahf_kickoff" },
-      { id: "headliner", label: "Headliner", amount: 20, points: 7500, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/aahf-kickoff", supportCampaignCode: "aahf_kickoff" },
+      { id: "solo_boost", label: "Solo Boost", amount: 5, points: 1200, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra", supportCampaignCode: "festival-kick-off-karaoke-party-y1ogra" },
+      { id: "stage_starter", label: "Stage Starter", amount: 10, points: 3000, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra", supportCampaignCode: "festival-kick-off-karaoke-party-y1ogra" },
+      { id: "headliner", label: "Headliner", amount: 20, points: 7500, rewardScope: "buyer", awardBadge: false, supportUrl: "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra", supportCampaignCode: "festival-kick-off-karaoke-party-y1ogra" },
     ] : [],
     claimCodes: {},
   }, { merge: true });
@@ -187,7 +187,7 @@ async function run() {
         email: "donor@example.com",
       },
       campaign: {
-        slug: "aahf_kickoff",
+        slug: "festival-kick-off-karaoke-party-y1ogra",
       },
     },
   };
@@ -223,7 +223,7 @@ async function run() {
       const supportSnap = await supportPurchaseRef.get();
       assert.equal(supportSnap.exists, true);
       assert.equal(String(supportSnap.get("normalizedEmail")), "donor@example.com");
-      assert.equal(String(supportSnap.get("sourceCampaignCode")), "aahf_kickoff");
+      assert.equal(String(supportSnap.get("sourceCampaignCode")), "festival-kick-off-karaoke-party-y1ogra");
       assert.equal(String(supportSnap.get("supportOfferId")), "stage_starter");
       assert.equal(Number(supportSnap.get("pointsGranted")), 3000);
       assert.equal(String(supportSnap.get("matchedUid")), USER_UID);
@@ -268,7 +268,7 @@ async function run() {
             email: "ticket@example.com",
           },
           campaign: {
-            slug: "aahf_kickoff",
+            slug: "festival-kick-off-karaoke-party-y1ogra",
           },
         },
       };
@@ -281,7 +281,7 @@ async function run() {
       assert.deepEqual(response.body, {
         received: true,
         entitlementId: ENTITLEMENT_REF_ID,
-        eventId: "aahf_kickoff",
+        eventId: "festival-kick-off-karaoke-party-y1ogra",
       });
 
       const entitlementSnap = await entitlementRef.get();
