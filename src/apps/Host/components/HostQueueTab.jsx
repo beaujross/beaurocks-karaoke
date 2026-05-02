@@ -74,6 +74,23 @@ import {
   getRunOfShowReleaseWindowTally,
   normalizeRunOfShowDirector,
 } from '../../../lib/runOfShowDirector';
+import { BG_TRACK_OPTIONS } from '../../../lib/bgTrackOptions';
+import {
+  HOST_AUDIO_LIBRARY_CATEGORY_OPTIONS,
+  HOST_AUDIO_MOMENT_CUE_OPTIONS,
+  normalizeHostAudioLibraryCategory,
+  normalizeHostAudioLibraryItemMetadata,
+} from '../../../lib/hostAudioLibrary';
+import {
+  getMediaSceneAllowedReactionTypes,
+  getMediaSceneAudienceReactionMeta,
+  getMediaSceneSoundtrackPrimaryValue,
+  hasMediaSceneConfiguredSoundtrack,
+  MEDIA_SCENE_AUDIENCE_REACTION_OPTIONS,
+  MEDIA_SCENE_SOUNDTRACK_SOURCE_OPTIONS,
+  normalizeMediaSceneSoundtrackConfig,
+  normalizeMediaSceneAudienceReactionMode,
+} from '../../../lib/mediaSceneConfig';
 
 const QueueYouTubeSearchModal = React.lazy(() => import('./QueueYouTubeSearchModal'));
 const QueueEditSongModal = React.lazy(() => import('./QueueEditSongModal'));
@@ -107,6 +124,18 @@ const buildScenePresetFallbackTitle = (value = '', mediaType = 'image') => {
         .trim();
     if (cleaned) return cleaned;
     return mediaType === 'video' ? 'Video Scene' : 'Image Scene';
+};
+
+const buildAudioLibraryDraft = (item = {}) => {
+    const metadata = normalizeHostAudioLibraryItemMetadata(item);
+    return {
+        title: String(item?.title || '').trim(),
+        audioLibraryCategory: metadata.audioLibraryCategory,
+        soundboardLabel: metadata.soundboardLabel,
+        includeOnSoundboard: metadata.includeOnSoundboard,
+        hostMomentCueId: metadata.hostMomentCueId,
+        bgAutoEligible: metadata.bgAutoEligible,
+    };
 };
 
 const parseDecoratedSongTitle = (value = '') => {
@@ -148,6 +177,28 @@ const getRecapDisplayMeta = (song = {}) => {
     artist: shouldPreferParsedArtist ? (parsed.artist || explicitArtist) : explicitArtist,
     singerName: String(song?.singerName || song?.performerName || song?.displayName || '').trim() || 'Guest',
     sourceSongTitle: rawSongTitle || null,
+  };
+};
+
+const buildApplauseSubject = (song = null) => {
+  if (!song || typeof song !== 'object') return null;
+  const recapDisplayMeta = getRecapDisplayMeta(song);
+  const subjectId = String(song?.id || song?.songDocId || song?.songId || '').trim();
+  if (!subjectId) return null;
+  return {
+    id: subjectId,
+    songDocId: subjectId,
+    singerUid: song?.singerUid || null,
+    singerName: recapDisplayMeta.singerName,
+    performerName: recapDisplayMeta.singerName,
+    displayName: recapDisplayMeta.singerName,
+    songTitle: recapDisplayMeta.songTitle,
+    title: recapDisplayMeta.songTitle,
+    artist: recapDisplayMeta.artist,
+    albumArtUrl: song?.albumArtUrl || '',
+    mediaUrl: song?.mediaUrl || '',
+    timestamp: Number(song?.performingStartedAt || song?.timestamp || 0) || 0,
+    performingStartedAt: song?.performingStartedAt || null,
   };
 };
 
@@ -343,12 +394,20 @@ const trackChecksMatch = (left = null, right = null) => {
 const buildTrackCheckPromptFromPerformance = (performance = null) => {
   const mediaUrl = String(performance?.mediaUrl || '').trim();
   const videoId = parseYouTubeVideoId(mediaUrl);
+  const stablePerformanceId = String(
+    performance?.songDocId
+    || performance?.id
+    || performance?.songId
+    || ''
+  ).trim();
+  const performanceStartedAtMs = getTimestampMs(performance?.performingStartedAt);
   const timestampMs = getTimestampMs(performance?.timestamp);
-  if (!videoId || !timestampMs) return null;
+  const performanceKeySuffix = stablePerformanceId || performanceStartedAtMs || timestampMs;
+  if (!videoId || !performanceKeySuffix) return null;
   return {
-    performanceKey: `${videoId}:${timestampMs}`,
+    performanceKey: `${videoId}:${performanceKeySuffix}`,
     videoId,
-    timestamp: timestampMs,
+    timestamp: performanceStartedAtMs || timestampMs,
     songTitle: String(performance?.songTitle || 'Recent performance').trim() || 'Recent performance',
     artist: String(performance?.artist || 'YouTube backing').trim() || 'YouTube backing',
     albumArtUrl: String(performance?.albumArtUrl || '').trim(),
@@ -390,7 +449,9 @@ const isLoungeChatMessage = (message = {}) => !isDirectChatMessage(message);
 
 const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const EARLY_END_DECISION_THRESHOLD_SEC = 35;
+const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -466,6 +527,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [sceneLibraryView, setSceneLibraryView] = useState('grid');
     const [scenePresetDrafts, setScenePresetDrafts] = useState({});
     const [scenePresetSavingId, setScenePresetSavingId] = useState('');
+    const [audioLibraryDrafts, setAudioLibraryDrafts] = useState({});
+    const [audioLibrarySavingId, setAudioLibrarySavingId] = useState('');
     useEffect(() => {
         onSceneLibraryModalChange?.(sceneLibraryOpen);
         return () => {
@@ -493,14 +556,33 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             const next = {};
             (Array.isArray(scenePresets) ? scenePresets : []).forEach((preset) => {
                 const existing = prev[preset.id];
+                const soundtrackSourceType = existing?.soundtrackSourceType ?? String(preset?.soundtrackSourceType || '').trim().toLowerCase();
                 next[preset.id] = {
                     title: existing?.title ?? String(preset?.title || '').trim(),
                     durationSec: existing?.durationSec ?? Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
+                    sceneAudienceReactionMode: existing?.sceneAudienceReactionMode ?? normalizeMediaSceneAudienceReactionMode(
+                        preset?.sceneAudienceReactionMode || preset?.audienceReactionMode
+                    ),
+                    soundtrackSourceType,
+                    soundtrackInputValue: existing?.soundtrackInputValue ?? getMediaSceneSoundtrackPrimaryValue(soundtrackSourceType, preset),
+                    soundtrackLabel: existing?.soundtrackLabel ?? String(preset?.soundtrackLabel || '').trim(),
                 };
             });
             return next;
         });
     }, [scenePresets]);
+    useEffect(() => {
+        setAudioLibraryDrafts((prev) => {
+            const next = {};
+            (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).forEach((item) => {
+                next[item.id] = {
+                    ...buildAudioLibraryDraft(item),
+                    ...prev[item.id],
+                };
+            });
+            return next;
+        });
+    }, [audioLibraryItems]);
     const hallOfFameTimerRef = useRef(null);
     const autoDjApplausePendingSongRef = useRef('');
     const autoDjApplauseFallbackTimerRef = useRef(null);
@@ -524,6 +606,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [backingDecisionBusyKey, setBackingDecisionBusyKey] = useState('');
     const [postPerformanceBackingPrompt, setPostPerformanceBackingPrompt] = useState(null);
     const [postPerformanceBackingPromptBusy, setPostPerformanceBackingPromptBusy] = useState(false);
+    const [pendingEarlyEndDecision, setPendingEarlyEndDecision] = useState(null);
+    const [pendingEarlyEndDecisionBusy, setPendingEarlyEndDecisionBusy] = useState(false);
     const [deferredTrackChecks, setDeferredTrackChecks] = useState([]);
     const [dismissedTrackCheckKeys, setDismissedTrackCheckKeys] = useState([]);
     const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
@@ -549,18 +633,54 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const hasSceneLibrarySeedPack = !!sceneLibrarySeedPack?.label && Number(sceneLibrarySeedPack?.assetCount || 0) > 0;
     const mediaLibraryTabs = [
         { id: 'scenes', label: 'Scenes', helper: `${scenePresetCount} saved` },
-        { id: 'sfx', label: 'SFX', helper: 'Soundboard uploads' },
-        { id: 'bg', label: 'BG Music', helper: 'Walk-in + reset beds' },
+        {
+            id: 'sfx',
+            label: 'SFX',
+            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'sfx').length} routed`
+        },
+        {
+            id: 'bg',
+            label: 'BG Music',
+            helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg').length} routed`
+        },
     ];
     const sceneLibraryGridClass = sceneLibraryView === 'list'
         ? 'grid gap-3'
         : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]';
+    const activeAudioLane = mediaLibraryTab === 'bg' ? 'bg' : 'sfx';
+    const activeAudioLaneItems = (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => (
+        normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === activeAudioLane
+    ));
+    const inactiveAudioLaneItems = (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => (
+        normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) !== activeAudioLane
+    ));
+    const customSoundboardSoundIdSet = new Set(
+        (Array.isArray(customSoundboardSounds) ? customSoundboardSounds : []).map((sound) => String(sound?.id || '').trim())
+    );
     const setScenePresetDraftField = useCallback((presetId, field, value) => {
         setScenePresetDrafts((prev) => ({
             ...prev,
             [presetId]: {
                 title: prev[presetId]?.title ?? '',
                 durationSec: prev[presetId]?.durationSec ?? 20,
+                sceneAudienceReactionMode: prev[presetId]?.sceneAudienceReactionMode ?? normalizeMediaSceneAudienceReactionMode(''),
+                soundtrackSourceType: prev[presetId]?.soundtrackSourceType ?? '',
+                soundtrackInputValue: prev[presetId]?.soundtrackInputValue ?? '',
+                soundtrackLabel: prev[presetId]?.soundtrackLabel ?? '',
+                [field]: value,
+            },
+        }));
+    }, []);
+    const setAudioLibraryDraftField = useCallback((itemId, field, value) => {
+        setAudioLibraryDrafts((prev) => ({
+            ...prev,
+            [itemId]: {
+                title: prev[itemId]?.title ?? '',
+                audioLibraryCategory: prev[itemId]?.audioLibraryCategory ?? '',
+                soundboardLabel: prev[itemId]?.soundboardLabel ?? '',
+                includeOnSoundboard: prev[itemId]?.includeOnSoundboard ?? true,
+                hostMomentCueId: prev[itemId]?.hostMomentCueId ?? '',
+                bgAutoEligible: prev[itemId]?.bgAutoEligible ?? true,
                 [field]: value,
             },
         }));
@@ -588,6 +708,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             }
         }
     }, [onCreateScenePreset, scenePresetDurationSec, scenePresetTitle, toast]);
+    const handleAudioLibraryFileSelection = useCallback(async (fileList, audioLibraryCategory = '') => {
+        const files = Array.from(fileList || []).filter(Boolean);
+        if (!files.length) return;
+        await onUploadAudioLibraryFiles?.(files, {
+            audioLibraryCategory: normalizeHostAudioLibraryCategory(audioLibraryCategory),
+        });
+    }, [onUploadAudioLibraryFiles]);
     const saveScenePresetDraft = useCallback(async (preset = {}) => {
         if (!preset?.id || typeof onUpdateScenePreset !== 'function') return;
         const draft = scenePresetDrafts[preset.id] || {};
@@ -596,11 +723,32 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             await onUpdateScenePreset(preset, {
                 title: String(draft.title ?? preset?.title ?? '').trim(),
                 durationSec: Math.max(5, Math.min(600, Number(draft.durationSec ?? preset?.durationSec ?? 20) || 20)),
+                sceneAudienceReactionMode: normalizeMediaSceneAudienceReactionMode(draft.sceneAudienceReactionMode),
+                soundtrackSourceType: String(draft.soundtrackSourceType || '').trim().toLowerCase(),
+                soundtrackInputValue: String(draft.soundtrackInputValue || '').trim(),
+                soundtrackLabel: String(draft.soundtrackLabel || '').trim(),
             });
         } finally {
             setScenePresetSavingId('');
         }
     }, [onUpdateScenePreset, scenePresetDrafts]);
+    const saveAudioLibraryDraft = useCallback(async (item = {}) => {
+        if (!item?.id) return;
+        const draft = audioLibraryDrafts[item.id] || buildAudioLibraryDraft(item);
+        setAudioLibrarySavingId(item.id);
+        try {
+            await onUpdateAudioLibraryItem?.(item, {
+                title: String(draft.title || '').trim(),
+                audioLibraryCategory: normalizeHostAudioLibraryCategory(draft.audioLibraryCategory),
+                soundboardLabel: String(draft.soundboardLabel || '').trim(),
+                includeOnSoundboard: draft.includeOnSoundboard !== false,
+                hostMomentCueId: String(draft.hostMomentCueId || '').trim().toLowerCase(),
+                bgAutoEligible: draft.bgAutoEligible !== false,
+            });
+        } finally {
+            setAudioLibrarySavingId('');
+        }
+    }, [audioLibraryDrafts, onUpdateAudioLibraryItem]);
     const {
         current,
         hasLyrics,
@@ -1503,6 +1651,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         setPostPerformanceBackingPromptBusy(false);
         if (focusInbox) focusInboxWorkspace();
     }, [focusInboxWorkspace]);
+    const showPostPerformanceBackingPrompt = useCallback((trackCheck = null) => {
+        const resolvedTrackCheck = trackCheck?.performanceKey
+            ? trackCheck
+            : buildTrackCheckPromptFromPerformance(trackCheck);
+        if (!resolvedTrackCheck?.performanceKey) return;
+        if ((Array.isArray(dismissedTrackCheckKeys) ? dismissedTrackCheckKeys : []).includes(resolvedTrackCheck.performanceKey)) return;
+        if ((Array.isArray(deferredTrackChecks) ? deferredTrackChecks : []).some((item) => trackChecksMatch(item, resolvedTrackCheck))) return;
+        postPerformanceBackingPromptKeyRef.current = resolvedTrackCheck.performanceKey;
+        setPostPerformanceBackingPromptBusy(false);
+        setPostPerformanceBackingPrompt(resolvedTrackCheck);
+    }, [deferredTrackChecks, dismissedTrackCheckKeys]);
 
     const rateBackingPreference = useCallback(async (songLike, rating = 'up') => {
         const result = await saveHostBackingPreferenceForRoom({
@@ -1534,11 +1693,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             ? trackCheck
             : postPerformanceBackingPrompt;
         if (!activePrompt) return;
-        if (normalizedAction === 'inbox' || normalizedAction === 'later' || normalizedAction === 'defer') {
+        if (normalizedAction === 'inbox') {
             deferTrackCheckToInbox(activePrompt, { focusInbox: true });
+            toast('Saved to Inbox for later.');
             return;
         }
-        if (normalizedAction === 'skip') {
+        if (normalizedAction === 'later' || normalizedAction === 'defer') {
+            deferTrackCheckToInbox(activePrompt, { focusInbox: false });
+            toast('Saved to Inbox for later.');
+            return;
+        }
+        if (normalizedAction === 'skip' || normalizedAction === 'dismiss') {
             dismissTrackCheck(activePrompt);
             return;
         }
@@ -1549,7 +1714,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         } finally {
             setPostPerformanceBackingPromptBusy(false);
         }
-    }, [deferTrackCheckToInbox, dismissTrackCheck, postPerformanceBackingPrompt, rateBackingPreference]);
+    }, [deferTrackCheckToInbox, dismissTrackCheck, postPerformanceBackingPrompt, rateBackingPreference, toast]);
 
     const resolveAudienceSelectedBacking = useCallback(async (songLike, action = 'approve') => {
         const safeAction = String(action || 'approve').trim().toLowerCase();
@@ -1582,6 +1747,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     useEffect(() => {
         setPostPerformanceBackingPrompt(null);
         setPostPerformanceBackingPromptBusy(false);
+        setPendingEarlyEndDecision(null);
+        setPendingEarlyEndDecisionBusy(false);
         setDeferredTrackChecks([]);
         setDismissedTrackCheckKeys([]);
         postPerformanceBackingPromptKeyRef.current = '';
@@ -2003,7 +2170,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             bestScore: totalScore,
                             applauseScore: Number(res?.applauseScore ?? applauseScore)
                         },
-                        timestamp: nowMs()
+                        totalPoints: Number(songEntry?.totalPoints || totalScore),
+                        recapScoreFinalized: songEntry?.recapScoreFinalized === true,
+                        timestamp: songEntry?.timestamp || nowMs()
                     }
                 });
                 await triggerHallOfFameMoment({
@@ -2249,6 +2418,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     topFan: resolvedTopFan,
                     vibeStats: resolvedVibeStats,
                     popTriviaSummary,
+                    totalPoints: resolvedHypeScore + finalApplauseScore + resolvedHostBonus,
+                    recapScoreFinalized: true,
                     performanceSessionId: String(performanceSession?.sessionId || '').trim() || null,
                     playbackCompletionReason: String(performanceSession?.completionReason || '').trim() || null,
                     recapLedgerSource: reconciled?.source || null,
@@ -2258,6 +2429,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 await updateRoom({
                     lastPerformance: recapPayload,
                     activeMode: 'karaoke',
+                    applauseSubject: null,
                     mediaUrl: '',
                     currentPerformanceMeta: null,
                     currentPerformanceSession: null,
@@ -2376,6 +2548,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         clearTimeout(autoDjApplauseFallbackTimerRef.current);
         autoDjApplauseFallbackTimerRef.current = null;
     }, []);
+    const clearPendingEarlyEndDecision = useCallback(() => {
+        setPendingEarlyEndDecision(null);
+        setPendingEarlyEndDecisionBusy(false);
+    }, []);
 
     const clearStagePlaybackState = useCallback(async () => {
         await stopAppleMusic?.();
@@ -2413,7 +2589,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
 
     const startApplauseSequence = useCallback(async ({ songId = '', autoFinalize = false } = {}) => {
         if (!songId) return;
+        const targetSong = (songs || []).find((song) => song.id === songId) || null;
+        const applauseSubject = buildApplauseSubject(targetSong || null);
         pushAutoDjEvent(AUTO_DJ_EVENTS.APPLAUSE_STARTED, { songId });
+        if (autoFinalize && targetSong) {
+            showPostPerformanceBackingPrompt(targetSong);
+        }
         if (autoFinalize) {
             autoDjApplausePendingSongRef.current = songId;
             clearAutoDjApplauseFallback();
@@ -2435,6 +2616,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             activeScreen: 'stage',
             applausePeak: 0,
             currentApplauseLevel: 0,
+            applauseSubject,
             announcement: null,
             tvPreviewOverlay: null,
             roundWinnersMoment: null,
@@ -2443,19 +2625,91 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         });
         if (autoFinalize) toast('Measuring applause now. Auto-DJ will end this performance after results.');
         else toast('Applause countdown started.');
-    }, [clearAutoDjApplauseFallback, toast, updateRoom, pushAutoDjEvent]);
+    }, [clearAutoDjApplauseFallback, showPostPerformanceBackingPrompt, toast, updateRoom, pushAutoDjEvent, songs]);
 
-    const handleEndPerformance = useCallback(async (songId = '') => {
+    const getPerformanceElapsedSec = useCallback((songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return 0;
+        const targetSong = (songs || []).find((song) => String(song?.id || '').trim() === targetSongId) || null;
+        const sessionSongId = String(room?.currentPerformanceSession?.songId || '').trim();
+        const metaSongId = String(room?.currentPerformanceMeta?.songId || '').trim();
+        const startedAtMs = Math.max(
+            sessionSongId === targetSongId ? Number(room?.currentPerformanceSession?.startedAtMs || 0) || 0 : 0,
+            metaSongId === targetSongId ? Number(room?.currentPerformanceMeta?.startedAtMs || 0) || 0 : 0,
+            getTimestampMs(targetSong?.performingStartedAt),
+            getTimestampMs(targetSong?.timestamp),
+        );
+        if (!startedAtMs) return 0;
+        return Math.max(0, Math.round((nowMs() - startedAtMs) / 1000));
+    }, [room?.currentPerformanceMeta?.songId, room?.currentPerformanceMeta?.startedAtMs, room?.currentPerformanceSession?.songId, room?.currentPerformanceSession?.startedAtMs, songs]);
+
+    const handleFinishPerformance = useCallback(async (songId = '') => {
         const targetSongId = String(songId || '').trim();
         if (!targetSongId) return;
+        clearPendingEarlyEndDecision();
+        await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
+    }, [clearPendingEarlyEndDecision, startApplauseSequence]);
+
+    const handleChangeBackingForCurrentPerformance = useCallback(async (songId = '') => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const targetSong = (songs || []).find((song) => String(song?.id || '').trim() === targetSongId) || null;
+        setPendingEarlyEndDecisionBusy(true);
+        try {
+            clearPendingEarlyEndDecision();
+            if (targetSong) {
+                const trackCheck = buildTrackCheckPromptFromPerformance(targetSong);
+                if (trackCheck) dismissTrackCheck(trackCheck);
+                startEdit(targetSong);
+            }
+            await returnCurrentPerformanceToQueue(targetSongId);
+        } finally {
+            setPendingEarlyEndDecisionBusy(false);
+        }
+    }, [clearPendingEarlyEndDecision, dismissTrackCheck, returnCurrentPerformanceToQueue, songs, startEdit]);
+
+    useEffect(() => {
+        if (!pendingEarlyEndDecision?.songId || pendingEarlyEndDecisionBusy) return () => {};
+        const activeSongId = String(pendingEarlyEndDecision.songId || '').trim();
+        if (!activeSongId) return () => {};
+        const timer = globalThis.setTimeout(() => {
+            if (String(pendingEarlyEndDecision?.songId || '').trim() !== activeSongId) return;
+            handleFinishPerformance(activeSongId).catch((error) => {
+                hostLogger.warn('Early-end decision auto-continue failed', error);
+            });
+        }, EARLY_END_DECISION_AUTO_CONTINUE_MS);
+        return () => clearTimeout(timer);
+    }, [handleFinishPerformance, pendingEarlyEndDecision, pendingEarlyEndDecisionBusy]);
+
+    const handleEndPerformance = useCallback(async (songId = '', options = {}) => {
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const source = String(options?.source || 'host').trim().toLowerCase() || 'host';
         const applauseMode = String(room?.activeMode || '');
         const applauseRunning = applauseMode === 'applause_countdown' || applauseMode === 'applause' || applauseMode === 'applause_result';
         if (applauseRunning && autoDjApplausePendingSongRef.current === targetSongId) {
             toast('Applause capture in progress. This performance will end after results.');
             return;
         }
-        await startApplauseSequence({ songId: targetSongId, autoFinalize: true });
-    }, [room?.activeMode, startApplauseSequence, toast]);
+        const performanceElapsedSec = getPerformanceElapsedSec(targetSongId);
+        const targetSong = (songs || []).find((song) => String(song?.id || '').trim() === targetSongId) || null;
+        if (
+            source === 'host'
+            && !applauseRunning
+            && performanceElapsedSec > 0
+            && performanceElapsedSec < EARLY_END_DECISION_THRESHOLD_SEC
+            && targetSong
+        ) {
+            setPendingEarlyEndDecision({
+                songId: targetSongId,
+                songTitle: targetSong.songTitle || 'Current performance',
+                artist: targetSong.artist || 'Backing track',
+                performanceElapsedSec,
+            });
+            return;
+        }
+        await handleFinishPerformance(targetSongId);
+    }, [getPerformanceElapsedSec, handleFinishPerformance, room?.activeMode, songs, toast]);
 
     useEffect(() => {
         const pendingSongId = autoDjApplausePendingSongRef.current;
@@ -2491,7 +2745,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const completionKey = `${sessionId}:${String(session?.completionReason || 'player_ended').trim().toLowerCase()}`;
         if (performanceSessionCompletionKeyRef.current === completionKey) return;
         performanceSessionCompletionKeyRef.current = completionKey;
-        handleEndPerformance(currentSongId).catch((error) => {
+        handleEndPerformance(currentSongId, { source: 'session' }).catch((error) => {
             hostLogger.warn('Performance session completion trigger failed', error);
         });
     }, [
@@ -2626,7 +2880,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const triggerAutoEnd = () => {
             if (autoDjAutoEndKeyRef.current === schedule.autoEndKey) return;
             autoDjAutoEndKeyRef.current = schedule.autoEndKey;
-            handleEndPerformance(String(current?.id || '')).catch((error) => {
+            handleEndPerformance(String(current?.id || ''), { source: 'auto' }).catch((error) => {
                 hostLogger.warn('Timed end-performance trigger failed', error);
             });
         };
@@ -2879,13 +3133,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             onDismiss: () => void handlePostPerformanceBackingPromptAction(trackCheck, 'skip'),
         }))
     ), [deferredTrackChecks, handlePostPerformanceBackingPromptAction, postPerformanceBackingPromptBusy]);
-    const visibleLastTrackCheck = useMemo(() => {
-        const nextTrackCheck = buildTrackCheckPromptFromPerformance(room?.lastPerformance || null);
-        if (!nextTrackCheck?.performanceKey) return null;
-        if ((Array.isArray(dismissedTrackCheckKeys) ? dismissedTrackCheckKeys : []).includes(nextTrackCheck.performanceKey)) return null;
-        if ((Array.isArray(deferredTrackChecks) ? deferredTrackChecks : []).some((item) => trackChecksMatch(item, nextTrackCheck))) return null;
-        return nextTrackCheck;
-    }, [deferredTrackChecks, dismissedTrackCheckKeys, room?.lastPerformance]);
+    const visibleLastTrackCheck = null;
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
     const getQueueWorkspaceTabButtonClass = (active = false) => (
         `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
@@ -3067,13 +3315,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         : null;
     const scenePresetLibrarySection = (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[28px] border border-cyan-300/18 bg-[linear-gradient(145deg,rgba(9,16,28,0.96),rgba(18,12,27,0.94))] shadow-[0_24px_60px_rgba(0,0,0,0.42)]">
-            <div className="border-b border-white/10 px-4 py-4">
+            <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                         <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Media Library</div>
-                        <div className="mt-1 max-w-2xl text-sm text-zinc-300">One reusable host-media home for Public TV scenes, future soundboard drops, and background beds.</div>
+                        <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">One reusable host-media home for Public TV scenes, future soundboard drops, and background beds.</div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                    <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
                         <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-200">{Math.max(5, Math.min(600, Number(scenePresetDurationSec || 20) || 20))}s default</span>
                         {activeMediaScene ? (
@@ -3082,9 +3330,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         {hasSceneLibrarySeedPack ? (
                             <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">{sceneLibrarySeedPack.assetCount} in {sceneLibrarySeedPack.label}</span>
                         ) : null}
+                        <button
+                            type="button"
+                            onClick={() => setSceneLibraryOpen(false)}
+                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
+                        >
+                            Close Media Library
+                        </button>
                     </div>
                 </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-3">
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
                     {mediaLibraryTabs.map((tabItem) => {
                         const active = mediaLibraryTab === tabItem.id;
                         return (
@@ -3100,7 +3355,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         );
                     })}
                 </div>
-                <div className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3 text-xs text-zinc-300">
+                <div className="mt-2 rounded-2xl border border-white/10 bg-black/18 px-3 py-2.5 text-xs text-zinc-300">
                     {mediaLibraryTab === 'scenes'
                         ? 'Scenes are live now. Use this lane for flyers, sponsor cards, loops, donation beats, and Public TV takeovers.'
                         : mediaLibraryTab === 'sfx'
@@ -3108,7 +3363,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             : 'BG Music lane is where upload, preview, tag, set defaults, and choose what Auto BG can pull from should live.'}
                 </div>
                 {mediaLibraryTab === 'scenes' ? (
-                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
+                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
                     <div className="rounded-2xl border border-cyan-300/16 bg-cyan-500/6 p-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">Batch Upload</div>
                         <div className="mt-1 text-xs text-zinc-400">Drop in one file or a whole set of sponsor cards, donation prompts, videos, or next-up slides at once.</div>
@@ -3177,7 +3432,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
                 ) : null}
                 {activeMediaScene ? (
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
                         <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
                         <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
                             End Scene
@@ -3185,13 +3440,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 ) : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
                 {mediaLibraryTab === 'scenes' ? (
                 <div className={sceneLibraryGridClass}>
                     {(scenePresets || []).map((preset) => {
                         const draft = scenePresetDrafts[preset.id] || {
                             title: String(preset?.title || '').trim(),
                             durationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
+                            sceneAudienceReactionMode: normalizeMediaSceneAudienceReactionMode(
+                                preset?.sceneAudienceReactionMode || preset?.audienceReactionMode
+                            ),
+                            soundtrackSourceType: String(preset?.soundtrackSourceType || '').trim().toLowerCase(),
+                            soundtrackInputValue: getMediaSceneSoundtrackPrimaryValue(preset?.soundtrackSourceType || '', preset),
+                            soundtrackLabel: String(preset?.soundtrackLabel || '').trim(),
                         };
                         const saveDisabled = scenePresetSavingId === preset.id;
                         const isGridPad = sceneLibraryView === 'grid';
@@ -3200,6 +3461,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             String(activeMediaScene?.id || '').trim() === String(preset?.id || '').trim()
                             || String(activeMediaScene?.mediaUrl || '').trim() === String(preset?.mediaUrl || '').trim()
                         );
+                        const reactionMeta = getMediaSceneAudienceReactionMeta(draft.sceneAudienceReactionMode);
+                        const allowedReactionTypes = getMediaSceneAllowedReactionTypes(draft.sceneAudienceReactionMode);
+                        const soundtrackSourceType = String(draft.soundtrackSourceType || '').trim().toLowerCase();
+                        const draftSoundtrackConfig = normalizeMediaSceneSoundtrackConfig({
+                            soundtrackSourceType,
+                            soundtrackInputValue: draft.soundtrackInputValue,
+                            soundtrackLabel: draft.soundtrackLabel,
+                            soundtrackMediaUrl: '',
+                            soundtrackYoutubeId: '',
+                            soundtrackAppleMusicId: '',
+                            soundtrackBgTrackId: '',
+                        });
+                        const soundtrackConfigured = hasMediaSceneConfiguredSoundtrack(draftSoundtrackConfig);
+                        const reactionChipLabel = draft.sceneAudienceReactionMode === 'off'
+                            ? 'Audience Off'
+                            : 'Free Clap';
                         return (
                             <div
                                 key={preset.id || preset.mediaUrl}
@@ -3219,6 +3496,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
                                                 {Math.max(5, Math.min(600, Number(draft.durationSec || 20) || 20))}s
                                             </span>
+                                            <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                {reactionChipLabel}
+                                            </span>
+                                            {soundtrackConfigured ? (
+                                                <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100">
+                                                    Audio Paired
+                                                </span>
+                                            ) : null}
                                             {isLiveScene ? (
                                                 <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
                                                     Live
@@ -3246,6 +3531,104 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                                 {saveDisabled ? 'Saving...' : 'Save'}
                                             </button>
                                         </div>
+                                        <div className="mt-3 grid gap-3">
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                <label className="min-w-0">
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Audience Interaction</div>
+                                                    <select
+                                                        value={draft.sceneAudienceReactionMode}
+                                                        onChange={(event) => setScenePresetDraftField(preset.id, 'sceneAudienceReactionMode', event.target.value)}
+                                                        className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                    >
+                                                        {MEDIA_SCENE_AUDIENCE_REACTION_OPTIONS.map((option) => (
+                                                            <option key={`${preset.id}_${option.value}`} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">{reactionMeta.detail}</div>
+                                                </label>
+                                                <label className="min-w-0">
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Scene Soundtrack</div>
+                                                    <select
+                                                        value={soundtrackSourceType}
+                                                        onChange={(event) => {
+                                                            const nextValue = event.target.value;
+                                                            setScenePresetDraftField(preset.id, 'soundtrackSourceType', nextValue);
+                                                            setScenePresetDraftField(
+                                                                preset.id,
+                                                                'soundtrackInputValue',
+                                                                nextValue === 'bg_track'
+                                                                    ? ''
+                                                                    : getMediaSceneSoundtrackPrimaryValue(nextValue, preset)
+                                                            );
+                                                        }}
+                                                        className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                    >
+                                                        {MEDIA_SCENE_SOUNDTRACK_SOURCE_OPTIONS.map((option) => (
+                                                            <option key={`${preset.id}_soundtrack_${option.value || 'none'}`} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                    <div className="mt-1 text-[11px] text-zinc-500">
+                                                        {soundtrackSourceType === 'youtube'
+                                                            ? 'Accepts a YouTube URL or video ID.'
+                                                            : soundtrackSourceType === 'apple_music'
+                                                                ? 'Accepts an Apple Music song URL or track ID.'
+                                                                : soundtrackSourceType === 'bg_track'
+                                                                    ? 'Use one of the built-in BeauRocks background beds.'
+                                                                    : soundtrackSourceType === 'manual_external'
+                                                                        ? 'Use a direct mp3, wav, mp4, or similar media URL.'
+                                                                        : 'Optional. Pair a track when the scene needs underscoring.'}
+                                                    </div>
+                                                </label>
+                                            </div>
+                                            {soundtrackSourceType ? (
+                                                <div className="grid gap-3 md:grid-cols-2">
+                                                    <label className="min-w-0">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+                                                            {soundtrackSourceType === 'bg_track' ? 'Built-In Track' : 'Source Value'}
+                                                        </div>
+                                                        {soundtrackSourceType === 'bg_track' ? (
+                                                            <select
+                                                                value={String(draft.soundtrackInputValue || '').trim()}
+                                                                onChange={(event) => setScenePresetDraftField(preset.id, 'soundtrackInputValue', event.target.value)}
+                                                                className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                            >
+                                                                <option value="">Choose a background track</option>
+                                                                {BG_TRACK_OPTIONS.map((track) => (
+                                                                    <option key={`${preset.id}_bg_${track.id}`} value={track.id}>{track.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <input
+                                                                value={String(draft.soundtrackInputValue || '').trim()}
+                                                                onChange={(event) => setScenePresetDraftField(preset.id, 'soundtrackInputValue', event.target.value)}
+                                                                className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                                placeholder={
+                                                                    soundtrackSourceType === 'youtube'
+                                                                        ? 'YouTube URL or video ID'
+                                                                        : soundtrackSourceType === 'apple_music'
+                                                                            ? 'Apple Music song URL or track ID'
+                                                                            : 'Direct media URL'
+                                                                }
+                                                            />
+                                                        )}
+                                                    </label>
+                                                    <label className="min-w-0">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Now Playing Label</div>
+                                                        <input
+                                                            value={String(draft.soundtrackLabel || '').trim()}
+                                                            onChange={(event) => setScenePresetDraftField(preset.id, 'soundtrackLabel', event.target.value)}
+                                                            className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                            placeholder="Optional TV / host label"
+                                                        />
+                                                    </label>
+                                                </div>
+                                            ) : null}
+                                            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-zinc-400">
+                                                {allowedReactionTypes.length
+                                                    ? 'Free clap voting wakes up on the audience app while this scene runs.'
+                                                    : 'This scene stays visual-only on the audience app.'}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className={`mt-3 ${isGridPad ? 'grid grid-cols-2 gap-2' : `flex flex-wrap gap-2 ${sceneLibraryView === 'list' ? 'lg:mt-0 lg:w-[17rem] lg:shrink-0 lg:justify-end' : ''}`}`}>
@@ -3253,7 +3636,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         Run Live
                                     </button>
                                     <button type="button" onClick={() => onQueueScenePreset?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-2 text-[10px]`}>
-                                        Queue Next Scene
+                                        Queue Next In Show
                                     </button>
                                     <button type="button" onClick={() => onAddScenePresetToRunOfShow?.(preset)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px]`}>
                                         Use In Run Of Show
@@ -3294,41 +3677,264 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     ) : null}
                 </div>
                 ) : (
-                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                        <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
-                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
-                                <i className={`fa-solid ${mediaLibraryTab === 'sfx' ? 'fa-wave-square' : 'fa-music'} text-lg`}></i>
-                            </div>
-                            <div className="mt-4 text-xl font-black text-white">
-                                {mediaLibraryTab === 'sfx' ? 'Build a custom soundboard lane' : 'Build a background-music lane'}
-                            </div>
-                            <div className="mt-2 text-sm leading-6 text-zinc-400">
-                                {mediaLibraryTab === 'sfx'
-                                    ? 'This lane should hold uploaded stingers, crowd drops, intros, and one-shot cues that the host can assign to soundboard pads and fire instantly.'
-                                    : 'This lane should hold walk-in music, reset beds, donation unders, and room loops that can be previewed, defaulted, and fed into Auto BG.'}
-                            </div>
-                        </div>
-                        <div className="grid gap-3">
-                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
-                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Planned Controls</div>
-                                <div className="mt-2 text-sm text-zinc-300">
-                                    {mediaLibraryTab === 'sfx'
-                                        ? 'Upload, preview, trim, gain, assign to pad, reorder pads, and remove.'
-                                        : 'Upload, preview, tag, loop, set default, choose Auto BG eligibility, and remove.'}
+                    <div className="grid gap-4">
+                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+                            <div className="rounded-[24px] border border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-5">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
+                                            <i className={`fa-solid ${mediaLibraryTab === 'sfx' ? 'fa-wave-square' : 'fa-music'} text-lg`}></i>
+                                        </div>
+                                        <div className="mt-4 text-xl font-black text-white">
+                                            {mediaLibraryTab === 'sfx' ? 'Build the live soundboard lane' : 'Build the live background playlist'}
+                                        </div>
+                                        <div className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+                                            {mediaLibraryTab === 'sfx'
+                                                ? 'Upload crowd drops, stingers, donor hits, and cue-specific one-shots, then route them onto the host soundboard and into automatic room moments.'
+                                                : 'Upload walk-in beds, reset music, donor unders, and room loops, then decide which tracks are manual-only versus eligible for Auto BG rotation.'}
+                                        </div>
+                                    </div>
+                                    <label className={`${STYLES.btnStd} ${STYLES.btnSecondary} cursor-pointer justify-center px-3 py-2 text-[10px]`}>
+                                        <input
+                                            type="file"
+                                            accept="audio/*"
+                                            multiple
+                                            className="hidden"
+                                            onChange={async (event) => {
+                                                await handleAudioLibraryFileSelection(event.target.files, activeAudioLane);
+                                                event.target.value = '';
+                                            }}
+                                        />
+                                        {mediaLibraryTab === 'sfx' ? 'Upload SFX Audio' : 'Upload BG Audio'}
+                                    </label>
                                 </div>
                             </div>
-                            <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
-                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Why Here</div>
-                                <div className="mt-2 text-sm text-zinc-300">
+                            <div className="grid gap-3">
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">Lane Status</div>
+                                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
+                                        <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
+                                            {activeAudioLaneItems.length} in this lane
+                                        </span>
+                                        <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-zinc-300">
+                                            {inactiveAudioLaneItems.length} elsewhere
+                                        </span>
+                                        {mediaLibraryTab === 'sfx' ? (
+                                            <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2.5 py-1 text-fuchsia-100">
+                                                {(Array.isArray(customSoundboardSounds) ? customSoundboardSounds : []).length} on board
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2.5 py-1 text-emerald-100">
+                                                {(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg' && item?.bgAutoEligible !== false).length} auto-ready
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="rounded-2xl border border-white/10 bg-black/25 px-4 py-4 text-sm text-zinc-300">
                                     {mediaLibraryTab === 'sfx'
-                                        ? 'Sound effects belong beside scenes because they are reusable host assets, but they need a soundboard-first management surface instead of scene timing controls.'
-                                        : 'Background tracks belong beside scenes because they are reusable host assets, but they need playback defaults and automation rules instead of Public TV actions.'}
+                                        ? 'Custom cue assignments here override the default built-in host moment sounds, so donor beats and hype drops can match the room.'
+                                        : 'Starting a BG upload here hands it to the real host background player, not a one-off preview path, so the room hears the same source the automation uses.'}
                                 </div>
                             </div>
-                            <div className="rounded-2xl border border-dashed border-fuchsia-300/20 bg-fuchsia-500/8 px-4 py-4 text-sm text-fuchsia-100">
-                                Structure is in place here now. The asset-management actions for this lane still need to be wired.
-                            </div>
                         </div>
+                        {!audioLibraryItems.length ? (
+                            <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
+                                <div className="max-w-2xl">
+                                    <div className="text-xl font-black text-white">No room audio uploads yet</div>
+                                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                                        Add audio here to build a reusable room-specific SFX and background-music bank. These uploads stay room-wide, unlike offline backups in the older Room Uploads section.
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="rounded-[24px] border border-cyan-300/14 bg-[linear-gradient(180deg,rgba(11,17,27,0.94),rgba(9,9,15,0.98))] p-4">
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-100">
+                                                {mediaLibraryTab === 'sfx' ? 'SFX Lane' : 'BG Music Lane'}
+                                            </div>
+                                            <div className="mt-1 text-xs text-zinc-500">
+                                                {mediaLibraryTab === 'sfx'
+                                                    ? 'Pads, cue routing, and fast preview for the room-specific soundboard library.'
+                                                    : 'Manual start, Auto BG eligibility, and reusable walk-in / reset music.'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {activeAudioLaneItems.length ? (
+                                        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                                            {activeAudioLaneItems.map((item) => {
+                                                const draft = audioLibraryDrafts[item.id] || buildAudioLibraryDraft(item);
+                                                const lane = normalizeHostAudioLibraryCategory(draft.audioLibraryCategory);
+                                                const isSaving = audioLibrarySavingId === item.id;
+                                                const isCurrentBgTrack = mediaLibraryTab === 'bg' && String(currentBgTrackUploadId || '').trim() === String(item?.id || '').trim();
+                                                const onSoundboard = customSoundboardSoundIdSet.has(String(item?.id || '').trim());
+                                                return (
+                                                    <div key={item.id} className="rounded-2xl border border-white/10 bg-black/25 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.2)]">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                                                {lane === 'bg' ? 'BG Music' : 'SFX'}
+                                                            </span>
+                                                            {mediaLibraryTab === 'sfx' && onSoundboard ? (
+                                                                <span className="rounded-full border border-fuchsia-300/25 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100">
+                                                                    Live Pad
+                                                                </span>
+                                                            ) : null}
+                                                            {isCurrentBgTrack ? (
+                                                                <span className="rounded-full border border-emerald-300/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                                                    Current Bed
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+                                                        <input
+                                                            value={draft.title}
+                                                            onChange={(event) => setAudioLibraryDraftField(item.id, 'title', event.target.value)}
+                                                            className={`${STYLES.input} mt-3 h-10 px-3 text-sm font-black`}
+                                                            placeholder="Audio title"
+                                                        />
+                                                        <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                                            <label className="min-w-0">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Library Lane</div>
+                                                                <select
+                                                                    value={draft.audioLibraryCategory}
+                                                                    onChange={(event) => setAudioLibraryDraftField(item.id, 'audioLibraryCategory', event.target.value)}
+                                                                    className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                                >
+                                                                    {HOST_AUDIO_LIBRARY_CATEGORY_OPTIONS.map((option) => (
+                                                                        <option key={`${item.id}_lane_${option.value || 'general'}`} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </label>
+                                                            <label className="min-w-0">
+                                                                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">File</div>
+                                                                <div className="mt-1 truncate rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-xs text-zinc-300">
+                                                                    {item.fileName || item.title || 'Audio Upload'}
+                                                                </div>
+                                                            </label>
+                                                        </div>
+                                                        {lane === 'sfx' ? (
+                                                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                                                <label className="min-w-0">
+                                                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Pad Label</div>
+                                                                    <input
+                                                                        value={draft.soundboardLabel}
+                                                                        onChange={(event) => setAudioLibraryDraftField(item.id, 'soundboardLabel', event.target.value)}
+                                                                        className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                                        placeholder="Optional short pad label"
+                                                                    />
+                                                                </label>
+                                                                <label className="min-w-0">
+                                                                    <div className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">Auto Cue</div>
+                                                                    <select
+                                                                        value={draft.hostMomentCueId}
+                                                                        onChange={(event) => setAudioLibraryDraftField(item.id, 'hostMomentCueId', event.target.value)}
+                                                                        className={`${STYLES.input} mt-1 h-10 px-3 text-sm`}
+                                                                    >
+                                                                        {HOST_AUDIO_MOMENT_CUE_OPTIONS.map((option) => (
+                                                                            <option key={`${item.id}_cue_${option.value || 'none'}`} value={option.value}>{option.label}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </label>
+                                                                <label className="md:col-span-2 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-300">
+                                                                    <span>Show on host soundboard</span>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={draft.includeOnSoundboard !== false}
+                                                                        onChange={(event) => setAudioLibraryDraftField(item.id, 'includeOnSoundboard', event.target.checked)}
+                                                                        className="h-4 w-4 accent-cyan-400"
+                                                                    />
+                                                                </label>
+                                                            </div>
+                                                        ) : lane === 'bg' ? (
+                                                            <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-300">
+                                                                <span>Eligible for Auto BG rotation</span>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={draft.bgAutoEligible !== false}
+                                                                    onChange={(event) => setAudioLibraryDraftField(item.id, 'bgAutoEligible', event.target.checked)}
+                                                                    className="h-4 w-4 accent-cyan-400"
+                                                                />
+                                                            </label>
+                                                        ) : (
+                                                            <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-black/15 px-3 py-2 text-xs text-zinc-500">
+                                                                Leave this as General Audio if you are not ready to route it into the soundboard or BG playlist yet.
+                                                            </div>
+                                                        )}
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            {mediaLibraryTab === 'sfx' ? (
+                                                                <button type="button" onClick={() => playSfxSafe(item.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                                                    Preview
+                                                                </button>
+                                                            ) : (
+                                                                <button type="button" onClick={() => onStartBgTrack?.(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-2 text-[10px]`}>
+                                                                    Start Now
+                                                                </button>
+                                                            )}
+                                                            <button type="button" disabled={isSaving} onClick={() => saveAudioLibraryDraft(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}>
+                                                                {isSaving ? 'Saving...' : 'Save'}
+                                                            </button>
+                                                            <button type="button" onClick={() => onDeleteAudioLibraryItem?.(item)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
+                                            {mediaLibraryTab === 'sfx'
+                                                ? 'No uploads are routed into the SFX lane yet. Upload audio above or move an existing room upload into SFX from the section below.'
+                                                : 'No uploads are routed into the BG lane yet. Upload audio above or move an existing room upload into BG from the section below.'}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300">Other Audio Uploads</div>
+                                    <div className="mt-1 text-xs text-zinc-500">Move uncategorized or opposite-lane audio into this lane when you are ready to reuse it in live ops.</div>
+                                    <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                                        {inactiveAudioLaneItems.map((item) => {
+                                            const draft = audioLibraryDrafts[item.id] || buildAudioLibraryDraft(item);
+                                            const lane = normalizeHostAudioLibraryCategory(draft.audioLibraryCategory);
+                                            const isSaving = audioLibrarySavingId === item.id;
+                                            return (
+                                                <div key={`other_${item.id}`} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300">
+                                                            {lane === 'bg' ? 'BG Music' : lane === 'sfx' ? 'SFX' : 'General Audio'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="mt-3 text-sm font-black text-white">{item.title || item.fileName || 'Audio Upload'}</div>
+                                                    <div className="mt-1 truncate text-xs text-zinc-500">{item.fileName || item.url}</div>
+                                                    <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+                                                        <select
+                                                            value={draft.audioLibraryCategory}
+                                                            onChange={(event) => setAudioLibraryDraftField(item.id, 'audioLibraryCategory', event.target.value)}
+                                                            className={`${STYLES.input} h-10 px-3 text-sm`}
+                                                        >
+                                                            {HOST_AUDIO_LIBRARY_CATEGORY_OPTIONS.map((option) => (
+                                                                <option key={`other_${item.id}_${option.value || 'general'}`} value={option.value}>{option.label}</option>
+                                                            ))}
+                                                        </select>
+                                                        <button type="button" onClick={() => playSfxSafe(item.url)} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}>
+                                                            Preview
+                                                        </button>
+                                                        <button type="button" disabled={isSaving} onClick={() => saveAudioLibraryDraft(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] ${isSaving ? 'cursor-not-allowed opacity-60' : ''}`}>
+                                                            {isSaving ? 'Saving...' : 'Route'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {!inactiveAudioLaneItems.length ? (
+                                        <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
+                                            Everything in the room audio library is already routed into the active lane.
+                                        </div>
+                                    ) : null}
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
             </div>
@@ -4159,29 +4765,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {sceneLibraryOpen ? (
                 <div
                     data-feature-id="tv-moments-library-modal"
-                    className="fixed inset-0 z-[140] overflow-y-auto bg-black/78 backdrop-blur-sm p-2 sm:p-3 md:p-4"
+                    className="fixed inset-0 z-[330] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/78 p-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm sm:items-center sm:p-4 md:p-5"
                     onClick={() => setSceneLibraryOpen(false)}
                 >
-                    <div className="flex min-h-full items-start justify-center py-2 sm:py-4 md:py-6">
-                        <div
-                            className="flex h-[min(96vh,64rem)] w-full max-w-6xl min-h-[32rem] min-w-0 flex-col"
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/20 bg-zinc-950/92 px-4 py-3 shadow-[0_20px_50px_rgba(0,0,0,0.42)] backdrop-blur-sm">
-                                <div className="min-w-0">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Media Library</div>
-                                    <div className="mt-1 text-sm text-zinc-400">Upload, time, edit, and deploy reusable host media without losing the live queue layout.</div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setSceneLibraryOpen(false)}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px]`}
-                                >
-                                    Close Media Library
-                                </button>
-                            </div>
-                            {scenePresetLibrarySection}
-                        </div>
+                    <div
+                        className="flex h-[min(calc(100dvh-1rem),68rem)] w-full max-w-6xl min-h-0 min-w-0 flex-col sm:h-[min(calc(100dvh-1.5rem),68rem)]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        {scenePresetLibrarySection}
                     </div>
                 </div>
             ) : null}
@@ -4229,8 +4820,38 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 </div>
             )}
-            {postPerformanceBackingPrompt && (
-                <div className="fixed right-3 top-24 z-[190] w-[min(88vw,22rem)]">
+            {pendingEarlyEndDecision && (
+                <div className="fixed bottom-4 right-4 z-[195] w-[min(92vw,24rem)]">
+                    <div className="rounded-2xl border border-amber-300/30 bg-gradient-to-br from-[#1a1621]/95 via-[#171420]/95 to-[#141827]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
+                        <div className="text-[10px] uppercase tracking-[0.28em] text-amber-300">Quick check</div>
+                        <div className="mt-1 text-base font-semibold text-white">Was that a backing issue?</div>
+                        <div className="mt-1 text-[13px] text-zinc-300 truncate">{pendingEarlyEndDecision.songTitle || 'Current performance'}</div>
+                        <div className="text-[12px] text-zinc-500">
+                            Ended around {Math.max(1, Number(pendingEarlyEndDecision.performanceElapsedSec || 0))}s in. We will continue normally if you do nothing.
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => void handleFinishPerformance(pendingEarlyEndDecision.songId)}
+                                disabled={pendingEarlyEndDecisionBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${pendingEarlyEndDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Finish Song
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => void handleChangeBackingForCurrentPerformance(pendingEarlyEndDecision.songId)}
+                                disabled={pendingEarlyEndDecisionBusy}
+                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-amber-300/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100 hover:border-amber-200/60 ${pendingEarlyEndDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Change Backing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {postPerformanceBackingPrompt && !pendingEarlyEndDecision && (
+                <div className="fixed bottom-4 right-4 z-[190] w-[min(92vw,24rem)]">
                     <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#12182a]/95 via-[#111827]/95 to-[#1a1025]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
                         <div className="flex items-start gap-2.5">
                             {postPerformanceBackingPrompt.albumArtUrl ? (
@@ -4245,11 +4866,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 </div>
                             )}
                             <div className="min-w-0 flex-1">
-                                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Track check</div>
+                                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Backing check</div>
                                 <div className="mt-0.5 text-base font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
                                 <div className="text-[13px] text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
-                                <div className="mt-1.5 text-[13px] text-zinc-400">Would you use this track again?</div>
-                                <div className="mt-0.5 text-[10px] text-zinc-500">Moves to the inbox automatically after a few seconds.</div>
+                                <div className="mt-1.5 text-[13px] text-zinc-400">How was that backing?</div>
+                                <div className="mt-0.5 text-[10px] text-zinc-500">If you do nothing, we will save it to Inbox for later.</div>
                             </div>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -4260,7 +4881,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <i className="fa-solid fa-thumbs-up"></i>
-                                Use Again
+                                Good
                             </button>
                             <button
                                 type="button"
@@ -4269,24 +4890,24 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <i className="fa-solid fa-thumbs-down"></i>
-                                Bad Track
+                                Bad
                             </button>
                             <button
                                 type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'inbox')}
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'later')}
                                 disabled={postPerformanceBackingPromptBusy}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 <i className="fa-solid fa-inbox"></i>
-                                Inbox
+                                Later
                             </button>
                             <button
                                 type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'skip')}
+                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'dismiss')}
                                 disabled={postPerformanceBackingPromptBusy}
                                 className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
-                                Skip
+                                Dismiss
                             </button>
                         </div>
                     </div>
@@ -4399,6 +5020,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 sfxVolume={sfxVolume}
                                 setSfxVolume={setSfxVolume}
                                 sounds={SOUNDS}
+                                customSounds={customSoundboardSounds}
                                 playSfxSafe={playSfxSafe}
                                 smallWaveform={SmallWaveform}
                             />

@@ -1320,22 +1320,36 @@ const buildPerformanceLeaderboardStats = (songs = [], users = [], recap = null) 
     const performedSongs = Array.isArray(songs) ? songs.filter((song) => song?.status === 'performed') : [];
     const recapTs = resolveTimestampMs(recap?.timestamp);
     const recapSingerUid = String(recap?.singerUid || '').trim();
-    const recapSongTitle = String(recap?.songTitle || '').trim().toLowerCase();
-    const hasMatchingRecapSong = recap
-        ? performedSongs.some((song) => {
-            const songTs = resolveTimestampMs(song?.timestamp);
-            const sameId = (
-                (song?.id && recap?.id && String(song.id) === String(recap.id))
-                || (song?.songId && recap?.songId && String(song.songId) === String(recap.songId))
-            );
-            const sameSinger = recapSingerUid && String(song?.singerUid || '').trim() === recapSingerUid;
-            const sameTitle = recapSongTitle && String(song?.songTitle || '').trim().toLowerCase() === recapSongTitle;
-            const closeTimestamp = recapTs && songTs ? Math.abs(songTs - recapTs) < 10000 : false;
-            return sameId || (sameSinger && sameTitle) || closeTimestamp;
-        })
-        : false;
-    const performanceSongs = recap && !hasMatchingRecapSong
-        ? [...performedSongs, { ...recap, status: 'performed', isCurrentPerformance: true }]
+    const recapSingerName = String(recap?.singerName || '').trim().toLowerCase();
+    const recapSongTitle = String(recap?.songTitle || recap?.displaySongTitle || recap?.title || '').trim().toLowerCase();
+    const isSamePerformanceRecapSong = (song = null, activeRecap = null) => {
+        if (!song || !activeRecap) return false;
+        const songDocId = String(song?.id || song?.songDocId || '').trim();
+        const recapDocId = String(activeRecap?.id || activeRecap?.songDocId || '').trim();
+        if (songDocId && recapDocId) return songDocId === recapDocId;
+        const songSessionId = String(song?.performanceSessionId || '').trim();
+        const recapSessionId = String(activeRecap?.performanceSessionId || '').trim();
+        if (songSessionId && recapSessionId) return songSessionId === recapSessionId;
+        const songTs = resolveTimestampMs(song?.timestamp);
+        const sameSingerUid = recapSingerUid && String(song?.singerUid || '').trim() === recapSingerUid;
+        const sameSingerName = recapSingerName && String(song?.singerName || '').trim().toLowerCase() === recapSingerName;
+        const sameTitle = recapSongTitle && String(song?.songTitle || song?.displaySongTitle || song?.title || '').trim().toLowerCase() === recapSongTitle;
+        const closeTimestamp = recapTs && songTs ? Math.abs(songTs - recapTs) < 10000 : false;
+        return sameTitle && closeTimestamp && (sameSingerUid || sameSingerName);
+    };
+    const matchingRecapSongIndex = recap
+        ? performedSongs.findIndex((song) => isSamePerformanceRecapSong(song, recap))
+        : -1;
+    const performanceSongs = recap
+        ? (
+            matchingRecapSongIndex >= 0
+                ? performedSongs.map((song, index) => (
+                    index === matchingRecapSongIndex
+                        ? { ...song, ...recap, status: 'performed', isCurrentPerformance: true }
+                        : song
+                ))
+                : [...performedSongs, { ...recap, status: 'performed', isCurrentPerformance: true }]
+        )
         : performedSongs;
 
     return performanceSongs.map((song, index) => {
@@ -1349,21 +1363,7 @@ const buildPerformanceLeaderboardStats = (songs = [], users = [], recap = null) 
             || song?.songId
             || `${singerUid || song?.singerName || 'guest'}_${songTitle}_${resolveTimestampMs(song?.timestamp) || index}`
         );
-        const isCurrentPerformance = !!song?.isCurrentPerformance || (
-            !!recap
-            && (
-                (recap?.id && song?.id && String(recap.id) === String(song.id))
-                || (recap?.songId && song?.songId && String(recap.songId) === String(song.songId))
-                || (
-                    recapSingerUid
-                    && singerUid
-                    && recapSingerUid === singerUid
-                    && recapSongTitle
-                    && recapSongTitle === String(song?.songTitle || '').trim().toLowerCase()
-                    && (!recapTs || !resolveTimestampMs(song?.timestamp) || Math.abs(resolveTimestampMs(song?.timestamp) - recapTs) < 10000)
-                )
-            )
-        );
+        const isCurrentPerformance = !!song?.isCurrentPerformance || isSamePerformanceRecapSong(song, recap);
 
         return {
             entryKey: performanceKey,
@@ -1387,6 +1387,23 @@ const buildPerformanceLeaderboardStats = (songs = [], users = [], recap = null) 
             isCurrentPerformance,
         };
     });
+};
+
+const buildPerformanceRecapKey = (recap = null) => {
+    if (!recap || typeof recap !== 'object') return '';
+    const docId = String(recap?.id || recap?.songDocId || '').trim();
+    const sessionId = String(recap?.performanceSessionId || '').trim();
+    const singerUid = String(recap?.singerUid || '').trim();
+    const singerName = String(recap?.singerName || '').trim().toLowerCase();
+    const songTitle = String(recap?.songTitle || recap?.displaySongTitle || recap?.title || '').trim().toLowerCase();
+    const recapTs = resolveTimestampMs(recap?.timestamp);
+    if (docId && recapTs) return `${docId}:${recapTs}`;
+    if (sessionId && recapTs) return `${sessionId}:${recapTs}`;
+    if (docId) return docId;
+    if (sessionId) return sessionId;
+    if (singerUid && songTitle && recapTs) return `${singerUid}:${songTitle}:${recapTs}`;
+    if (singerName && songTitle && recapTs) return `${singerName}:${songTitle}:${recapTs}`;
+    return '';
 };
 
 const sortLeaderboardEntriesForMode = (entries = [], mode = LEADERBOARD_MODE_DEFS[0]) => (
@@ -1978,7 +1995,6 @@ const PublicTV = ({ roomCode }) => {
     const [multiplier, setMultiplier] = useState(1);
     const [applauseStep, setApplauseStep] = useState('idle');
     const [celebrateCountdown, setCelebrateCountdown] = useState(5);
-    const [countdown, setCountdown] = useState(5);
     const [measure, setMeasure] = useState(5);
     const [applauseMax, setApplauseMax] = useState(0);
     const [tipPulse, setTipPulse] = useState(false);
@@ -2973,6 +2989,12 @@ const PublicTV = ({ roomCode }) => {
                                         motionRiseY: motion.riseY,
                                         motionRotateDeg: motion.rotateDeg,
                                         motionScaleBoost: motion.scaleBoost + (i === 0 ? 0.05 : 0) + (Math.min(totalCount, 3) * 0.014),
+                                        motionEntryX: motion.entryX,
+                                        motionEntryY: motion.entryY,
+                                        motionSwayX: motion.swayX,
+                                        motionSwayY: motion.swayY,
+                                        motionSpinDeg: motion.spinDeg,
+                                        motionExitScale: motion.exitScale,
                                         points: 0,
                                         basePoints: 0,
                                         multiplier: 1,
@@ -3391,6 +3413,12 @@ const PublicTV = ({ roomCode }) => {
                                           motionRiseY: motion.riseY,
                                           motionRotateDeg: motion.rotateDeg,
                                           motionScaleBoost: motion.scaleBoost + (i === 0 ? 0.08 : 0) + (isVip ? 0.06 : 0) + (Math.min(totalCount, 4) * 0.015),
+                                          motionEntryX: motion.entryX,
+                                          motionEntryY: motion.entryY,
+                                          motionSwayX: motion.swayX,
+                                          motionSwayY: motion.swayY,
+                                          motionSpinDeg: motion.spinDeg,
+                                          motionExitScale: motion.exitScale,
                                           points,
                                           basePoints,
                                           multiplier,
@@ -4218,11 +4246,23 @@ const PublicTV = ({ roomCode }) => {
             return;
         }
         if(room?.lastPerformance) {
+            const recapEligible = room.lastPerformance?.recapScoreFinalized === true;
+            if (!recapEligible) return undefined;
             const lastTs = getTimestampMs(room.lastPerformance.timestamp);
             if (!lastTs) return undefined;
             const timeSinceEnd = nowMs() - lastTs;
             if (timeSinceEnd < performanceRecapTotalMs) {
-                if (!recap || room.lastPerformance.timestamp !== recap.timestamp) {
+                const nextRecapKey = buildPerformanceRecapKey(room.lastPerformance);
+                const activeRecapKey = buildPerformanceRecapKey(recap);
+                const recapNeedsRefresh = (
+                    !recap
+                    || nextRecapKey !== activeRecapKey
+                    || String(room.lastPerformance?.singerName || '').trim() !== String(recap?.singerName || '').trim()
+                    || Number(room.lastPerformance?.hypeScore || 0) !== Number(recap?.hypeScore || 0)
+                    || Number(room.lastPerformance?.applauseScore || 0) !== Number(recap?.applauseScore || 0)
+                    || Number(room.lastPerformance?.hostBonus || 0) !== Number(recap?.hostBonus || 0)
+                );
+                if (recapNeedsRefresh) {
                     setRecap(room.lastPerformance);
                 }
                 const remaining = performanceRecapTotalMs - timeSinceEnd;
@@ -4287,14 +4327,13 @@ const PublicTV = ({ roomCode }) => {
 
     // Applause Sequence
     useEffect(() => {
-        if (applauseMode === 'applause_countdown' && !['celebrate', 'countdown', 'measuring'].includes(applauseStep)) {
+        if (applauseMode === 'applause_countdown' && !['celebrate', 'measuring'].includes(applauseStep)) {
             if (applauseResetRef.current) {
                 clearTimeout(applauseResetRef.current);
                 applauseResetRef.current = null;
             }
-            setApplauseStep(applauseWarmupSec > 0 ? 'celebrate' : 'countdown');
-            setCelebrateCountdown(applauseWarmupSec);
-            setCountdown(applauseCountdownSec);
+            setApplauseStep('celebrate');
+            setCelebrateCountdown(Math.max(0, applauseWarmupSec + applauseCountdownSec));
             setMeasure(applauseMeasureSec);
             setApplauseMax(0);
             return;
@@ -4338,9 +4377,6 @@ const PublicTV = ({ roomCode }) => {
         let timer;
         if (applauseStep === 'celebrate') {
             if (celebrateCountdown > 0) timer = setTimeout(() => setCelebrateCountdown((c) => c - 1), 1000);
-            else setApplauseStep('countdown');
-        } else if (applauseStep === 'countdown') {
-            if (countdown > 0) timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
             else {
                 setApplauseStep('measuring');
                 setMeasure(applauseMeasureSec);
@@ -4361,7 +4397,7 @@ const PublicTV = ({ roomCode }) => {
             }
         }
         return () => clearTimeout(timer);
-    }, [applauseStep, celebrateCountdown, countdown, measure, applauseMax, roomCode, triggerTipPulse, applauseMeasureSec]);
+    }, [applauseStep, celebrateCountdown, measure, applauseMax, roomCode, triggerTipPulse, applauseMeasureSec]);
 
     const current = songs.find(s => s.status === 'performing');
     const runOfShowDirector = useMemo(
@@ -4550,7 +4586,7 @@ const PublicTV = ({ roomCode }) => {
     useEffect(() => {
         currentPerformanceIdRef.current = currentPerformanceId;
     }, [currentPerformanceId]);
-    const applauseSubject = current || room?.lastPerformance || null;
+    const applauseSubject = room?.applauseSubject || current || room?.lastPerformance || null;
     const applausePerformerName = String(
         applauseSubject?.singerName
         || applauseSubject?.performerName
@@ -4565,7 +4601,7 @@ const PublicTV = ({ roomCode }) => {
     const applauseRenderStep = applauseStep === 'idle'
         ? (
             applauseMode === 'applause_countdown'
-                ? (applauseWarmupSec > 0 ? 'celebrate' : 'countdown')
+                ? 'celebrate'
                 : applauseMode === 'applause'
                     ? 'measuring'
                     : applauseMode === 'applause_result'
@@ -6210,7 +6246,7 @@ const PublicTV = ({ roomCode }) => {
         const vibeScore = Math.max(0, Number(recap.hypeScore || 0));
         const applauseScore = Math.max(0, Math.round(recap.applauseScore || 0));
         const hostBonus = Math.max(0, Number(recap.hostBonus || 0));
-        const totalPoints = vibeScore + applauseScore + hostBonus;
+        const totalPoints = Math.max(0, Number(recap.totalPoints ?? (vibeScore + applauseScore + hostBonus)));
         const performanceTier = totalPoints >= 260
             ? 'Room Shaker'
             : totalPoints >= 190
@@ -6598,6 +6634,7 @@ const PublicTV = ({ roomCode }) => {
     const purchaseCelebrationIsMoneyRain = purchaseCelebrationBurst?.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst;
     const showMoneyRainCelebration = !!bonusDropBurst || purchaseCelebrationIsMoneyRain;
     const showJoinOverlay = !room?.hideJoinOverlay;
+    const showFloatingJoinOverlay = isCinema && !guitarTakeoverMode && showJoinOverlay;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
@@ -6614,42 +6651,44 @@ const PublicTV = ({ roomCode }) => {
             return visualizerBaseMode;
         })()
         : visualizerBaseMode;
-    const visualizerActive = (started || applauseStep !== 'idle') && visualizerEnabled;
+    const visualizerActive = (started || applauseModeActive || applauseStep !== 'idle') && visualizerEnabled;
     const renderJoinOverlayCard = ({ floating = false } = {}) => {
         if (!showJoinOverlay) return null;
         const shellClass = floating
             ? (isVeryShortViewport
-                ? 'absolute right-3 top-3 z-[160] max-w-[min(34vw,17rem)]'
-                : 'absolute right-3 top-3 md:right-5 md:top-5 2xl:right-8 2xl:top-8 z-[160] max-w-[min(30vw,20rem)]')
+                ? 'absolute right-3 top-3 z-[160]'
+                : 'absolute right-3 top-3 md:right-5 md:top-5 2xl:right-8 2xl:top-8 z-[160]')
             : '';
         const cardClass = floating
-            ? 'rounded-2xl border-[3px] border-fuchsia-300/45 bg-black/58 px-3 py-3 shadow-[0_0_30px_rgba(0,0,0,0.28)] backdrop-blur-xl'
+            ? 'rounded-2xl border-[3px] border-fuchsia-300/45 bg-black/58 p-2 shadow-[0_0_30px_rgba(0,0,0,0.28)] backdrop-blur-xl'
             : `${isTinyHostPreviewMode ? 'p-2 rounded-xl' : lobbyCompactHudMode ? 'p-2 md:p-3 lg:-mt-1' : 'p-3 md:p-3.5 lg:-mt-2'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl shadow-lg border-[3px] border-fuchsia-400/45 bg-black/35 backdrop-blur-xl`;
         const qrFrameClass = floating
             ? 'shrink-0 rounded-2xl border-[3px] border-white/80 bg-white p-1.5 shadow-[0_0_22px_rgba(255,255,255,0.14)]'
             : `shrink-0 bg-white ${isTinyHostPreviewMode ? 'p-1 rounded-xl' : lobbyCompactHudMode ? 'p-1.5 md:p-2' : 'p-2 md:p-2.5'} ${isTinyHostPreviewMode ? '' : 'md:rounded-3xl'} rounded-2xl border-[3px] border-white/80 shadow-[0_0_28px_rgba(255,255,255,0.16)]`;
         const qrClass = floating
-            ? 'w-[88px] h-[88px] md:w-[108px] md:h-[108px] 2xl:w-[124px] 2xl:h-[124px]'
+            ? 'w-[132px] h-[132px] md:w-[148px] md:h-[148px] 2xl:w-[172px] 2xl:h-[172px]'
             : joinQrClass;
-        const qrSize = floating ? 124 : joinQrSize;
+        const qrSize = floating ? 172 : joinQrSize;
         return (
             <div className={shellClass}>
                 <div className={cardClass}>
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1 text-left">
-                            <div className={`${floating ? 'text-[11px] tracking-[0.22em]' : isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
-                                Join
+                    <div className={floating ? 'flex items-center justify-center' : 'flex items-start justify-between gap-3'}>
+                        {!floating ? (
+                            <div className="min-w-0 flex-1 text-left">
+                                <div className={`${isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
+                                    Join
+                                </div>
+                                <div className={`${isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
+                                    {roomCode}
+                                </div>
+                                <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
+                                    {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
+                                </div>
+                                <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
+                                    {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
+                                </div>
                             </div>
-                            <div className={`${floating ? 'mt-1 text-2xl md:text-3xl tracking-[0.14em]' : isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
-                                {roomCode}
-                            </div>
-                            <div className={`${floating ? 'mt-1 text-[10px]' : isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
-                                {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
-                            </div>
-                            <div className={`${floating ? 'mt-1 text-[11px] md:text-xs' : isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
-                                {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
-                            </div>
-                        </div>
+                        ) : null}
                         <div className={qrFrameClass}>
                             <LocalQrImage
                                 value={joinUrl}
@@ -6688,7 +6727,7 @@ const PublicTV = ({ roomCode }) => {
             <div className={`absolute inset-0 z-0 pointer-events-none transition-opacity duration-700 ${crowdEnergyOverlayClass}`}>
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_18%),linear-gradient(135deg,rgba(255,123,92,0.18),transparent_56%,rgba(56,189,248,0.12)),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(0,0,0,0))]" />
             </div>
-            {!showVisualizerTv && showAmbientFx && (
+            {!showVisualizerTv && (showAmbientFx || applauseOverlayVisible) && (
                 <div className={`absolute inset-0 z-0 mix-blend-screen pointer-events-none ${waveformOpacity} ${room?.hideWaveform ? 'hidden' : ''}`}>
                     <AudioVisualizer
                         isActive={visualizerActive}
@@ -7465,9 +7504,15 @@ const PublicTV = ({ roomCode }) => {
                     <div className={`flex-1 ${isMinimal || isCinema ? 'bg-black' : 'bg-black/30 backdrop-blur-md border border-white/10'} rounded-2xl md:rounded-3xl relative shadow-2xl overflow-hidden ${effectiveStageMinHeightClass}`}>
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
-                              <div className="absolute top-8 right-3 md:top-10 md:right-4 2xl:top-12 2xl:right-6 z-[80] text-right">
+                              <div
+                                  className={`absolute z-[80] ${
+                                      showFloatingJoinOverlay
+                                          ? 'left-3 top-8 max-w-[calc(100%-11rem)] text-left md:left-4 md:top-10 md:max-w-[calc(100%-13rem)] 2xl:left-6 2xl:top-12 2xl:max-w-[calc(100%-15rem)]'
+                                          : 'right-3 top-8 text-right md:right-4 md:top-10 2xl:right-6 2xl:top-12'
+                                  }`}
+                              >
                                   <AnimatedPoints value={Math.max(0, currentPerformancePoints)} />
-                                  <div className="flex items-center justify-end gap-1 md:gap-2 mt-1 md:mt-2">
+                                  <div className={`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 ${showFloatingJoinOverlay ? 'justify-start' : 'justify-end'}`}>
                                     <div className="text-sm md:text-base text-zinc-200 tracking-[0.1em] md:tracking-[0.15em]">PERFORMANCE TOTAL</div>
                                     {currentSingerIsVip && (
                                         <div className="px-2 py-0.5 rounded-full text-sm md:text-base font-bold tracking-[0.1em] md:tracking-[0.14em] bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">
@@ -8113,7 +8158,7 @@ const PublicTV = ({ roomCode }) => {
                             Crowd Moment
                         </div>
                         <h1 className="text-[clamp(2.75rem,7vw,6.5rem)] font-bebas text-white tracking-[0.12em] md:tracking-[0.2em] leading-none">
-                            {applauseRenderStep === 'celebrate' ? 'WARM UP FOR' : applauseRenderStep === 'countdown' ? 'GET READY FOR' : 'CHEER FOR'}
+                            {applauseRenderStep === 'celebrate' ? 'WARM UP FOR' : 'CHEER FOR'}
                         </h1>
                         <div className="text-[clamp(3rem,9vw,8rem)] font-black uppercase tracking-tight leading-[0.9] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-white to-cyan-300 drop-shadow-[0_0_28px_rgba(236,72,153,0.22)]">
                             {applausePerformerName}
@@ -8146,32 +8191,13 @@ const PublicTV = ({ roomCode }) => {
                         <div className="text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce">
                             {applauseRenderStep === 'celebrate'
                                 ? `WARM-UP LIVE ${celebrateCountdown}`
-                                : applauseRenderStep === 'countdown'
-                                    ? `METER OPENS IN ${countdown}`
-                                    : applauseRenderStep === 'measuring'
-                                        ? `METER LIVE ${measure}`
-                                        : 'PEAK LEVEL REACHED'}
+                                : applauseRenderStep === 'measuring'
+                                    ? `METER LIVE ${measure}`
+                                    : 'PEAK LEVEL REACHED'}
                         </div>
-                        {(applauseRenderStep === 'celebrate' || applauseRenderStep === 'countdown') ? (
+                        {applauseRenderStep === 'celebrate' ? (
                             <div className="mt-3 text-sm md:text-xl uppercase tracking-[0.24em] text-zinc-400">
-                                {applauseRenderStep === 'celebrate'
-                                    ? 'Crowd warm-up before the meter opens'
-                                    : 'Noise meter opens now'}
-                            </div>
-                        ) : null}
-                        {applauseRenderStep === 'countdown' ? (
-                            <div className="mt-4 flex items-center justify-center gap-2 md:gap-3">
-                                {Array.from({ length: applauseCountdownSec }, (_, idx) => {
-                                    const active = idx < countdown;
-                                    return (
-                                        <span
-                                            key={`applause-count-${idx}`}
-                                            className={`h-2.5 w-8 md:h-3 md:w-12 rounded-full transition-all duration-300 ${
-                                                active ? 'bg-cyan-300 shadow-[0_0_16px_rgba(103,232,249,0.9)]' : 'bg-white/10'
-                                            }`}
-                                        />
-                                    );
-                                })}
+                                Crowd warm-up before the meter opens
                             </div>
                         ) : null}
                     </div>
@@ -8948,6 +8974,12 @@ const PublicTV = ({ roomCode }) => {
                                 '--reaction-scale': Number(r.motionScaleBoost || 1),
                                 '--reaction-pop-scale': Number(r.motionScaleBoost || 1) * (r.isVip ? 1.08 : 1.03),
                                 '--reaction-glow-strength': Number(r.arrivalGlowStrength || 0.78),
+                                '--reaction-entry-x': `${Number(r.motionEntryX || 0)}px`,
+                                '--reaction-entry-y': `${Number(r.motionEntryY || 40)}px`,
+                                '--reaction-sway-x': `${Number(r.motionSwayX || 14)}px`,
+                                '--reaction-sway-y': `${Number(r.motionSwayY || 16)}px`,
+                                '--reaction-spin': `${Number(r.motionSpinDeg || 12)}deg`,
+                                '--reaction-exit-scale': Number(r.motionExitScale || 0.92),
                             }}
                         >
                             {r.isVip && (
@@ -9125,59 +9157,62 @@ const PublicTV = ({ roomCode }) => {
                 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.34); }
               }
               @keyframes reaction-launch-trail {
-                0% { opacity: 0; transform: translate3d(0, 48px, 0) scale(0.38) rotate(-14deg); }
-                10% { opacity: 1; transform: translate3d(0, -24px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(-4deg); }
-                28% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(calc(var(--reaction-scale, 1) * 1.06)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.26), calc(var(--reaction-rise-y, 96px) * -1.12), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(var(--reaction-entry-x, 0px), var(--reaction-entry-y, 48px), 0) scale(0.28) rotate(calc(var(--reaction-spin, 18deg) * -0.46)); }
+                8% { opacity: 1; transform: translate3d(calc(var(--reaction-entry-x, 0px) * -0.08), -30px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.08)) rotate(calc(var(--reaction-spin, 18deg) * 0.08)); }
+                24% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(calc(var(--reaction-scale, 1) * 1.07)) rotate(calc(var(--reaction-spin, 18deg) * 0.18)); }
+                58% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.44), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) + (var(--reaction-spin, 18deg) * 0.62))); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.74), calc(var(--reaction-rise-y, 96px) * -1.18), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.88))) rotate(calc(var(--reaction-rotate, 0deg) + var(--reaction-spin, 18deg))); }
               }
               @keyframes reaction-prism-float {
-                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.42) rotate(-10deg); }
-                14% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(8deg); }
-                36% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
-                74% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), calc(var(--reaction-rise-y, 96px) * -0.26), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.22)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), calc(var(--reaction-rise-y, 96px) * -0.44), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * -0.12)); }
+                0% { opacity: 0; transform: translate3d(calc(var(--reaction-entry-x, 0px) * 0.72), var(--reaction-entry-y, 42px), 0) scale(0.42) rotate(calc(var(--reaction-spin, 36deg) * -0.24)); }
+                14% { opacity: 1; transform: translate3d(0, -20px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(calc(var(--reaction-spin, 36deg) * 0.22)); }
+                34% { opacity: 1; transform: translate3d(var(--reaction-sway-x, 12px), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.03)) rotate(calc(var(--reaction-spin, 36deg) * -0.3)); }
+                66% { opacity: 0.98; transform: translate3d(calc(var(--reaction-sway-x, 12px) * -1), calc(var(--reaction-rise-y, 96px) * -0.26), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 36deg) * 0.38)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.95))) rotate(calc(var(--reaction-spin, 36deg) * -0.18)); }
               }
               @keyframes reaction-royal-rise {
-                0% { opacity: 0; transform: translate3d(0, 46px, 0) scale(0.44) rotate(-6deg); }
-                12% { opacity: 1; transform: translate3d(0, -20px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(-2deg); }
-                28% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.04)) rotate(calc(var(--reaction-rotate, 0deg) * 0.08)); }
-                58% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.04), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * 0.94)) rotate(calc(var(--reaction-rotate, 0deg) * 0.04)); }
+                0% { opacity: 0; transform: translate3d(calc(var(--reaction-entry-x, 0px) * 0.2), var(--reaction-entry-y, 46px), 0) scale(0.44) rotate(calc(var(--reaction-spin, 8deg) * -0.18)); }
+                12% { opacity: 1; transform: translate3d(0, -24px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.03)) rotate(calc(var(--reaction-spin, 8deg) * 0.08)); }
+                30% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 8px) * 0.28), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.05)) rotate(calc(var(--reaction-spin, 8deg) * 0.12)); }
+                58% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 8px) * -0.3), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 8deg) * -0.12)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.06), calc(var(--reaction-rise-y, 96px) * -0.54), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.95))) rotate(calc(var(--reaction-spin, 8deg) * 0.08)); }
               }
               @keyframes reaction-blossom-drift {
-                0% { opacity: 0; transform: translate3d(0, 40px, 0) scale(0.4) rotate(-14deg); }
-                12% { opacity: 1; transform: translate3d(-14px, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(10deg); }
-                34% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.26)); }
-                62% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.16), calc(var(--reaction-rise-y, 96px) * -0.28), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.34)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.24), calc(var(--reaction-rise-y, 96px) * -0.54), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(var(--reaction-entry-x, 0px), var(--reaction-entry-y, 40px), 0) scale(0.38) rotate(calc(var(--reaction-spin, 18deg) * -0.34)); }
+                12% { opacity: 1; transform: translate3d(calc(var(--reaction-entry-x, 0px) * -0.34), -20px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(calc(var(--reaction-spin, 18deg) * 0.2)); }
+                34% { opacity: 1; transform: translate3d(var(--reaction-sway-x, 18px), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(calc(var(--reaction-scale, 1) * 1.03)) rotate(calc(var(--reaction-spin, 18deg) * -0.3)); }
+                64% { opacity: 0.98; transform: translate3d(calc(var(--reaction-sway-x, 18px) * -0.82), calc(var(--reaction-rise-y, 96px) * -0.3), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 18deg) * 0.42)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.22), calc(var(--reaction-rise-y, 96px) * -0.58), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.9))) rotate(calc(var(--reaction-rotate, 0deg) + var(--reaction-spin, 18deg))); }
               }
               @keyframes reaction-cheers-sway {
-                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.46) rotate(-16deg); }
-                14% { opacity: 1; transform: translate3d(-8px, -22px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(12deg); }
-                30% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.14), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.22)); }
-                56% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.18), calc(var(--reaction-rise-y, 96px) * -0.22), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.26)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.22), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(var(--reaction-entry-x, -18px), var(--reaction-entry-y, 42px), 0) scale(0.44) rotate(calc(var(--reaction-spin, 16deg) * -0.5)); }
+                14% { opacity: 1; transform: translate3d(calc(var(--reaction-entry-x, -18px) * -0.24), -24px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.04)) rotate(calc(var(--reaction-spin, 16deg) * 0.46)); }
+                32% { opacity: 1; transform: translate3d(var(--reaction-sway-x, 18px), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-spin, 16deg) * -0.36)); }
+                58% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 18px) * -0.8), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 16deg) * 0.34)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.26), calc(var(--reaction-rise-y, 96px) * -0.5), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.91))) rotate(calc(var(--reaction-rotate, 0deg) + (var(--reaction-spin, 16deg) * 0.22))); }
               }
               @keyframes reaction-ember-rise {
-                0% { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.42) rotate(-10deg); }
-                10% { opacity: 1; transform: translate3d(6px, -24px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.02)) rotate(8deg); }
-                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.14), 0) scale(calc(var(--reaction-scale, 1) * 1.06)) rotate(calc(var(--reaction-rotate, 0deg) * -0.16)); }
-                60% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.18), calc(var(--reaction-rise-y, 96px) * -0.42), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.24)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.06), calc(var(--reaction-rise-y, 96px) * -0.86), 0) scale(calc(var(--reaction-scale, 1) * 0.88)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(var(--reaction-entry-x, 0px), var(--reaction-entry-y, 44px), 0) scale(0.38) rotate(calc(var(--reaction-spin, 16deg) * -0.28)); }
+                10% { opacity: 1; transform: translate3d(calc(var(--reaction-entry-x, 0px) * -0.18), -26px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.04)) rotate(calc(var(--reaction-spin, 16deg) * 0.16)); }
+                24% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 18px) * -0.72), calc(var(--reaction-rise-y, 96px) * -0.16), 0) scale(calc(var(--reaction-scale, 1) * 1.08)) rotate(calc(var(--reaction-spin, 16deg) * -0.22)); }
+                48% { opacity: 1; transform: translate3d(var(--reaction-sway-x, 18px), calc(var(--reaction-rise-y, 96px) * -0.36), 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-spin, 16deg) * 0.22)); }
+                74% { opacity: 0.98; transform: translate3d(calc(var(--reaction-sway-x, 18px) * -0.42), calc(var(--reaction-rise-y, 96px) * -0.64), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 16deg) * -0.1)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.06), calc(var(--reaction-rise-y, 96px) * -0.94), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.88))) rotate(calc(var(--reaction-rotate, 0deg) + (var(--reaction-spin, 16deg) * 0.12))); }
               }
               @keyframes reaction-heart-lift {
-                0% { opacity: 0; transform: translate3d(0, 42px, 0) scale(0.5) rotate(-8deg); }
-                14% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(4deg); }
-                34% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.08), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.03)) rotate(calc(var(--reaction-rotate, 0deg) * -0.08)); }
-                72% { opacity: 0.98; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.1), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.1)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.04), calc(var(--reaction-rise-y, 96px) * -0.46), 0) scale(calc(var(--reaction-scale, 1) * 0.92)) rotate(calc(var(--reaction-rotate, 0deg) * -0.05)); }
+                0% { opacity: 0; transform: translate3d(calc(var(--reaction-entry-x, 0px) * 0.5), var(--reaction-entry-y, 42px), 0) scale(0.48) rotate(calc(var(--reaction-spin, 12deg) * -0.24)); }
+                14% { opacity: 1; transform: translate3d(0, -18px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(calc(var(--reaction-spin, 12deg) * 0.12)); }
+                34% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 14px) * -0.7), calc(var(--reaction-rise-y, 96px) * -0.08), 0) scale(calc(var(--reaction-scale, 1) * 1.04)) rotate(calc(var(--reaction-spin, 12deg) * -0.1)); }
+                64% { opacity: 0.98; transform: translate3d(var(--reaction-sway-x, 14px), calc(var(--reaction-rise-y, 96px) * -0.24), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 12deg) * 0.12)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.06), calc(var(--reaction-rise-y, 96px) * -0.52), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.94))) rotate(calc(var(--reaction-spin, 12deg) * -0.08)); }
               }
               @keyframes reaction-applause-snap {
-                0% { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.46) rotate(-10deg); }
-                12% { opacity: 1; transform: translate3d(0, -24px, 0) scale(var(--reaction-pop-scale, 1.1)) rotate(10deg); }
-                26% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.12), -10px, 0) scale(calc(var(--reaction-scale, 1) * 1.02)) rotate(calc(var(--reaction-rotate, 0deg) * -0.2)); }
-                40% { opacity: 1; transform: translate3d(calc(var(--reaction-drift-x, 32px) * -0.12), calc(var(--reaction-rise-y, 96px) * -0.12), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-rotate, 0deg) * 0.22)); }
-                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.06), calc(var(--reaction-rise-y, 96px) * -0.44), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
+                0% { opacity: 0; transform: translate3d(calc(var(--reaction-entry-x, 0px) * 0.3), var(--reaction-entry-y, 44px), 0) scale(0.44) rotate(calc(var(--reaction-spin, 10deg) * -0.26)); }
+                12% { opacity: 1; transform: translate3d(0, -26px, 0) scale(calc(var(--reaction-pop-scale, 1.1) * 1.05)) rotate(calc(var(--reaction-spin, 10deg) * 0.22)); }
+                24% { opacity: 1; transform: translate3d(var(--reaction-sway-x, 16px), -8px, 0) scale(calc(var(--reaction-scale, 1) * 1.03)) rotate(calc(var(--reaction-spin, 10deg) * -0.18)); }
+                36% { opacity: 1; transform: translate3d(calc(var(--reaction-sway-x, 16px) * -0.92), calc(var(--reaction-rise-y, 96px) * -0.1), 0) scale(calc(var(--reaction-scale, 1) * 1.01)) rotate(calc(var(--reaction-spin, 10deg) * 0.18)); }
+                54% { opacity: 0.98; transform: translate3d(calc(var(--reaction-sway-x, 16px) * 0.56), calc(var(--reaction-rise-y, 96px) * -0.2), 0) scale(var(--reaction-scale, 1)) rotate(calc(var(--reaction-spin, 10deg) * -0.12)); }
+                100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 0.08), calc(var(--reaction-rise-y, 96px) * -0.48), 0) scale(calc(var(--reaction-scale, 1) * var(--reaction-exit-scale, 0.9))) rotate(calc(var(--reaction-rotate, 0deg) + (var(--reaction-spin, 10deg) * 0.12))); }
               }
               @keyframes reaction-bloom-rocket {
                 0% { opacity: 0.96; transform: translate(-50%, -50%) scale(0.2); }
@@ -9216,38 +9251,46 @@ const PublicTV = ({ roomCode }) => {
                 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.24) rotate(8deg); }
               }
               @keyframes reaction-emoji-rocket {
-                0%, 100% { transform: translateY(0px) rotate(-2deg) scale(1); }
-                35% { transform: translateY(-4px) rotate(3deg) scale(1.05); }
-                70% { transform: translateY(-1px) rotate(-1deg) scale(1.02); }
+                0%, 100% { transform: translateY(0px) rotate(-3deg) scale(1); filter: drop-shadow(0 0 16px rgba(251,146,60,0.44)); }
+                28% { transform: translateY(-8px) rotate(4deg) scale(1.08); filter: drop-shadow(0 0 26px rgba(251,146,60,0.72)); }
+                60% { transform: translateY(-3px) rotate(-1deg) scale(1.04); filter: drop-shadow(0 0 22px rgba(244,114,182,0.42)); }
               }
               @keyframes reaction-emoji-diamond {
                 0%, 100% { transform: rotate(0deg) scale(1); filter: drop-shadow(0 0 18px rgba(103,232,249,0.48)); }
-                50% { transform: rotate(10deg) scale(1.06); filter: drop-shadow(0 0 28px rgba(103,232,249,0.72)); }
+                34% { transform: rotate(12deg) scale(1.06); filter: drop-shadow(0 0 26px rgba(103,232,249,0.76)); }
+                68% { transform: rotate(-9deg) scale(1.03); filter: drop-shadow(0 0 22px rgba(191,219,254,0.64)); }
               }
               @keyframes reaction-emoji-crown {
                 0%, 100% { transform: translateY(0px) rotate(0deg) scale(1); }
-                45% { transform: translateY(-5px) rotate(4deg) scale(1.05); }
+                38% { transform: translateY(-6px) rotate(3deg) scale(1.05); }
+                72% { transform: translateY(-2px) rotate(-2deg) scale(1.02); }
               }
               @keyframes reaction-emoji-blossom {
-                0%, 100% { transform: rotate(-4deg) scale(1); }
-                50% { transform: rotate(6deg) scale(1.05); }
+                0%, 100% { transform: rotate(-8deg) scale(1); }
+                36% { transform: rotate(9deg) scale(1.04); }
+                68% { transform: rotate(-2deg) scale(1.07); }
               }
               @keyframes reaction-emoji-drink {
-                0%, 100% { transform: rotate(-4deg) scale(1); }
-                50% { transform: rotate(7deg) scale(1.04); }
+                0%, 100% { transform: rotate(-8deg) scale(1); }
+                28% { transform: rotate(10deg) scale(1.03); }
+                56% { transform: rotate(-2deg) scale(1.06); }
               }
               @keyframes reaction-emoji-fire {
-                0%, 100% { transform: scale(1) rotate(-2deg); filter: drop-shadow(0 0 18px rgba(251,146,60,0.58)); }
-                50% { transform: scale(1.08) rotate(3deg); filter: drop-shadow(0 0 30px rgba(251,146,60,0.78)); }
+                0%, 100% { transform: scale(1) rotate(-3deg); filter: drop-shadow(0 0 18px rgba(251,146,60,0.58)); }
+                26% { transform: scale(1.1) rotate(4deg); filter: drop-shadow(0 0 28px rgba(251,146,60,0.82)); }
+                58% { transform: scale(0.96) rotate(-1deg); filter: drop-shadow(0 0 22px rgba(239,68,68,0.74)); }
               }
               @keyframes reaction-emoji-heart {
                 0%, 100% { transform: scale(1); }
-                30% { transform: scale(1.08); }
-                60% { transform: scale(0.98); }
+                18% { transform: scale(1.1); }
+                36% { transform: scale(0.98); }
+                58% { transform: scale(1.08); }
               }
               @keyframes reaction-emoji-clap {
                 0%, 100% { transform: rotate(-2deg) scale(1); }
-                50% { transform: rotate(4deg) scale(1.06); }
+                24% { transform: rotate(5deg) scale(1.08); }
+                48% { transform: rotate(-1deg) scale(0.98); }
+                72% { transform: rotate(4deg) scale(1.06); }
               }
               @keyframes bonus-money-rain {
                 0% { opacity: 0; transform: translate3d(0, -16vh, 0) rotate(0deg) scale(0.84); }
