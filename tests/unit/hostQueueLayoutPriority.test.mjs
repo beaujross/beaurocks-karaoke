@@ -8,10 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const hostQueueTabPath = path.resolve(__dirname, '../../src/apps/Host/components/HostQueueTab.jsx');
 const queueListPanelPath = path.resolve(__dirname, '../../src/apps/Host/components/QueueListPanel.jsx');
+const queueSongCardPath = path.resolve(__dirname, '../../src/apps/Host/components/QueueSongCard.jsx');
 
 test('live queue surface keeps the reorderable queue ahead of helper workflows', () => {
   const hostQueueTabSource = readFileSync(hostQueueTabPath, 'utf8');
   const queueListPanelSource = readFileSync(queueListPanelPath, 'utf8');
+  const queueSongCardSource = readFileSync(queueSongCardPath, 'utf8');
 
   const queuePanelIndex = hostQueueTabSource.indexOf('<QueueListPanel');
   const trackCheckIndex = hostQueueTabSource.indexOf('Track Check');
@@ -24,16 +26,12 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
 
   const readyQueueIndex = queueListPanelSource.indexOf('label="Ready To Run"');
   const quickAccessIndex = queueListPanelSource.indexOf('<QueueQuickAccessPanel');
-  const inspectorIndex = queueListPanelSource.indexOf('<QueueInspector');
+  const inlineActionsIndex = queueSongCardSource.indexOf('data-feature-id="queue-song-inline-actions"');
   assert.notStrictEqual(readyQueueIndex, -1, 'Queue list panel should still label the primary queue section');
   assert.notStrictEqual(quickAccessIndex, -1, 'Queue list panel should still render quick access controls');
-  assert.notStrictEqual(inspectorIndex, -1, 'Queue list panel should still render the queue inspector');
+  assert.notStrictEqual(inlineActionsIndex, -1, 'Queue songs should still expose inline queue actions');
   assert.ok(
     readyQueueIndex < quickAccessIndex,
     'Queue list panel should lead with the ready queue before quick access controls',
-  );
-  assert.ok(
-    readyQueueIndex < inspectorIndex,
-    'Queue list panel should lead with the ready queue before the queue inspector',
   );
 });

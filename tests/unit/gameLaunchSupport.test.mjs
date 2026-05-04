@@ -230,6 +230,7 @@ describe('game launch support', () => {
     expect(updates.activeMode).toBe('applause_countdown');
     expect(updates.applausePeak).toBe(0);
     expect(updates.currentApplauseLevel).toBe(0);
+    expect(updates.applauseSubject).toBeNull();
     expect(updates.gameData).toBeNull();
     expect(updates.triviaQuestion).toBeNull();
     expect(updates.wyrData).toBeNull();

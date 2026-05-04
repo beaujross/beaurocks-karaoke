@@ -52,10 +52,14 @@ const DiscoverListingCard = ({
   const isRoomSession = entry?.listingType === "room_session";
   const isJoinableRoomSession = isRoomSession && !!cleanText(entry?.roomCode);
   const roomSupportBadge = entry?.roomSupportBadge || null;
+  const sessionEnded = Number(entry?.endsAtMs || 0) > 0 && Number(entry?.endsAtMs || 0) <= Number(entry?.currentTimeMs || 0);
+  const recapUrl = cleanText(entry?.recapUrl);
+  const hasPublicRecap = isRoomSession && sessionEnded && !!recapUrl;
   const highlightBadges = Array.from(new Set([
     ...(Array.isArray(experience?.capabilityBadges) ? experience.capabilityBadges : []),
     ...(Array.isArray(experience?.funBadges) ? experience.funBadges : []),
     ...(Array.isArray(entry?.cadenceBadges) ? entry.cadenceBadges : []),
+    ...(hasPublicRecap ? ["Recap Ready"] : []),
     ...(entry?.virtualOnly ? ["Virtual"] : []),
   ])).filter(Boolean).slice(0, 1);
   const roomCode = cleanText(entry?.roomCode);
@@ -91,6 +95,16 @@ const DiscoverListingCard = ({
     !isOfficialBeauRocks && isBeauRocksPowered ? "is-powered" : "",
   ].filter(Boolean).join(" ");
   const primaryAction = (() => {
+    if (hasPublicRecap) {
+      return {
+        label: "View recap",
+        onClick: () => {
+          if (typeof window === "undefined" || !recapUrl) return;
+          window.location.assign(recapUrl);
+        },
+        disabled: false,
+      };
+    }
     if (isJoinableRoomSession) {
       return {
         label: "Join room",
@@ -170,7 +184,7 @@ const DiscoverListingCard = ({
       <div className="mk3-discover-body">
         {isRoomSession && (
           <div className="mk3-discover-room-kicker">
-            <span>{isJoinableRoomSession ? "Live room" : "Room session"}</span>
+            <span>{hasPublicRecap ? "Past event" : isJoinableRoomSession ? "Live room" : "Room session"}</span>
             {roomCode && <strong>{roomCode}</strong>}
           </div>
         )}

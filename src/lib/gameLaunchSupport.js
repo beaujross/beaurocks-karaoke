@@ -396,6 +396,7 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
             activeScreen: 'stage',
             applausePeak: 0,
             currentApplauseLevel: 0,
+            applauseSubject: null,
             gameData: null,
             triviaQuestion: null,
             wyrData: null

@@ -55,8 +55,11 @@ import {
 import {
     getNextRunOfShowItem,
     getRunOfShowItemLabel,
+    getRunOfShowReleaseWindowRemainingMs,
+    getRunOfShowReleaseWindowTally,
     getRunOfShowLiveItem,
     getRunOfShowStagedItem,
+    isRunOfShowReleaseWindowVotingOpen,
     normalizeRunOfShowDirector
 } from '../../lib/runOfShowDirector';
 
@@ -223,6 +226,174 @@ const RoundWinnersPodiumOverlay = ({ moment = null }) => {
                             </div>
                         );
                     })}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const getReleaseWindowChoiceSong = (songs = [], releaseWindow = {}, choiceKey = '') => {
+    const songId = String(releaseWindow?.choiceSongIds?.[choiceKey] || '').trim();
+    if (!songId) return null;
+    return (Array.isArray(songs) ? songs : []).find((song) => String(song?.id || '').trim() === songId) || null;
+};
+
+const getReleaseWindowSongArtworkUrl = (song = null) => (
+    String(
+        song?.artworkUrl
+        || song?.albumArtUrl
+        || song?.imageUrl
+        || song?.coverUrl
+        || song?.artUrl
+        || ''
+    ).trim()
+);
+
+const RunOfShowReleaseWindowOverlay = ({
+    roomCode = '',
+    releaseWindow = null,
+    songs = [],
+    roles = {},
+    nowValue = Date.now()
+}) => {
+    if (!releaseWindow || !isRunOfShowReleaseWindowVotingOpen(releaseWindow, nowValue)) return null;
+    const governanceMode = String(releaseWindow?.governanceMode || '').trim().toLowerCase();
+    const subjectType = String(releaseWindow?.subjectType || '').trim().toLowerCase();
+    const tally = getRunOfShowReleaseWindowTally(releaseWindow || {}, roles || {});
+    const timeLeftSec = Math.max(0, Math.ceil(getRunOfShowReleaseWindowRemainingMs(releaseWindow || {}, nowValue) / 1000));
+    const slotSceneSong = getReleaseWindowChoiceSong(songs, releaseWindow, 'slot_scene');
+    const keepQueueMovingSong = getReleaseWindowChoiceSong(songs, releaseWindow, 'keep_queue_moving');
+    const isCoHostVote = governanceMode === 'cohost_vote';
+    const isSongFaceOff = subjectType === 'queue_faceoff';
+    const isSlotFill = subjectType === 'slot_fill_choice';
+    let voteHost = 'app.beaurocks.app';
+    try {
+        voteHost = new URL(getSurfaceBaseHref('app')).host || voteHost;
+    } catch {
+        // Keep the default host label if URL parsing fails.
+    }
+
+    const choices = [
+        {
+            key: 'slot_scene',
+            label: String(releaseWindow?.choiceLabels?.slot_scene || '').trim() || (isSongFaceOff ? 'Song A' : 'Option A'),
+            detail: String(releaseWindow?.choiceDetails?.slot_scene || '').trim()
+                || String(slotSceneSong?.singerName || slotSceneSong?.name || '').trim()
+                || 'Ready now',
+            subline: String(slotSceneSong?.artist || slotSceneSong?.artistName || '').trim() || 'Vote option',
+            artworkUrl: getReleaseWindowSongArtworkUrl(slotSceneSong),
+            accentClass: 'from-cyan-400/28 via-sky-400/16 to-transparent border-cyan-300/28',
+            labelClass: 'text-cyan-100'
+        },
+        {
+            key: 'keep_queue_moving',
+            label: String(releaseWindow?.choiceLabels?.keep_queue_moving || '').trim() || (isSongFaceOff ? 'Song B' : 'Option B'),
+            detail: String(releaseWindow?.choiceDetails?.keep_queue_moving || '').trim()
+                || String(keepQueueMovingSong?.singerName || keepQueueMovingSong?.name || '').trim()
+                || 'Ready now',
+            subline: String(keepQueueMovingSong?.artist || keepQueueMovingSong?.artistName || '').trim() || 'Vote option',
+            artworkUrl: getReleaseWindowSongArtworkUrl(keepQueueMovingSong),
+            accentClass: 'from-pink-400/28 via-fuchsia-400/16 to-transparent border-pink-300/28',
+            labelClass: 'text-pink-100'
+        }
+    ];
+    const primaryChoice = choices[0];
+    const secondaryChoice = choices[1];
+
+    const renderChoiceCard = (choice) => (
+        <div key={choice.key} className={`relative overflow-hidden rounded-[2rem] border bg-[linear-gradient(160deg,rgba(9,12,21,0.98),rgba(17,24,39,0.92))] shadow-[0_24px_64px_rgba(0,0,0,0.42)] ${choice.accentClass}`}>
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.12),transparent_42%)] opacity-60" />
+            <div className="absolute inset-x-8 top-6 h-16 rounded-full bg-white/8 blur-2xl" />
+            <div className="relative flex h-full flex-col p-8">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <div className={`text-sm font-black uppercase tracking-[0.3em] ${choice.labelClass}`}>{choice.label}</div>
+                        <div className="mt-4 text-[clamp(2.3rem,4.4vw,5rem)] font-bebas leading-[0.94] tracking-[0.02em] text-white">
+                            {choice.detail}
+                        </div>
+                        <div className="mt-3 text-[clamp(1rem,1.55vw,1.35rem)] text-zinc-300">{choice.subline}</div>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-white/82">
+                        {choice.key === 'slot_scene' ? 'Choice A' : 'Choice B'}
+                    </div>
+                </div>
+                <div className="mt-auto flex items-end justify-between gap-6">
+                    <div className="max-w-[22rem] text-lg text-zinc-300">
+                        {isSongFaceOff
+                            ? 'Phones pick the next featured song.'
+                            : isSlotFill
+                                ? 'Phones help decide who fills the slot.'
+                                : 'Phones steer the next room moment.'}
+                    </div>
+                    <div className="h-40 w-40 shrink-0 overflow-hidden rounded-[1.6rem] border border-white/10 bg-white/6 shadow-[0_18px_44px_rgba(0,0,0,0.28)]">
+                        {choice.artworkUrl ? (
+                            <img src={choice.artworkUrl} alt={choice.label} className="h-full w-full object-cover" />
+                        ) : (
+                            <div className="flex h-full w-full items-center justify-center text-6xl text-white/28">
+                                <i className="fa-solid fa-music"></i>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="public-tv fixed inset-0 z-[194] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.26),transparent_36%),radial-gradient(circle_at_bottom,rgba(244,114,182,0.2),transparent_34%),linear-gradient(160deg,#020617,#081120_38%,#111827)] text-white">
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(0deg,rgba(255,255,255,0.04)_1px,transparent_1px)] bg-[size:72px_72px] opacity-20" />
+            <div className="absolute -left-20 top-[-10%] h-[28rem] w-[28rem] rounded-full bg-cyan-400/18 blur-3xl" />
+            <div className="absolute -right-24 bottom-[-12%] h-[30rem] w-[30rem] rounded-full bg-pink-500/18 blur-3xl" />
+            <div className="absolute left-1/2 top-1/2 h-[24rem] w-[24rem] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-white/[0.03] blur-2xl" />
+            <div className="relative z-10 flex h-full flex-col px-10 py-10">
+                <div className="flex items-start justify-between gap-8">
+                    <div className="max-w-[70vw]">
+                        <div className="text-sm font-black uppercase tracking-[0.34em] text-cyan-100/78">
+                            {isSongFaceOff
+                                ? (isCoHostVote ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
+                                : isSlotFill
+                                    ? (isCoHostVote ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
+                                    : (isCoHostVote ? 'Co-Host Decision' : 'Room Vote')}
+                        </div>
+                        <div className="mt-4 text-[clamp(2.9rem,5.5vw,6.4rem)] font-bebas leading-[0.94] tracking-[0.02em] text-white drop-shadow-[0_12px_40px_rgba(0,0,0,0.42)]">
+                            {String(releaseWindow?.prompt || 'What should happen next?').trim()}
+                        </div>
+                        <div className="mt-4 text-[clamp(1rem,1.8vw,1.45rem)] text-zinc-200/86">
+                            {isCoHostVote
+                                ? 'Promoted co-hosts vote now. The host confirms the winning choice after the timer ends.'
+                                : `Vote on your phone at ${voteHost} using room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`}
+                        </div>
+                        <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-white/12 bg-white/6 px-5 py-2 text-sm font-black uppercase tracking-[0.26em] text-white/90 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
+                            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
+                            Crowd energy is live
+                        </div>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-3">
+                        <div className="rounded-full border border-white/12 bg-black/35 px-5 py-2 text-sm font-black uppercase tracking-[0.24em] text-zinc-100 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+                            {tally.totalVotes || 0} total votes
+                        </div>
+                        <div className="rounded-full border border-cyan-300/26 bg-cyan-400/10 px-5 py-2 text-sm font-black uppercase tracking-[0.24em] text-cyan-100 shadow-[0_0_28px_rgba(34,211,238,0.16)]">
+                            {timeLeftSec}s left
+                        </div>
+                        <div className="rounded-[1.4rem] border border-white/10 bg-black/28 px-5 py-4 text-right shadow-[0_24px_50px_rgba(0,0,0,0.24)]">
+                            <div className="text-[11px] font-black uppercase tracking-[0.24em] text-zinc-400">Room Code</div>
+                            <div className="mt-1 text-5xl font-bebas tracking-[0.14em] text-white">{String(roomCode || '').trim().toUpperCase() || 'ROOM'}</div>
+                        </div>
+                    </div>
+                </div>
+                <div className="mt-8 flex items-center justify-center">
+                    <div className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-2 text-base font-black uppercase tracking-[0.34em] text-zinc-200 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
+                        Pick the next spotlight
+                    </div>
+                </div>
+                <div className="mt-8 grid flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8">
+                    {renderChoiceCard(primaryChoice)}
+                    <div className="flex items-center justify-center">
+                        <div className="flex h-32 w-32 items-center justify-center rounded-full border border-white/12 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),rgba(255,255,255,0.03))] text-4xl font-black uppercase tracking-[0.28em] text-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]">
+                            VS
+                        </div>
+                    </div>
+                    {renderChoiceCard(secondaryChoice)}
                 </div>
             </div>
         </div>
@@ -1537,7 +1708,7 @@ const LeaderboardOverlay = ({ users, songs, premiumBadgeLabel = 'VIP' }) => {
 const DEFAULT_PERFORMANCE_RECAP_BREAKDOWN_MS = 7000;
 const DEFAULT_PERFORMANCE_RECAP_LEADERBOARD_MS = 7000;
 const DEFAULT_PERFORMANCE_RECAP_NEXT_UP_MS = 6000;
-const DEFAULT_APPLAUSE_WARMUP_SEC = 5;
+const DEFAULT_APPLAUSE_WARMUP_SEC = 0;
 const DEFAULT_APPLAUSE_COUNTDOWN_SEC = 5;
 const DEFAULT_APPLAUSE_MEASURE_SEC = 5;
 
@@ -5799,6 +5970,14 @@ const PublicTV = ({ roomCode }) => {
         && Number(activeAnnouncement?.durationSec || 0) > 0
         && Number(activeAnnouncement?.startedAtMs || 0) > 0
         && (Number(activeAnnouncement.startedAtMs) + (Number(activeAnnouncement.durationSec) * 1000)) <= nowMs();
+    const activeReleaseWindow = room?.runOfShowDirector?.releaseWindow && typeof room.runOfShowDirector.releaseWindow === 'object'
+        ? room.runOfShowDirector.releaseWindow
+        : null;
+    const tvReleaseWindowVisible = !!(
+        activeReleaseWindow
+        && ['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(activeReleaseWindow?.governanceMode || '').trim().toLowerCase())
+        && isRunOfShowReleaseWindowVotingOpen(activeReleaseWindow, takeoverNowMs)
+    );
     const purchaseCelebrationBlocked = Boolean(
         (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired)
         || (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired)
@@ -5807,6 +5986,7 @@ const PublicTV = ({ roomCode }) => {
         || (!applauseOverlayVisible && room?.readyCheck?.active)
         || (!!activeAnnouncement && !activeAnnouncementIsExpiredMediaScene)
         || (!applauseOverlayVisible && chatTvFullscreenActive)
+        || (!applauseOverlayVisible && tvReleaseWindowVisible)
         || (room?.activeMode === 'doodle_oke' && room?.doodleOke)
         || activeGameCartridgeMode
         || (!applauseOverlayVisible && recap)
@@ -6025,6 +6205,17 @@ const PublicTV = ({ roomCode }) => {
                     ))}
                 </div>
             </div>
+        );
+    }
+    if (!applauseOverlayVisible && tvReleaseWindowVisible) {
+        return withPurchaseCelebrationOverlay(
+            <RunOfShowReleaseWindowOverlay
+                roomCode={roomCode}
+                releaseWindow={activeReleaseWindow}
+                songs={songs}
+                roles={room?.runOfShowRoles || {}}
+                nowValue={takeoverNowMs}
+            />
         );
     }
     

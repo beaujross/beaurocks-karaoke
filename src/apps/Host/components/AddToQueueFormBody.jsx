@@ -28,7 +28,7 @@ const ResultList = ({
                 {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
             </div>
         </div>
-        <div className="host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto custom-scrollbar p-3">
+        <div className="host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar p-3">
             {results.length > 0 ? results.map((r, idx) => {
                 const rowKey = getResultRowKey(r, idx);
                 const isAdding = quickAddLoadingKey === rowKey;
@@ -209,6 +209,19 @@ const quickMomentPacks = [
     },
 ];
 
+const normalizePerformerSearch = (value = '') => (
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+);
+
+const buildScenePresetPreview = (preset = {}) => {
+    const mediaUrl = String(preset?.mediaUrl || '').trim();
+    const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+    return { mediaUrl, mediaType, isVideo: mediaType === 'video' };
+};
+
 const AddToQueueFormBody = ({
     searchQ,
     setSearchQ,
@@ -231,7 +244,6 @@ const AddToQueueFormBody = ({
     onManualQueueResult,
     manual,
     setManual,
-    manualSingerMode,
     setManualSingerMode,
     hostName,
     users,
@@ -252,6 +264,7 @@ const AddToQueueFormBody = ({
     const [manualEntryOpen, setManualEntryOpen] = React.useState(!dockResults);
     const [activeMomentType, setActiveMomentType] = React.useState('performance');
     const [selectedLaterSlotId, setSelectedLaterSlotId] = React.useState('');
+    const [performerPickerOpen, setPerformerPickerOpen] = React.useState(false);
 
     React.useEffect(() => {
         if (!dockResults) {
@@ -259,42 +272,133 @@ const AddToQueueFormBody = ({
         }
     }, [dockResults]);
 
+    const performerOptions = [];
+    const seenPerformerNames = new Set();
+    const pushPerformerOption = (entry = {}, type = 'guest') => {
+        const rawName = String(entry?.name || '').trim();
+        if (!rawName) return;
+        const normalizedName = normalizePerformerSearch(rawName);
+        if (!normalizedName || seenPerformerNames.has(normalizedName)) return;
+        seenPerformerNames.add(normalizedName);
+        performerOptions.push({
+            key: String(entry?.uid || normalizedName),
+            name: rawName,
+            avatar: String(entry?.avatar || '').trim(),
+            type,
+        });
+    };
+    if (hostName) {
+        pushPerformerOption({ uid: `host:${hostName}`, name: hostName }, 'host');
+    }
+    users.forEach((user) => {
+        pushPerformerOption(user, 'guest');
+    });
+    performerOptions.sort((left, right) => {
+        if (left.type !== right.type) return left.type === 'host' ? -1 : 1;
+        return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+    });
+
+    const performerQuery = String(manual?.singer || '').trim();
+    const normalizedPerformerQuery = normalizePerformerSearch(performerQuery);
+    const filteredPerformerOptions = performerOptions
+        .filter((option) => {
+            if (!normalizedPerformerQuery) return true;
+            return normalizePerformerSearch(option.name).includes(normalizedPerformerQuery);
+        })
+        .slice(0, 8);
+    const hasExactPerformerMatch = performerOptions.some(
+        (option) => normalizePerformerSearch(option.name) === normalizedPerformerQuery
+    );
+    const showCustomPerformerOption = normalizedPerformerQuery && !hasExactPerformerMatch;
+    const showPerformerSuggestions = performerPickerOpen && (showCustomPerformerOption || filteredPerformerOptions.length > 0);
+    const applyPerformerSelection = (name = '', mode = 'select') => {
+        setManualSingerMode(mode);
+        setManual((prev) => ({ ...prev, singer: String(name || '').trim() }));
+        setPerformerPickerOpen(false);
+    };
     const performerSelect = (
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_minmax(12rem,0.65fr)]">
-            <select
-                data-feature-id="host-manual-performer-select"
-                value={manualSingerMode === 'custom' ? '__custom' : manual.singer}
-                onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '__custom') {
-                        setManualSingerMode('custom');
-                        setManual((prev) => ({ ...prev, singer: '' }));
-                        return;
-                    }
-                    setManualSingerMode('select');
-                    setManual((prev) => ({ ...prev, singer: value }));
-                }}
-                className={`${styles.input} text-sm`}
-            >
-                <option value="">Select Performer</option>
-                {hostName && (
-                    <option value={hostName}>{hostName} (Host)</option>
-                )}
-                {users.map((u) => (
-                    <option key={u.uid || u.name} value={u.name}>
-                        {u.avatar ? `${u.avatar} ` : ''}{u.name}
-                    </option>
-                ))}
-                <option value="__custom">Custom performer...</option>
-            </select>
-            {manualSingerMode === 'custom' && (
+        <div className="relative min-w-0">
+            <div className="relative">
+                <i className="fa-solid fa-user-microphone pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
                 <input
+                    data-feature-id="host-manual-performer-select"
                     value={manual.singer}
-                    onChange={(e) => setManual({ ...manual, singer: e.target.value })}
-                    className={styles.input}
-                    placeholder="Custom performer"
+                    onChange={(e) => {
+                        const value = e.target.value;
+                        setManualSingerMode('custom');
+                        setManual((prev) => ({ ...prev, singer: value }));
+                        setPerformerPickerOpen(true);
+                    }}
+                    onFocus={() => setPerformerPickerOpen(true)}
+                    onBlur={() => {
+                        globalThis.setTimeout(() => setPerformerPickerOpen(false), 120);
+                    }}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                            setPerformerPickerOpen(false);
+                        }
+                    }}
+                    className={`${styles.input} pl-8 pr-24 text-sm`}
+                    placeholder="Search performer or type custom"
+                    autoComplete="off"
                 />
-            )}
+                <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => applyPerformerSelection(hostName || performerQuery, hostName ? 'select' : 'custom')}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full border border-white/10 bg-black/35 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-200"
+                >
+                    {hostName ? 'Host' : 'Keep'}
+                </button>
+            </div>
+            {showPerformerSuggestions ? (
+                <div
+                    data-feature-id="host-manual-performer-suggestions"
+                    className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-2xl border border-cyan-300/20 bg-zinc-950/98 shadow-[0_18px_40px_rgba(0,0,0,0.38)]"
+                >
+                    <div className="max-h-64 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar p-2">
+                        {showCustomPerformerOption ? (
+                            <button
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyPerformerSelection(performerQuery, 'custom')}
+                                className="mb-2 flex w-full items-center justify-between rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-left transition hover:border-cyan-200/35 hover:bg-cyan-500/14"
+                            >
+                                <span className="min-w-0">
+                                    <span className="block truncate text-sm font-black text-cyan-100">{performerQuery}</span>
+                                    <span className="block text-[10px] uppercase tracking-[0.16em] text-cyan-200/75">Use custom performer</span>
+                                </span>
+                                <span className="rounded-full border border-cyan-300/30 bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                                    Custom
+                                </span>
+                            </button>
+                        ) : null}
+                        {filteredPerformerOptions.map((option) => (
+                            <button
+                                key={option.key}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyPerformerSelection(option.name, 'select')}
+                                className="mb-2 flex w-full items-center justify-between rounded-xl border border-white/10 bg-black/25 px-3 py-2 text-left transition last:mb-0 hover:border-cyan-300/25 hover:bg-white/5"
+                            >
+                                <span className="min-w-0">
+                                    <span className="block truncate text-sm font-bold text-white">
+                                        {option.avatar ? `${option.avatar} ` : ''}{option.name}
+                                    </span>
+                                    <span className="block text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                                        {option.type === 'host' ? 'Host' : 'Live lobby'}
+                                    </span>
+                                </span>
+                                {option.type === 'host' ? (
+                                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                                        Host
+                                    </span>
+                                ) : null}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 
@@ -555,7 +659,7 @@ const AddToQueueFormBody = ({
                     </div>
 
                     {!renderResultsInline && showResults ? (
-                        <div className={`host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-[32rem] flex-col ${baseResultsCardClass}`}>
+                        <div className={`host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-[min(32rem,calc(100dvh-14rem))] flex-col overflow-hidden ${baseResultsCardClass}`}>
                             <div className="host-autocomplete-results-stem" aria-hidden="true"></div>
                             <ResultList {...performanceResultListProps} />
                         </div>
@@ -565,37 +669,60 @@ const AddToQueueFormBody = ({
 
             {!performanceMode && activeMomentType === 'tv' ? (
                 <div className="mt-3 grid gap-2 xl:grid-cols-2">
-                    {recentScenePresets.length > 0 ? recentScenePresets.map((preset) => (
-                        <div key={preset.id || preset.title} className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className="truncate text-sm font-black text-white">{String(preset?.title || '').trim() || 'TV Moment'}</div>
-                                    <div className="mt-1 text-xs text-zinc-400">
-                                        {String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'Video' : 'Image'} scene
+                    {recentScenePresets.length > 0 ? recentScenePresets.map((preset) => {
+                        const preview = buildScenePresetPreview(preset);
+                        return (
+                            <div key={preset.id || preset.title} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                                <div className="flex gap-3">
+                                    <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-black/35">
+                                        {preview.mediaUrl ? (
+                                            preview.isVideo ? (
+                                                <video src={preview.mediaUrl} className="h-full w-full object-cover" muted playsInline />
+                                            ) : (
+                                                <img src={preview.mediaUrl} alt="" className="h-full w-full object-cover" />
+                                            )
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center text-lg text-zinc-500">
+                                                <i className={`fa-solid ${preview.isVideo ? 'fa-film' : 'fa-image'}`}></i>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="truncate text-sm font-black text-white">{String(preset?.title || '').trim() || 'TV Moment'}</div>
+                                                <div className="mt-1 text-xs text-zinc-400">
+                                                    {preview.isVideo ? 'Video' : 'Image'} scene
+                                                </div>
+                                            </div>
+                                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
+                                                {Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20))}s
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => onQueueScenePreset?.(preset)}
+                                                className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
+                                            >
+                                                Add Next In Show
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => onAddScenePresetToRunOfShow?.(preset)}
+                                                className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
+                                            >
+                                                Add Later
+                                            </button>
+                                        </div>
+                                        <div className="mt-2 text-[11px] text-zinc-500">
+                                            Adds to the live show conveyor, not the singer queue.
+                                        </div>
                                     </div>
                                 </div>
-                                <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100">
-                                    {Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20))}s
-                                </span>
                             </div>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={() => onQueueScenePreset?.(preset)}
-                                    className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
-                                >
-                                    Add Next
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onAddScenePresetToRunOfShow?.(preset)}
-                                    className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
-                                >
-                                    Add Later
-                                </button>
-                            </div>
-                        </div>
-                    )) : (
+                        );
+                    }) : (
                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-5 text-sm text-zinc-400 xl:col-span-2">
                             No saved scenes yet. Use `Search YouTube` or `Open Media Library`.
                         </div>
@@ -665,7 +792,7 @@ const AddToQueueFormBody = ({
             ) : null}
 
             {performanceMode && renderResultsInline ? (
-                <div className={`mt-2 flex min-h-0 flex-1 flex-col overflow-hidden ${baseResultsCardClass}`}>
+                <div className={`mt-2 flex min-h-0 max-h-[min(56dvh,36rem)] flex-1 flex-col overflow-hidden ${baseResultsCardClass}`}>
                     <ResultList {...performanceResultListProps} />
                 </div>
             ) : null}

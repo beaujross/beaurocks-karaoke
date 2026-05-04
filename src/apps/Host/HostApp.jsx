@@ -62,6 +62,23 @@ import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
+import {
+    getYouTubeSearchTelemetrySnapshot,
+    getYouTubeQuotaBlockedUntilMs,
+    isYouTubeQuotaBlockedError,
+    subscribeToYouTubeSearchTelemetry,
+    searchYouTubeCatalog
+} from '../../lib/youtubeSearchClient';
+import {
+    getAppleSearchTelemetrySnapshot,
+    searchAppleCatalog,
+    subscribeToAppleSearchTelemetry
+} from '../../lib/appleSearchClient';
+import {
+    generateAiContentRequest,
+    getAiGenerationTelemetrySnapshot,
+    subscribeToAiGenerationTelemetry
+} from '../../lib/aiGenerationClient';
 import { useToast } from '../../context/ToastContext';
 import { SOUNDS } from '../../lib/gameDataConstants';
 import { HOST_APP_CONFIG } from '../../lib/uiConstants';
@@ -69,6 +86,7 @@ import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabi
 import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
+import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
@@ -102,6 +120,11 @@ import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
     normalizeAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
+import {
+    AUDIENCE_JOIN_ACCESS_MODES,
+    AUDIENCE_JOIN_ACCESS_OPTIONS,
+    normalizeAudienceJoinPolicy,
+} from '../../lib/audienceJoinPolicy.js';
 import {
     decorateBrowseSongs,
     isApprovedPlayableBrowseSong
@@ -159,6 +182,10 @@ import {
     getSectionMeta,
     getViewDefaultSection
 } from './workspace/navConfig';
+import {
+    buildHostUiPrefsPatch,
+    isPostPerformanceBackingPromptEnabled,
+} from './lib/hostUiPrefs';
 import HostWorkspaceShell from './workspace/HostWorkspaceShell';
 import {
     MISSION_ASSIST_LEVELS,
@@ -293,6 +320,24 @@ const SUPPORT_DROP_AMOUNT_PRESETS = Object.freeze([5, 10, 20, 25]);
 const YOUTUBE_PLAYLIST_MAX_TOTAL = 1000;
 let itunesBackoffUntil = 0;
 const nowMs = () => Date.now();
+const YT_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const YT_INDEX_REFRESH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+const YT_INDEX_REFRESH_RETRY_MS = 5 * 60 * 1000;
+const getMeterUsageRatio = (meter = null) => {
+    const included = Number(meter?.included || 0);
+    const used = Number(meter?.used || 0);
+    return included > 0 ? (used / included) : 0;
+};
+const formatOpsCountdown = (targetMs = 0, now = nowMs()) => {
+    const remainingMs = Math.max(0, Number(targetMs || 0) - Number(now || nowMs()));
+    if (!remainingMs) return '0m';
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    if (remainingSec < 60) return `${remainingSec}s`;
+    const remainingMin = Math.ceil(remainingSec / 60);
+    if (remainingMin < 60) return `${remainingMin}m`;
+    const remainingHours = Math.ceil(remainingMin / 60);
+    return `${remainingHours}h`;
+};
 const hostLogger = createLogger('HostApp');
 const RUN_OF_SHOW_AUTOMATION_RETRY_MS = 4000;
 const RUN_OF_SHOW_AUTOMATION_RATE_LIMIT_RETRY_MS = 15000;
@@ -1147,11 +1192,12 @@ const getRoomCodeFromLocation = () => {
 const generateAIContent = async (type, context) => {
     try {
         const roomCode = getRoomCodeFromLocation();
-        const payload = roomCode
-            ? { type, context, roomCode, usageContext: { source: `host_${type}` } }
-            : { type, context, usageContext: { source: `host_${type}` } };
-        const data = await callFunction('geminiGenerate', payload);
-        return data?.result || null;
+        return await generateAiContentRequest({
+            type,
+            context,
+            roomCode,
+            usageSource: `host_${type}`
+        });
     } catch (e) {
         hostLogger.error('AI Error', e);
         const code = String(e?.code || e?.message || '').toLowerCase();
@@ -1672,6 +1718,34 @@ const normalizeYouTubeSearchItems = (rawItems = [], { reason = 'youtube_search',
         .filter(Boolean)
 );
 
+const resolveYtIndexLastValidatedAtMs = (entry = {}, overrides = {}, now = nowMs()) => {
+    const explicit = Math.max(0, Number(overrides.lastValidatedAtMs ?? entry.lastValidatedAtMs ?? 0) || 0);
+    if (explicit > 0) return explicit;
+    const curatedAtMs = Math.max(0, Number(overrides.curatedAtMs ?? entry.curatedAtMs ?? 0) || 0);
+    return curatedAtMs > 0 ? curatedAtMs : now;
+};
+
+const resolveYtIndexExpiresAtMs = (entry = {}, overrides = {}, lastValidatedAtMs = 0) => {
+    const explicit = Math.max(0, Number(overrides.expiresAtMs ?? entry.expiresAtMs ?? 0) || 0);
+    if (explicit > 0) return explicit;
+    return lastValidatedAtMs > 0 ? lastValidatedAtMs + YT_INDEX_RETENTION_MS : 0;
+};
+
+const isYtIndexEntryExpired = (entry = {}, atMs = nowMs()) => {
+    const normalized = entry && typeof entry === 'object' ? entry : {};
+    const lastValidatedAtMs = resolveYtIndexLastValidatedAtMs(normalized, {}, atMs);
+    const expiresAtMs = resolveYtIndexExpiresAtMs(normalized, {}, lastValidatedAtMs);
+    return expiresAtMs > 0 && expiresAtMs <= atMs;
+};
+
+const shouldRefreshYtIndexEntry = (entry = {}, atMs = nowMs()) => {
+    const normalized = entry && typeof entry === 'object' ? entry : {};
+    const lastValidatedAtMs = resolveYtIndexLastValidatedAtMs(normalized, {}, atMs);
+    const expiresAtMs = resolveYtIndexExpiresAtMs(normalized, {}, lastValidatedAtMs);
+    if (!lastValidatedAtMs || !expiresAtMs) return true;
+    return expiresAtMs <= (atMs + YT_INDEX_REFRESH_WINDOW_MS);
+};
+
 const annotateQueueSearchResults = (items = [], { sourceReason = '', sourceDetail = '' } = {}) => (
     (Array.isArray(items) ? items : []).map((item) => ({
         ...item,
@@ -1750,6 +1824,15 @@ const estimateStorageMonthly = (bytes = 0) => {
 const formatUsdFromCents = (cents = 0) => {
     const amount = Number(cents || 0) / 100;
     return `$${amount.toFixed(2)}`;
+};
+
+const formatUsageBreakdownItemLabel = (entry = {}, kind = '') => {
+    const raw = String(entry?.label || entry?.key || '').trim();
+    if (!raw) return kind === 'actor' ? 'Operator' : 'Unknown';
+    if (kind === 'actor' && raw.length > 18) {
+        return `${raw.slice(0, 8)}...${raw.slice(-4)}`;
+    }
+    return raw;
 };
 
 const normalizeTipCratesForSave = (tipCrates = []) => {
@@ -4259,6 +4342,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [roundWinnersSubmitting, setRoundWinnersSubmitting] = useState(false);
     const [roundWinnersPrizeUploading, setRoundWinnersPrizeUploading] = useState(false);
     const openRoundWinnersEditorRef = useRef(() => {});
+    const deferredReleaseWindowActivationKeyRef = useRef('');
     const [scenePresets, setScenePresets] = useState([]);
     const [scenePresetUploading, setScenePresetUploading] = useState(false);
     const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
@@ -4289,6 +4373,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const queuedCount = useMemo(() => songs.filter(s => s.status === 'requested').length, [songs]);
     const performingCount = useMemo(() => songs.filter(s => s.status === 'performing').length, [songs]);
     const autoDjEnabled = !!(room?.autoDj || autoDj);
+    const performanceRecapBreakdownMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapBreakdownMs ?? 7000) || 7000)));
+    const performanceRecapLeaderboardMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapLeaderboardMs ?? 7000) || 7000)));
+    const performanceRecapNextUpMs = Math.max(3000, Math.min(12000, Math.round(Number(room?.performanceRecapNextUpMs ?? 6000) || 6000)));
+    const performanceRecapTotalMs = room?.showPerformanceRecap === false
+        ? 0
+        : performanceRecapBreakdownMs + performanceRecapLeaderboardMs + performanceRecapNextUpMs;
     const {
         activeBracket,
         bracketCrowdVotingEnabled,
@@ -4346,6 +4436,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [localFilter, setLocalFilter] = useState('');
     const [roomUploadBytes, setRoomUploadBytes] = useState(0);
     const localUploadsRef = useRef([]);
+    const ytIndexRefreshAttemptRef = useRef({ key: '', atMs: 0 });
     const [showSettings, setShowSettings] = useState(true);
     const [settingsTab, setSettingsTab] = useState('general');
     const [activeWorkspaceView, setActiveWorkspaceView] = useState('ops');
@@ -4649,12 +4740,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setYtCurateLoading(true);
             setYtCurateStatus('');
             try {
-                const data = await callFunction('youtubeSearch', {
+                const data = await searchYouTubeCatalog({
                     query: `${query} karaoke`,
                     maxResults: 8,
                     playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
-                    usageContext: { source: 'host_youtube_curate_search' }
+                    usageSource: 'host_youtube_curate_search',
+                    usageSurface: 'host',
                 });
                 if (canceled) return;
                 const items = (data?.items || [])
@@ -4684,7 +4776,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 if (canceled) return;
                 hostLogger.error(error);
                 setYtCurateResults([]);
-                setYtCurateStatus('YouTube search failed. Try a different song + artist query.');
+                setYtCurateStatus(
+                    isYouTubeQuotaBlockedError(error)
+                        ? 'Live YouTube search is paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL.'
+                        : 'YouTube search failed. Try a different song + artist query.'
+                );
             } finally {
                 if (!canceled) setYtCurateLoading(false);
             }
@@ -4787,6 +4883,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [audienceShellVariant, setAudienceShellVariant] = useState('classic');
     const [audienceBrandTheme, setAudienceBrandTheme] = useState(() => normalizeAudienceBrandTheme({}));
     const [audienceFeatureAccess, setAudienceFeatureAccess] = useState(() => normalizeAudienceFeatureAccess({}));
+    const [audienceJoinPolicy, setAudienceJoinPolicy] = useState(() => normalizeAudienceJoinPolicy({}));
     const audienceBrandThemePresetMatch = useMemo(
         () => matchAudienceBrandThemePreset(audienceBrandTheme),
         [audienceBrandTheme]
@@ -5013,6 +5110,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         loading: false,
         error: ''
     });
+    const [opsStripNowMs, setOpsStripNowMs] = useState(() => nowMs());
+    const [youtubeSearchTelemetry, setYouTubeSearchTelemetry] = useState(() => getYouTubeSearchTelemetrySnapshot());
+    const [appleSearchTelemetry, setAppleSearchTelemetry] = useState(() => getAppleSearchTelemetrySnapshot());
+    const [aiGenerationTelemetry, setAiGenerationTelemetry] = useState(() => getAiGenerationTelemetrySnapshot());
     const [selectedUsagePeriod, setSelectedUsagePeriod] = useState(getCurrentUsagePeriodKey());
     const [invoiceDraft, setInvoiceDraft] = useState(null);
     const [invoiceDraftLoading, setInvoiceDraftLoading] = useState(false);
@@ -5211,8 +5312,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [usageSummary?.meters]);
     const usagePeriodOptions = useMemo(() => buildRecentUsagePeriods(12), []);
     const aiUsageMeter = useMemo(() => usageSummary?.meters?.ai_generate_content || null, [usageSummary?.meters]);
+    const youtubeUsageMeter = useMemo(() => usageSummary?.meters?.youtube_data_request || null, [usageSummary?.meters]);
+    const youtubeUsageBreakdowns = useMemo(() => youtubeUsageMeter?.breakdowns || {}, [youtubeUsageMeter]);
     const usageHardLimitHits = useMemo(() => {
         return usageMeters.filter(meter => !!meter?.hardLimitReached);
+    }, [usageMeters]);
+    const usageAttributionMeters = useMemo(() => {
+        return usageMeters.filter((meter) => {
+            const breakdowns = meter?.breakdowns || {};
+            return ['topSurfaces', 'topSources', 'topActors', 'topRooms']
+                .some((key) => Array.isArray(breakdowns?.[key]) && breakdowns[key].length > 0);
+        });
     }, [usageMeters]);
     const usagePeriodLabel = useMemo(() => {
         const key = String(usageSummary?.period || '');
@@ -5221,6 +5331,172 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const monthIndex = Number(key.slice(4, 6)) - 1;
         return new Date(Date.UTC(year, monthIndex, 1)).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     }, [usageSummary?.period]);
+    useEffect(() => {
+        const intervalId = window.setInterval(() => {
+            setOpsStripNowMs(nowMs());
+        }, 15000);
+        return () => window.clearInterval(intervalId);
+    }, []);
+    useEffect(() => subscribeToYouTubeSearchTelemetry(setYouTubeSearchTelemetry), []);
+    useEffect(() => subscribeToAppleSearchTelemetry(setAppleSearchTelemetry), []);
+    useEffect(() => subscribeToAiGenerationTelemetry(setAiGenerationTelemetry), []);
+    const hostOpsStatus = useMemo(() => {
+        const youtubeQuotaBlockedUntilMs = Number(getYouTubeQuotaBlockedUntilMs() || 0);
+        const youtubeQuotaPaused = youtubeQuotaBlockedUntilMs > opsStripNowMs;
+        const youtubeRatio = getMeterUsageRatio(youtubeUsageMeter);
+        const aiRatio = getMeterUsageRatio(aiUsageMeter);
+        const recentSearches = Number(youtubeSearchTelemetry?.recentSearches || 0);
+        const recentCachePct = Number(youtubeSearchTelemetry?.cacheHitPct || 0);
+        const recentLiveSharePct = Number(youtubeSearchTelemetry?.liveSharePct || 0);
+        const recentAppleSearches = Number(appleSearchTelemetry?.recentSearches || 0);
+        const recentAppleFailurePct = Number(appleSearchTelemetry?.failurePct || 0);
+        const recentAiGenerations = Number(aiGenerationTelemetry?.recentGenerations || 0);
+        const recentAiFailurePct = Number(aiGenerationTelemetry?.failurePct || 0);
+
+        let youtubeState = 'Healthy';
+        let youtubeToneClass = 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100';
+        let youtubeActive = true;
+        let youtubeTitle = 'Live YouTube search is available.';
+        if (youtubeQuotaPaused) {
+            youtubeState = 'Paused';
+            youtubeToneClass = 'border-rose-400/25 bg-rose-500/10 text-rose-100';
+            youtubeActive = false;
+            youtubeTitle = `Live YouTube search is paused for about ${formatOpsCountdown(youtubeQuotaBlockedUntilMs, opsStripNowMs)} while quota recovers.`;
+        } else if (youtubeUsageMeter?.hardLimitReached) {
+            youtubeState = 'Capped';
+            youtubeToneClass = 'border-rose-400/25 bg-rose-500/10 text-rose-100';
+            youtubeActive = false;
+            youtubeTitle = 'Workspace YouTube usage hit the configured hard limit for this billing period.';
+        } else if (usageSummary?.loading) {
+            youtubeState = 'Syncing';
+            youtubeToneClass = 'border-sky-400/25 bg-sky-500/10 text-sky-100';
+            youtubeTitle = 'Refreshing workspace YouTube usage and search health.';
+        } else if (youtubeRatio >= 0.85) {
+            youtubeState = 'Watch';
+            youtubeToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            youtubeTitle = `${Number(youtubeUsageMeter?.used || 0).toLocaleString()} YouTube API requests recorded this billing period.`;
+        }
+
+        let appleState = appleMusicAuthorized ? 'Connected' : 'Offline';
+        let appleToneClass = appleMusicAuthorized
+            ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100'
+            : 'border-zinc-700 bg-zinc-900/70 text-zinc-300';
+        let appleActive = !!appleMusicAuthorized;
+        let appleTitle = appleMusicAuthorized ? 'Apple Music is connected for host playback and catalog lookups.' : 'Apple Music is not connected on this host session.';
+        let appleDetail = recentAppleSearches > 0
+            ? `${recentAppleSearches} recent Apple searches, ${recentAppleFailurePct}% failure rate`
+            : 'No recent Apple searches yet.';
+        if (appleMusicAuthorized && recentAppleSearches > 0 && recentAppleFailurePct >= 40) {
+            appleState = 'Degraded';
+            appleToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            appleTitle = 'Apple catalog lookups are returning more failures than normal in this session.';
+        }
+
+        let searchState = 'Ready';
+        let searchToneClass = 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100';
+        let searchActive = true;
+        let searchTitle = 'Search can fall back between client cache, durable cache, and live YouTube.';
+        if (youtubeQuotaPaused) {
+            searchState = 'Fallback';
+            searchToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            searchTitle = 'Live YouTube search is paused, so indexed and cached search results are carrying the load.';
+        } else if (usageSummary?.loading) {
+            searchState = 'Warm';
+            searchToneClass = 'border-sky-400/25 bg-sky-500/10 text-sky-100';
+            searchTitle = 'Usage status is refreshing while caches stay available.';
+        } else if (recentSearches > 0 && recentCachePct >= 70) {
+            searchState = 'Cache Lead';
+            searchTitle = `${recentCachePct}% of recent YouTube searches were served from cache over the last ${youtubeSearchTelemetry?.windowLabel || '15m'}.`;
+        } else if (recentSearches > 0 && recentLiveSharePct >= 50) {
+            searchState = 'Live Heavy';
+            searchToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            searchTitle = `${recentLiveSharePct}% of recent YouTube searches needed live API calls over the last ${youtubeSearchTelemetry?.windowLabel || '15m'}.`;
+        } else if (Number(youtubeUsageMeter?.used || 0) > 0) {
+            searchState = 'Cache+Live';
+            searchTitle = 'Search is using the browser cache, server cache, and live YouTube when needed.';
+        }
+
+        let aiState = canUseAiTools ? 'Normal' : 'Locked';
+        let aiToneClass = canUseAiTools
+            ? 'border-cyan-400/25 bg-cyan-500/10 text-cyan-100'
+            : 'border-zinc-700 bg-zinc-900/70 text-zinc-300';
+        let aiActive = !!canUseAiTools;
+        let aiTitle = canUseAiTools ? 'AI tools are available in this workspace.' : 'AI tools are currently locked for this workspace.';
+        let aiDetail = recentAiGenerations > 0
+            ? `${recentAiGenerations} recent generations, ${recentAiFailurePct}% failure rate`
+            : 'No recent AI generations yet.';
+        if (canUseAiTools && aiUsageMeter?.hardLimitReached) {
+            aiState = 'Blocked';
+            aiToneClass = 'border-rose-400/25 bg-rose-500/10 text-rose-100';
+            aiActive = false;
+            aiTitle = 'AI usage hit the configured hard limit for this billing period.';
+        } else if (canUseAiTools && usageSummary?.loading) {
+            aiState = 'Syncing';
+            aiToneClass = 'border-sky-400/25 bg-sky-500/10 text-sky-100';
+            aiTitle = 'Refreshing workspace AI usage.';
+        } else if (canUseAiTools && aiRatio >= 0.85) {
+            aiState = 'Watch';
+            aiToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            aiTitle = `${Number(aiUsageMeter?.used || 0).toLocaleString()} AI calls used this billing period.`;
+        } else if (canUseAiTools && recentAiGenerations > 0 && recentAiFailurePct >= 30) {
+            aiState = 'Degraded';
+            aiToneClass = 'border-amber-400/25 bg-amber-500/10 text-amber-100';
+            aiTitle = 'AI generation is seeing elevated failure rates in this session.';
+        }
+
+        return {
+            items: [
+                {
+                    key: 'youtube',
+                    label: 'YouTube',
+                    state: youtubeState,
+                    iconClass: 'fa-brands fa-youtube',
+                    toneClass: youtubeToneClass,
+                    active: youtubeActive,
+                    title: youtubeTitle,
+                },
+                {
+                    key: 'apple',
+                    label: 'Apple',
+                    state: appleState,
+                    iconClass: 'fa-brands fa-apple',
+                    toneClass: appleToneClass,
+                    active: appleActive,
+                    title: appleTitle,
+                    detail: appleDetail,
+                },
+                {
+                    key: 'search',
+                    label: 'Search',
+                    state: searchState,
+                    iconClass: 'fa-solid fa-magnifying-glass',
+                    toneClass: searchToneClass,
+                    active: searchActive,
+                    title: searchTitle,
+                    detail: recentSearches > 0
+                        ? `${recentCachePct}% cache hit, ${recentLiveSharePct}% live over ${youtubeSearchTelemetry?.windowLabel || '15m'}`
+                        : 'No recent YouTube searches yet.',
+                },
+                {
+                    key: 'ai',
+                    label: 'AI',
+                    state: aiState,
+                    iconClass: 'fa-solid fa-robot',
+                    toneClass: aiToneClass,
+                    active: aiActive,
+                    title: aiTitle,
+                    detail: aiDetail,
+                }
+            ],
+            summary: youtubeQuotaPaused
+                ? `YouTube cooldown active for about ${formatOpsCountdown(youtubeQuotaBlockedUntilMs, opsStripNowMs)}.`
+                : recentSearches > 0
+                    ? `${recentCachePct}% cache hit across ${recentSearches} YouTube searches in the last ${youtubeSearchTelemetry?.windowLabel || '15m'}.`
+                : usageSummary?.loading
+                    ? 'Usage status refreshing.'
+                    : 'Workspace ops look stable.',
+        };
+    }, [aiGenerationTelemetry, aiUsageMeter, appleMusicAuthorized, appleSearchTelemetry, canUseAiTools, opsStripNowMs, usageSummary?.loading, youtubeSearchTelemetry, youtubeUsageMeter]);
     const logoChoices = useMemo(() => {
         const merged = [...DEFAULT_LOGO_PRESETS];
         (logoLibrary || []).forEach((url, idx) => {
@@ -5393,12 +5669,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             let liveYouTubeMatches = [];
             if (shouldUseYouTubeFallback) {
                 try {
-                    const ytFallbackData = await callFunction('youtubeSearch', {
+                    const ytFallbackData = await searchYouTubeCatalog({
                         query: `${normalizedQuery} karaoke`,
                         maxResults: 8,
                         playableOnly: hideNonEmbeddableYouTube === true,
                         roomCode,
-                        usageContext: { source: 'host_catalog_search_youtube_fallback' }
+                        usageSource: 'host_catalog_search_youtube_fallback',
+                        usageSurface: 'host',
                     });
                     liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
                         reason: 'apple_missing',
@@ -5414,11 +5691,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     setCatalogueResults(fallbackResults);
                     return;
                 }
-                const data = await callFunction('itunesSearch', {
+                const data = await searchAppleCatalog({
                     term: normalizedQuery,
                     limit: 5,
                     roomCode,
-                    usageContext: { source: 'host_catalog_search_apple' }
+                    usageSource: 'host_catalog_search_apple'
                 });
                 const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
                     sourceReason: 'apple_authorized',
@@ -5491,6 +5768,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const isRunOfShowRoom = runOfShowEnabled && programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
     const runOfShowAutomationEnabled = isRunOfShowRoom && (runOfShowPolicy?.defaultAutomationMode || 'auto') !== 'manual';
     const runOfShowLiveItem = useMemo(() => getRunOfShowLiveItem(runOfShowDirector), [runOfShowDirector]);
+    const runOfShowReleaseWindowPending = useMemo(() => {
+        const releaseWindow = runOfShowDirector?.releaseWindow || {};
+        if (releaseWindow?.active === true) return true;
+        return releaseWindow?.queuedForPostPerformance === true && Number(releaseWindow?.resolvedAtMs || 0) <= 0;
+    }, [runOfShowDirector]);
     const runOfShowStagedItem = useMemo(() => getRunOfShowStagedItem(runOfShowDirector), [runOfShowDirector]);
     const runOfShowNextItem = useMemo(() => getNextRunOfShowItem(runOfShowDirector), [runOfShowDirector]);
     const crowdPulse = useMemo(() => getCrowdPulseSnapshot({
@@ -6056,26 +6338,38 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ? String(options?.releasePolicy || targetItem?.releasePolicy || '').trim().toLowerCase()
             : 'suggest_then_host_confirm';
         const openedAtMs = nowMs();
-        const closesAtMs = openedAtMs + (Math.max(10, Math.min(45, Number(options?.durationSec || 20))) * 1000);
+        const durationSec = Math.max(10, Math.min(45, Number(options?.durationSec || 20) || 20));
+        const closesAtMs = openedAtMs + (durationSec * 1000);
+        const performanceActive = (songsRef.current || []).some((song) => String(song?.status || '').trim().toLowerCase() === 'performing');
         const nextDirector = normalizeRunOfShowDirector({
             ...director,
             releaseWindow: {
-                active: true,
+                active: !performanceActive,
                 itemId,
                 itemTitle: targetItem.title || getRunOfShowItemLabel(targetItem.type),
+                subjectType: String(options?.subjectType || targetItem?.subjectType || '').trim().toLowerCase() || 'run_of_show_release',
                 governanceMode,
                 releasePolicy,
                 prompt: String(options?.prompt || getRunOfShowReleaseWindowPrompt(targetItem)).trim(),
-                openedAtMs,
-                closesAtMs,
+                durationSec,
+                queuedForPostPerformance: performanceActive,
+                deferredAtMs: performanceActive ? openedAtMs : 0,
+                openedAtMs: performanceActive ? 0 : openedAtMs,
+                closesAtMs: performanceActive ? 0 : closesAtMs,
+                choiceLabels: options?.choiceLabels && typeof options.choiceLabels === 'object' ? options.choiceLabels : (targetItem?.choiceLabels || {}),
+                choiceDetails: options?.choiceDetails && typeof options.choiceDetails === 'object' ? options.choiceDetails : (targetItem?.choiceDetails || {}),
+                choiceSongIds: options?.choiceSongIds && typeof options.choiceSongIds === 'object' ? options.choiceSongIds : (targetItem?.choiceSongIds || {}),
                 votesByUid: {},
                 resultChoice: '',
                 resolvedAtMs: 0
             }
         });
-        trackEvent('run_of_show_release_window_opened', { roomCode, itemId, governanceMode, releasePolicy });
+        trackEvent(performanceActive ? 'run_of_show_release_window_deferred' : 'run_of_show_release_window_opened', { roomCode, itemId, governanceMode, releasePolicy });
+        if (performanceActive) {
+            toast('Vote queued for after this performance.');
+        }
         return persistRunOfShowDirector(nextDirector);
-    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, roomCode]);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, roomCode, toast]);
     const closeRunOfShowReleaseWindow = useCallback(async (options = {}) => {
         const director = getCurrentRunOfShowDirector();
         const currentWindow = director?.releaseWindow || null;
@@ -6085,12 +6379,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             releaseWindow: {
                 ...(currentWindow || {}),
                 active: false,
+                queuedForPostPerformance: false,
+                deferredAtMs: 0,
                 resultChoice: String(options?.resultChoice || currentWindow?.resultChoice || '').trim().toLowerCase(),
                 resolvedAtMs: nowMs()
             }
         });
         return persistRunOfShowDirector(nextDirector);
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
+    const activateQueuedRunOfShowReleaseWindow = useCallback(async (options = {}) => {
+        const director = getCurrentRunOfShowDirector();
+        const currentWindow = director?.releaseWindow || null;
+        if (!currentWindow || currentWindow.active || currentWindow.queuedForPostPerformance !== true || Number(currentWindow.resolvedAtMs || 0) > 0) {
+            return director;
+        }
+        const activatedAtMs = nowMs();
+        const durationSec = Math.max(10, Math.min(45, Number(currentWindow?.durationSec || 20) || 20));
+        const nextDirector = normalizeRunOfShowDirector({
+            ...director,
+            releaseWindow: {
+                ...(currentWindow || {}),
+                active: true,
+                queuedForPostPerformance: false,
+                deferredAtMs: 0,
+                openedAtMs: activatedAtMs,
+                closesAtMs: activatedAtMs + (durationSec * 1000),
+                votesByUid: {},
+                resultChoice: '',
+                resolvedAtMs: 0
+            }
+        });
+        trackEvent('run_of_show_release_window_opened', {
+            roomCode,
+            itemId: currentWindow?.itemId || '',
+            governanceMode: currentWindow?.governanceMode || '',
+            releasePolicy: currentWindow?.releasePolicy || '',
+            activationSource: String(options?.activationSource || 'post_performance').trim().toLowerCase() || 'post_performance'
+        });
+        return persistRunOfShowDirector(nextDirector);
+    }, [getCurrentRunOfShowDirector, persistRunOfShowDirector, roomCode]);
     const prepareRunOfShowItem = useCallback(async (itemId, options = {}) => {
         const director = getCurrentRunOfShowDirector();
         const targetItem = director.items.find((item) => item.id === itemId);
@@ -8489,6 +8816,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setAudienceShellVariant(String(room?.audienceShellVariant || '').trim().toLowerCase() === 'streamlined' ? 'streamlined' : 'classic');
         setAudienceBrandTheme(normalizeAudienceBrandTheme(room?.audienceBrandTheme || {}));
         setAudienceFeatureAccess(normalizeAudienceFeatureAccess(room?.audienceFeatureAccess || {}));
+        setAudienceJoinPolicy(normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {}));
         const normalizedProgramMode = normalizeRunOfShowProgramMode(room?.programMode);
         const normalizedRunOfShowEnabled = room?.runOfShowEnabled === true || normalizedProgramMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow;
         const normalizedDirector = normalizeRunOfShowDirector(room?.runOfShowDirector || {});
@@ -8781,6 +9109,36 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowLiveItem
     ]);
     useEffect(() => {
+        const releaseWindow = runOfShowDirector?.releaseWindow || {};
+        if (releaseWindow?.active || releaseWindow?.queuedForPostPerformance !== true || Number(releaseWindow?.resolvedAtMs || 0) > 0) return undefined;
+        const timer = setInterval(() => {
+            const latestDirector = normalizeRunOfShowDirector(roomRef.current?.runOfShowDirector || {});
+            const latestReleaseWindow = latestDirector?.releaseWindow || {};
+            if (latestReleaseWindow?.active || latestReleaseWindow?.queuedForPostPerformance !== true || Number(latestReleaseWindow?.resolvedAtMs || 0) > 0) return;
+            const latestRoom = roomRef.current || {};
+            const latestSongs = songsRef.current || [];
+            const lastPerformanceTs = getTimestampMs(latestRoom?.lastPerformance?.timestamp);
+            const deferredAtMs = Number(latestReleaseWindow?.deferredAtMs || 0);
+            if (!lastPerformanceTs || !deferredAtMs || lastPerformanceTs <= deferredAtMs) return;
+            if (latestSongs.some((song) => String(song?.status || '').trim().toLowerCase() === 'performing')) return;
+            const activeMode = String(latestRoom?.activeMode || '').trim().toLowerCase();
+            const activeScreen = String(latestRoom?.activeScreen || '').trim().toLowerCase();
+            if (activeMode && activeMode !== 'karaoke') return;
+            if (activeScreen && activeScreen !== 'stage') return;
+            if (latestRoom?.announcement?.active || latestRoom?.readyCheck?.active || latestRoom?.howToPlay?.active) return;
+            const activationReadyAtMs = lastPerformanceTs + performanceRecapTotalMs;
+            if (Date.now() < activationReadyAtMs) return;
+            const activationKey = `${latestReleaseWindow.itemId || 'release_window'}:${lastPerformanceTs}:${activationReadyAtMs}`;
+            if (deferredReleaseWindowActivationKeyRef.current === activationKey) return;
+            deferredReleaseWindowActivationKeyRef.current = activationKey;
+            activateQueuedRunOfShowReleaseWindow({ activationSource: 'post_performance' }).catch((error) => {
+                deferredReleaseWindowActivationKeyRef.current = '';
+                hostLogger.warn('Queued run-of-show release window activation failed', error);
+            });
+        }, 500);
+        return () => clearInterval(timer);
+    }, [activateQueuedRunOfShowReleaseWindow, performanceRecapTotalMs, runOfShowDirector]);
+    useEffect(() => {
         if (room?.autoLyricsOnQueue === undefined || room?.autoLyricsOnQueue === null) return;
         setAutoLyricsOnQueue(!!room.autoLyricsOnQueue);
     }, [roomCode, room?.autoLyricsOnQueue]);
@@ -8920,6 +9278,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const startNextFromQueue = useCallback(async () => {
         const activeRoom = roomRef.current;
         const list = songsRef.current || [];
+        if (runOfShowReleaseWindowPending) return;
         const flow = getRoomFlowSnapshot({
             roomCode,
             room: activeRoom,
@@ -8957,7 +9316,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updateRoom,
             logActivity
         });
-    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowStagedItem, stopAppleMusic, updateRoom]);
+    }, [appleMusicAuthorized, autoDj, holdAutoBgDuringStageActivation, isAudioUrl, logActivity, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, runOfShowLiveItem, runOfShowNextItem, runOfShowPendingCountsById, runOfShowPolicy, runOfShowReleaseWindowPending, runOfShowStagedItem, stopAppleMusic, updateRoom]);
     useEffect(() => {
         if (autoDjTimerRef.current) {
             clearTimeout(autoDjTimerRef.current);
@@ -8988,6 +9347,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const intent = flow.autoDjIntent;
 
         if (!autoDjEnabled) {
+            autoDjKickoffRef.current = '';
+            setAutoDjCountdown(0);
+            return () => {};
+        }
+
+        if (runOfShowReleaseWindowPending) {
             autoDjKickoffRef.current = '';
             setAutoDjCountdown(0);
             return () => {};
@@ -9064,6 +9429,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowNextItem,
         runOfShowPendingCountsById,
         runOfShowPolicy,
+        runOfShowReleaseWindowPending,
         runOfShowStagedItem,
         startNextFromQueue
     ]);
@@ -10037,7 +10403,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setQuickStartChecklistRoomCode('');
     }, []);
 
-    const purgeRoomArtifactsForCode = async (targetRoomCode = '') => {
+    const purgeRoomArtifactsForCode = async (targetRoomCode = '', { deleteHostLibrary = false } = {}) => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
         if (!normalizedCode) return;
         const collections = [
@@ -10059,6 +10425,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             () => removeHostRoomDiscoveryListing(normalizedCode),
             { scope: 'removeHostRoomDiscoveryListing' }
         );
+        if (deleteHostLibrary) {
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', normalizedCode)).catch(() => {});
+        }
     };
     const clearRoomDataForCode = async (targetRoomCode = '') => {
         const normalizedCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -10258,7 +10627,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 () => assertRoomHostAccess(normalizedCode),
                 { scope: 'assertRoomHostAccess' }
             );
-            await purgeRoomArtifactsForCode(normalizedCode);
+            await purgeRoomArtifactsForCode(normalizedCode, { deleteHostLibrary: true });
             await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', normalizedCode));
             toast(`Room ${normalizedCode} permanently deleted.`);
         } catch (error) {
@@ -10926,6 +11295,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [autoCrowdMomentsEnabled, room, autoDj, updateRoom]);
     useEffect(() => {
         if (!roomCode || !room?.autoDj) return;
+        if (runOfShowReleaseWindowPending) return;
         const lastPerformanceTs = getTimestampMs(room?.lastPerformance?.timestamp);
         if (!lastPerformanceTs) return;
         if (lastPartyAutoBreakTsRef.current === lastPerformanceTs) return;
@@ -11007,6 +11377,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         room?.programMode,
         room?.readyCheck?.active,
         room?.runOfShowEnabled,
+        runOfShowReleaseWindowPending,
         queuedCount,
         performingCount,
         runOfShowLiveItem,
@@ -11149,6 +11520,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 requestMode: payload.requestMode,
                 allowSingerTrackSelect: payload.allowSingerTrackSelect,
             }));
+            setAudienceJoinPolicy(normalizeAudienceJoinPolicy(payload.audienceJoinPolicy || {}));
             setMarqueeEnabled(!!payload.marqueeEnabled);
             setMarqueeShowMode(payload.marqueeShowMode || 'always');
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
@@ -11271,6 +11643,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
                     audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
                     audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
+                    audienceJoinPolicy: normalizeAudienceJoinPolicy(audienceJoinPolicy),
                     chatShowOnTv: !!chatShowOnTv,
                     chatTvMode: chatTvMode || 'auto',
                     marqueeEnabled: !!marqueeEnabled,
@@ -11332,9 +11705,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const persistYtIndex = useCallback(async (next) => {
-        setYtIndex(next);
+        const sanitized = (Array.isArray(next) ? next : [])
+            .map((entry) => normalizeYtIndexEntry(entry))
+            .filter((entry) => entry && !isYtIndexEntryExpired(entry));
+        setYtIndex(sanitized);
         if (!roomCode) return;
-        await setDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), { ytIndex: next }, { merge: true });
+        await setDoc(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode),
+            { ytIndex: sanitized, updatedAt: serverTimestamp() },
+            { merge: true }
+        );
     }, [roomCode]);
 
     const upsertYtIndexEntries = useCallback(async (entries = [], statusMessage = '') => {
@@ -11366,6 +11746,55 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return next;
     }, [hostName, persistYtIndex, ytIndex]);
     upsertYtIndexEntriesRef.current = upsertYtIndexEntries;
+
+    const refreshRoomYouTubeIndexEntries = useCallback(async (entries = ytIndex) => {
+        const currentEntries = (Array.isArray(entries) ? entries : [])
+            .map((entry) => normalizeYtIndexEntry(entry))
+            .filter(Boolean);
+        const refreshIds = [...new Set(
+            currentEntries
+                .filter((entry) => shouldRefreshYtIndexEntry(entry))
+                .map((entry) => String(entry?.videoId || '').trim())
+                .filter(Boolean)
+        )];
+        if (!roomCode || !refreshIds.length) return currentEntries;
+
+        const data = await callFunction('youtubeRefreshIndexEntries', {
+            ids: refreshIds,
+            roomCode,
+            usageContext: { source: 'host_room_youtube_index_refresh' }
+        });
+        const refreshedItems = Array.isArray(data?.items) ? data.items : [];
+        const refreshedAtMs = nowMs();
+        const refreshedById = new Map(refreshedItems.map((item) => [String(item?.id || '').trim(), item]).filter(([id]) => !!id));
+        const nextEntries = currentEntries
+            .map((entry) => {
+                const videoId = String(entry?.videoId || '').trim();
+                if (!videoId || !refreshIds.includes(videoId)) return entry;
+                const refreshed = refreshedById.get(videoId);
+                if (!refreshed) return null;
+                const playbackState = normalizeYouTubePlaybackState(refreshed);
+                if (!playbackState.uploadReady || !playbackState.allowedPrivacy) return null;
+                return normalizeYtIndexEntry(entry, {
+                    trackName: refreshed.title || entry.trackName,
+                    artistName: refreshed.channelTitle || entry.artistName,
+                    artworkUrl100: refreshed.thumbnails?.medium?.url || refreshed.thumbnails?.default?.url || entry.artworkUrl100,
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    playable: playbackState.playable,
+                    embeddable: playbackState.embeddable,
+                    uploadStatus: playbackState.uploadStatus,
+                    privacyStatus: playbackState.privacyStatus,
+                    youtubePlaybackStatus: playbackState.youtubePlaybackStatus,
+                    backingAudioOnly: playbackState.backingAudioOnly,
+                    lastValidatedAtMs: refreshedAtMs,
+                    expiresAtMs: refreshedAtMs + YT_INDEX_RETENTION_MS
+                });
+            })
+            .filter((entry) => entry && !isYtIndexEntryExpired(entry, refreshedAtMs));
+        if (JSON.stringify(nextEntries) === JSON.stringify(currentEntries)) return nextEntries;
+        await persistYtIndex(nextEntries);
+        return nextEntries;
+    }, [persistYtIndex, roomCode, ytIndex]);
 
     const successfulYoutubePerformanceKeyRef = useRef('');
     useEffect(() => {
@@ -11574,7 +12003,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!roomCode || isMarketingDemoFixture) return;
         const unsub = onSnapshot(doc(db, 'artifacts', APP_ID, 'public', 'data', 'host_libraries', roomCode), s => {
             const data = s.data() || {};
-            if (Array.isArray(data.ytIndex)) setYtIndex(data.ytIndex);
+            if (Array.isArray(data.ytIndex)) {
+                setYtIndex(data.ytIndex.map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean));
+            } else {
+                setYtIndex([]);
+            }
             if (Array.isArray(data.logoLibrary)) {
                 setLogoLibrary(data.logoLibrary
                     .filter(url => typeof url === 'string')
@@ -11594,6 +12027,26 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return () => unsub();
     }, [isMarketingDemoFixture, roomCode]);
+
+    useEffect(() => {
+        if (!roomCode || isMarketingDemoFixture || !Array.isArray(ytIndex) || ytIndex.length === 0) return;
+        const refreshCandidates = ytIndex.filter((entry) => shouldRefreshYtIndexEntry(entry));
+        if (!refreshCandidates.length) return;
+        const refreshIds = [...new Set(refreshCandidates.map((entry) => String(entry?.videoId || '').trim()).filter(Boolean))];
+        if (!refreshIds.length) return;
+        const refreshKey = `${roomCode}:${refreshIds.join(',')}`;
+        const now = nowMs();
+        if (
+            ytIndexRefreshAttemptRef.current.key === refreshKey
+            && (now - Number(ytIndexRefreshAttemptRef.current.atMs || 0)) < YT_INDEX_REFRESH_RETRY_MS
+        ) {
+            return;
+        }
+        ytIndexRefreshAttemptRef.current = { key: refreshKey, atMs: now };
+        void refreshRoomYouTubeIndexEntries(ytIndex).catch((error) => {
+            hostLogger.warn('YouTube room index refresh failed', error);
+        });
+    }, [isMarketingDemoFixture, refreshRoomYouTubeIndexEntries, roomCode, ytIndex]);
 
     const deleteRoomCollection = async (collectionName, targetRoomCode = roomCode) => {
         const nextRoomCode = String(targetRoomCode || '').trim().toUpperCase();
@@ -11710,6 +12163,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     function normalizeYtIndexEntry(entry = {}, overrides = {}) {
         const videoId = String(overrides.videoId || entry.videoId || entry.id || '').trim();
         if (!videoId) return null;
+        const normalizedCuratedAtMs = Math.max(0, Number(overrides.curatedAtMs ?? entry.curatedAtMs ?? nowMs()) || nowMs());
+        const lastValidatedAtMs = resolveYtIndexLastValidatedAtMs(entry, overrides, normalizedCuratedAtMs);
+        const expiresAtMs = resolveYtIndexExpiresAtMs(entry, overrides, lastValidatedAtMs);
         const baseTitle = String(overrides.trackName || overrides.title || entry.trackName || entry.title || 'YouTube Track').trim() || 'YouTube Track';
         const baseArtist = String(overrides.artistName || overrides.channel || overrides.channelTitle || entry.artistName || entry.channel || entry.channelTitle || 'YouTube').trim() || 'YouTube';
         const artworkUrl100 = String(overrides.artworkUrl100 || overrides.thumbnail || entry.artworkUrl100 || entry.thumbnail || '').trim();
@@ -11747,7 +12203,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             usageCount,
             successCount,
             failureCount,
-            curatedAtMs: Math.max(0, Number(overrides.curatedAtMs ?? entry.curatedAtMs ?? nowMs()) || nowMs()),
+            curatedAtMs: normalizedCuratedAtMs,
+            lastValidatedAtMs,
+            expiresAtMs,
             addedBy: String(overrides.addedBy || entry.addedBy || 'Host').trim() || 'Host'
         };
     }
@@ -11933,12 +12391,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 };
             } else {
                 const query = `${title} ${artist}`.trim();
-                const data = await callFunction('youtubeSearch', {
+                const data = await searchYouTubeCatalog({
                     query: `${query} karaoke`,
                     maxResults: 1,
                     playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
-                    usageContext: { source: 'host_manual_track_lookup_youtube' }
+                    usageSource: 'host_manual_track_lookup_youtube',
+                    usageSurface: 'host',
                 });
                 const first = (data?.items || [])[0];
                 if (!first) throw new Error(hideNonEmbeddableYouTube ? 'No embeddable results found' : 'No YouTube results found');
@@ -12897,29 +13356,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!ok) return;
         setClosingRoom(true);
         try {
-            const performed = songs.filter(s => s.status === 'performed');
-            const topPerformers = [...userStats.values()]
-                .sort((a, b) => b.performances - a.performances)
-                .slice(0, 5)
-                .map(u => ({ name: u.name, avatar: u.avatar, performances: u.performances, loudest: u.loudest }));
-            const topEmojis = [...userStats.values()]
-                .sort((a, b) => (b.totalEmojis || 0) - (a.totalEmojis || 0))
-                .slice(0, 5)
-                .map(u => ({ name: u.name, avatar: u.avatar, totalEmojis: u.totalEmojis || 0 }));
-            const loudestPerformance = performed.reduce((acc, s) => {
-                const score = s.applauseScore || 0;
-                if (!acc || score > acc.applauseScore) {
-                    return { singer: s.singerName, song: s.songTitle, applauseScore: score };
-                }
-                return acc;
-            }, null);
-            const photoSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode), where('type', '==', 'photo')));
-            const photos = photoSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const closedAtMs = nowMs();
+            const reactionSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode)));
+            const reactions = reactionSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             const crowdSelfieSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'crowd_selfie_submissions'), where('roomCode', '==', roomCode)));
-            const crowdSelfies = crowdSelfieSnap.docs
-                .map((d) => ({ id: d.id, ...d.data() }))
-                .filter((entry) => String(entry.status || '').trim().toLowerCase() === 'approved')
-                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            const crowdSelfies = crowdSelfieSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
             const tournament = (() => {
                 const roomSummary = room?.bracketLastSummary || null;
                 if (roomSummary?.summaryVersion) {
@@ -12937,23 +13378,48 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 icon: EMOJI.trophy || EMOJI.star,
                 text: moment.text || 'Tournament moment',
                 user: tournament?.championName || 'Tournament',
-                timestamp: moment?.at || nowMs()
-            }));
-            const recap = {
+                    timestamp: moment?.at || nowMs()
+                }));
+            const recap = buildRoomRecapSummary({
                 roomCode,
-                generatedAt: nowMs(),
-                totalSongs: performed.length,
-                totalUsers: users.length,
-                topPerformers,
-                topEmojis,
-                loudestPerformance,
-                photos: photos.slice(0, 24),
-                crowdSelfies: crowdSelfies.slice(0, 24),
-                tournament,
-                highlights: [...tournamentMoments, ...(activities || []).slice(0, 20)].slice(0, 30)
-            };
-            await updateRoom({ closedAt: nowMs(), recap });
-            const recapUrl = `${audienceBase}?room=${roomCode}&mode=recap`;
+                room,
+                songs,
+                users,
+                reactions,
+                activities,
+                crowdSelfies,
+                generatedAtMs: closedAtMs,
+                source: 'room_close',
+                window: {
+                    endMs: closedAtMs,
+                    endUtc: new Date(closedAtMs).toISOString()
+                }
+            });
+            recap.tournament = tournament;
+            recap.highlights = [...tournamentMoments, ...(recap.highlights || [])].slice(0, 30);
+
+            const roomPatch = { closedAt: closedAtMs, recap };
+            const discoverListingId = String(room?.discover?.listingId || '').trim();
+            const recapUrl = audienceBase
+                ? `${audienceBase}?room=${encodeURIComponent(roomCode)}&mode=recap`
+                : buildRoomRecapUrl(roomCode, window.location.origin);
+            const recapSyncTasks = [updateRoom(roomPatch)];
+            if (discoverListingId) {
+                recapSyncTasks.push(
+                    updateDoc(doc(db, 'room_sessions', discoverListingId), {
+                        hostRecapCount: Math.max(1, Number(room?.discover?.hostRecapCount || 0) || 0),
+                        latestRecapAtMs: closedAtMs,
+                        latestRecapRoomCode: roomCode,
+                        latestRecapUrl: recapUrl,
+                        officialStatus: 'completed',
+                        officialStatusLabel: 'Recap Ready',
+                        updatedAt: new Date().toISOString()
+                    }).catch((syncError) => {
+                        hostLogger.warn('Failed to sync room-session recap metadata', syncError);
+                    })
+                );
+            }
+            await Promise.all(recapSyncTasks);
             await navigator.clipboard.writeText(recapUrl);
             toast('Room closed. Recap link copied.');
         } catch (e) {
@@ -13302,6 +13768,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 requestMode: presetSettings.requestMode,
                 allowSingerTrackSelect: presetSettings.allowSingerTrackSelect,
             }),
+            audienceJoinPolicy: normalizeAudienceJoinPolicy(presetSettings.audienceJoinPolicy || {}),
             marqueeEnabled: !!presetSettings.marqueeEnabled,
             marqueeShowMode: presetSettings.marqueeShowMode || 'always',
             chatShowOnTv: !!presetSettings.chatShowOnTv,
@@ -13995,11 +14462,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setTop100ArtLoading(prev => ({ ...prev, [artKey]: true }));
         try {
             const term = encodeURIComponent(`${song.title} ${song.artist}`);
-            const data = await callFunction('itunesSearch', {
+            const data = await searchAppleCatalog({
                 term: decodeURIComponent(term),
                 limit: 1,
                 roomCode,
-                usageContext: { source: 'host_top100_artwork' }
+                usageSource: 'host_top100_artwork'
             });
             const art = data?.results?.[0]?.artworkUrl100;
             if (art) {
@@ -14204,6 +14671,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             previousFillKey: deadAirAutoFillKeyRef.current,
             autoDjDelaySec: room?.autoDjDelaySec,
         });
+        if (runOfShowReleaseWindowPending) return () => {};
         if (!intent.shouldQueue) return () => {};
 
         deadAirAutoFillTimerRef.current = setTimeout(() => {
@@ -14257,6 +14725,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         runOfShowNextItem,
         runOfShowPendingCountsById,
         runOfShowPolicy,
+        runOfShowReleaseWindowPending,
         runOfShowStagedItem,
         songs
     ]);
@@ -16682,6 +17151,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         audienceShellVariant: audienceShellVariant === 'streamlined' ? 'streamlined' : 'classic',
         audienceBrandTheme: normalizeAudienceBrandTheme(audienceBrandTheme),
         audienceFeatureAccess: normalizeAudienceFeatureAccess(audienceFeatureAccess),
+        audienceJoinPolicy: normalizeAudienceJoinPolicy(audienceJoinPolicy),
         chatShowOnTv: !!chatShowOnTv,
         chatTvMode: chatTvMode || 'auto',
         marqueeEnabled: !!marqueeEnabled,
@@ -17101,6 +17571,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
+    const togglePostPerformanceBackingPromptQuick = async () => {
+        const next = !isPostPerformanceBackingPromptEnabled(room);
+        try {
+            await updateRoom({
+                hostUiPrefs: buildHostUiPrefsPatch(room, {
+                    postPerformanceBackingPromptEnabled: next,
+                }),
+            });
+            toast(next ? 'Post-song track checks on.' : 'Post-song track checks off.');
+        } catch (error) {
+            console.error('Failed to update post-performance track check prompt from host chrome', error);
+            toast('Could not update the track check prompt.');
+        }
+    };
+
     const setRequestModeQuick = async (nextValue = '') => {
         const previous = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
         const safeMode = normalizeRoomRequestMode(nextValue, nextValue === REQUEST_MODES.guestBackingOptional);
@@ -17160,6 +17645,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const quickRoomControls = {
         bouncerMode: !!room?.bouncerMode,
+        postPerformanceBackingPromptEnabled: isPostPerformanceBackingPromptEnabled(room),
         queueLimitMode,
         queueLimitCount: Math.max(0, Number(queueLimitCount || 0)),
         queueRotation,
@@ -17170,6 +17656,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
         requestModeOptions: REQUEST_MODE_OPTIONS,
         onToggleBouncerMode: toggleBouncerModeQuick,
+        onTogglePostPerformanceBackingPrompt: togglePostPerformanceBackingPromptQuick,
         onUpdateQueueSettings: updateQueueSettingsQuick,
         onSetRequestMode: setRequestModeQuick,
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
@@ -17622,6 +18109,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onToggleRunOfShowAutomationPause={toggleRunOfShowAutomationPause}
                     runOfShowFocusMode={tab === 'run_of_show'}
                     crowdPulse={crowdPulse}
+                    opsStatus={hostOpsStatus}
                     activeMomentFeedback={activeMomentFeedback}
                     scenePresets={scenePresets}
                     onLaunchScenePreset={launchScenePreset}
@@ -19196,13 +19684,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                       Show post-performance recap sequence on TV
                                   </label>
                                   <div className="host-form-helper">Turns the full post-song TV sequence on or off.</div>
-                                  <div className="host-form-helper">TV now uses one warm-up beat before the live applause meter opens.</div>
+                                  <div className="host-form-helper">Default warm-up is off, so TV can roll straight into the applause countdown.</div>
                               </div>
                               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Applause warm-up</div>
                                       <select
-                                          value={Math.max(0, Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? 5) || 5)))}
+                                          value={Math.max(0, Math.min(8, Math.round(Number(room?.applauseWarmupSec ?? 0) || 0)))}
                                           onChange={async (e) => { await updateRoom({ applauseWarmupSec: Number(e.target.value) }); }}
                                           className={STYLES.input}
                                       >
@@ -19210,7 +19698,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                               <option key={`admin-applause-warmup-${value}`} value={value}>{value}s</option>
                                           ))}
                                       </select>
-                                      <div className="host-form-helper">First warm-up beat before the live meter opens.</div>
+                                      <div className="host-form-helper">Extra warm-up before the applause countdown begins.</div>
                                   </label>
                                   <label className="space-y-2">
                                       <div className="text-sm uppercase tracking-widest text-zinc-400">Warm-up extension</div>
@@ -19409,6 +19897,32 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )}
                                 </div>
                             )}
+                            <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
+                                <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Audience join policy</div>
+                                <div className="host-form-helper mt-1">Decide whether guests can join with only a name and emoji or must continue with a BeauRocks account first.</div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setAudienceJoinPolicy((prev) => normalizeAudienceJoinPolicy({
+                                                ...prev,
+                                                accessMode: option.id,
+                                            }))}
+                                            className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
+                                                audienceJoinPolicy.accessMode === option.id
+                                                    ? 'bg-[#00C4D9]/20 text-[#00C4D9] border-[#00C4D9]/40'
+                                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="host-form-helper mt-2">
+                                    {(AUDIENCE_JOIN_ACCESS_OPTIONS.find((option) => option.id === audienceJoinPolicy.accessMode) || AUDIENCE_JOIN_ACCESS_OPTIONS[0]).description}
+                                </div>
+                            </div>
                             <div className="mt-3 rounded-2xl border border-white/10 bg-zinc-950/45 p-4">
                                 <div className="text-xs uppercase tracking-[0.22em] text-zinc-500">Guest song requests</div>
                                 <div className="host-form-helper mt-1">Choose how much freedom guests have when the room does not already know a good backing track.</div>
@@ -20485,7 +20999,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             />
                                         </div>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                                         <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
                                             <div className="text-xs uppercase tracking-widest text-zinc-500">Overage Estimate</div>
                                             <div className="text-white font-semibold mt-1">
@@ -20502,6 +21016,97 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                             <div className="text-xs text-zinc-400 mt-1">
                                                 Hard limit: {Number(aiUsageMeter?.hardLimit || 0).toLocaleString()}
+                                            </div>
+                                        </div>
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
+                                            <div className="text-xs uppercase tracking-widest text-zinc-500">YouTube Requests (Quick View)</div>
+                                            <div className="text-white font-semibold mt-1">
+                                                {Number(youtubeUsageMeter?.used || 0).toLocaleString()} / {Number(youtubeUsageMeter?.included || 0).toLocaleString()} included
+                                            </div>
+                                            <div className="text-xs text-zinc-400 mt-1">
+                                                Hard limit: {Number(youtubeUsageMeter?.hardLimit || 0).toLocaleString()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div data-feature-id="admin-live-ops-health" className="rounded-xl border border-cyan-300/20 bg-gradient-to-r from-cyan-500/8 via-zinc-950/82 to-emerald-500/8 p-3 space-y-3">
+                                        <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                                <div className="text-xs uppercase tracking-widest text-cyan-100/72">Live Ops Health</div>
+                                                <div className="mt-1 text-sm text-zinc-200">
+                                                    Current room alignment and workspace provider status in one place.
+                                                </div>
+                                            </div>
+                                            <div className="text-[11px] text-zinc-400">
+                                                {hostOpsStatus?.summary || 'Runtime health available.'}
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-3">
+                                            <div className={`rounded-xl border px-3 py-3 ${crowdPulse?.alignmentPanelClass || crowdPulse?.panelClass || 'border-white/10 bg-black/20'}`}>
+                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                    <div className="text-[10px] uppercase tracking-[0.2em] text-white/72">Room Alignment</div>
+                                                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulse?.alignmentChipClass || crowdPulse?.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                                        {crowdPulse?.alignmentLabel || 'Waiting On Phones'}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">With Host</div>
+                                                        <div className="mt-1 text-2xl font-black text-white">{crowdPulse?.metrics?.alignmentPct || 0}%</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">{crowdPulse?.alignmentSummary || 'No audience signal yet.'}</div>
+                                                    </div>
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Live Phones</div>
+                                                        <div className="mt-1 text-2xl font-black text-white">{crowdPulse?.metrics?.livePhoneCount || 0}</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">{crowdPulse?.metrics?.lobbyCount || 0} in lobby, {crowdPulse?.metrics?.livePhonePct || 0}% active now</div>
+                                                    </div>
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Action Cue</div>
+                                                        <div className="mt-1 text-sm font-semibold text-white">{crowdPulse?.hostDirective || crowdPulse?.recommendationTitle || 'Keep the room moving.'}</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">{crowdPulse?.alignmentDetail || crowdPulse?.recommendationDetail || 'No recommendation yet.'}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Workspace Status Lights</div>
+                                                <div className="mt-3 grid grid-cols-1 gap-2">
+                                                    {(hostOpsStatus?.items || []).map((item) => (
+                                                        <div key={`admin-ops-${item.key || item.label}`} className={`rounded-lg border px-3 py-2 ${item.toneClass || 'border-white/10 bg-black/25 text-zinc-100'}`}>
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="inline-flex items-center gap-2 min-w-0">
+                                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-white">
+                                                                        <i className={`${item.iconClass || 'fa-solid fa-circle'} text-[11px]`}></i>
+                                                                    </span>
+                                                                    <div className="min-w-0">
+                                                                        <div className="text-[10px] uppercase tracking-widest text-white/72">{item.label}</div>
+                                                                        <div className="truncate text-sm font-semibold text-white">{item.state}</div>
+                                                                    </div>
+                                                                </div>
+                                                                <span className={`h-2.5 w-2.5 rounded-full ${item.active === false ? 'bg-rose-300 shadow-[0_0_10px_rgba(252,165,165,0.65)]' : 'bg-emerald-300 shadow-[0_0_10px_rgba(110,231,183,0.65)]'}`}></span>
+                                                            </div>
+                                                            <div className="mt-2 text-xs text-zinc-300">{item.title || ''}</div>
+                                                            {item.detail ? (
+                                                                <div className="mt-1 text-[11px] text-zinc-400">{item.detail}</div>
+                                                            ) : null}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Recent Searches</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{Number(youtubeSearchTelemetry?.recentSearches || 0).toLocaleString()}</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">Last {youtubeSearchTelemetry?.windowLabel || '15m'}</div>
+                                                    </div>
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Cache Hit</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{Number(youtubeSearchTelemetry?.cacheHitPct || 0)}%</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">{Number(youtubeSearchTelemetry?.clientCacheHits || 0) + Number(youtubeSearchTelemetry?.serverCacheHits || 0)} cached searches</div>
+                                                    </div>
+                                                    <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2.5">
+                                                        <div className="text-[10px] uppercase tracking-widest text-zinc-500">Live Share</div>
+                                                        <div className="mt-1 text-lg font-black text-white">{Number(youtubeSearchTelemetry?.liveSharePct || 0)}%</div>
+                                                        <div className="mt-1 text-xs text-zinc-400">{Number(youtubeSearchTelemetry?.liveCalls || 0)} live API calls</div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -20547,6 +21152,107 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     <div className="text-[11px] text-zinc-500">
                                         Pass-through cost and markup are shown per meter so overages reflect provider cost plus your margin.
                                     </div>
+                                    {youtubeUsageMeter && (
+                                        <div className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3 space-y-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="text-xs uppercase tracking-widest text-zinc-500">YouTube Usage Drivers</div>
+                                                <div className="text-[11px] text-zinc-500">
+                                                    {Number(youtubeUsageMeter.used || 0).toLocaleString()} total requests this period
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                                                <div>
+                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Search Surfaces</div>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {(youtubeUsageBreakdowns.topSurfaces || []).length > 0 ? (youtubeUsageBreakdowns.topSurfaces || []).map((entry) => (
+                                                            <span key={`youtube-surface-${entry.key}`} className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">
+                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                            </span>
+                                                        )) : <span className="text-zinc-500">No surface attribution yet.</span>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Query Sources</div>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {(youtubeUsageBreakdowns.topSources || []).length > 0 ? (youtubeUsageBreakdowns.topSources || []).map((entry) => (
+                                                            <span key={`youtube-source-${entry.key}`} className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-2 py-1 text-fuchsia-100">
+                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                            </span>
+                                                        )) : <span className="text-zinc-500">No source attribution yet.</span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="text-[11px] text-zinc-500">
+                                                This workspace meter tracks app request count, not Google quota units. Use the Google Cloud Quotas page as the source of truth for official YouTube quota usage.
+                                            </div>
+                                            <div className="text-[11px] text-zinc-500">
+                                                Durable server-side cache now reduces repeat live YouTube searches across sessions, so these request counts should trend closer to truly new query demand.
+                                            </div>
+                                        </div>
+                                    )}
+                                    {usageAttributionMeters.length > 0 && (
+                                        <div className="space-y-3">
+                                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Usage Attribution</div>
+                                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                                {usageAttributionMeters.map((meter) => {
+                                                    const breakdowns = meter?.breakdowns || {};
+                                                    return (
+                                                        <div key={`usage-attribution-${meter.meterId}`} className="bg-zinc-950/70 border border-zinc-800 rounded-lg p-3">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <div className="text-sm font-semibold text-white">{meter.label}</div>
+                                                                <div className="text-[11px] text-zinc-500">{Number(meter.used || 0).toLocaleString()} used</div>
+                                                            </div>
+                                                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                                                                <div>
+                                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Surfaces</div>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {(breakdowns.topSurfaces || []).length > 0 ? (breakdowns.topSurfaces || []).map((entry) => (
+                                                                            <span key={`${meter.meterId}-surface-${entry.key}`} className="rounded-full border border-cyan-400/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">
+                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                            </span>
+                                                                        )) : <span className="text-zinc-500">No surface breakdown yet.</span>}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Sources</div>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {(breakdowns.topSources || []).length > 0 ? (breakdowns.topSources || []).map((entry) => (
+                                                                            <span key={`${meter.meterId}-source-${entry.key}`} className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-2 py-1 text-fuchsia-100">
+                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                            </span>
+                                                                        )) : <span className="text-zinc-500">No source breakdown yet.</span>}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Operators</div>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {(breakdowns.topActors || []).length > 0 ? (breakdowns.topActors || []).map((entry) => (
+                                                                            <span key={`${meter.meterId}-actor-${entry.key}`} className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-1 text-emerald-100">
+                                                                                {formatUsageBreakdownItemLabel(entry, 'actor')} · {Number(entry.used || 0).toLocaleString()}
+                                                                            </span>
+                                                                        )) : <span className="text-zinc-500">Tracked for host/admin workspace activity.</span>}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="uppercase tracking-widest text-zinc-500 mb-1">Top Rooms</div>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {(breakdowns.topRooms || []).length > 0 ? (breakdowns.topRooms || []).map((entry) => (
+                                                                            <span key={`${meter.meterId}-room-${entry.key}`} className="rounded-full border border-amber-400/25 bg-amber-500/10 px-2 py-1 text-amber-100">
+                                                                                {formatUsageBreakdownItemLabel(entry)} · {Number(entry.used || 0).toLocaleString()}
+                                                                            </span>
+                                                                        )) : <span className="text-zinc-500">No room attribution yet.</span>}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="text-[11px] text-zinc-500">
+                                                Attribution reuses the existing workspace meters and now rolls usage up by surface, source, room, and operator where that dimension is meaningful.
+                                            </div>
+                                        </div>
+                                    )}
                                     {usageHardLimitHits.length > 0 && (
                                         <div className="text-sm text-amber-200 bg-amber-500/10 border border-amber-400/30 rounded-lg px-3 py-2">
                                             Hard limit reached: {usageHardLimitHits.map(m => m.label).join(', ')}. Upgrade plan or wait for next monthly period.
@@ -21561,6 +22267,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             <div className="rounded-2xl border border-cyan-400/20 bg-zinc-900/65 p-4">
                                                 <div className="text-xs uppercase tracking-[0.28em] text-cyan-200/75">Grow the room library</div>
                                                 <div className="mt-2 text-sm text-zinc-300">Search verified YouTube karaoke backings, then add the good ones to your room library so audience search and browse can land on them without live YouTube lookup.</div>
+                                                <div className="mt-2 text-[11px] leading-5 text-zinc-400">
+                                                    This application uses YouTube API Services. By using YouTube search here, you also agree to the{' '}
+                                                    <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>
+                                                    {' '}and acknowledge the{' '}
+                                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.
+                                                </div>
                                                 <div className="mt-4 rounded-2xl border border-zinc-700 bg-black/25 px-4 py-3">
                                                     <div className="flex items-center gap-3">
                                                         <i className="fa-solid fa-magnifying-glass text-cyan-200/80"></i>

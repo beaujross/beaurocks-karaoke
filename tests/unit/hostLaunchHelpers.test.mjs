@@ -141,8 +141,8 @@ test("hostLaunchHelpers applies AAHF preset defaults for generalized donation CT
   assert.ok(Array.isArray(draft.promoCampaigns));
   assert.equal(draft.promoCampaigns.length, 0);
   assert.equal(draft.supportProvider, "givebutter");
-  assert.equal(draft.supportUrl, "https://givebutter.com/aahf-kickoff");
-  assert.equal(draft.supportCampaignCode, "aahf_kickoff");
+  assert.equal(draft.supportUrl, "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra");
+  assert.equal(draft.supportCampaignCode, "festival-kick-off-karaoke-party-y1ogra");
   assert.equal(draft.supportPoints, 25);
   assert.equal(draft.supportBadge, false);
   assert.equal(draft.supportOffers.length, 0);
@@ -158,8 +158,8 @@ test("hostLaunchHelpers applies AAHF preset defaults for generalized donation CT
   assert.equal(payload.presetId, "aahf_kickoff");
   assert.equal(payload.sourceProvider, "");
   assert.equal(payload.sourceCampaignCode, "");
-  assert.equal(payload.supportUrl, "https://givebutter.com/aahf-kickoff");
-  assert.equal(payload.supportCampaignCode, "aahf_kickoff");
+  assert.equal(payload.supportUrl, "https://givebutter.com/festival-kick-off-karaoke-party-y1ogra");
+  assert.equal(payload.supportCampaignCode, "festival-kick-off-karaoke-party-y1ogra");
   assert.equal(payload.supportPoints, 25);
   assert.equal(payload.supportBadge, false);
   assert.equal(payload.supportCelebrationStyle, "moneybags_burst");

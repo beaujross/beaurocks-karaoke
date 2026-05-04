@@ -61,11 +61,11 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
         eventId: 'aahf-2026-kickoff',
         eventLabel: 'AAHF Karaoke Kick-Off',
         sourceProvider: 'givebutter',
-        sourceCampaignCode: 'aahf_kickoff',
+        sourceCampaignCode: 'festival-kick-off-karaoke-party-y1ogra',
         supportProvider: 'givebutter',
         supportLabel: 'Support AAHF Festival',
-        supportUrl: 'https://givebutter.com/aahf-kickoff',
-        supportCampaignCode: 'aahf_kickoff',
+        supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
+        supportCampaignCode: 'festival-kick-off-karaoke-party-y1ogra',
         supportPoints: 25,
         supportBadge: false,
         supportOffers: [],
@@ -84,6 +84,32 @@ const buildAahfRoom = ({ roomCode = DEFAULT_ROOM_CODE, shellVariant = 'streamlin
         startsAtLocal: '2026-05-01T19:00',
         startsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
     },
+});
+
+const buildTriviaQuestionFixture = () => ({
+    id: 'qa_trivia_round_1',
+    q: 'Which anthem gets the room singing first?',
+    options: ['Don\'t Stop Believin\'', 'Mr. Brightside', 'Dancing Queen', 'Hey Ya!'],
+    correct: 0,
+    status: 'active',
+    points: 100,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: Date.now() - 5000,
+    revealAt: Date.now() + 15000,
+});
+
+const buildWyrDataFixture = () => ({
+    id: 'qa_wyr_round_1',
+    question: 'Would you rather open with a power ballad or a crowd singalong?',
+    optionA: 'Power ballad',
+    optionB: 'Crowd singalong',
+    status: 'active',
+    points: 50,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: Date.now() - 5000,
+    revealAt: Date.now() + 15000,
 });
 
 const buildAahfJoinFixture = ({ roomCode = DEFAULT_ROOM_CODE, showAbout = false, showPhoneModal = false } = {}) => ({
@@ -182,6 +208,10 @@ export const QA_AUDIENCE_FIXTURE_IDS = Object.freeze([
     'applause-cooldown',
     'classic-trivia',
     'streamlined-trivia',
+    'streamlined-trivia-live',
+    'streamlined-trivia-reveal',
+    'streamlined-wyr-live',
+    'streamlined-wyr-reveal',
 ]);
 
 export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM_CODE } = {}) => {
@@ -405,6 +435,58 @@ export const buildQaAudienceFixture = (fixtureId = '', { roomCode = DEFAULT_ROOM
             ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'trivia_pop' }),
             room: {
                 ...buildBaseRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'trivia_pop' }),
+            },
+        };
+    }
+
+    if (safeId === 'streamlined-trivia-live') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'trivia_pop' }),
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'trivia_pop' }),
+                triviaQuestion: buildTriviaQuestionFixture(),
+                wyrData: null,
+            },
+        };
+    }
+
+    if (safeId === 'streamlined-trivia-reveal') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'trivia_reveal' }),
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'trivia_reveal' }),
+                triviaQuestion: {
+                    ...buildTriviaQuestionFixture(),
+                    status: 'reveal',
+                    revealAt: Date.now() - 1000,
+                },
+                wyrData: null,
+            },
+        };
+    }
+
+    if (safeId === 'streamlined-wyr-live') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'wyr' }),
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'wyr' }),
+                triviaQuestion: null,
+                wyrData: buildWyrDataFixture(),
+            },
+        };
+    }
+
+    if (safeId === 'streamlined-wyr-reveal') {
+        return {
+            ...buildBaseFixture({ shellVariant: 'streamlined', activeMode: 'wyr_reveal' }),
+            room: {
+                ...buildAahfRoom({ roomCode, shellVariant: 'streamlined', activeMode: 'wyr_reveal' }),
+                triviaQuestion: null,
+                wyrData: {
+                    ...buildWyrDataFixture(),
+                    status: 'reveal',
+                    revealAt: Date.now() - 1000,
+                },
             },
         };
     }

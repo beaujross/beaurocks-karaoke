@@ -48,6 +48,25 @@ const toneMeta = Object.freeze({
     }
 });
 
+const alignmentToneMeta = Object.freeze({
+    with_you: {
+        alignmentChipClass: 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100',
+        alignmentPanelClass: 'border-emerald-300/16 bg-emerald-500/8',
+    },
+    holding: {
+        alignmentChipClass: 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100',
+        alignmentPanelClass: 'border-cyan-300/16 bg-cyan-500/8',
+    },
+    drifting: {
+        alignmentChipClass: 'border-amber-300/30 bg-amber-500/12 text-amber-100',
+        alignmentPanelClass: 'border-amber-300/16 bg-amber-500/8',
+    },
+    lost: {
+        alignmentChipClass: 'border-rose-300/30 bg-rose-500/12 text-rose-100',
+        alignmentPanelClass: 'border-rose-300/16 bg-rose-500/8',
+    }
+});
+
 export const getCrowdPulseSnapshot = ({
     roomUsers = [],
     activities = [],
@@ -73,9 +92,11 @@ export const getCrowdPulseSnapshot = ({
     );
     const recentRequestCount = recentActivities.filter((entry) => /requested\b/i.test(normalizeText(entry?.text))).length;
     const recentAudienceActionCount = recentActivities.length;
+    const recentParticipantCount = recentParticipantKeys.size;
     const engagedAudiencePct = pct(Math.max(livePhoneCount, recentParticipantKeys.size), lobbyCount);
     const livePhonePct = pct(livePhoneCount, lobbyCount);
     const warmLobbyPct = pct(warmLobbyCount, lobbyCount);
+    const recentParticipantPct = pct(recentParticipantCount, lobbyCount);
     const queuePressure = Math.max(0, Number(queueDepth || 0));
     const weightedScore = Math.round((livePhonePct * 0.5) + (warmLobbyPct * 0.2) + (engagedAudiencePct * 0.3));
 
@@ -84,6 +105,11 @@ export const getCrowdPulseSnapshot = ({
     let summary = 'No audience signal yet.';
     let recommendationTitle = 'Drive the next beat from the host side';
     let recommendationDetail = 'Use the conveyor as a planning tool until more phones join the room.';
+    let alignmentLevel = 'lost';
+    let alignmentLabel = 'Waiting On Phones';
+    let alignmentTitle = 'Build the room before you ask it to follow';
+    let alignmentDetail = 'Very little audience signal is live yet. Use fast prompts and clear calls to action until more phones join.';
+    let hostDirective = 'Start with a simple host cue and get phones into the room.';
 
     if (lobbyCount <= 0) {
         return {
@@ -92,6 +118,13 @@ export const getCrowdPulseSnapshot = ({
             summary,
             recommendationTitle,
             recommendationDetail,
+            alignmentLevel,
+            alignmentLabel,
+            alignmentTitle,
+            alignmentDetail,
+            alignmentSummary: 'No audience signal yet.',
+            hostDirective,
+            alignmentWindowOpen: true,
             metrics: {
                 lobbyCount: 0,
                 livePhoneCount: 0,
@@ -99,11 +132,15 @@ export const getCrowdPulseSnapshot = ({
                 warmLobbyCount: 0,
                 warmLobbyPct: 0,
                 engagedAudiencePct: 0,
+                recentParticipantCount: 0,
+                recentParticipantPct: 0,
                 recentAudienceActionCount: 0,
                 recentRequestCount: 0,
                 queueDepth: queuePressure,
+                alignmentPct: 0,
             },
             ...toneMeta[level],
+            ...alignmentToneMeta[alignmentLevel],
         };
     }
 
@@ -147,11 +184,70 @@ export const getCrowdPulseSnapshot = ({
             : 'Signal is weak, but you still have singers ready. Keep the queue moving and use the next optional conveyor window as a reset.';
     }
 
+    if (weightedScore >= 72) {
+        alignmentLevel = 'with_you';
+        alignmentLabel = 'With You';
+        alignmentTitle = queuePressure >= 3
+            ? 'The room is tracking the host beat'
+            : 'The room is ready for a short lift';
+        alignmentDetail = queuePressure >= 3
+            ? 'Most live phones are still moving with the current moment. Keep the singer lane clean and avoid long detours.'
+            : 'The room is with the host and the queue is light enough for a short optional moment if you want one.';
+        hostDirective = queuePressure >= 3
+            ? 'Keep singer flow moving.'
+            : 'Take one short beat, then return to singers.';
+    } else if (weightedScore >= 52) {
+        alignmentLevel = 'holding';
+        alignmentLabel = 'Holding';
+        alignmentTitle = queuePressure >= 2
+            ? 'The room is holding the line'
+            : 'The room is steady but not fully lit';
+        alignmentDetail = queuePressure >= 2
+            ? 'The audience is still with the host, but the energy can slip if transitions run long.'
+            : 'The room is responsive enough to follow, but it needs clean cues and short handoffs.';
+        hostDirective = queuePressure >= 2
+            ? 'Stay queue-first and keep transitions short.'
+            : 'Use one fast beat, then get back to action.';
+    } else if (weightedScore >= 32) {
+        alignmentLevel = 'drifting';
+        alignmentLabel = 'Drifting';
+        alignmentTitle = queuePressure >= 2
+            ? 'The room is starting to peel away'
+            : 'You have a pivot window open';
+        alignmentDetail = queuePressure >= 2
+            ? 'Phones are cooling. Cut down talk and make the next move feel immediate.'
+            : 'Attention is slipping and the queue is not deep. A short format change can still pull the room back.';
+        hostDirective = queuePressure >= 2
+            ? 'Shorten the next transition.'
+            : 'Change the energy within one beat.';
+    } else {
+        alignmentLevel = 'lost';
+        alignmentLabel = 'Lost';
+        alignmentTitle = queuePressure <= 1
+            ? 'The room needs a reset now'
+            : 'Keep the lane moving and reset on the next handoff';
+        alignmentDetail = queuePressure <= 1
+            ? 'Only a small slice of the room is still moving with the current beat. Trigger a fast reset or hype move now.'
+            : 'The audience is mostly off the current moment. Avoid extra talk and use the next handoff to re-open the room.';
+        hostDirective = queuePressure <= 1
+            ? 'Trigger a reset now.'
+            : 'Use the next handoff as a reset.';
+    }
+
     if (runOfShowEnabled && normalizeText(liveSceneType).toLowerCase() === 'performance' && level !== 'quiet') {
         recommendationDetail = `${recommendationDetail} Current live scene is a performance, so keep the next optional scene short and easy to flight.`;
+        if (alignmentLevel === 'drifting' || alignmentLevel === 'lost') {
+            alignmentDetail = `${alignmentDetail} Because a performance is live, tighten the handoff instead of breaking the lane too early.`;
+            hostDirective = alignmentLevel === 'lost'
+                ? 'Finish the singer cleanly, then reset fast.'
+                : 'Wrap the transition quickly after this singer.';
+        }
     }
     if (recentRequestCount >= 2 && queuePressure < 2) {
         recommendationDetail = `${recommendationDetail} New requests are still landing, so keep a singer-ready slot open on deck.`;
+        if (alignmentLevel === 'drifting' || alignmentLevel === 'lost') {
+            alignmentDetail = `${alignmentDetail} Fresh requests are still coming in, so keep the next singer-ready move obvious.`;
+        }
     }
 
     return {
@@ -160,6 +256,13 @@ export const getCrowdPulseSnapshot = ({
         summary,
         recommendationTitle,
         recommendationDetail,
+        alignmentLevel,
+        alignmentLabel,
+        alignmentTitle,
+        alignmentDetail,
+        alignmentSummary: `${weightedScore}% of the room is moving with the host right now.`,
+        hostDirective,
+        alignmentWindowOpen: alignmentLevel === 'drifting' || alignmentLevel === 'lost',
         metrics: {
             lobbyCount,
             livePhoneCount,
@@ -167,10 +270,14 @@ export const getCrowdPulseSnapshot = ({
             warmLobbyCount,
             warmLobbyPct,
             engagedAudiencePct,
+            recentParticipantCount,
+            recentParticipantPct,
             recentAudienceActionCount,
             recentRequestCount,
             queueDepth: queuePressure,
+            alignmentPct: weightedScore,
         },
         ...toneMeta[level],
+        ...alignmentToneMeta[alignmentLevel],
     };
 };

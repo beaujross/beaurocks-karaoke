@@ -85,8 +85,13 @@ const SECURITY_RATE_LIMITS_COLLECTION = "security_rate_limits";
 const securitySignalState = new Map();
 const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
-const YOUTUBE_SEARCH_CACHE_TTL_MS = 30000;
-const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 120;
+const YOUTUBE_SEARCH_CACHE_TTL_MS = 10 * 60 * 1000;
+const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 400;
+const YOUTUBE_SEARCH_PERSISTED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const YOUTUBE_SEARCH_PERSISTED_EMPTY_CACHE_TTL_MS = 30 * 60 * 1000;
+const YOUTUBE_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const YOUTUBE_API_QUOTA_BACKOFF_MS = 15 * 60 * 1000;
+let youtubeApiQuotaBlockedUntilMs = 0;
 const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com,hello@beaurocks.app";
 
 const parseCsvEnvTokens = (value = "") =>
@@ -165,6 +170,151 @@ const writeYoutubeSearchCache = (cacheKey = "", items = []) => {
   if (youtubeSearchCache.size <= YOUTUBE_SEARCH_CACHE_MAX_KEYS) return;
   const oldest = youtubeSearchCache.keys().next().value;
   if (oldest) youtubeSearchCache.delete(oldest);
+};
+
+const getYouTubeSearchPersistentCacheRef = (cacheKey = "") => {
+  const safeCacheKey = String(cacheKey || "").trim();
+  if (!safeCacheKey) return null;
+  const docId = crypto.createHash("sha256").update(safeCacheKey).digest("hex");
+  return admin
+    .firestore()
+    .collection("system_caches")
+    .doc("youtube_search")
+    .collection("queries")
+    .doc(docId);
+};
+
+const readPersistedYoutubeSearchCache = async (cacheKey = "") => {
+  const ref = getYouTubeSearchPersistentCacheRef(cacheKey);
+  if (!ref) return null;
+  try {
+    const snap = await ref.get();
+    if (!snap.exists) return null;
+    const data = snap.data() || {};
+    const expiresAtMs = Number(data.expiresAtMs || 0);
+    if (!expiresAtMs || expiresAtMs <= nowMs()) return null;
+    const items = Array.isArray(data.items) ? data.items : [];
+    writeYoutubeSearchCache(cacheKey, items);
+    return items;
+  } catch (error) {
+    console.warn("readPersistedYoutubeSearchCache failed", error?.message || error);
+    return null;
+  }
+};
+
+const writePersistedYoutubeSearchCache = async (cacheKey = "", items = []) => {
+  const ref = getYouTubeSearchPersistentCacheRef(cacheKey);
+  if (!ref) return false;
+  const safeItems = Array.isArray(items) ? items : [];
+  const ttlMs = safeItems.length > 0
+    ? YOUTUBE_SEARCH_PERSISTED_CACHE_TTL_MS
+    : YOUTUBE_SEARCH_PERSISTED_EMPTY_CACHE_TTL_MS;
+  try {
+    await ref.set({
+      cacheKey,
+      items: safeItems,
+      resultCount: safeItems.length,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtMs: nowMs(),
+      expiresAtMs: nowMs() + ttlMs,
+    }, { merge: true });
+    return true;
+  } catch (error) {
+    console.warn("writePersistedYoutubeSearchCache failed", error?.message || error);
+    return false;
+  }
+};
+
+const YOUTUBE_QUOTA_ERROR_REASONS = new Set([
+  "quotaexceeded",
+  "dailylimitexceeded",
+  "dailylimitexceeded402",
+  "ratelimitexceeded",
+  "userratelimitexceeded",
+  "uploadlimitexceeded",
+]);
+
+const readYouTubeApiQuotaBlockedUntilMs = () => {
+  const safeUntil = Number(youtubeApiQuotaBlockedUntilMs || 0);
+  return safeUntil > nowMs() ? safeUntil : 0;
+};
+
+const setYouTubeApiQuotaBlocked = (durationMs = YOUTUBE_API_QUOTA_BACKOFF_MS) => {
+  youtubeApiQuotaBlockedUntilMs = Math.max(
+    readYouTubeApiQuotaBlockedUntilMs(),
+    nowMs() + Math.max(60 * 1000, Number(durationMs || YOUTUBE_API_QUOTA_BACKOFF_MS))
+  );
+  return youtubeApiQuotaBlockedUntilMs;
+};
+
+const clearYouTubeApiQuotaBlocked = () => {
+  youtubeApiQuotaBlockedUntilMs = 0;
+};
+
+const isYouTubeQuotaReason = (reason = "") => (
+  YOUTUBE_QUOTA_ERROR_REASONS.has(String(reason || "").trim().toLowerCase())
+);
+
+const parseYouTubeApiFailure = (rawText = "") => {
+  const fallback = {
+    message: String(rawText || "").trim(),
+    reason: "",
+    status: "",
+  };
+  if (!rawText) return fallback;
+  try {
+    const parsed = JSON.parse(rawText);
+    const rootError = parsed?.error || {};
+    const reason = String(
+      rootError?.errors?.[0]?.reason
+      || rootError?.status
+      || ""
+    ).trim();
+    const message = String(rootError?.message || rawText || "").trim();
+    const status = String(rootError?.status || "").trim();
+    return {
+      message,
+      reason,
+      status,
+    };
+  } catch {
+    return fallback;
+  }
+};
+
+const ensureYouTubeApiQuotaAvailable = () => {
+  const blockedUntilMs = readYouTubeApiQuotaBlockedUntilMs();
+  if (!blockedUntilMs) return;
+  throw new HttpsError(
+    "resource-exhausted",
+    "YouTube API quota is temporarily exhausted. Try again later."
+  );
+};
+
+const assertYouTubeApiResponseOk = async (res, label = "YouTube request") => {
+  if (res.ok) {
+    clearYouTubeApiQuotaBlocked();
+    return;
+  }
+  const text = await res.text();
+  const failure = parseYouTubeApiFailure(text);
+  const normalizedReason = String(failure.reason || "").trim().toLowerCase();
+  const normalizedMessage = String(failure.message || "").trim().toLowerCase();
+  const quotaBlocked = (
+    isYouTubeQuotaReason(normalizedReason)
+    || normalizedMessage.includes("quota")
+    || normalizedMessage.includes("rate limit")
+    || normalizedMessage.includes("rate_limit")
+    || res.status === 429
+  );
+  if (quotaBlocked) {
+    setYouTubeApiQuotaBlocked();
+    throw new HttpsError(
+      "resource-exhausted",
+      `YouTube API quota exhausted${failure.reason ? `: ${failure.reason}` : ""}.`
+    );
+  }
+  throw new HttpsError("unavailable", `${label} failed: ${text}`);
 };
 
 const getClientIp = (req) => {
@@ -809,6 +959,16 @@ const RUN_OF_SHOW_ALLOWED_PERFORMER_MODES = new Set([
   "placeholder",
   "open_submission",
 ]);
+const RUN_OF_SHOW_ALLOWED_GOVERNANCE_MODES = new Set([
+  "host_only",
+  "crowd_signal",
+  "crowd_vote",
+  "cohost_vote",
+]);
+const RUN_OF_SHOW_ALLOWED_RELEASE_WINDOW_CHOICES = new Set([
+  "slot_scene",
+  "keep_queue_moving",
+]);
 const RUN_OF_SHOW_ALLOWED_BACKING_SOURCES = new Set([
   "canonical_default",
   "youtube",
@@ -1057,6 +1217,38 @@ const getNormalizedRoomRunOfShowDirector = (roomData = {}) => {
 const getNormalizedRoomRunOfShowPolicy = (roomData = {}) => normalizeRunOfShowPolicy(roomData?.runOfShowPolicy || {});
 const _getNormalizedRoomRunOfShowRoles = (roomData = {}) => normalizeRunOfShowRoles(roomData?.runOfShowRoles || {});
 const _getNormalizedRoomRunOfShowTemplateMeta = (roomData = {}) => normalizeRunOfShowTemplateMeta(roomData?.runOfShowTemplateMeta || {});
+const normalizeRunOfShowReleaseWindowChoice = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return RUN_OF_SHOW_ALLOWED_RELEASE_WINDOW_CHOICES.has(token) ? token : "";
+};
+const getNormalizedRoomRunOfShowReleaseWindow = (roomData = {}) => {
+  const source = roomData?.runOfShowDirector?.releaseWindow && typeof roomData.runOfShowDirector.releaseWindow === "object"
+    ? roomData.runOfShowDirector.releaseWindow
+    : {};
+  const votesByUid = source?.votesByUid && typeof source.votesByUid === "object" && !Array.isArray(source.votesByUid)
+    ? Object.fromEntries(
+      Object.entries(source.votesByUid)
+        .map(([uid, choice]) => [normalizeUidToken(uid), normalizeRunOfShowReleaseWindowChoice(choice)])
+        .filter(([uid, choice]) => uid && choice)
+    )
+    : {};
+  const governanceMode = String(source?.governanceMode || "").trim().toLowerCase();
+  return {
+    active: source?.active === true,
+    governanceMode: RUN_OF_SHOW_ALLOWED_GOVERNANCE_MODES.has(governanceMode) ? governanceMode : "host_only",
+    openedAtMs: normalizeRunOfShowTimestamp(source?.openedAtMs || 0),
+    closesAtMs: normalizeRunOfShowTimestamp(source?.closesAtMs || 0),
+    resolvedAtMs: normalizeRunOfShowTimestamp(source?.resolvedAtMs || 0),
+    votesByUid,
+  };
+};
+const isRunOfShowReleaseWindowVotingOpen = (releaseWindow = {}, nowMsValue = nowMs()) => {
+  if (releaseWindow?.active !== true) return false;
+  if (normalizeRunOfShowTimestamp(releaseWindow?.resolvedAtMs || 0) > 0) return false;
+  const closesAtMs = normalizeRunOfShowTimestamp(releaseWindow?.closesAtMs || 0);
+  if (closesAtMs > 0 && nowMsValue >= closesAtMs) return false;
+  return true;
+};
 const parseRunOfShowLaunchConfigOptions = (launchConfig = {}, maxItems = 4) => {
   const source = Array.isArray(launchConfig?.options)
     ? launchConfig.options
@@ -1069,6 +1261,7 @@ const parseRunOfShowLaunchConfigOptions = (launchConfig = {}, maxItems = 4) => {
 };
 const ROOM_EVENT_CREDIT_CONFIGS_COLLECTION = "room_event_credit_configs";
 const ROOM_EVENT_CREDIT_GRANTS_COLLECTION = "room_event_credit_grants";
+const ROOM_JOIN_GRANTS_COLLECTION = "room_join_grants";
 const ROOM_PROMO_REDEMPTIONS_COLLECTION = "room_promo_redemptions";
 const EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION = "event_attendee_entitlements";
 const SUPPORT_PURCHASE_EVENTS_COLLECTION = "support_purchase_events";
@@ -1563,6 +1756,18 @@ const buildRoomEventCreditGrantDocId = ({
   normalizeUidToken(uid || ""),
   normalizeDirectoryToken(grantType, 40),
 ].filter(Boolean).join("_").slice(0, 220);
+const buildRoomJoinGrantDocId = ({
+  roomCode = "",
+  grantType = "welcome",
+  participantKey = "",
+} = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode);
+  const safeGrantType = normalizeDirectoryToken(grantType, 40) || "welcome";
+  const safeParticipantKey = String(participantKey || "").trim();
+  if (!safeRoomCode || !safeParticipantKey) return "";
+  const participantHash = crypto.createHash("sha256").update(safeParticipantKey).digest("hex").slice(0, 32);
+  return [safeRoomCode, safeGrantType, participantHash].filter(Boolean).join("_").slice(0, 220);
+};
 const normalizeProvisionCoHostUids = (hostUid = "", entries = []) => {
   const primaryHostUid = normalizeUidToken(hostUid || "");
   const out = [];
@@ -1617,7 +1822,7 @@ const buildProvisionedRoomData = ({
     autoEndOnTrackFinish: true,
     autoBonusEnabled: true,
     autoBonusPoints: 25,
-    applauseWarmupSec: 5,
+    applauseWarmupSec: 0,
     applauseCountdownSec: 5,
     applauseMeasureSec: 5,
     hostName: resolvedHostName,
@@ -1665,8 +1870,12 @@ const buildProvisionedRoomData = ({
     showFameLevel: true,
     requestMode: "canonical_open",
     allowSingerTrackSelect: false,
+    audienceJoinPolicy: normalizeRoomAudienceJoinPolicy({}),
     hostNightPreset: "custom",
     hostNightPresetConfig: null,
+    hostUiPrefs: {
+      postPerformanceBackingPromptEnabled: true,
+    },
     bingoAudienceReopenEnabled: true,
     autoLyricsOnQueue: false,
     showPerformanceRecap: true,
@@ -1773,9 +1982,20 @@ const ROOM_UNKNOWN_BACKING_POLICIES = Object.freeze({
   autoQueueUnverified: "auto_queue_unverified",
   blockUnknown: "block_unknown",
 });
+const ROOM_AUDIENCE_JOIN_ACCESS_MODES = Object.freeze({
+  anonymousAllowed: "anonymous_allowed",
+  accountRequired: "account_required",
+});
+const ROOM_WELCOME_GRANT_MODES = Object.freeze({
+  none: "none",
+  oncePerRoomPerDevice: "once_per_room_per_device",
+  oncePerRoomPerAccount: "once_per_room_per_account",
+});
 const VALID_ROOM_REQUEST_MODES = new Set(Object.values(ROOM_REQUEST_MODES));
 const VALID_ROOM_AUDIENCE_BACKING_MODES = new Set(Object.values(ROOM_AUDIENCE_BACKING_MODES));
 const VALID_ROOM_UNKNOWN_BACKING_POLICIES = new Set(Object.values(ROOM_UNKNOWN_BACKING_POLICIES));
+const VALID_ROOM_AUDIENCE_JOIN_ACCESS_MODES = new Set(Object.values(ROOM_AUDIENCE_JOIN_ACCESS_MODES));
+const VALID_ROOM_WELCOME_GRANT_MODES = new Set(Object.values(ROOM_WELCOME_GRANT_MODES));
 const ROOM_REQUEST_POLICY_KEYS = new Set([
   "requestMode",
   "allowSingerTrackSelect",
@@ -1818,6 +2038,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "audienceBackingMode",
   "audienceBrandTheme",
   "audienceFeatureAccess",
+  "audienceJoinPolicy",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
@@ -1899,6 +2120,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "hostName",
   "hostNightPreset",
   "hostNightPresetConfig",
+  "hostUiPrefs",
   "howToPlay",
   "karaokeBracket",
   "lastPerformance",
@@ -2140,12 +2362,14 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "eventCredits",
   "audienceBrandTheme",
   "audienceFeatureAccess",
+  "audienceJoinPolicy",
   "gameData",
   "gameDefaults",
   "guitarVictory",
   "guitarWinner",
   "howToPlay",
   "hostNightPresetConfig",
+  "hostUiPrefs",
   "karaokeBracket",
   "lastPerformance",
   "currentPerformanceSession",
@@ -2412,6 +2636,72 @@ const deriveLegacyAllowSingerTrackSelect = (audienceBackingMode = "") => (
   deriveHostAudienceBackingMode({ audienceBackingMode }) === ROOM_AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube
 );
 
+const deriveRoomWelcomeGrantMode = (accessMode = "") => (
+  String(accessMode || "").trim().toLowerCase() === ROOM_AUDIENCE_JOIN_ACCESS_MODES.accountRequired
+    ? ROOM_WELCOME_GRANT_MODES.oncePerRoomPerAccount
+    : ROOM_WELCOME_GRANT_MODES.oncePerRoomPerDevice
+);
+
+const normalizeRoomAudienceJoinPolicy = (input = {}, fallback = {}) => {
+  const fallbackAccessMode = VALID_ROOM_AUDIENCE_JOIN_ACCESS_MODES.has(String(fallback?.accessMode || "").trim().toLowerCase())
+    ? String(fallback.accessMode).trim().toLowerCase()
+    : ROOM_AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed;
+  const accessMode = VALID_ROOM_AUDIENCE_JOIN_ACCESS_MODES.has(String(input?.accessMode || "").trim().toLowerCase())
+    ? String(input.accessMode).trim().toLowerCase()
+    : fallbackAccessMode;
+  const explicitWelcomeGrantMode = String(input?.welcomeGrantMode || "").trim().toLowerCase();
+  const fallbackWelcomeGrantMode = String(fallback?.welcomeGrantMode || "").trim().toLowerCase();
+  const welcomeGrantMode = VALID_ROOM_WELCOME_GRANT_MODES.has(explicitWelcomeGrantMode)
+    ? explicitWelcomeGrantMode
+    : VALID_ROOM_WELCOME_GRANT_MODES.has(fallbackWelcomeGrantMode)
+      ? fallbackWelcomeGrantMode
+      : deriveRoomWelcomeGrantMode(accessMode);
+  return {
+    accessMode,
+    welcomeGrantMode,
+  };
+};
+
+const sanitizeAudienceJoinInstallId = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 120);
+
+const hashAudienceJoinInstallId = (installId = "") => {
+  const safeInstallId = sanitizeAudienceJoinInstallId(installId);
+  if (!safeInstallId) return "";
+  return crypto.createHash("sha256").update(safeInstallId).digest("hex").slice(0, 24);
+};
+
+const resolveJoinParticipantIdentity = ({
+  joinPolicy = {},
+  uid = "",
+  installId = "",
+} = {}) => {
+  const policy = normalizeRoomAudienceJoinPolicy(joinPolicy);
+  const safeUid = normalizeUidToken(uid || "");
+  const installIdHash = hashAudienceJoinInstallId(installId);
+  if (policy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed && installIdHash) {
+    return {
+      participantKey: `anon_device:${installIdHash}`,
+      participantIdentityType: "anon_device",
+      participantInstallIdHash: installIdHash,
+      welcomeGrantParticipantKey: policy.welcomeGrantMode === ROOM_WELCOME_GRANT_MODES.oncePerRoomPerAccount && safeUid
+        ? `account:${safeUid}`
+        : `anon_device:${installIdHash}`,
+    };
+  }
+  return {
+    participantKey: `account:${safeUid || installIdHash || "guest"}`,
+    participantIdentityType: "account",
+    participantInstallIdHash: installIdHash || null,
+    welcomeGrantParticipantKey: policy.welcomeGrantMode === ROOM_WELCOME_GRANT_MODES.none
+      ? ""
+      : `account:${safeUid || installIdHash || "guest"}`,
+  };
+};
+
 const VALID_PROVISION_AUDIENCE_ACCESS_LEVELS = new Set([
   "open",
   "account_required",
@@ -2480,6 +2770,7 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       allowSingerTrackSelect: settings.allowSingerTrackSelect === true,
       audienceBackingMode: typeof settings.audienceBackingMode === "string" ? settings.audienceBackingMode.trim().toLowerCase() : "",
       unknownBackingPolicy: typeof settings.unknownBackingPolicy === "string" ? settings.unknownBackingPolicy.trim().toLowerCase() : "",
+      audienceJoinPolicy: normalizeRoomAudienceJoinPolicy(settings.audienceJoinPolicy || {}),
       marqueeEnabled: settings.marqueeEnabled === true,
       marqueeShowMode: typeof settings.marqueeShowMode === "string" ? settings.marqueeShowMode.trim().toLowerCase() : "idle",
       chatShowOnTv: settings.chatShowOnTv === true,
@@ -2543,6 +2834,7 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
     allowSingerTrackSelect: requestMode === ROOM_REQUEST_MODES.guestBackingOptional,
     audienceBackingMode,
     unknownBackingPolicy,
+    audienceJoinPolicy: normalizeRoomAudienceJoinPolicy(settings.audienceJoinPolicy || {}),
     marqueeEnabled: settings.marqueeEnabled === true,
     marqueeShowMode: settings.marqueeShowMode || "idle",
     chatShowOnTv: settings.chatShowOnTv === true,
@@ -2674,6 +2966,8 @@ const normalizeHostRoomUpdates = (rawUpdates = {}) => {
     if (value === undefined) return;
     normalized[key] = key === "eventCredits"
       ? buildRoomEventCreditPublicSummary(value)
+      : key === "audienceJoinPolicy"
+        ? normalizeRoomAudienceJoinPolicy(value || {})
       : value;
     estimatedChars += key.length;
     try {
@@ -2818,12 +3112,17 @@ const readOrganizationUsageSummary = async ({
       planId: entitlements?.planId || "free",
       status: entitlements?.status || "inactive",
     });
-    const used = toWholeNumber(meterData?.[meterId]?.used, 0);
+    const meterBucket = meterData?.[meterId] || {};
+    const used = toWholeNumber(meterBucket?.used, 0);
     const summary = buildUsageMeterSummary({
       meterId,
       used,
       quota,
       periodKey,
+      sources: meterBucket?.sources || {},
+      actors: meterBucket?.actors || {},
+      rooms: meterBucket?.rooms || {},
+      surfaces: meterBucket?.surfaces || {},
     });
     meters[meterId] = summary;
     estimatedOverageCents += summary.estimatedOverageCents;
@@ -5164,6 +5463,9 @@ const reserveOrganizationUsageUnits = async ({
   meterId = "",
   units = 1,
   source = "",
+  actorUid = "",
+  roomCode = "",
+  surface = "",
 }) => {
   if (!orgId) {
     throw new HttpsError("failed-precondition", "Organization is not initialized.");
@@ -5183,6 +5485,9 @@ const reserveOrganizationUsageUnits = async ({
   const now = admin.firestore.FieldValue.serverTimestamp();
   const db = admin.firestore();
   const safeSource = sanitizeSecurityToken(source, 96);
+  const safeActorUid = normalizeUidToken(actorUid);
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  const safeSurface = sanitizeSecurityToken(surface, 32);
 
   const nextUsed = await db.runTransaction(async (tx) => {
     const snap = await tx.get(usageRef);
@@ -5213,7 +5518,30 @@ const reserveOrganizationUsageUnits = async ({
     if (safeSource) {
       const currentSourceUsed = toWholeNumber(data?.meters?.[meterId]?.sources?.[safeSource]?.used, 0);
       patch[`meters.${meterId}.sources.${safeSource}.used`] = currentSourceUsed + safeUnits;
+      patch[`meters.${meterId}.sources.${safeSource}.source`] = safeSource;
+      patch[`meters.${meterId}.sources.${safeSource}.label`] = formatUsageDimensionLabel(safeSource, safeSource);
       patch[`meters.${meterId}.sources.${safeSource}.updatedAt`] = now;
+    }
+    if (safeActorUid) {
+      const currentActorUsed = toWholeNumber(data?.meters?.[meterId]?.actors?.[safeActorUid]?.used, 0);
+      patch[`meters.${meterId}.actors.${safeActorUid}.used`] = currentActorUsed + safeUnits;
+      patch[`meters.${meterId}.actors.${safeActorUid}.uid`] = safeActorUid;
+      patch[`meters.${meterId}.actors.${safeActorUid}.label`] = safeActorUid;
+      patch[`meters.${meterId}.actors.${safeActorUid}.updatedAt`] = now;
+    }
+    if (safeRoomCode) {
+      const currentRoomUsed = toWholeNumber(data?.meters?.[meterId]?.rooms?.[safeRoomCode]?.used, 0);
+      patch[`meters.${meterId}.rooms.${safeRoomCode}.used`] = currentRoomUsed + safeUnits;
+      patch[`meters.${meterId}.rooms.${safeRoomCode}.roomCode`] = safeRoomCode;
+      patch[`meters.${meterId}.rooms.${safeRoomCode}.label`] = safeRoomCode;
+      patch[`meters.${meterId}.rooms.${safeRoomCode}.updatedAt`] = now;
+    }
+    if (safeSurface) {
+      const currentSurfaceUsed = toWholeNumber(data?.meters?.[meterId]?.surfaces?.[safeSurface]?.used, 0);
+      patch[`meters.${meterId}.surfaces.${safeSurface}.used`] = currentSurfaceUsed + safeUnits;
+      patch[`meters.${meterId}.surfaces.${safeSurface}.surface`] = safeSurface;
+      patch[`meters.${meterId}.surfaces.${safeSurface}.label`] = formatUsageDimensionLabel(safeSurface, safeSurface);
+      patch[`meters.${meterId}.surfaces.${safeSurface}.updatedAt`] = now;
     }
     if (!snap.exists) {
       patch.createdAt = now;
@@ -5232,6 +5560,52 @@ const reserveOrganizationUsageUnits = async ({
 
 const resolveUsageSource = (value = "", fallback = "unknown") =>
   sanitizeSecurityToken(value || fallback, 96) || sanitizeSecurityToken(fallback, 96) || "unknown";
+
+const formatUsageDimensionLabel = (value = "", fallback = "") => {
+  const safeValue = String(value || "").trim();
+  if (!safeValue) return String(fallback || "").trim();
+  return safeValue
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b[a-z]/g, (match) => match.toUpperCase());
+};
+
+const inferUsageSurfaceFromSource = (source = "") => {
+  const safeSource = resolveUsageSource(source, "unknown");
+  if (safeSource.startsWith("host_")) return "host";
+  if (safeSource.startsWith("audience_") || safeSource.startsWith("singer_")) return "audience";
+  if (safeSource.startsWith("tv_")) return "tv";
+  if (safeSource.startsWith("admin_")) return "admin";
+  if (safeSource.startsWith("workspace_")) return "workspace";
+  if (safeSource.startsWith("ops_")) return "ops";
+  if (safeSource.startsWith("marketing_")) return "marketing";
+  return "backend";
+};
+
+const shouldTrackUsageActor = (surface = "") => (
+  ["host", "admin", "workspace", "ops"].includes(String(surface || "").trim().toLowerCase())
+);
+
+const buildUsageAttributionContext = ({
+  request = null,
+  roomCode = "",
+  source = "",
+  surface = "",
+  actorUid = "",
+} = {}) => {
+  const resolvedSource = resolveUsageSource(source, "unknown");
+  const requestedSurface = String(request?.data?.usageContext?.surface || "").trim();
+  const resolvedSurface = sanitizeSecurityToken(surface || requestedSurface || inferUsageSurfaceFromSource(resolvedSource), 32)
+    || inferUsageSurfaceFromSource(resolvedSource);
+  const resolvedRoomCode = normalizeRoomCode(roomCode || request?.data?.roomCode || "");
+  const resolvedActorUidRaw = normalizeUidToken(actorUid || request?.auth?.uid || "");
+  return {
+    roomCode: resolvedRoomCode,
+    surface: resolvedSurface,
+    actorUid: shouldTrackUsageActor(resolvedSurface) ? resolvedActorUidRaw : "",
+  };
+};
 
 const trackOrganizationUsageAnalytics = async ({
   orgId = "",
@@ -7133,6 +7507,9 @@ const buildDemoRoomUpdates = (payload = {}) => {
     lightMode: "ballad",
     showLyricsTv: true,
     showLyricsSinger: true,
+    hostUiPrefs: {
+      postPerformanceBackingPromptEnabled: true,
+    },
     popTriviaEnabled: true,
     tvPresentationProfile: "simple",
     hostName: "Demo Director",
@@ -8570,6 +8947,8 @@ const processPopTriviaForSong = async ({
       meterId: "ai_generate_content",
       units: 1,
       source: "auto_pop_trivia_song",
+      roomCode: safeRoomCode,
+      surface: "backend",
     });
   }
 
@@ -8702,8 +9081,31 @@ const normalizeTrustedCatalogMap = (value = {}) => (
   value && typeof value === "object" && !Array.isArray(value) ? value : {}
 );
 
+const normalizeRoomYouTubeIndexEntry = (value = {}) => {
+  const entry = value && typeof value === "object" && !Array.isArray(value) ? value : null;
+  if (!entry) return null;
+  const videoId = String(entry.videoId || entry.id || "").trim();
+  if (!videoId) return null;
+  const curatedAtMs = Math.max(0, Number(entry.curatedAtMs || 0) || 0);
+  const lastValidatedAtMs = Math.max(0, Number(entry.lastValidatedAtMs || curatedAtMs || 0) || 0);
+  const expiresAtMs = Math.max(
+    0,
+    Number(entry.expiresAtMs || 0) || (lastValidatedAtMs > 0 ? lastValidatedAtMs + YOUTUBE_INDEX_RETENTION_MS : 0),
+  );
+  if (expiresAtMs > 0 && expiresAtMs <= nowMs()) return null;
+  return {
+    ...entry,
+    videoId,
+    curatedAtMs,
+    lastValidatedAtMs,
+    expiresAtMs,
+  };
+};
+
 const normalizeRoomYouTubeIndex = (value = []) => (
-  Array.isArray(value) ? value.filter((entry) => entry && typeof entry === "object") : []
+  Array.isArray(value)
+    ? value.map((entry) => normalizeRoomYouTubeIndexEntry(entry)).filter(Boolean)
+    : []
 );
 
 const readRoomHostLibrary = async (roomCode = "") => {
@@ -9918,9 +10320,14 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const normalizedQuery = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
   const cacheKey = `${normalizedQuery}|${maxResults}|${playableOnly ? "playable" : "all"}`;
   const cachedItems = readYoutubeSearchCache(cacheKey);
-  if (cachedItems) {
+  if (cachedItems !== null) {
     return { items: cachedItems, cached: true };
   }
+  const persistedCachedItems = await readPersistedYoutubeSearchCache(cacheKey);
+  if (persistedCachedItems !== null) {
+    return { items: persistedCachedItems, cached: true };
+  }
+  ensureYouTubeApiQuotaAvailable();
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -9931,13 +10338,15 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     meterId: "youtube_data_request",
     units: 1,
     source: `${usageSource}_search_list`,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
   });
   const url = `https://www.googleapis.com/youtube/v3/search?key=${apiKey}&q=${encodeURIComponent(query)}&part=snippet&type=video&maxResults=${maxResults}&order=relevance`;
   const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new HttpsError("unavailable", `YouTube search failed: ${text}`);
-  }
+  await assertYouTubeApiResponseOk(res, "YouTube search");
   const data = await res.json();
   const baseItems = (data.items || []).map((item) => ({
     id: item.id?.videoId || item.id,
@@ -9946,6 +10355,8 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     thumbnails: item.snippet?.thumbnails || {},
   })).filter((item) => !!item.id);
   if (!baseItems.length) {
+    writeYoutubeSearchCache(cacheKey, []);
+    await writePersistedYoutubeSearchCache(cacheKey, []);
     return { items: [] };
   }
 
@@ -9955,14 +10366,16 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     meterId: "youtube_data_request",
     units: 1,
     source: `${usageSource}_videos_list`,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
   });
   const ids = baseItems.map((item) => item.id).slice(0, 50);
   const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,contentDetails,statistics&id=${ids.join(",")}`;
   const detailsRes = await fetch(detailsUrl);
-  if (!detailsRes.ok) {
-    const text = await detailsRes.text();
-    throw new HttpsError("unavailable", `YouTube playability check failed: ${text}`);
-  }
+  await assertYouTubeApiResponseOk(detailsRes, "YouTube playability check");
   const details = await detailsRes.json();
   const statusById = new Map();
   (details.items || []).forEach((item) => {
@@ -10000,6 +10413,7 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     })
     .filter((item) => (playableOnly ? item.playable : true));
   writeYoutubeSearchCache(cacheKey, items);
+  await writePersistedYoutubeSearchCache(cacheKey, items);
   return { items, cached: false };
 });
 
@@ -10014,6 +10428,7 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
   const playlistId = request.data?.playlistId || "";
   ensureString(playlistId, "playlistId");
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_playlist");
+  ensureYouTubeApiQuotaAvailable();
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -10029,13 +10444,15 @@ exports.youtubePlaylist = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asy
       meterId: "youtube_data_request",
       units: 1,
       source: `${usageSource}_playlist_items`,
+      ...buildUsageAttributionContext({
+        request,
+        roomCode: request.data?.roomCode || "",
+        source: usageSource,
+      }),
     });
     const url = `https://www.googleapis.com/youtube/v3/playlistItems?key=${apiKey}&part=snippet&maxResults=${batchSize}&playlistId=${playlistId}${pageToken ? `&pageToken=${pageToken}` : ""}`;
     const res = await fetch(url);
-    if (!res.ok) {
-      const text = await res.text();
-      throw new HttpsError("unavailable", `Playlist fetch failed: ${text}`);
-    }
+    await assertYouTubeApiResponseOk(res, "Playlist fetch");
     const data = await res.json();
     (data.items || []).forEach((item) => {
       items.push({
@@ -10062,6 +10479,7 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_status");
   if (!ids.length) return { items: [] };
+  ensureYouTubeApiQuotaAvailable();
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -10072,14 +10490,16 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     meterId: "youtube_data_request",
     units: 1,
     source: `${usageSource}_videos_status`,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
   });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status&id=${sliced.join(",")}`;
   const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new HttpsError("unavailable", `YouTube status failed: ${text}`);
-  }
+  await assertYouTubeApiResponseOk(res, "YouTube status");
   const data = await res.json();
   const items = (data.items || []).map((item) => {
     const embeddable = !!item.status?.embeddable;
@@ -10093,6 +10513,63 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       uploadStatus,
       privacyStatus,
       playable: embeddable && isUploadReady && isAllowedPrivacy,
+    };
+  });
+  return { items };
+});
+
+exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
+  checkRateLimit(request.rawRequest, "youtube_refresh_index_entries");
+  await checkDurableRateLimit(request.rawRequest, "youtube_refresh_index_entries", DEFAULT_LIMITS);
+  const { entitlements } = await requireCapability(request, "api.youtube_data", {
+    allowRoomScope: true,
+    roomCode: request.data?.roomCode || "",
+  });
+  enforceAppCheckIfEnabled(request, "youtube_refresh_index_entries");
+  const ids = [...new Set(
+    (Array.isArray(request.data?.ids) ? request.data.ids : [])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+  )].slice(0, 50);
+  const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_refresh_index_entries");
+  if (!ids.length) return { items: [] };
+  ensureYouTubeApiQuotaAvailable();
+  const apiKey = YOUTUBE_API_KEY.value();
+  if (!apiKey) {
+    throw new HttpsError("failed-precondition", "YouTube API key not configured.");
+  }
+  await reserveOrganizationUsageUnits({
+    orgId: entitlements.orgId,
+    entitlements,
+    meterId: "youtube_data_request",
+    units: 1,
+    source: `${usageSource}_videos_refresh`,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
+  });
+  const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=status,snippet&id=${ids.join(",")}`;
+  const res = await fetch(url);
+  await assertYouTubeApiResponseOk(res, "YouTube index refresh");
+  const data = await res.json();
+  const items = (data.items || []).map((item) => {
+    const embeddable = !!item.status?.embeddable;
+    const uploadStatus = String(item.status?.uploadStatus || "").toLowerCase();
+    const privacyStatus = String(item.status?.privacyStatus || "").toLowerCase();
+    const isUploadReady = uploadStatus === "processed" || uploadStatus === "uploaded";
+    const isAllowedPrivacy = privacyStatus === "public" || privacyStatus === "unlisted";
+    return {
+      id: item.id,
+      title: item.snippet?.title || "",
+      channelTitle: item.snippet?.channelTitle || "",
+      thumbnails: item.snippet?.thumbnails || {},
+      embeddable,
+      uploadStatus,
+      privacyStatus,
+      playable: embeddable && isUploadReady && isAllowedPrivacy,
+      refreshedAtMs: nowMs(),
     };
   });
   return { items };
@@ -10182,6 +10659,7 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
   const ids = Array.isArray(request.data?.ids) ? request.data.ids : [];
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_details");
   if (!ids.length) return { items: [] };
+  ensureYouTubeApiQuotaAvailable();
   const apiKey = YOUTUBE_API_KEY.value();
   if (!apiKey) {
     throw new HttpsError("failed-precondition", "YouTube API key not configured.");
@@ -10192,14 +10670,16 @@ exports.youtubeDetails = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, asyn
     meterId: "youtube_data_request",
     units: 1,
     source: `${usageSource}_videos_details`,
+    ...buildUsageAttributionContext({
+      request,
+      roomCode: request.data?.roomCode || "",
+      source: usageSource,
+    }),
   });
   const sliced = ids.slice(0, 50);
   const url = `https://www.googleapis.com/youtube/v3/videos?key=${apiKey}&part=contentDetails&id=${sliced.join(",")}`;
   const res = await fetch(url);
-  if (!res.ok) {
-    const text = await res.text();
-    throw new HttpsError("unavailable", `YouTube details failed: ${text}`);
-  }
+  await assertYouTubeApiResponseOk(res, "YouTube details");
   const data = await res.json();
   const items = (data.items || []).map((item) => ({
     id: item.id,
@@ -10235,6 +10715,11 @@ exports.geminiGenerate = onCall({ cors: true, secrets: [GEMINI_API_KEY] }, async
       meterId: "ai_generate_content",
       units: 1,
       source: usageSource,
+      ...buildUsageAttributionContext({
+        request,
+        roomCode: request.data?.roomCode || "",
+        source: usageSource,
+      }),
     });
   }
   const prompt = buildGeminiPrompt(type, request.data?.context);
@@ -10417,6 +10902,8 @@ const runLyricsResolverForQueueSong = async ({
           meterId: "ai_generate_content",
           units: 1,
           source: "lyrics_resolver_ai_fallback",
+          roomCode: safeRoomCode,
+          surface: "backend",
         });
         aiMeterReserved = true;
       } catch (error) {
@@ -10780,6 +11267,11 @@ exports.appleMusicLyrics = onCall(
       meterId: "apple_music_request",
       units: 1,
       source: "apple_music_search",
+      ...buildUsageAttributionContext({
+        request,
+        source: "apple_music_search",
+        surface: "host",
+      }),
     });
     const searchUrl = `https://api.music.apple.com/v1/catalog/${storefront}/search?term=${encodeURIComponent(
       term
@@ -10835,6 +11327,11 @@ exports.appleMusicLyrics = onCall(
       meterId: "apple_music_request",
       units: 1,
       source: "apple_music_lyrics",
+      ...buildUsageAttributionContext({
+        request,
+        source: "apple_music_lyrics",
+        surface: "host",
+      }),
     });
     const lyricsUrl = `https://api.music.apple.com/v1/catalog/${storefront}/songs/${appleSongId}/lyrics`;
     const lyricsRes = await fetch(lyricsUrl, {
@@ -11259,6 +11756,8 @@ exports.autoAppleLyrics = onDocumentCreated(
         meterId: "ai_generate_content",
         units: 1,
         source: "auto_lyrics_ai_fallback",
+        roomCode,
+        surface: "backend",
       });
     } catch (err) {
       const code = String(err?.code || "").toLowerCase();
@@ -11368,6 +11867,44 @@ exports.recoverPendingPopTrivia = onSchedule(
         reason: "pending_recovery",
       });
     }
+  }
+);
+
+exports.nightlyYouTubeIndexCleanup = onSchedule(
+  {
+    schedule: "45 3 * * *",
+    timeZone: "America/Los_Angeles",
+  },
+  async () => {
+    const hostLibrariesRef = getRootRef().collection("host_libraries");
+    let lastDoc = null;
+    let scanned = 0;
+    let updated = 0;
+    while (true) {
+      let queryRef = hostLibrariesRef
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(100);
+      if (lastDoc) queryRef = queryRef.startAfter(lastDoc);
+      const snap = await queryRef.get();
+      if (snap.empty) break;
+      for (const docSnap of snap.docs) {
+        scanned += 1;
+        const data = docSnap.data() || {};
+        const rawEntries = Array.isArray(data.ytIndex)
+          ? data.ytIndex.filter((entry) => entry && typeof entry === "object")
+          : [];
+        const normalizedEntries = normalizeRoomYouTubeIndex(rawEntries);
+        if (JSON.stringify(normalizedEntries) === JSON.stringify(rawEntries)) continue;
+        await docSnap.ref.set({
+          ytIndex: normalizedEntries,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        updated += 1;
+      }
+      lastDoc = snap.docs[snap.docs.length - 1] || null;
+      if (snap.size < 100) break;
+    }
+    console.log("nightlyYouTubeIndexCleanup", { scanned, updated });
   }
 );
 
@@ -14169,6 +14706,13 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   const safeName = rawName.slice(0, 18) || "Guest";
   const requestedAvatar = String(request.data?.avatar || "").trim();
   const callerEmail = normalizeEmailToken(request.auth?.token?.email || "");
+  const installId = sanitizeAudienceJoinInstallId(request.data?.installId || "");
+  const authProvider = String(
+    request.auth?.token?.firebase?.sign_in_provider
+    || request.auth?.token?.sign_in_provider
+    || ""
+  ).trim().toLowerCase();
+  const isAnonymousAuth = authProvider === "anonymous";
 
   const db = admin.firestore();
   const rootRef = getRootRef();
@@ -14183,18 +14727,72 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
   }
   const roomData = roomSnap.data() || {};
   const eventCredits = normalizeRoomEventCredits(roomData.eventCredits || {});
+  const roomJoinPolicy = normalizeRoomAudienceJoinPolicy(roomData.audienceJoinPolicy || {});
+  if (roomJoinPolicy.accessMode === ROOM_AUDIENCE_JOIN_ACCESS_MODES.accountRequired && isAnonymousAuth) {
+    throw new HttpsError("failed-precondition", "This room requires a BeauRocks account before joining.");
+  }
+  const participantIdentity = resolveJoinParticipantIdentity({
+    joinPolicy: roomJoinPolicy,
+    uid: callerUid,
+    installId,
+  });
+  const joinGrantDocId = buildRoomJoinGrantDocId({
+    roomCode,
+    participantKey: participantIdentity.welcomeGrantParticipantKey || participantIdentity.participantKey,
+  });
+  const joinGrantRef = joinGrantDocId
+    ? db.collection(ROOM_JOIN_GRANTS_COLLECTION).doc(joinGrantDocId)
+    : null;
   const eventConfigRef = db.collection(ROOM_EVENT_CREDIT_CONFIGS_COLLECTION).doc(roomCode);
   const defaultJoinPoints = eventCredits.enabled
     ? clampNumber(eventCredits.generalAdmissionPoints ?? 0, 0, 100000, 0)
     : 100;
 
   await db.runTransaction(async (tx) => {
-    const [roomUserSnap, userSnap, eventConfigSnap] = await Promise.all([
+    const priorRoomUserQuery = !participantIdentity.participantKey
+      ? null
+      : rootRef.collection("room_users")
+        .where("participantKey", "==", participantIdentity.participantKey)
+        .limit(6);
+    const reads = [
       tx.get(roomUserRef),
       tx.get(userRef),
       tx.get(eventConfigRef),
-    ]);
+    ];
+    if (joinGrantRef) {
+      reads.push(tx.get(joinGrantRef));
+    }
+    if (priorRoomUserQuery) {
+      reads.push(tx.get(priorRoomUserQuery));
+    }
+    const readResults = await Promise.all(reads);
+    const roomUserSnap = readResults[0];
+    const userSnap = readResults[1];
+    const eventConfigSnap = readResults[2];
+    const joinGrantSnap = joinGrantRef ? readResults[3] : null;
+    const priorRoomUserQuerySnap = priorRoomUserQuery
+      ? readResults[joinGrantRef ? 4 : 3]
+      : null;
+    const priorRoomUserDocs = priorRoomUserQuerySnap?.docs || [];
+    const migratedRoomUserSnap = !roomUserSnap.exists
+      ? priorRoomUserDocs
+        .filter((docSnap) => docSnap.exists)
+        .filter((docSnap) => docSnap.id !== roomUserRef.id)
+        .filter((docSnap) => normalizeRoomCode(docSnap.get("roomCode") || "") === roomCode)
+        .sort((left, right) => {
+          const leftPoints = Math.max(0, Number(left.get("points") || 0) || 0);
+          const rightPoints = Math.max(0, Number(right.get("points") || 0) || 0);
+          if (rightPoints !== leftPoints) return rightPoints - leftPoints;
+          const leftVisits = Math.max(0, Number(left.get("visits") || 0) || 0);
+          const rightVisits = Math.max(0, Number(right.get("visits") || 0) || 0);
+          if (rightVisits !== leftVisits) return rightVisits - leftVisits;
+          return String(left.id || "").localeCompare(String(right.id || ""));
+        })[0] || null
+      : null;
+    const migratedRoomUserRef = migratedRoomUserSnap?.ref || null;
     const roomUserData = roomUserSnap.exists ? (roomUserSnap.data() || {}) : {};
+    const migratedRoomUserData = migratedRoomUserSnap?.exists ? (migratedRoomUserSnap.data() || {}) : {};
+    const priorRoomUserData = roomUserSnap.exists ? roomUserData : migratedRoomUserData;
     const userData = userSnap.exists ? (userSnap.data() || {}) : {};
     resolvedAvatar = sanitizeAudienceAvatar(requestedAvatar, userData);
     const vipLevel = Math.max(0, Number(userData.vipLevel || 0) || 0);
@@ -14203,8 +14801,22 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
       0,
       Number(userData.currentLevel ?? userData.fameLevel ?? 0) || 0
     );
-    const existingPoints = Math.max(0, Number(roomUserData.points || 0) || 0);
-    let seededPoints = roomUserSnap.exists ? 0 : defaultJoinPoints;
+    const existingPoints = Math.max(0, Number(priorRoomUserData.points || 0) || 0);
+    const existingVisits = Math.max(0, Number(priorRoomUserData.visits || 0) || 0);
+    const existingTotalEmojis = Math.max(0, Number(priorRoomUserData.totalEmojis || 0) || 0);
+    const hasPriorMembership = roomUserSnap.exists || !!migratedRoomUserSnap;
+    const welcomeGrantMode = roomJoinPolicy.welcomeGrantMode;
+    const welcomeGrantAllowed = welcomeGrantMode !== ROOM_WELCOME_GRANT_MODES.none;
+    const welcomeGrantShouldSeed = welcomeGrantAllowed
+      && !!joinGrantRef
+      && !hasPriorMembership
+      && !joinGrantSnap?.exists;
+    const welcomeGrantShouldBackfill = welcomeGrantAllowed
+      && !!joinGrantRef
+      && hasPriorMembership
+      && !joinGrantSnap?.exists;
+    let seededPoints = welcomeGrantShouldSeed ? defaultJoinPoints : 0;
+    let joinGrantCreated = welcomeGrantShouldSeed;
     let matchedEntitlement = null;
     if (eventCredits.enabled) {
       const secureConfig = eventConfigSnap.exists
@@ -14246,8 +14858,8 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
         }
       }
 
-      if (!grantSnap.exists && grant.points > 0) {
-        seededPoints = roomUserSnap.exists ? grant.points : Math.max(seededPoints, grant.points);
+      if (joinGrantCreated && !grantSnap.exists && grant.points > 0) {
+        seededPoints = Math.max(seededPoints, grant.points);
         tx.set(grantRef, {
           roomCode,
           uid: callerUid,
@@ -14268,8 +14880,11 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
       }
 
       if (matchingEntitlement && entitlementGrantRef && entitlementGrantSnap) {
+          const entitlementAlreadyClaimed = !!matchingEntitlement.claimed
+            || normalizeRoomCode(matchingEntitlement.matchedRoomCode || "") === roomCode
+            || String(priorRoomUserData.matchedEntitlementId || "").trim() === String(matchingEntitlement.id || "").trim();
           const pointsFromEntitlement = clampNumber(matchingEntitlement.pointsGranted, 0, 100000, 0);
-          if (!entitlementGrantSnap.exists && pointsFromEntitlement > 0) {
+          if (!entitlementAlreadyClaimed && !entitlementGrantSnap.exists && pointsFromEntitlement > 0) {
             seededPoints += pointsFromEntitlement;
             matchedEntitlement = {
               entitlementId: matchingEntitlement.id,
@@ -14305,23 +14920,45 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
           }
       }
     }
+    if ((welcomeGrantShouldSeed || welcomeGrantShouldBackfill) && joinGrantRef) {
+      tx.set(joinGrantRef, {
+        roomCode,
+        uid: callerUid,
+        participantKey: participantIdentity.welcomeGrantParticipantKey || participantIdentity.participantKey,
+        participantIdentityType: participantIdentity.participantIdentityType,
+        participantInstallIdHash: participantIdentity.participantInstallIdHash || null,
+        grantType: "welcome",
+        welcomeGrantMode,
+        pointsGranted: welcomeGrantShouldSeed ? defaultJoinPoints : 0,
+        source: welcomeGrantShouldSeed ? "join_room_audience" : "join_room_audience_backfill",
+        createdAt: serverNow,
+        updatedAt: serverNow,
+      }, { merge: true });
+    }
 
     tx.set(roomUserRef, {
+      ...priorRoomUserData,
       roomCode,
       uid: callerUid,
       name: safeName,
       avatar: resolvedAvatar,
+      participantKey: participantIdentity.participantKey,
+      participantIdentityType: participantIdentity.participantIdentityType,
+      participantInstallIdHash: participantIdentity.participantInstallIdHash || null,
       isVip: vipLevel > 0,
       vipLevel,
       fameLevel,
       totalFamePoints,
       lastActiveAt: serverNow,
       lastSeen: serverNow,
-      totalEmojis: Math.max(0, Number(roomUserData.totalEmojis || 0) || 0),
+      totalEmojis: existingTotalEmojis,
       points: existingPoints + seededPoints,
-      visits: admin.firestore.FieldValue.increment(1),
-      ...(eventCredits.enabled && eventCredits.timedLobbyEnabled && !roomUserData.lastTimedLobbyCreditAtMs
-        ? { lastTimedLobbyCreditAtMs: Date.now(), timedLobbyEarnedPoints: Math.max(0, Number(roomUserData.timedLobbyEarnedPoints || 0) || 0) }
+      visits: existingVisits + 1,
+      ...(eventCredits.enabled && eventCredits.timedLobbyEnabled && !priorRoomUserData.lastTimedLobbyCreditAtMs
+        ? {
+          lastTimedLobbyCreditAtMs: Date.now(),
+          timedLobbyEarnedPoints: Math.max(0, Number(priorRoomUserData.timedLobbyEarnedPoints || 0) || 0),
+        }
         : {}),
       ...(matchedEntitlement ? {
         matchedEntitlementId: matchedEntitlement.entitlementId,
@@ -14329,6 +14966,9 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
         ...(matchedEntitlement.skipLineEntitled ? { skipLineEntitled: true } : {}),
       } : {}),
     }, { merge: true });
+    if (migratedRoomUserRef) {
+      tx.delete(migratedRoomUserRef);
+    }
   });
 
   if (callerEmail) {
@@ -17404,6 +18044,77 @@ exports.executeRunOfShowAction = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.castRunOfShowReleaseWindowVote = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "cast_run_of_show_release_window_vote", { perMinute: 60, perHour: 360 });
+  enforceAppCheckIfEnabled(request, "cast_run_of_show_release_window_vote");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  const choice = normalizeRunOfShowReleaseWindowChoice(request.data?.choice || "");
+  if (!roomCode || !choice) {
+    throw new HttpsError("invalid-argument", "roomCode and a valid choice are required.");
+  }
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const roomRef = rootRef.collection("rooms").doc(roomCode);
+  const roomUserRef = rootRef.collection("room_users").doc(`${roomCode}_${callerUid}`);
+  const nowValue = nowMs();
+
+  const result = await db.runTransaction(async (tx) => {
+    const [roomSnap, roomUserSnap] = await Promise.all([
+      tx.get(roomRef),
+      tx.get(roomUserRef),
+    ]);
+
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", "Room not found.");
+    }
+    if (!roomUserSnap.exists) {
+      throw new HttpsError("permission-denied", "Join the room before voting.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const releaseWindow = getNormalizedRoomRunOfShowReleaseWindow(roomData);
+    if (!isRunOfShowReleaseWindowVotingOpen(releaseWindow, nowValue)) {
+      throw new HttpsError("failed-precondition", "That vote window is no longer active.");
+    }
+
+    if (releaseWindow.governanceMode === "host_only") {
+      throw new HttpsError("failed-precondition", "This decision is not open for audience voting.");
+    }
+
+    if (releaseWindow.governanceMode === "cohost_vote") {
+      const roles = _getNormalizedRoomRunOfShowRoles(roomData);
+      const hostUids = new Set([
+        normalizeUidToken(roomData?.hostUid || ""),
+        ...((Array.isArray(roomData?.hostUids) ? roomData.hostUids : []).map((uid) => normalizeUidToken(uid))),
+      ].filter(Boolean));
+      const coHosts = new Set(Array.isArray(roles?.coHosts) ? roles.coHosts.map((uid) => normalizeUidToken(uid)) : []);
+      if (!hostUids.has(callerUid) && !coHosts.has(callerUid)) {
+        throw new HttpsError("permission-denied", "Only promoted co-hosts can vote in this decision.");
+      }
+    }
+
+    tx.update(roomRef, {
+      [`runOfShowDirector.releaseWindow.votesByUid.${callerUid}`]: choice,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    const nextVotesByUid = {
+      ...(releaseWindow.votesByUid || {}),
+      [callerUid]: choice,
+    };
+    return {
+      ok: true,
+      roomCode,
+      choice,
+      totalVotes: Object.values(nextVotesByUid).filter((value) => RUN_OF_SHOW_ALLOWED_RELEASE_WINDOW_CHOICES.has(String(value || "").trim().toLowerCase())).length,
+    };
+  });
+
+  return result;
+});
+
 exports.manageRunOfShowTemplate = onCall({ cors: true }, async (request) => {
   checkRateLimit(request.rawRequest, "manage_run_of_show_template", { perMinute: 40, perHour: 300 });
   enforceAppCheckIfEnabled(request, "manage_run_of_show_template");
@@ -17582,6 +18293,9 @@ exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
           lightMode: "ballad",
           showLyricsTv: true,
           showLyricsSinger: true,
+          hostUiPrefs: {
+            postPerformanceBackingPromptEnabled: true,
+          },
           popTriviaEnabled: true,
           isDemoRoom: true,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),

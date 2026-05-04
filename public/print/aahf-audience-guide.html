@@ -3,228 +3,238 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AAHF Karaoke Kick-Off Audience Poster</title>
+  <title>AAHF Festival Karaoke Join Poster</title>
   <style>
     :root {
-      --paper: #fffaf3;
-      --ink: #241a18;
-      --muted: #6b5a53;
-      --line: rgba(122, 67, 46, 0.12);
-      --festival-red: #d95a3d;
-      --festival-gold: #f3c54b;
-      --festival-deep: #8d2d2a;
-      --beau-night: #101828;
-      --shadow: 0 26px 60px rgba(86, 46, 30, 0.14);
+      --paper: #fff8ef;
+      --ink: #231815;
+      --muted: #6d574d;
+      --line: rgba(129, 57, 38, 0.14);
+      --festival-red: #d75942;
+      --festival-gold: #f2c44f;
+      --festival-deep: #882f2f;
+      --night: #121826;
+      --white: #ffffff;
+      --shadow: 0 18px 42px rgba(91, 44, 30, 0.16);
+      --bleed-x: 0.09in;
+      --bar-height: 0.34in;
     }
 
     * { box-sizing: border-box; }
 
-    body {
+    html, body {
       margin: 0;
-      padding: 22px;
+      padding: 0;
+      background: #f7eee2;
       color: var(--ink);
-      font-family: "Aptos", "Segoe UI", "Trebuchet MS", Arial, sans-serif;
+      font-family: "Trebuchet MS", "Aptos", "Segoe UI", Arial, sans-serif;
+    }
+
+    body {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 12px;
       background:
-        radial-gradient(circle at top left, rgba(217, 90, 61, 0.14), transparent 30%),
-        radial-gradient(circle at top right, rgba(243, 197, 75, 0.20), transparent 28%),
-        linear-gradient(180deg, #fcf7ef 0%, #f5ebdd 100%);
+        radial-gradient(circle at top left, rgba(215, 89, 66, 0.16), transparent 30%),
+        radial-gradient(circle at top right, rgba(242, 196, 79, 0.22), transparent 26%),
+        linear-gradient(180deg, #fdf6ed 0%, #f6ebde 100%);
     }
 
     .page {
       width: 8.5in;
-      min-height: 11in;
-      margin: 0 auto;
-      border-radius: 28px;
+      height: 11in;
       overflow: hidden;
-      background: var(--paper);
-      border: 1px solid rgba(141, 45, 42, 0.08);
+      border-radius: 24px;
+      border: 1px solid rgba(136, 47, 47, 0.08);
+      background:
+        radial-gradient(circle at 18% 16%, rgba(242, 196, 79, 0.12), transparent 22%),
+        radial-gradient(circle at 86% 24%, rgba(215, 89, 66, 0.10), transparent 26%),
+        linear-gradient(180deg, #fffdf9 0%, var(--paper) 100%);
       box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
     }
 
     .bar {
+      width: calc(100% + (var(--bleed-x) * 2));
+      height: var(--bar-height);
+      margin-left: calc(var(--bleed-x) * -1);
+      flex: 0 0 auto;
+      object-fit: cover;
       display: block;
-      width: 100%;
-      height: auto;
     }
 
     .hero {
-      padding: 28px 36px 22px;
-      background:
-        linear-gradient(135deg, rgba(217, 90, 61, 0.08), rgba(243, 197, 75, 0.14)),
-        linear-gradient(180deg, #fff9f0 0%, #fff5ea 100%);
-      border-bottom: 1px solid var(--line);
-    }
-
-    .hero-grid {
+      padding: 0.14in 0.32in 0.12in;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 220px;
-      gap: 24px;
-      align-items: center;
-    }
-
-    .hero-lockup {
-      display: flex;
-      align-items: center;
-      gap: 22px;
-    }
-
-    .festival-badge {
-      width: 136px;
-      height: 136px;
-      object-fit: contain;
-      flex-shrink: 0;
-      filter: drop-shadow(0 14px 26px rgba(141, 45, 42, 0.14));
+      grid-template-columns: 1fr 1.76in;
+      gap: 0.16in;
+      align-items: start;
+      flex: 0 0 auto;
     }
 
     .eyebrow {
-      margin: 0 0 10px;
+      margin: 0 0 0.08in;
       color: var(--festival-deep);
-      font-size: 15px;
+      font-size: 0.16in;
       font-weight: 900;
-      letter-spacing: 0.24em;
+      letter-spacing: 0.06in;
       text-transform: uppercase;
     }
 
     h1 {
       margin: 0;
-      font-size: 60px;
-      line-height: 0.96;
-      letter-spacing: -0.04em;
+      font-size: 0.58in;
+      line-height: 0.9;
+      letter-spacing: -0.04in;
+      text-transform: uppercase;
     }
 
-    .subtitle {
-      margin: 16px 0 0;
-      max-width: 600px;
+    .subhead {
+      margin: 0.12in 0 0;
+      max-width: 4.3in;
       color: var(--muted);
-      font-size: 22px;
-      line-height: 1.32;
-      font-weight: 600;
+      font-size: 0.19in;
+      line-height: 1.2;
+      font-weight: 700;
     }
 
-    .room-card {
-      border-radius: 22px;
+    .hero-copy {
+      margin-top: 0.1in;
+      color: var(--muted);
+      font-size: 0.143in;
+      line-height: 1.24;
+      font-weight: 700;
+      max-width: 4.45in;
+    }
+
+    .badge-panel {
+      border-radius: 0.28in;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.78);
-      padding: 20px;
+      background: linear-gradient(135deg, rgba(215, 89, 66, 0.10), rgba(242, 196, 79, 0.18));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0.11in;
       text-align: center;
     }
 
+    .festival-badge {
+      width: 0.9in;
+      height: 0.9in;
+      object-fit: contain;
+      filter: drop-shadow(0 12px 22px rgba(136, 47, 47, 0.14));
+    }
+
     .room-label {
+      margin: 0.1in 0 0;
       color: var(--muted);
-      font-size: 13px;
+      font-size: 0.14in;
       font-weight: 900;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.03in;
       text-transform: uppercase;
     }
 
     .room-value {
-      margin-top: 10px;
+      margin: 0.04in 0 0;
       color: var(--festival-deep);
-      font-size: 48px;
+      font-size: 0.38in;
+      line-height: 1;
       font-weight: 900;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.08in;
     }
 
-    .room-note {
-      margin-top: 10px;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.42;
-    }
-
-    .main {
+    .content {
+      padding: 0 0.32in 0.1in;
       display: grid;
-      grid-template-columns: 1fr 0.98fr;
-      gap: 22px;
-      padding: 24px 36px 18px;
-      align-items: start;
+      grid-template-columns: 2.28in 1fr;
+      gap: 0.14in;
+      align-items: stretch;
+      flex: 1 1 auto;
     }
 
-    .panel {
-      border-radius: 24px;
+    .left-stack {
+      display: grid;
+      grid-template-rows: 1fr 1fr 1fr;
+      gap: 0.1in;
+    }
+
+    .info-card,
+    .qr-card {
+      border-radius: 0.28in;
       border: 1px solid var(--line);
-      background: linear-gradient(180deg, #fffdfa 0%, #fff6eb 100%);
-      padding: 24px;
+      background: rgba(255, 255, 255, 0.84);
+      box-shadow: 0 10px 24px rgba(18, 24, 38, 0.06);
     }
 
-    .panel-title {
-      margin: 0 0 16px;
-      font-size: 38px;
-      line-height: 1.02;
-      letter-spacing: -0.03em;
-    }
-
-    .steps {
-      display: grid;
-      gap: 8px;
-    }
-
-    .step {
-      display: grid;
-      grid-template-columns: 64px 1fr;
-      gap: 16px;
-      align-items: start;
-      padding: 9px 0;
-      border-top: 1px solid rgba(122, 67, 46, 0.10);
-    }
-
-    .step:first-child {
-      border-top: none;
-      padding-top: 0;
+    .info-card {
+      padding: 0.1in 0.14in;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: center;
     }
 
     .step-num {
-      width: 64px;
-      height: 64px;
+      width: 0.36in;
+      height: 0.36in;
+      margin: 0 auto 0.08in;
       border-radius: 999px;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #fff;
-      font-size: 28px;
+      color: var(--white);
+      font-size: 0.19in;
       font-weight: 900;
       background: linear-gradient(135deg, var(--festival-deep), var(--festival-red));
-      box-shadow: 0 10px 22px rgba(141, 45, 42, 0.16);
     }
 
-    .step-title {
-      margin: 0 0 3px;
-      font-size: 28px;
-      font-weight: 900;
-      line-height: 1.08;
-    }
-
-    .step-copy {
+    .card-title {
       margin: 0;
-      color: var(--muted);
-      font-size: 17px;
-      line-height: 1.34;
+      font-size: 0.26in;
+      line-height: 0.98;
+      letter-spacing: -0.02in;
+      text-transform: uppercase;
     }
 
-    .qr-panel {
+    .card-copy {
+      margin: 0.08in 0 0;
+      color: var(--muted);
+      font-size: 0.142in;
+      line-height: 1.18;
+      font-weight: 700;
+    }
+
+    .qr-card {
+      padding: 0.14in;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
       text-align: center;
       background:
-        linear-gradient(180deg, #ffffff 0%, #fdf9f2 100%);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 248, 239, 0.98) 100%);
     }
 
     .qr-kicker {
+      margin: 0;
       color: var(--festival-deep);
-      font-size: 14px;
+      font-size: 0.145in;
       font-weight: 900;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.04in;
       text-transform: uppercase;
     }
 
     .qr-frame {
-      width: 328px;
-      height: 328px;
-      max-width: 100%;
-      margin: 18px auto 18px;
-      padding: 16px;
-      border-radius: 28px;
-      background: #fff;
-      border: 1px solid rgba(16, 24, 40, 0.10);
-      box-shadow: 0 18px 34px rgba(16, 24, 40, 0.10);
+      width: 3.52in;
+      height: 3.52in;
+      margin: 0.1in auto 0.1in;
+      padding: 0.14in;
+      border-radius: 0.3in;
+      background: var(--white);
+      border: 1px solid rgba(18, 24, 38, 0.10);
+      box-shadow: 0 18px 34px rgba(18, 24, 38, 0.10);
     }
 
     .qr-frame img {
@@ -235,123 +245,78 @@
     }
 
     .join-url {
-      color: var(--beau-night);
-      font-size: 27px;
+      margin: 0;
+      color: var(--night);
+      font-size: 0.23in;
+      line-height: 1.12;
       font-weight: 900;
-      line-height: 1.24;
       word-break: break-word;
     }
 
-    .sub-copy {
-      margin: 12px auto 0;
-      max-width: 336px;
+    .join-note {
+      margin: 0.06in auto 0;
+      max-width: 4.5in;
       color: var(--muted);
-      font-size: 17px;
-      line-height: 1.42;
+      font-size: 0.14in;
+      line-height: 1.18;
+      font-weight: 700;
+    }
+
+    .footer {
+      margin: 0 0.32in 0.03in;
+      border-radius: 0.26in;
+      border: 1px solid rgba(136, 47, 47, 0.14);
+      background:
+        linear-gradient(135deg, rgba(215, 89, 66, 0.12), rgba(242, 196, 79, 0.18)),
+        #fff7ec;
+      padding: 0.09in 0.16in;
+      display: grid;
+      grid-template-columns: 1fr 0.92in;
+      gap: 0.12in;
+      align-items: center;
+      flex: 0 0 auto;
+    }
+
+    .footer-title {
+      margin: 0;
+      font-size: 0.22in;
+      line-height: 1.02;
+      letter-spacing: -0.02in;
+      text-transform: uppercase;
+    }
+
+    .footer-copy {
+      margin: 0.06in 0 0;
+      color: var(--muted);
+      font-size: 0.125in;
+      line-height: 1.18;
+      font-weight: 700;
     }
 
     .beau-logo {
-      width: 164px;
-      max-width: 100%;
-      margin: 18px auto 8px;
+      width: 100%;
+      max-width: 0.82in;
+      justify-self: end;
       display: block;
       object-fit: contain;
-      filter: drop-shadow(0 10px 20px rgba(16, 24, 40, 0.12));
-    }
-
-    .beau-note {
-      color: var(--muted);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.35;
-    }
-
-    .mini-band {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      padding: 0 36px 18px;
-    }
-
-    .fact-card {
-      border-radius: 20px;
-      border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.78);
-      padding: 18px 20px;
-    }
-
-    .fact-kicker {
-      margin: 0 0 8px;
-      color: var(--festival-deep);
-      font-size: 13px;
-      font-weight: 900;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-
-    .fact-title {
-      margin: 0 0 8px;
-      font-size: 27px;
-      line-height: 1.02;
-      letter-spacing: -0.03em;
-    }
-
-    .fact-copy {
-      margin: 0;
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.42;
-    }
-
-    .footer-callout {
-      margin: 0 36px 24px;
-      border-radius: 24px;
-      border: 1px solid rgba(141, 45, 42, 0.16);
-      background:
-        linear-gradient(135deg, rgba(217, 90, 61, 0.10), rgba(243, 197, 75, 0.14)),
-        #fff7ee;
-      padding: 18px 24px 20px;
-      text-align: center;
-    }
-
-    .footer-callout-kicker {
-      margin: 0 0 8px;
-      color: var(--festival-deep);
-      font-size: 13px;
-      font-weight: 900;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-
-    .footer-callout-title {
-      margin: 0;
-      font-size: 34px;
-      line-height: 1.04;
-      letter-spacing: -0.03em;
-    }
-
-    .footer-callout-copy {
-      margin: 10px auto 0;
-      max-width: 660px;
-      color: var(--muted);
-      font-size: 18px;
-      line-height: 1.42;
+      filter: drop-shadow(0 8px 16px rgba(18, 24, 38, 0.10));
     }
 
     @page {
       size: letter;
-      margin: 0.3in;
+      margin: 0;
     }
 
     @media print {
       body {
+        display: block;
+        min-height: auto;
         padding: 0;
         background: #fff;
       }
 
       .page {
-        width: auto;
-        min-height: auto;
+        height: 11in;
         border: none;
         border-radius: 0;
         box-shadow: none;
@@ -364,114 +329,57 @@
     <img class="bar" src="./aahf-header-bar.png" alt="AAHF Festival header bar" />
 
     <section class="hero">
-      <div class="hero-grid">
-        <div class="hero-lockup">
-          <img class="festival-badge" src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
-          <div>
-            <p class="eyebrow">AAHF Festival Karaoke Kick-Off</p>
-            <h1>Sing. Cheer. Earn room credits.</h1>
-            <p class="subtitle">
-              AAHF Kick-Off is open karaoke with live crowd moments, fundraiser boosts, and top-performance award moments about once an hour.
-            </p>
-          </div>
-        </div>
+      <div>
+        <p class="eyebrow">AAHF Festival Karaoke Kick-Off</p>
+        <h1>Scan To Join Karaoke</h1>
+        <p class="subhead">Open karaoke. Crowd points. Big festival energy.</p>
+        <p class="hero-copy">Scan drops you straight into emoji pick. No BeauRocks email is required tonight. Once you are in, you can vote for performers with points and keep earning more by reacting, playing along, and supporting the fundraiser whenever you want.</p>
+      </div>
 
-        <div class="room-card">
-          <div class="room-label">Tonight's Room Code</div>
-          <div class="room-value">AAHF</div>
-          <div class="room-note">If you land on a code prompt, type <strong>AAHF</strong>.</div>
-        </div>
+      <div class="badge-panel">
+        <img class="festival-badge" src="../images/marketing/aahf-combined-badge-clean.png" alt="AAHF Festival" />
+        <p class="room-label">Room Code</p>
+        <p class="room-value">AAHF</p>
       </div>
     </section>
 
-    <section class="main">
-      <div class="panel">
-        <h2 class="panel-title">How tonight works</h2>
-        <div class="steps">
-          <div class="step">
-            <div class="step-num">1</div>
-            <div>
-              <p class="step-title">Join the room</p>
-              <p class="step-copy">Scan the QR. If you see a code prompt, enter <strong>AAHF</strong>. No BeauRocks email is required tonight.</p>
-            </div>
-          </div>
+    <section class="content">
+      <div class="left-stack">
+        <article class="info-card">
+          <div class="step-num">1</div>
+          <h2 class="card-title">Scan</h2>
+          <p class="card-copy">Use your camera on the QR code and jump straight into the room.</p>
+        </article>
 
-          <div class="step">
-            <div class="step-num">2</div>
-            <div>
-              <p class="step-title">Start with credits</p>
-              <p class="step-copy">Guests start with <strong>200</strong> room credits. Staying active adds <strong>+25 every 10 minutes</strong>, up to <strong>+150</strong> extra.</p>
-            </div>
-          </div>
+        <article class="info-card">
+          <div class="step-num">2</div>
+          <h2 class="card-title">Pick Emoji</h2>
+          <p class="card-copy">Choose your emoji, add your name, and get ready to cheer people on.</p>
+        </article>
 
-          <div class="step">
-            <div class="step-num">3</div>
-            <div>
-              <p class="step-title">Earn more together</p>
-              <p class="step-copy">Official AAHF boosts can award <strong>+150</strong> for website check-in and <strong>+250</strong> for social promo moments.</p>
-            </div>
-          </div>
-
-          <div class="step">
-            <div class="step-num">4</div>
-            <div>
-              <p class="step-title">Watch the breaks</p>
-              <p class="step-copy">Between singers, the host may open quick phone votes, selfie-cam spotlights, crowd moments, or a short take-five break.</p>
-            </div>
-          </div>
-
-          <div class="step">
-            <div class="step-num">5</div>
-            <div>
-              <p class="step-title">Win the hour</p>
-              <p class="step-copy">Top performances get award moments about once an hour at the next clean break. Request early, cheer loudly, and stay ready.</p>
-            </div>
-          </div>
-        </div>
+        <article class="info-card">
+          <div class="step-num">3</div>
+          <h2 class="card-title">Play The Room</h2>
+          <p class="card-copy">Earn points by reacting, voting, joining live moments, and donating. Then spend them on the fun as the night heats up.</p>
+        </article>
       </div>
 
-      <div class="panel qr-panel">
-        <div class="qr-kicker">Direct Room Join</div>
+      <article class="qr-card">
+        <p class="qr-kicker">Point Your Camera Here</p>
         <div class="qr-frame">
           <img src="./aahf-kickoff-join-qr.svg" alt="QR code for the BeauRocks AAHF room join" />
         </div>
-        <div class="join-url">app.beaurocks.app</div>
-        <p class="sub-copy">If you see a code field, enter <strong>AAHF</strong>. Support and donations are optional and never block karaoke join.</p>
-        <img class="beau-logo" src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="Powered by BeauRocks" />
-        <div class="beau-note">Powered by BeauRocks</div>
-      </div>
+        <p class="join-url">app.beaurocks.app</p>
+        <p class="join-note">No code typing tonight. Scan in, pick your emoji, request songs, vote with points, and keep your phone handy for crowd moments all night.</p>
+      </article>
     </section>
 
-    <section class="mini-band">
-      <div class="fact-card">
-        <p class="fact-kicker">Night Format</p>
-        <h3 class="fact-title">Open karaoke queue</h3>
-        <p class="fact-copy">Tap <strong>Songs</strong>, send your request, and use your phone as your queue screen for the rest of the night.</p>
+    <section class="footer">
+      <div>
+        <h2 class="footer-title">Cheer Loud. Earn Points. Spend Them On The Fun.</h2>
+        <p class="footer-copy">The more you interact, the more playful the room gets. Support is optional, but the energy absolutely counts.</p>
       </div>
-
-      <div class="fact-card">
-        <p class="fact-kicker">Credits Tonight</p>
-        <h3 class="fact-title">200 in. +25 every 10.</h3>
-        <p class="fact-copy">The active-room refill is capped at <strong>+150</strong> total, so staying in the room pays off even before you sing.</p>
-      </div>
-
-      <div class="fact-card">
-        <p class="fact-kicker">Fundraiser Energy</p>
-        <h3 class="fact-title">Support helps the room</h3>
-        <p class="fact-copy">This is a fundraiser. Support AAHF Festival when you want to, and watch for boost moments that help the room raise energy and credits.</p>
-      </div>
-
-      <div class="fact-card">
-        <p class="fact-kicker">Games + Awards</p>
-        <h3 class="fact-title">Votes, selfies, hourly winners</h3>
-        <p class="fact-copy">There is no always-on crowd vote. Host-opened moments and top-of-hour awards appear live on your phone and the big screen.</p>
-      </div>
-    </section>
-
-    <section class="footer-callout">
-      <p class="footer-callout-kicker">Fastest Explanation</p>
-      <h3 class="footer-callout-title">"Scan in, join AAHF, request a song, and stay for the boosts, games, and hourly awards."</h3>
-      <p class="footer-callout-copy">Festival signup is optional, karaoke join is fast, support never blocks entry, and the room keeps rewarding people who stay in the mix.</p>
+      <img class="beau-logo" src="../images/logo-library/beaurocks-logo-neon trasnparent.png" alt="Powered by BeauRocks" />
     </section>
 
     <img class="bar" src="./aahf-footer-bar.png" alt="AAHF Festival footer bar" />

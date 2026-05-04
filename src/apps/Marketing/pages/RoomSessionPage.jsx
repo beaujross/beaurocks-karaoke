@@ -28,6 +28,7 @@ import {
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
+import { buildRoomRecapUrl } from "../../../lib/roomRecap";
 
 const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   const [sessionItem, setSessionItem] = useState(null);
@@ -127,6 +128,12 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   const publicAgenda = getRunOfShowPublicItems(runOfShowDirector);
   const openSubmissionItems = getRunOfShowOpenSubmissionItems(runOfShowDirector);
   const runOfShowActive = roomItem?.runOfShowEnabled === true && String(roomItem?.programMode || "").trim().toLowerCase() === "run_of_show";
+  const recap = roomItem?.recap && typeof roomItem.recap === "object" ? roomItem.recap : null;
+  const recapUrl = sessionItem?.roomCode ? buildRoomRecapUrl(sessionItem.roomCode) : "";
+  const recapAvailable = !!recap || Number(sessionItem?.hostRecapCount || 0) > 0 || !!String(sessionItem?.latestRecapUrl || "").trim();
+  const recapPeople = Math.max(0, Number(recap?.metrics?.estimatedPeople || recap?.stats?.totalUsers || recap?.totalUsers || 0) || 0);
+  const recapReactions = Math.max(0, Number(recap?.stats?.reactionCount || recap?.stats?.totalEmojiBursts || recap?.totalEmojiBursts || 0) || 0);
+  const recapPerformances = Math.max(0, Number(recap?.stats?.totalPerformedSongs || recap?.totalSongs || 0) || 0);
   const formatSubmissionStatus = (value = "") => {
     const safe = String(value || "pending").trim().toLowerCase();
     if (safe === "approved") return "Approved";
@@ -243,6 +250,41 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
         <div className="mk3-listing-hero">
           <img src={heroImage} alt={`${sessionItem.title} room session visual`} loading="lazy" />
         </div>
+        {recapAvailable && (
+          <section className="mt-6 rounded-[30px] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_top_left,rgba(244,114,182,0.16),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] p-5">
+            <div className="mk3-chip">post-show recap</div>
+            <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-2xl font-semibold text-white">This room has a finished recap</div>
+                <div className="mt-1 max-w-2xl text-sm text-zinc-300">Share the event summary, review the room energy, and use the public recap as proof of how the night actually played.</div>
+              </div>
+              {recapUrl ? (
+                <a
+                  href={recapUrl}
+                  className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/12 px-4 py-2 text-sm font-semibold text-fuchsia-50"
+                >
+                  View room recap
+                </a>
+              ) : null}
+            </div>
+            {(recapPeople > 0 || recapReactions > 0 || recapPerformances > 0) && (
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Estimated People</div>
+                  <div className="mt-2 text-4xl font-semibold text-white">{recapPeople || "-"}</div>
+                </div>
+                <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Reactions</div>
+                  <div className="mt-2 text-4xl font-semibold text-white">{recapReactions || "-"}</div>
+                </div>
+                <div className="rounded-[24px] border border-white/10 bg-black/20 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-400">Songs Performed</div>
+                  <div className="mt-2 text-4xl font-semibold text-white">{recapPerformances || "-"}</div>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
         <DirectoryExperienceSpotlight
           entry={{
             ...sessionItem,

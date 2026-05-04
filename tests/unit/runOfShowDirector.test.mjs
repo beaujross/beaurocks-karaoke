@@ -9,6 +9,7 @@ import {
   buildRunOfShowItemsFromCsvImport,
   getRunOfShowConveyorPhase,
   getRunOfShowConveyorSnapshot,
+  getRunOfShowReleaseWindowRemainingMs,
   getRunOfShowReleaseWindowTally,
   getRunOfShowAutomationPauseState,
   getRunOfShowBlockedActionLabel,
@@ -29,6 +30,7 @@ import {
   hasRunOfShowTakeoverSoundtrackIdentity,
   isApprovedAutomationSource,
   isRunOfShowItemReady,
+  isRunOfShowReleaseWindowVotingOpen,
   normalizeRunOfShowPolicy,
   normalizeRunOfShowRoles,
   normalizeRunOfShowTemplateMeta,
@@ -185,6 +187,9 @@ test("runOfShowDirector normalizes release-window governance defaults", () => {
   assert.equal(director.items[0].governanceMode, "crowd_signal");
   assert.equal(director.items[0].releasePolicy, "suggest_then_host_confirm");
   assert.equal(director.releaseWindow.active, true);
+  assert.equal(director.releaseWindow.durationSec, 20);
+  assert.equal(director.releaseWindow.queuedForPostPerformance, false);
+  assert.equal(director.releaseWindow.deferredAtMs, 0);
   assert.equal(director.releaseWindow.subjectType, "queue_faceoff");
   assert.equal(director.releaseWindow.governanceMode, "cohost_vote");
   assert.deepEqual(director.releaseWindow.choiceLabels, {
@@ -242,6 +247,40 @@ test("runOfShowDirector crowd votes count the full room while preserving custom 
     leadingChoice: "keep_queue_moving",
     summary: "2-1 favor \"Song B\""
   });
+});
+
+test("runOfShowDirector closes release-window voting once the timer expires or it is resolved", () => {
+  const baseWindow = {
+    active: true,
+    closesAtMs: 12_000,
+    resolvedAtMs: 0,
+  };
+
+  assert.equal(isRunOfShowReleaseWindowVotingOpen(baseWindow, 11_500), true);
+  assert.equal(getRunOfShowReleaseWindowRemainingMs(baseWindow, 11_500), 500);
+  assert.equal(isRunOfShowReleaseWindowVotingOpen(baseWindow, 12_000), false);
+  assert.equal(getRunOfShowReleaseWindowRemainingMs(baseWindow, 12_000), 0);
+  assert.equal(isRunOfShowReleaseWindowVotingOpen({ ...baseWindow, resolvedAtMs: 11_000 }, 11_500), false);
+});
+
+test("runOfShowDirector preserves deferred post-performance vote metadata", () => {
+  const director = normalizeRunOfShowDirector(createDefaultRunOfShowDirector({
+    releaseWindow: {
+      active: false,
+      itemId: "item_vote_1",
+      queuedForPostPerformance: true,
+      deferredAtMs: 48_000,
+      durationSec: 30,
+      governanceMode: "crowd_vote",
+      releasePolicy: "suggest_then_host_confirm",
+      prompt: "Choose the next spotlight"
+    }
+  }));
+
+  assert.equal(director.releaseWindow.active, false);
+  assert.equal(director.releaseWindow.queuedForPostPerformance, true);
+  assert.equal(director.releaseWindow.deferredAtMs, 48_000);
+  assert.equal(director.releaseWindow.durationSec, 30);
 });
 
 test("runOfShowDirector preserves legacy placeholder slots while keeping open submissions distinct", () => {

@@ -49,8 +49,9 @@ const ensureStageWorkspace = async (page, timeoutMs) => {
   await clickHostTab(page, "stage", timeoutMs);
   await waitForHostState(page, { tab: "stage", timeoutMs });
   await waitForAnyVisible([
-    page.getByText("Queue Controls").first(),
-    page.getByText("LIVE LANE").first(),
+    page.getByText("Live Snapshot").first(),
+    page.getByText("Queue Status").first(),
+    page.getByText("Open Media Library").first(),
   ], timeoutMs);
 };
 
@@ -227,21 +228,20 @@ const main = async () => {
 
     await runCheck(checks, "host_app_stage_workspace_core_controls_visible", async () => {
       await ensureStageWorkspace(page, timeoutMs);
-      await page.getByText("Open Conveyor").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Open TV Library").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Run Of Show").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage workspace exposes the current conveyor, TV library, and show handoff controls";
+      await page.getByText("Live Snapshot").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Live Queue").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Open Media Library").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage workspace exposes live snapshot, live queue, and media library controls";
     });
 
     await runCheck(checks, "host_app_stage_timing_controls_visible", async () => {
       await gotoHostFixture(page, server, "run-of-show-stage-live", timeoutMs);
       await ensureStageWorkspace(page, timeoutMs);
-      await page.getByText("Post-Performance Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Post-song Timing").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Balanced").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Fast").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Leaderboard").first().waitFor({ state: "visible", timeout: timeoutMs });
-      return "stage timing exposes the current pace controls and per-beat summary";
+      await page.getByText("Now Performing").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Transport").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Stage Options").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Applause").first().waitFor({ state: "visible", timeout: timeoutMs });
+      return "stage workspace exposes transport, stage options, and applause controls during a live performance";
     });
 
     await runCheck(checks, "host_app_lobby_can_promote_and_remove_cohost", async () => {

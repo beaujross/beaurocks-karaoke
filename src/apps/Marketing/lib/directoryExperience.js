@@ -68,7 +68,13 @@ const buildCapabilitySet = (entry = {}) => {
     capabilities.add("interactive_tv");
     capabilities.add("modern_queue");
   }
-  if (Number(entry?.hostRecapCount || 0) > 0) capabilities.add("recap_ready");
+  if (
+    Number(entry?.hostRecapCount || 0) > 0
+    || Number(entry?.latestRecapAtMs || 0) > 0
+    || !!String(entry?.latestRecapUrl || "").trim()
+  ) {
+    capabilities.add("recap_ready");
+  }
   if (Number(entry?.scheduleVerifiedAtMs || 0) > 0 || String(entry?.karaokeNightsLabel || "").trim() || String(entry?.recurringRule || "").trim()) {
     capabilities.add("verified_schedule");
   }

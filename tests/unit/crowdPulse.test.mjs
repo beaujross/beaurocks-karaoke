@@ -26,6 +26,9 @@ test("crowd pulse recommends keeping singers moving when phones are active and q
   assert.equal(snapshot.level, "hot");
   assert.equal(snapshot.metrics.livePhonePct >= 75, true);
   assert.match(snapshot.recommendationTitle, /Keep singers moving/i);
+  assert.equal(snapshot.alignmentLabel, "With You");
+  assert.equal(snapshot.metrics.alignmentPct >= 72, true);
+  assert.match(snapshot.hostDirective, /Keep singer flow moving/i);
 });
 
 test("crowd pulse recommends a short reset when the lobby is thin and queue is short", () => {
@@ -44,6 +47,9 @@ test("crowd pulse recommends a short reset when the lobby is thin and queue is s
   assert.equal(snapshot.level, "reset");
   assert.match(snapshot.recommendationTitle, /Slot a short conveyor scene now/i);
   assert.match(snapshot.recommendationDetail, /trivia hit, WYR, or hype beat/i);
+  assert.equal(snapshot.alignmentLabel, "Lost");
+  assert.equal(snapshot.alignmentWindowOpen, true);
+  assert.match(snapshot.hostDirective, /Trigger a reset now/i);
 });
 
 test("crowd pulse falls back cleanly when there is no lobby yet", () => {
@@ -57,4 +63,6 @@ test("crowd pulse falls back cleanly when there is no lobby yet", () => {
   assert.equal(snapshot.level, "quiet");
   assert.equal(snapshot.metrics.lobbyCount, 0);
   assert.match(snapshot.recommendationDetail, /until more phones join/i);
+  assert.equal(snapshot.alignmentLabel, "Waiting On Phones");
+  assert.equal(snapshot.metrics.alignmentPct, 0);
 });

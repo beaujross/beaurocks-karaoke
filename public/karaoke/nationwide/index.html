@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="canonical" href="https://beaurocks.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Live Karaoke Finder and Host Tools | BeauRocks Karaoke" />
+    <meta property="og:description" content="Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks." />
+    <meta property="og:url" content="https://beaurocks.app/" />
+    <meta property="og:image" content="https://beaurocks.app/images/logo-library/beaurocks-logo-background.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="BeauRocks Karaoke neon logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Live Karaoke Finder and Host Tools | BeauRocks Karaoke" />
+    <meta name="twitter:description" content="Discover live karaoke nights, run smoother hosted events, and keep the TV, queue, and guest phones moving together with BeauRocks." />
+    <meta name="twitter:image" content="https://beaurocks.app/images/logo-library/beaurocks-logo-background.png" />
+    <!-- Critical for Mobile Layouts -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#7a2b76" />
+    <meta name="msapplication-TileColor" content="#7a2b76" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BeauRocks" />
+    <!-- FontAwesome for Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+      <title>Nationwide Karaoke Nights | BeauRocks</title>
+    <meta name="description" content="Browse karaoke venues and upcoming events in Nationwide." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Nationwide Karaoke Nights | BeauRocks" />
+    <meta property="og:description" content="Browse karaoke venues and upcoming events in Nationwide." />
+    <meta property="og:url" content="https://beaurocks.app/karaoke/nationwide" />
+    <meta property="og:site_name" content="BeauRocks Karaoke" />
+    <meta property="og:image" content="https://beaurocks.app/images/social/geo_region-nationwide.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="nationwide featured image" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Nationwide Karaoke Nights | BeauRocks" />
+    <meta name="twitter:description" content="Browse karaoke venues and upcoming events in Nationwide." />
+    <meta name="twitter:image" content="https://beaurocks.app/images/social/geo_region-nationwide.png" />
+    <link rel="canonical" href="https://beaurocks.app/karaoke/nationwide" />
+    <link rel="icon" type="image/png" href="/images/logo-library/bross-ent-favicon-1.png" />
+    <link rel="apple-touch-icon" href="/images/logo-library/bross-ent-favicon-1.png" />
+    <script type="application/ld+json">[{"@context":"https://schema.org","@type":"CollectionPage","name":"Nationwide Karaoke Nights | BeauRocks","description":"Browse karaoke venues and upcoming events in Nationwide.","url":"https://beaurocks.app/karaoke/nationwide","image":"https://beaurocks.app/images/social/geo_region-nationwide.png","about":"Nationwide"},{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Overview","item":"https://beaurocks.app/"},{"@type":"ListItem","position":2,"name":"Discover","item":"https://beaurocks.app/discover"},{"@type":"ListItem","position":3,"name":"Nationwide","item":"https://beaurocks.app/karaoke/nationwide"}]}]</script>
+    <script>window.__MARKETING_PRERENDER_ROUTE__={"page":"geo_region","id":"nationwide","params":{"regionToken":"nationwide"}};</script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      const loadRuntimeFirebaseConfig = async () => {
+        if (typeof window === "undefined" || window.__firebase_config) return;
+        try {
+          const response = await fetch("/__/firebase/init.json", { cache: "no-store" });
+          if (!response.ok) return;
+          const runtimeConfig = await response.json();
+          if (
+            runtimeConfig &&
+            typeof runtimeConfig === "object" &&
+            runtimeConfig.apiKey &&
+            runtimeConfig.projectId
+          ) {
+            window.__firebase_config = runtimeConfig;
+          }
+        } catch {
+          // Ignore runtime bootstrap failures; env-based config may still be available.
+        }
+      };
+
+      (async () => {
+        await loadRuntimeFirebaseConfig();
+        await import("/src/main.jsx");
+      })();
+    </script>
+  </body>
+</html>

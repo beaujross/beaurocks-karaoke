@@ -7,6 +7,8 @@ const APP_ID = "bross-app";
 const ROOT = `artifacts/${APP_ID}/public/data`;
 const ROOM_CODE = "ROOM1";
 const USER_UID = "audience-uid";
+const SECOND_UID = "audience-uid-2";
+const SHARED_INSTALL_ID = "device_same_browser";
 
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for callable integration tests.");
@@ -17,7 +19,9 @@ process.env.GCLOUD_PROJECT = PROJECT_ID;
 const db = admin.firestore();
 const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
 const roomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`);
+const secondRoomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${SECOND_UID}`);
 const userRef = db.doc(`users/${USER_UID}`);
+const secondUserRef = db.doc(`users/${SECOND_UID}`);
 const eventConfigRef = db.doc(`room_event_credit_configs/${ROOM_CODE}`);
 const grantRef = db.doc(`room_event_credit_grants/${ROOM_CODE}_aahf_kickoff_${USER_UID}_general_admission`);
 const entitlementRef = db.doc(`event_attendee_entitlements/givebutter_order123`);
@@ -36,7 +40,7 @@ const requestFor = (uid, data = {}) => ({
 });
 
 async function resetState() {
-  const docs = [roomUserRef, roomRef, userRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
+  const docs = [roomUserRef, secondRoomUserRef, roomRef, userRef, secondUserRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
   for (const ref of docs) {
     try {
       await ref.delete();
@@ -44,6 +48,14 @@ async function resetState() {
       // Ignore cleanup failures against missing docs.
     }
   }
+  const [joinGrantSnaps, eventGrantSnaps] = await Promise.all([
+    db.collection("room_join_grants").where("roomCode", "==", ROOM_CODE).get(),
+    db.collection("room_event_credit_grants").where("roomCode", "==", ROOM_CODE).get(),
+  ]);
+  await Promise.all([
+    ...joinGrantSnaps.docs.map((snap) => snap.ref.delete().catch(() => undefined)),
+    ...eventGrantSnaps.docs.map((snap) => snap.ref.delete().catch(() => undefined)),
+  ]);
 
   await roomRef.set({
     hostUid: "host-uid",
@@ -126,6 +138,24 @@ async function run() {
       );
     }],
 
+    ["audience join rejects anonymous auth when room requires account", async () => {
+      await roomRef.set({
+        audienceJoinPolicy: {
+          accessMode: "account_required",
+        },
+      }, { merge: true });
+      await expectHttpsError(
+        () => joinRoomAudience.run(requestFor(USER_UID, {
+          roomCode: ROOM_CODE,
+          name: "Guest",
+          __token: {
+            firebase: { sign_in_provider: "anonymous" },
+          },
+        })),
+        "failed-precondition"
+      );
+    }],
+
     ["audience join applies event general-admission grant once", async () => {
       await roomRef.set({
         hostUid: "host-uid",
@@ -167,6 +197,55 @@ async function run() {
       const grantSnap = await grantRef.get();
       assert.equal(grantSnap.exists, true);
       assert.equal(Number(grantSnap.get("pointsGranted")), 250);
+    }],
+
+    ["audience join does not duplicate welcome grant across refreshed anonymous sessions on one install", async () => {
+      await roomRef.set({
+        audienceJoinPolicy: {
+          accessMode: "anonymous_allowed",
+        },
+      }, { merge: true });
+
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest",
+        avatar: "🎤",
+        installId: SHARED_INSTALL_ID,
+        __token: {
+          firebase: { sign_in_provider: "anonymous" },
+        },
+      }));
+      await roomUserRef.set({
+        points: 175,
+      }, { merge: true });
+
+      const result = await joinRoomAudience.run(requestFor(SECOND_UID, {
+        roomCode: ROOM_CODE,
+        name: "Guest Reloaded",
+        avatar: "🎶",
+        installId: SHARED_INSTALL_ID,
+        __token: {
+          firebase: { sign_in_provider: "anonymous" },
+        },
+      }));
+
+      assert.equal(result.ok, true);
+      assert.equal(result.uid, SECOND_UID);
+
+      const originalSnap = await roomUserRef.get();
+      assert.equal(originalSnap.exists, false);
+
+      const refreshedSnap = await secondRoomUserRef.get();
+      assert.equal(refreshedSnap.exists, true);
+      assert.equal(Number(refreshedSnap.get("points")), 175);
+      assert.equal(Number(refreshedSnap.get("visits")), 2);
+      assert.equal(String(refreshedSnap.get("name")), "Guest Reloaded");
+      assert.equal(String(refreshedSnap.get("participantIdentityType")), "anon_device");
+      assert.ok(String(refreshedSnap.get("participantKey") || "").startsWith("anon_device:"));
+
+      const joinGrantSnaps = await db.collection("room_join_grants").where("roomCode", "==", ROOM_CODE).get();
+      assert.equal(joinGrantSnaps.size, 1);
+      assert.equal(Number(joinGrantSnaps.docs[0].get("pointsGranted")), 100);
     }],
 
     ["audience join auto-applies matching Givebutter entitlement by email", async () => {

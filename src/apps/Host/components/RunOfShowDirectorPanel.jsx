@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { callFunction } from '../../../lib/firebase';
 import { TRIVIA_BANK, WYR_BANK } from '../../../lib/gameDataConstants';
 import {
     RUN_OF_SHOW_ADVANCE_MODES,
@@ -39,6 +38,8 @@ import {
     getHostMomentCueMeta
 } from '../../../lib/hostMomentCues';
 import { BG_TRACK_OPTIONS, getBgTrackById } from '../../../lib/bgTrackOptions';
+import { isYouTubeQuotaBlockedError, searchYouTubeCatalog } from '../../../lib/youtubeSearchClient';
+import { searchAppleCatalog } from '../../../lib/appleSearchClient';
 import {
     buildRunOfShowAutopilotPlan,
     buildRunOfShowBufferPlan,
@@ -4804,11 +4805,11 @@ export default function RunOfShowDirectorPanel({
             setMediaPicker((prev) => ({ ...prev, loading: true, error: '' }));
             try {
                 if (pickerSourceType === 'apple_music') {
-                    const data = await callFunction('itunesSearch', {
+                    const data = await searchAppleCatalog({
                         term: query,
                         limit: 8,
                         roomCode,
-                        usageContext: { source: 'host_run_of_show_apple_search' }
+                        usageSource: 'host_run_of_show_apple_search'
                     });
                     if (cancelled) return;
                     const results = (Array.isArray(data?.results) ? data.results : []).map((entry, index) => ({
@@ -4833,12 +4834,13 @@ export default function RunOfShowDirectorPanel({
                     setMediaPicker((prev) => ({ ...prev, remoteResults: uniqueById(results), loading: false, error: '' }));
                     return;
                 }
-                const data = await callFunction('youtubeSearch', {
+                const data = await searchYouTubeCatalog({
                     query: `${query} karaoke`,
                     maxResults: 6,
                     playableOnly: true,
                     roomCode,
-                    usageContext: { source: 'host_run_of_show_youtube_search' }
+                    usageSource: 'host_run_of_show_youtube_search',
+                    usageSurface: 'host',
                 });
                 if (cancelled) return;
                 const results = (Array.isArray(data?.items) ? data.items : []).map((entry, index) => {
@@ -4861,13 +4863,19 @@ export default function RunOfShowDirectorPanel({
                     };
                 }).filter((entry) => entry.youtubeId || entry.mediaUrl);
                 setMediaPicker((prev) => ({ ...prev, remoteResults: uniqueById(results), loading: false, error: '' }));
-            } catch (_error) {
+            } catch (error) {
                 if (cancelled) return;
                 setMediaPicker((prev) => ({
                     ...prev,
                     remoteResults: [],
                     loading: false,
-                    error: `Could not load ${pickerSourceType === 'apple_music' ? 'Apple' : 'YouTube'} results right now.`
+                    error: pickerSourceType === 'apple_music'
+                        ? 'Could not load Apple results right now.'
+                        : (
+                            isYouTubeQuotaBlockedError(error)
+                                ? 'Could not load YouTube results right now. Live search is paused because the YouTube quota is exhausted.'
+                                : 'Could not load YouTube results right now.'
+                        )
                 }));
             }
         }, 300);
@@ -6694,13 +6702,18 @@ export default function RunOfShowDirectorPanel({
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Crowd Pulse</div>
-                                <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.summary}</div>
+                                <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.alignmentSummary || crowdPulseMeta.summary}</div>
                             </div>
-                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
-                                {crowdPulseMeta.label || 'Quiet room'}
+                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                {crowdPulseMeta.alignmentLabel || crowdPulseMeta.label || 'Quiet room'}
                             </span>
                         </div>
                         <div className="mt-3 grid gap-2 md:grid-cols-4">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">With Host</div>
+                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.alignmentPct || 0}%</div>
+                                <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.recentParticipantCount || 0} participants active in the last 2 minutes</div>
+                            </div>
                             <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                 <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Live Phones</div>
                                 <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.livePhonePct || 0}%</div>
@@ -6712,20 +6725,20 @@ export default function RunOfShowDirectorPanel({
                                 <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.warmLobbyCount || 0} recently active</div>
                             </div>
                             <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Recent Actions</div>
-                                <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.recentAudienceActionCount || 0}</div>
-                                <div className="mt-1 text-xs text-zinc-400">Last 2 minutes from phones</div>
-                            </div>
-                            <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
                                 <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Queue Depth</div>
                                 <div className="mt-1 text-lg font-black text-white">{crowdPulseMeta.metrics?.queueDepth || 0}</div>
                                 <div className="mt-1 text-xs text-zinc-400">{crowdPulseMeta.metrics?.recentRequestCount || 0} fresh requests in flow</div>
                             </div>
                         </div>
-                        <div className={`mt-3 rounded-2xl border px-3 py-3 ${crowdPulseMeta.panelClass || 'border-white/10 bg-black/20'}`}>
+                        <div className={`mt-3 rounded-2xl border px-3 py-3 ${crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20'}`}>
                             <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Recommendation</div>
-                            <div className="mt-1 text-sm font-semibold text-white">{crowdPulseMeta.recommendationTitle}</div>
-                            <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.recommendationDetail}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <div className="text-sm font-semibold text-white">{crowdPulseMeta.alignmentTitle || crowdPulseMeta.recommendationTitle}</div>
+                                <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200">
+                                    {crowdPulseMeta.hostDirective || 'Keep the room moving'}
+                                </span>
+                            </div>
+                            <div className="mt-1 text-sm text-zinc-300">{crowdPulseMeta.alignmentDetail || crowdPulseMeta.recommendationDetail}</div>
                         </div>
                     </article>
                 ) : null}

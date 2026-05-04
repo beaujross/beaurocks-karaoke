@@ -3,6 +3,12 @@ import { ASSETS } from '../../../lib/assets';
 import { REQUEST_MODES } from '../../../lib/requestModes';
 import { AUDIENCE_FEATURE_ACCESS_LEVELS } from '../../../lib/audienceFeatureAccess.js';
 import {
+    AUDIENCE_JOIN_ACCESS_MODES,
+    AUDIENCE_JOIN_ACCESS_OPTIONS,
+    normalizeAudienceJoinPolicy,
+} from '../../../lib/audienceJoinPolicy.js';
+import {
+    buildHostNightPresetConfig,
     createHostNightPresetDraft,
     normalizeHostNightPresetRecord,
 } from '../hostNightPresets';
@@ -115,10 +121,16 @@ const HostRoomLaunchPadBrowser = ({
     const selectedPresetIsCustom = !!selectedLaunchPreset && !selectedLaunchPreset.isBuiltIn;
     const selectedPresetBaseId = selectedLaunchPreset?.basePresetId || selectedLaunchPreset?.id || 'casual';
     const selectedPresetRequestMode = String(presetDraft?.settings?.requestMode || REQUEST_MODES.canonicalOpen);
+    const selectedPresetJoinPolicy = normalizeAudienceJoinPolicy(presetDraft?.settings?.audienceJoinPolicy || {});
     const selectedPresetShellVariant = String(presetDraft?.settings?.audienceShellVariant || '').trim() || 'classic';
     const selectedPresetCustomEmojiAccess = presetDraft?.settings?.audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired
         ? AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired
         : AUDIENCE_FEATURE_ACCESS_LEVELS.open;
+    const [launchJoinAccessMode, setLaunchJoinAccessMode] = useState(selectedPresetJoinPolicy.accessMode || AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed);
+
+    useEffect(() => {
+        setLaunchJoinAccessMode(normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}).accessMode);
+    }, [selectedLaunchPreset]);
     const editorTitle = presetEditorMode === 'edit'
         ? 'Edit Preset'
         : selectedPresetIsCustom
@@ -982,6 +994,21 @@ const HostRoomLaunchPadBrowser = ({
                                             </select>
                                         </label>
                                         <label className="block">
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Join policy</div>
+                                            <select
+                                                value={selectedPresetJoinPolicy.accessMode}
+                                                onChange={(e) => handlePresetDraftSettingChange('audienceJoinPolicy', {
+                                                    ...selectedPresetJoinPolicy,
+                                                    accessMode: e.target.value,
+                                                })}
+                                                className={inputClass}
+                                            >
+                                                {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => (
+                                                    <option key={option.id} value={option.id}>{option.label}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block">
                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Audience shell</div>
                                             <select
                                                 value={selectedPresetShellVariant}
@@ -1133,11 +1160,41 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                             </details>
 
+                            <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                                <div className="text-sm font-semibold text-white">Audience join policy</div>
+                                <div className="mt-1 text-xs text-cyan-100/58">Set the room entry rule before guests scan in.</div>
+                                <select
+                                    value={launchJoinAccessMode}
+                                    onChange={(e) => setLaunchJoinAccessMode(e.target.value)}
+                                    className={inputClass}
+                                >
+                                    {AUDIENCE_JOIN_ACCESS_OPTIONS.map((option) => (
+                                        <option key={option.id} value={option.id}>{option.label}</option>
+                                    ))}
+                                </select>
+                                <div className="mt-2 text-[11px] text-cyan-100/58">
+                                    {(AUDIENCE_JOIN_ACCESS_OPTIONS.find((option) => option.id === launchJoinAccessMode) || AUDIENCE_JOIN_ACCESS_OPTIONS[0]).description}
+                                </div>
+                            </div>
+
                             <div className="grid gap-2">
                                 <button
                                     type="button"
                                     data-host-create-room-primary="true"
-                                    onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'stage' })}
+                                    onClick={() => handleStartLauncherRoom({
+                                        openNightSetup: false,
+                                        launchTarget: 'stage',
+                                        nightPresetPayload: buildHostNightPresetConfig({
+                                            ...(selectedLaunchPreset || {}),
+                                            settings: {
+                                                ...(selectedLaunchPreset?.settings || {}),
+                                                audienceJoinPolicy: {
+                                                    ...normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}),
+                                                    accessMode: launchJoinAccessMode,
+                                                },
+                                            },
+                                        }),
+                                    })}
                                     disabled={launchDisabled}
                                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} w-full justify-center px-4 py-3 text-[11px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                                 >
@@ -1146,7 +1203,20 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="grid gap-2 sm:grid-cols-2">
                                     <button
                                         type="button"
-                                        onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'show' })}
+                                        onClick={() => handleStartLauncherRoom({
+                                            openNightSetup: false,
+                                            launchTarget: 'show',
+                                            nightPresetPayload: buildHostNightPresetConfig({
+                                                ...(selectedLaunchPreset || {}),
+                                                settings: {
+                                                    ...(selectedLaunchPreset?.settings || {}),
+                                                    audienceJoinPolicy: {
+                                                        ...normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}),
+                                                        accessMode: launchJoinAccessMode,
+                                                    },
+                                                },
+                                            }),
+                                        })}
                                         disabled={launchDisabled}
                                         className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                                     >
@@ -1154,7 +1224,20 @@ const HostRoomLaunchPadBrowser = ({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => handleStartLauncherRoom({ openNightSetup: false, launchTarget: 'settings' })}
+                                        onClick={() => handleStartLauncherRoom({
+                                            openNightSetup: false,
+                                            launchTarget: 'settings',
+                                            nightPresetPayload: buildHostNightPresetConfig({
+                                                ...(selectedLaunchPreset || {}),
+                                                settings: {
+                                                    ...(selectedLaunchPreset?.settings || {}),
+                                                    audienceJoinPolicy: {
+                                                        ...normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}),
+                                                        accessMode: launchJoinAccessMode,
+                                                    },
+                                                },
+                                            }),
+                                        })}
                                         disabled={launchDisabled}
                                         className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
                                     >

@@ -10,6 +10,7 @@ const SoundboardControls = ({
     sfxVolume,
     setSfxVolume,
     sounds,
+    customSounds = [],
     playSfxSafe,
     smallWaveform
 }) => {
@@ -40,6 +41,20 @@ const SoundboardControls = ({
                 style={{ background: `linear-gradient(90deg, #00E5FF ${Math.round(sfxVolume * 100)}%, #27272a ${Math.round(sfxVolume * 100)}%)` }}
             />
         </div>
+        {customSounds.length ? (
+            <div className="mb-3">
+                <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100/80">Room Pads</div>
+                <div className="grid grid-cols-3 gap-2">
+                    {customSounds.map((sound) => (
+                        <button key={sound.id || sound.name} onClick={() => playSfxSafe(sound.url)} className={`${styles.btnStd} ${styles.btnHighlight} truncate`}>
+                            <i className={`fa-solid ${sound.icon || 'fa-wave-square'} mr-2`}></i>
+                            {sound.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        ) : null}
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Built-In Pads</div>
         <div className="grid grid-cols-3 gap-2">
             {sounds.map(s => (
                 <button key={s.name} onClick={() => playSfxSafe(s.url)} className={`${styles.btnStd} ${styles.btnNeutral} truncate`}>

@@ -45,6 +45,28 @@ const PUBLIC_CORE_ROUTE_PAGES = [
   MARKETING_ROUTE_PAGES.forFans,
 ];
 
+const LEGAL_ROUTE_DEFINITIONS = Object.freeze([
+  {
+    slug: "terms",
+    page: "legal_terms",
+    title: "Terms of Service | BeauRocks Karaoke",
+    description: "Public Terms of Service for BeauRocks Karaoke, including YouTube API Services disclosure and contact details.",
+  },
+  {
+    slug: "privacy",
+    page: "legal_privacy",
+    title: "Privacy Policy | BeauRocks Karaoke",
+    description: "Public Privacy Policy for BeauRocks Karaoke, including temporary YouTube API data handling and retention disclosures.",
+  },
+  {
+    slug: "data-deletion",
+    page: "legal_data_deletion",
+    title: "Data Deletion | BeauRocks Karaoke",
+    description: "Public instructions for requesting personal-data deletion and understanding room-level data removal in BeauRocks Karaoke.",
+  },
+]);
+const LEGAL_ROUTE_IMAGE_PATH = "/images/logo-library/beaurocks-logo-background.png";
+
 const REGION_ALIASES = Object.freeze({
   kitsap_wa: "wa_kitsap",
   seattle_wa: "wa_seattle",
@@ -945,6 +967,47 @@ const buildSeoManifest = (routeData = {}, records = []) => ({
   records,
 });
 
+const buildLegalRouteRecords = (siteUrl = "") => {
+  const baseUrl = cleanText(siteUrl, "https://beaurocks.app").replace(/\/+$/, "");
+  const imageUrl = `${baseUrl}${LEGAL_ROUTE_IMAGE_PATH}`;
+  const timestamp = nowIso();
+  return LEGAL_ROUTE_DEFINITIONS.map((definition) => {
+    const routePath = withBasePath(`/karaoke/${definition.slug}`);
+    const canonicalUrl = `${baseUrl}${routePath}`;
+    return {
+      route: { page: definition.page, id: "", params: {} },
+      routePath,
+      title: definition.title,
+      description: definition.description,
+      canonicalUrl,
+      robots: "index,follow,max-image-preview:large",
+      ogType: "website",
+      siteName: "BeauRocks Karaoke",
+      image: {
+        url: imageUrl,
+        width: 1200,
+        height: 630,
+        alt: "BeauRocks Karaoke legal page",
+        path: LEGAL_ROUTE_IMAGE_PATH,
+      },
+      jsonLd: [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          name: definition.title,
+          description: definition.description,
+          url: canonicalUrl,
+          image: imageUrl,
+        },
+      ],
+      indexable: true,
+      sitemapImages: [imageUrl],
+      lastmod: timestamp,
+      priority: "0.3",
+    };
+  });
+};
+
 const syncTrackedSeoCache = async ({
   outputDir,
   legacyManifest,
@@ -1045,9 +1108,18 @@ const run = async () => {
     }
   }
 
-  const legacyManifest = buildLegacyManifest(routeData, records);
-  const seoManifest = buildSeoManifest(routeData, records);
-  const sitemapXml = buildSitemapXml(siteUrl, records);
+  const legalRecords = buildLegalRouteRecords(siteUrl);
+  const recordsByPath = new Map(records.map((record) => [String(record?.routePath || "").trim(), record]));
+  legalRecords.forEach((record) => {
+    const key = String(record?.routePath || "").trim();
+    if (!key || recordsByPath.has(key)) return;
+    recordsByPath.set(key, record);
+  });
+  const finalRecords = Array.from(recordsByPath.values());
+
+  const legacyManifest = buildLegacyManifest(routeData, finalRecords);
+  const seoManifest = buildSeoManifest(routeData, finalRecords);
+  const sitemapXml = buildSitemapXml(siteUrl, finalRecords);
   const robotsTxt = buildRobotsTxt(siteUrl);
 
   await fs.writeFile(path.join(outputDir, "marketing-route-manifest.json"), JSON.stringify(legacyManifest, null, 2), "utf8");
@@ -1062,7 +1134,7 @@ const run = async () => {
     robotsTxt,
   });
 
-  for (const record of records) {
+  for (const record of finalRecords) {
     await writePrerenderedHtml({
       templateHtml,
       routeRecord: record,
@@ -1071,7 +1143,7 @@ const run = async () => {
   }
 
   process.stdout.write(
-    `Generated marketing SEO assets in ${path.relative(projectRoot, outputDir) || "."}: ${records.length} prerendered routes, ${records.length} social cards, sitemap.xml, robots.txt, seo-route-manifest.json\n`
+    `Generated marketing SEO assets in ${path.relative(projectRoot, outputDir) || "."}: ${finalRecords.length} prerendered routes, ${records.length} social cards, sitemap.xml, robots.txt, seo-route-manifest.json\n`
   );
 };
 

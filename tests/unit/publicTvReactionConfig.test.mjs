@@ -30,6 +30,27 @@ test('Public TV reaction config keeps unique motion identities for the major rea
   assert.equal(getTvReactionMotionSpec({ type: 'clap', id: 'a', index: 0 }).variant, 'applause');
 });
 
+test('Public TV reaction config exposes differentiated themed path tuning', () => {
+  const rocket = getTvReactionMotionSpec({ type: 'rocket', id: 'hero', index: 0 });
+  const crown = getTvReactionMotionSpec({ type: 'crown', id: 'hero', index: 0 });
+  const blossom = getTvReactionMotionSpec({ type: 'money', id: 'hero', index: 0 });
+  const drink = getTvReactionMotionSpec({ type: 'drink', id: 'hero', index: 0 });
+  const heart = getTvReactionMotionSpec({ type: 'heart', id: 'hero', index: 0 });
+  const ember = getTvReactionMotionSpec({ type: 'fire', id: 'hero', index: 0 });
+  const applause = getTvReactionMotionSpec({ type: 'clap', id: 'hero', index: 0 });
+  const prism = getTvReactionMotionSpec({ type: 'diamond', id: 'hero', index: 0 });
+
+  assert.ok(rocket.entryY > crown.entryY);
+  assert.ok(rocket.riseY > blossom.riseY);
+  assert.ok(rocket.spinDeg > heart.spinDeg);
+  assert.ok(Math.abs(drink.entryX) > Math.abs(heart.entryX));
+  assert.ok(blossom.swayX > crown.swayX);
+  assert.ok(ember.swayY > heart.swayY);
+  assert.ok(applause.swayX > crown.swayX);
+  assert.ok(prism.spinDeg > crown.spinDeg);
+  assert.ok(rocket.exitScale < prism.exitScale);
+});
+
 test('Public TV reaction config keeps deterministic lane placement and safe fallbacks', () => {
   assert.equal(
     getTvReactionLaneLeft({ type: 'rocket', id: 'same', index: 1, wide: true }),

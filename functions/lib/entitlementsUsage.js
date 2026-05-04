@@ -93,7 +93,7 @@ const USAGE_METER_DEFINITIONS = Object.freeze({
   },
   youtube_data_request: {
     id: "youtube_data_request",
-    label: "YouTube Data API requests",
+    label: "YouTube Data API request count",
     unit: "request",
     includedByPlan: Object.freeze({
       free: 0,
@@ -169,6 +169,35 @@ const toWholeNumber = (value, fallback = 0) => {
   return Math.max(0, Math.floor(n));
 };
 
+const toRollupEntries = (entries = {}, {
+  keyField = "key",
+  labelField = "label",
+  fallbackLabel = "",
+  limit = 5,
+} = {}) => {
+  if (!entries || typeof entries !== "object") return [];
+  return Object.entries(entries)
+    .map(([key, value]) => {
+      const safeValue = value && typeof value === "object" ? value : {};
+      const used = toWholeNumber(safeValue.used, 0);
+      if (used <= 0) return null;
+      const normalizedKey = String(safeValue[keyField] || key || "").trim() || String(key || "").trim();
+      const label = String(safeValue[labelField] || normalizedKey || fallbackLabel || "").trim()
+        || String(fallbackLabel || normalizedKey || key || "").trim();
+      return {
+        key: normalizedKey,
+        label,
+        used,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (b.used !== a.used) return b.used - a.used;
+      return String(a.label || a.key).localeCompare(String(b.label || b.key));
+    })
+    .slice(0, Math.max(1, toWholeNumber(limit, 5)));
+};
+
 const getPlanDefinition = (planId = "") => PLAN_DEFINITIONS[String(planId || "").trim()] || null;
 
 const isEntitledStatus = (status = "") => ENTITLED_STATUSES.has(String(status || "").toLowerCase());
@@ -234,7 +263,16 @@ const resolveUsageMeterQuota = ({ meterId = "", planId = "free", status = "inact
   };
 };
 
-const buildUsageMeterSummary = ({ meterId, used = 0, quota, periodKey = "" }) => {
+const buildUsageMeterSummary = ({
+  meterId,
+  used = 0,
+  quota,
+  periodKey = "",
+  sources = {},
+  actors = {},
+  rooms = {},
+  surfaces = {},
+}) => {
   const meter = USAGE_METER_DEFINITIONS[meterId] || {
     id: meterId,
     label: meterId,
@@ -254,6 +292,26 @@ const buildUsageMeterSummary = ({ meterId, used = 0, quota, periodKey = "" }) =>
   const remainingIncluded = Math.max(0, included - safeUsed);
   const remainingToHardLimit = hardLimit > 0 ? Math.max(0, hardLimit - safeUsed) : null;
   const hardLimitReached = hardLimit > 0 && safeUsed >= hardLimit;
+  const topSources = toRollupEntries(sources, {
+    keyField: "source",
+    labelField: "label",
+    fallbackLabel: "Unknown Source",
+  });
+  const topActors = toRollupEntries(actors, {
+    keyField: "uid",
+    labelField: "label",
+    fallbackLabel: "Operator",
+  });
+  const topRooms = toRollupEntries(rooms, {
+    keyField: "roomCode",
+    labelField: "label",
+    fallbackLabel: "Room",
+  });
+  const topSurfaces = toRollupEntries(surfaces, {
+    keyField: "surface",
+    labelField: "label",
+    fallbackLabel: "Surface",
+  });
   return {
     meterId: meter.id,
     label: meter.label,
@@ -271,6 +329,12 @@ const buildUsageMeterSummary = ({ meterId, used = 0, quota, periodKey = "" }) =>
     hardLimitReached,
     remainingIncluded,
     remainingToHardLimit,
+    breakdowns: {
+      topSources,
+      topActors,
+      topRooms,
+      topSurfaces,
+    },
   };
 };
 

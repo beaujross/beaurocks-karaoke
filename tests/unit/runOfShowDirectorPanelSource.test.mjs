@@ -43,6 +43,9 @@ test('run-of-show presets include a standalone leaderboard stack moment', () => 
 test('run-of-show live HUD uses conveyor language and shows crowd pulse guidance', () => {
   assert.match(source, /Conveyor status/);
   assert.match(source, /Crowd Pulse/);
+  assert.match(source, /With Host/);
+  assert.match(source, /alignmentLabel/);
+  assert.match(source, /hostDirective/);
   assert.match(source, /Show Conveyor/);
   assert.match(source, /Conveyor Actions/);
   assert.match(source, /Open Issues/);

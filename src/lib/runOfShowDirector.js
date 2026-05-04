@@ -1,4 +1,5 @@
 import { TRIVIA_BANK, WYR_BANK } from './gameDataConstants.js';
+import { normalizeMediaSceneAudienceReactionMode } from './mediaSceneConfig.js';
 
 export const RUN_OF_SHOW_PROGRAM_MODES = Object.freeze({
     standard: 'standard_karaoke',
@@ -346,6 +347,9 @@ const createDefaultRunOfShowReleaseWindow = (overrides = {}) => {
             ? cleanText(overrides?.releasePolicy).toLowerCase()
             : 'manual_release',
         prompt: cleanText(overrides?.prompt),
+        durationSec: clampInt(overrides?.durationSec, 10, 45, 20),
+        queuedForPostPerformance: overrides?.queuedForPostPerformance === true,
+        deferredAtMs: asTimestampMs(overrides?.deferredAtMs, 0),
         openedAtMs: asTimestampMs(overrides?.openedAtMs, 0),
         closesAtMs: asTimestampMs(overrides?.closesAtMs, 0),
         choiceLabels: normalizeReleaseWindowChoiceMap(overrides?.choiceLabels, 140),
@@ -357,6 +361,23 @@ const createDefaultRunOfShowReleaseWindow = (overrides = {}) => {
             : '',
         resolvedAtMs: asTimestampMs(overrides?.resolvedAtMs, 0)
     };
+};
+
+export const isRunOfShowReleaseWindowVotingOpen = (releaseWindow = {}, nowValue = Date.now()) => {
+    const safeWindow = createDefaultRunOfShowReleaseWindow(releaseWindow || {});
+    const nowMsValue = asTimestampMs(nowValue, Date.now());
+    if (!safeWindow.active) return false;
+    if (safeWindow.resolvedAtMs > 0) return false;
+    if (safeWindow.closesAtMs > 0 && nowMsValue >= safeWindow.closesAtMs) return false;
+    return true;
+};
+
+export const getRunOfShowReleaseWindowRemainingMs = (releaseWindow = {}, nowValue = Date.now()) => {
+    const safeWindow = createDefaultRunOfShowReleaseWindow(releaseWindow || {});
+    const nowMsValue = asTimestampMs(nowValue, Date.now());
+    if (!isRunOfShowReleaseWindowVotingOpen(safeWindow, nowMsValue)) return 0;
+    if (safeWindow.closesAtMs <= 0) return 0;
+    return Math.max(0, safeWindow.closesAtMs - nowMsValue);
 };
 
 export const createDefaultRunOfShowPolicy = (overrides = {}) => ({
@@ -548,7 +569,8 @@ const createDefaultPresentationPlan = (type = '', overrides = {}) => ({
     soundtrackYoutubeId: cleanText(overrides.soundtrackYoutubeId),
     soundtrackAppleMusicId: cleanText(overrides.soundtrackAppleMusicId),
     soundtrackBgTrackId: cleanText(overrides.soundtrackBgTrackId).toLowerCase(),
-    soundtrackAutoPlay: overrides.soundtrackAutoPlay === true
+    soundtrackAutoPlay: overrides.soundtrackAutoPlay === true,
+    sceneAudienceReactionMode: normalizeMediaSceneAudienceReactionMode(overrides.sceneAudienceReactionMode)
 });
 
 const createDefaultAudioPlan = (type = '', overrides = {}) => ({

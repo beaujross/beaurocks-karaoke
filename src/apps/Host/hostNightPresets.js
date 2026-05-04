@@ -5,6 +5,7 @@ import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
     normalizeAudienceFeatureAccess,
 } from '../../lib/audienceFeatureAccess.js';
+import { normalizeAudienceJoinPolicy } from '../../lib/audienceJoinPolicy.js';
 
 export const HOST_NIGHT_PRESET_STORAGE_KEY = 'bross_host_custom_presets_v1';
 
@@ -95,6 +96,7 @@ const normalizePresetSettings = (value = {}, fallback = {}) => ({
     audienceBrandThemePresetId: String(value?.audienceBrandThemePresetId || fallback?.audienceBrandThemePresetId || '').trim(),
     audienceBrandTitle: String(value?.audienceBrandTitle || fallback?.audienceBrandTitle || '').trim().slice(0, 64),
     audienceFeatureAccess: normalizeAudienceFeatureAccess(value?.audienceFeatureAccess || fallback?.audienceFeatureAccess || {}),
+    audienceJoinPolicy: normalizeAudienceJoinPolicy(value?.audienceJoinPolicy || {}, fallback?.audienceJoinPolicy || {}),
     queueSettings: normalizeQueueSettings(value?.queueSettings, fallback?.queueSettings),
     gameDefaults: normalizeGameDefaults(value?.gameDefaults, fallback?.gameDefaults),
 });

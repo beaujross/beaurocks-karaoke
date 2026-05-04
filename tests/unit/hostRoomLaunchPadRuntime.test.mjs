@@ -6,6 +6,7 @@ import HostRoomLaunchPad from '../../src/apps/Host/components/HostRoomLaunchPad.
 
 const noop = () => {};
 const styles = new Proxy({}, { get: () => '' });
+const buildFutureRoomStartMs = (hoursFromNow = 2) => Date.now() + (hoursFromNow * 60 * 60 * 1000);
 
 const buildLaunchPadProps = (overrides = {}) => ({
   STYLES: styles,
@@ -131,7 +132,7 @@ test('HostRoomLaunchPad gives AAHF a dedicated event-focus strip with live and r
         closedAtMs: 0,
         archived: false,
         publicRoom: true,
-        roomStartsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+        roomStartsAtMs: buildFutureRoomStartMs(),
       },
     ],
   });
@@ -172,7 +173,7 @@ test('HostRoomLaunchPad lands on AAHF even when another room is pinned locally',
         closedAtMs: 0,
         archived: false,
         publicRoom: true,
-        roomStartsAtMs: Date.parse('2026-05-01T19:00:00-07:00'),
+        roomStartsAtMs: buildFutureRoomStartMs(),
       },
     ],
   });

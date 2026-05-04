@@ -13,7 +13,7 @@ test('PublicTV rehydrates applause overlay state from live room mode transitions
   );
   assert.match(
     source,
-    /if \(applauseMode === 'applause_countdown' && !\['celebrate', 'countdown', 'measuring'\]\.includes\(applauseStep\)\)/,
+    /if \(applauseMode === 'applause_countdown' && !\['celebrate', 'measuring'\]\.includes\(applauseStep\)\)/,
     'PublicTV should rebuild the applause countdown when local overlay state is stale.',
   );
   assert.match(
@@ -35,6 +35,21 @@ test('PublicTV rehydrates applause overlay state from live room mode transitions
     source,
     /const applauseOverlayVisible = applauseModeActive \|\| applauseStep !== 'idle';/,
     'PublicTV should treat applause mode itself as enough to mount the overlay during fresh screen renders.',
+  );
+  assert.match(
+    source,
+    /const applauseSubject = room\?\.applauseSubject \|\| current \|\| room\?\.lastPerformance \|\| null;/,
+    'PublicTV should prefer the explicit applause subject over a potentially stale current performer lookup.',
+  );
+  assert.match(
+    source,
+    /const visualizerActive = \(started \|\| applauseModeActive \|\| applauseStep !== 'idle'\) && visualizerEnabled;/,
+    'PublicTV should keep the applause mic analyser active as soon as the room enters applause mode.',
+  );
+  assert.match(
+    source,
+    /!\s*showVisualizerTv && \(showAmbientFx \|\| applauseOverlayVisible\)/,
+    'PublicTV should still mount the applause analyser even when ambient FX are disabled.',
   );
   assert.match(
     source,

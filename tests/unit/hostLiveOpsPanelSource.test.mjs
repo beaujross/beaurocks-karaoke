@@ -22,6 +22,10 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostAppSource, /coHostSignals: recentCoHostSignals/);
   assert.match(hostAppSource, /const coHostSignalToastStateRef = useRef/);
   assert.match(hostAppSource, /const \[sceneLibraryModalOpen, setSceneLibraryModalOpen\] = useState\(false\)/);
+  assert.match(hostAppSource, /const stagePreviewAutoCollapseRef = useRef\(false\)/);
+  assert.match(hostAppSource, /if \(tab !== 'stage'\) \{\s*stagePreviewAutoCollapseRef\.current = false;\s*return;\s*\}/);
+  assert.match(hostAppSource, /setAudiencePreviewCollapsed\(true\)/);
+  assert.match(hostAppSource, /setPublicTvPreviewCollapsed\(true\)/);
   assert.match(hostAppSource, /onSceneLibraryModalChange: setSceneLibraryModalOpen/);
   assert.match(hostAppSource, /audiencePreviewVisible && tab !== 'run_of_show' && !sceneLibraryModalOpen/);
   assert.match(hostAppSource, /publicTvPreviewVisible && !sceneLibraryModalOpen/);

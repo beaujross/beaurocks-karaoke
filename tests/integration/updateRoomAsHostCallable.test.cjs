@@ -305,6 +305,23 @@ async function run() {
       assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
     }],
 
+    ["host can toggle post-performance backing prompts", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        hostUiPrefs: {
+          postPerformanceBackingPromptEnabled: false,
+        },
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set(["hostUiPrefs"])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("hostUiPrefs.postPerformanceBackingPromptEnabled"), false);
+    }],
+
     ["host can persist stage-start session payloads", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         activeMode: "karaoke",

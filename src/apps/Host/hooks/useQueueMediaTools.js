@@ -1,6 +1,10 @@
 import { useCallback } from 'react';
 import { callFunction } from '../../../lib/firebase';
 import {
+    isYouTubeQuotaBlockedError,
+    searchYouTubeCatalog
+} from '../../../lib/youtubeSearchClient';
+import {
     getYouTubeEmbedCacheStatus,
     isYouTubeEmbeddable,
     normalizeYouTubePlaybackState
@@ -150,17 +154,15 @@ const useQueueMediaTools = ({
         setYtLoading(true);
         setYtSearchError('');
         try {
-            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Search timed out.')), 8000));
-            const data = await Promise.race([
-                callFunction('youtubeSearch', {
-                    query: `${query} karaoke`,
-                    maxResults: 10,
-                    playableOnly: hideNonEmbeddableYouTube === true,
-                    roomCode,
-                    usageContext: { source: 'host_queue_media_search' }
-                }),
-                timeout
-            ]);
+            const data = await searchYouTubeCatalog({
+                query: `${query} karaoke`,
+                maxResults: 10,
+                playableOnly: hideNonEmbeddableYouTube === true,
+                roomCode,
+                usageSource: 'host_queue_media_search',
+                usageSurface: 'host',
+                timeoutMs: 8000
+            });
             const results = (data?.items || [])
                 .map(item => {
                     const playbackState = normalizeYouTubePlaybackState(item);
@@ -224,7 +226,6 @@ const useQueueMediaTools = ({
             } else {
                 setYtIndex(updated);
             }
-            fetchEmbedStatuses(results.map(item => item.id));
         } catch (e) {
             console.error('YouTube search error:', e);
             const fallbackResults = searchYouTubeIndex(query);
@@ -239,7 +240,13 @@ const useQueueMediaTools = ({
                     });
                     return next;
                 });
-                setYtSearchError('Live YouTube search failed. Showing indexed playlist results.');
+                setYtSearchError(
+                    isYouTubeQuotaBlockedError(e)
+                        ? 'Live YouTube search is paused because the YouTube quota is exhausted. Showing indexed playlist results.'
+                        : 'Live YouTube search failed. Showing indexed playlist results.'
+                );
+            } else if (isYouTubeQuotaBlockedError(e)) {
+                setYtSearchError('Live YouTube search is temporarily paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL.');
             } else if (code.includes('permission-denied')) {
                 setYtSearchError('Live YouTube search is currently unavailable for this account. Use indexed tracks or paste a direct URL.');
             } else {
@@ -249,7 +256,6 @@ const useQueueMediaTools = ({
             setYtLoading(false);
         }
     }, [
-        fetchEmbedStatuses,
         persistYtIndex,
         searchYouTubeIndex,
         setYtIndex,

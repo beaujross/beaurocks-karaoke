@@ -34,6 +34,11 @@ import {
   callFunction,
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
+import {
+  searchYouTubeCatalog,
+} from '../../../lib/youtubeSearchClient';
+import { searchAppleCatalog } from '../../../lib/appleSearchClient';
+import { generateAiContentRequest } from '../../../lib/aiGenerationClient';
 import { SOUNDS } from '../../../lib/gameDataConstants';
 import { createLogger } from '../../../lib/logger';
 import { POP_TRIVIA_VOTE_TYPE } from '../../../lib/popTrivia';
@@ -91,6 +96,7 @@ import {
   normalizeMediaSceneSoundtrackConfig,
   normalizeMediaSceneAudienceReactionMode,
 } from '../../../lib/mediaSceneConfig';
+import { isPostPerformanceBackingPromptEnabled } from '../lib/hostUiPrefs';
 
 const QueueYouTubeSearchModal = React.lazy(() => import('./QueueYouTubeSearchModal'));
 const QueueEditSongModal = React.lazy(() => import('./QueueEditSongModal'));
@@ -294,11 +300,12 @@ const getRoomCodeFromLocation = () => {
 const generateAIContent = async (type, context) => {
   try {
     const roomCode = getRoomCodeFromLocation();
-    const payload = roomCode
-      ? { type, context, roomCode, usageContext: { source: `host_${type}` } }
-      : { type, context, usageContext: { source: `host_${type}` } };
-    const data = await callFunction('geminiGenerate', payload);
-    return data?.result || null;
+    return await generateAiContentRequest({
+      type,
+      context,
+      roomCode,
+      usageSource: `host_${type}`,
+    });
   } catch (error) {
     hostLogger.error('AI Error', error);
     return null;
@@ -611,6 +618,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [deferredTrackChecks, setDeferredTrackChecks] = useState([]);
     const [dismissedTrackCheckKeys, setDismissedTrackCheckKeys] = useState([]);
     const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
+    const postPerformanceBackingPromptEnabled = isPostPerformanceBackingPromptEnabled(room);
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
     const hostDmMessages = chatMessages.filter((msg) => isDirectChatMessage(msg));
@@ -1432,11 +1440,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     return;
                 }
                 try {
-                    const data = await callFunction('itunesSearch', {
+                    const data = await searchAppleCatalog({
                         term: normalizedQuery,
                         limit: 7,
                         roomCode,
-                        usageContext: { source: 'host_queue_search_apple' }
+                        usageSource: 'host_queue_search_apple'
                     });
                     if (cancelled) return;
                     const itunesMatches = annotateQueueSearchResults((data?.results || []).map(r => ({ ...r, source: 'itunes' })), {
@@ -1471,12 +1479,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             });
             let liveYouTubeMatches = [];
             try { 
-                const ytFallbackData = await callFunction('youtubeSearch', {
+                const ytFallbackData = await searchYouTubeCatalog({
                     query: `${normalizedQuery} karaoke`,
                     maxResults: 6,
                     playableOnly: hideNonEmbeddableYouTube === true,
                     roomCode,
-                    usageContext: { source: 'host_queue_search_youtube_fallback' }
+                    usageSource: 'host_queue_search_youtube_fallback',
+                    usageSurface: 'host',
                 });
                 if (cancelled) return;
                 liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
@@ -1652,6 +1661,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         if (focusInbox) focusInboxWorkspace();
     }, [focusInboxWorkspace]);
     const showPostPerformanceBackingPrompt = useCallback((trackCheck = null) => {
+        if (!postPerformanceBackingPromptEnabled) return;
         const resolvedTrackCheck = trackCheck?.performanceKey
             ? trackCheck
             : buildTrackCheckPromptFromPerformance(trackCheck);
@@ -1661,7 +1671,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         postPerformanceBackingPromptKeyRef.current = resolvedTrackCheck.performanceKey;
         setPostPerformanceBackingPromptBusy(false);
         setPostPerformanceBackingPrompt(resolvedTrackCheck);
-    }, [deferredTrackChecks, dismissedTrackCheckKeys]);
+    }, [deferredTrackChecks, dismissedTrackCheckKeys, postPerformanceBackingPromptEnabled]);
 
     const rateBackingPreference = useCallback(async (songLike, rating = 'up') => {
         const result = await saveHostBackingPreferenceForRoom({
@@ -1755,6 +1765,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [roomCode]);
 
     useEffect(() => {
+        if (postPerformanceBackingPromptEnabled) return;
+        const currentPerformancePrompt = buildTrackCheckPromptFromPerformance(room?.lastPerformance || null);
+        if (currentPerformancePrompt?.performanceKey) {
+            postPerformanceBackingPromptKeyRef.current = currentPerformancePrompt.performanceKey;
+        }
+        setPostPerformanceBackingPrompt(null);
+        setPostPerformanceBackingPromptBusy(false);
+    }, [postPerformanceBackingPromptEnabled, room?.lastPerformance]);
+
+    useEffect(() => {
+        if (!postPerformanceBackingPromptEnabled) return;
         const nextPrompt = buildTrackCheckPromptFromPerformance(room?.lastPerformance || null);
         if (!nextPrompt?.performanceKey) return;
         if ((Array.isArray(dismissedTrackCheckKeys) ? dismissedTrackCheckKeys : []).includes(nextPrompt.performanceKey)) return;
@@ -1766,6 +1787,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [
         deferredTrackChecks,
         dismissedTrackCheckKeys,
+        postPerformanceBackingPromptEnabled,
         room?.lastPerformance,
         room?.lastPerformance?.albumArtUrl,
         room?.lastPerformance?.artist,
@@ -1774,7 +1796,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         room?.lastPerformance?.timestamp
     ]);
     useEffect(() => {
-        if (!postPerformanceBackingPrompt || postPerformanceBackingPromptBusy) return () => {};
+        if (!postPerformanceBackingPromptEnabled || !postPerformanceBackingPrompt || postPerformanceBackingPromptBusy) return () => {};
         const activePerformanceKey = String(postPerformanceBackingPrompt?.performanceKey || '').trim();
         if (!activePerformanceKey) return () => {};
         const timer = setTimeout(() => {
@@ -1782,7 +1804,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             deferTrackCheckToInbox(postPerformanceBackingPrompt);
         }, POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS);
         return () => clearTimeout(timer);
-    }, [deferTrackCheckToInbox, postPerformanceBackingPrompt, postPerformanceBackingPromptBusy]);
+    }, [deferTrackCheckToInbox, postPerformanceBackingPrompt, postPerformanceBackingPromptBusy, postPerformanceBackingPromptEnabled]);
 
     useEffect(() => {
         if (!roomCode || typeof onUpsertYtIndexEntries !== 'function') return;
@@ -1822,12 +1844,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
 
                 if (searchQuery && (!isStrongQueueReviewCandidate(bestCandidate) || !isYouTubeQueueReviewCandidate(bestCandidate))) {
                     try {
-                        const ytData = await callFunction('youtubeSearch', {
+                        const ytData = await searchYouTubeCatalog({
                             query: `${searchQuery} karaoke`,
                             maxResults: 5,
                             playableOnly: hideNonEmbeddableYouTube === true,
                             roomCode,
-                            usageContext: { source: 'host_queue_review_auto_youtube' }
+                            usageSource: 'host_queue_review_auto_youtube',
+                            usageSurface: 'host',
                         });
                         liveMatches = normalizeYouTubeSearchItems(ytData?.items || [], {
                             reason: 'queue_review_auto',

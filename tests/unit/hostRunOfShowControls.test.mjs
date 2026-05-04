@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const hostAppPath = path.resolve(__dirname, "../../src/apps/Host/HostApp.jsx");
 const hostQueueTabPath = path.resolve(__dirname, "../../src/apps/Host/components/HostQueueTab.jsx");
+const queueSongCardPath = path.resolve(__dirname, "../../src/apps/Host/components/QueueSongCard.jsx");
 const hostTopChromePath = path.resolve(__dirname, "../../src/apps/Host/components/HostTopChrome.jsx");
 const runOfShowDirectorPanelPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowDirectorPanel.jsx");
 const runOfShowQueueHudPath = path.resolve(__dirname, "../../src/apps/Host/components/RunOfShowQueueHud.jsx");
@@ -66,6 +67,9 @@ test("HostApp feeds run-of-show with crowd pulse guidance and conveyor copy", ()
   assert.match(directorPanelSource, /Flighted/);
   assert.match(source, /const openRunOfShowReleaseWindow = useCallback\(async \(itemId, options = \{\}\) => \{/);
   assert.match(source, /const closeRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
+  assert.match(source, /queuedForPostPerformance: performanceActive/);
+  assert.match(source, /const activateQueuedRunOfShowReleaseWindow = useCallback\(async \(options = \{\}\) => \{/);
+  assert.match(source, /Vote queued for after this performance\./);
   assert.match(source, /onOpenReleaseWindow=\{openRunOfShowReleaseWindow\}/);
   assert.match(source, /onCloseReleaseWindow=\{closeRunOfShowReleaseWindow\}/);
   assert.match(source, /const importRunOfShowCsv = useCallback\(async \(csvText = '', options = \{\}\) => \{/);
@@ -388,6 +392,7 @@ test("Host top chrome keeps the dropdown strip lean", () => {
   assert.doesNotMatch(source, /quickAudioControlClass|showInlineAudioQuickControls/);
   assert.match(source, /data-feature-id="deck-audio-menu-toggle"/);
   assert.match(source, /Audio \+ Mix/);
+  assert.match(source, /Post-Song Track Check/);
 });
 
 test("Run-of-show prep sections can collapse after opening", () => {
@@ -416,12 +421,30 @@ test("Run-of-show automation respects room auto mode and pauses for missing sing
 
 test("HostApp auto-routes the post-performance backing prompt into inbox if the host ignores it", () => {
   const source = readFileSync(hostQueueTabPath, "utf8");
+  const hostSource = readFileSync(hostAppPath, "utf8");
+  const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
   assert.match(source, /const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;/);
-  assert.match(source, /if \(!postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
+  assert.match(source, /import \{ isPostPerformanceBackingPromptEnabled \} from '\.\.\/lib\/hostUiPrefs';/);
+  assert.match(source, /const postPerformanceBackingPromptEnabled = isPostPerformanceBackingPromptEnabled\(room\);/);
+  assert.match(source, /if \(!postPerformanceBackingPromptEnabled\) return;/);
+  assert.match(source, /const currentPerformancePrompt = buildTrackCheckPromptFromPerformance\(room\?\.lastPerformance \|\| null\);/);
+  assert.match(source, /postPerformanceBackingPromptKeyRef\.current = currentPerformancePrompt\.performanceKey;/);
+  assert.match(source, /const showPostPerformanceBackingPrompt = useCallback\(\(trackCheck = null\) => \{\s*if \(!postPerformanceBackingPromptEnabled\) return;/s);
+  assert.match(source, /if \(!postPerformanceBackingPromptEnabled \|\| !postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
   assert.match(source, /setTimeout\(\(\) => \{\s*if \(String\(postPerformanceBackingPrompt\?\.performanceKey \|\| ''\)\.trim\(\) !== activePerformanceKey\) return;\s*deferTrackCheckToInbox\(postPerformanceBackingPrompt\);/s);
-  assert.match(source, /Moves to the inbox automatically after a few seconds\./);
-  assert.match(source, /handlePostPerformanceBackingPromptAction\(null, 'inbox'\)/);
+  assert.match(source, /If you do nothing, we will save it to Inbox for later\./);
+  assert.match(source, /handlePostPerformanceBackingPromptAction\(null, 'later'\)/);
+  assert.match(hostSource, /const togglePostPerformanceBackingPromptQuick = async \(\) => \{/);
+  assert.match(hostSource, /import \{[\s\S]*buildHostUiPrefsPatch,[\s\S]*isPostPerformanceBackingPromptEnabled,[\s\S]*\} from '\.\/lib\/hostUiPrefs';/);
+  assert.match(hostSource, /const next = !isPostPerformanceBackingPromptEnabled\(room\);/);
+  assert.match(hostSource, /hostUiPrefs: buildHostUiPrefsPatch\(room, \{\s*postPerformanceBackingPromptEnabled: next,\s*\}\),/s);
+  assert.match(hostSource, /toast\(next \? 'Post-song track checks on\.' : 'Post-song track checks off\.'\);/);
+  assert.match(hostSource, /postPerformanceBackingPromptEnabled: isPostPerformanceBackingPromptEnabled\(room\),/);
+  assert.match(hostSource, /onTogglePostPerformanceBackingPrompt: togglePostPerformanceBackingPromptQuick,/);
+  assert.match(chromeSource, /Post-Song Track Check/);
+  assert.match(chromeSource, /aria-pressed=\{quickRoomControls\.postPerformanceBackingPromptEnabled === true\}/);
+  assert.match(chromeSource, /quickRoomControls\.onTogglePostPerformanceBackingPrompt/);
 });
 
 test("HostApp routes scene images through the host callable without a direct-storage fallback", () => {
@@ -436,15 +459,17 @@ test("HostApp routes scene images through the host callable without a direct-sto
 test("Host scene presets can be slotted into the conveyor and live below the queue", () => {
   const hostSource = readFileSync(hostAppPath, "utf8");
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
+  const queueSongCardSource = readFileSync(queueSongCardPath, "utf8");
 
   assert.match(queueTabSource, /data-feature-id="panel-tv-moments"/);
   assert.match(queueTabSource, /Media Library/);
   assert.match(queueTabSource, /Scenes/);
   assert.match(queueTabSource, /SFX/);
   assert.match(queueTabSource, /BG Music/);
-  assert.match(queueTabSource, /Queue Next Scene/);
   assert.match(queueTabSource, /sceneLibrarySeedPack\.label/);
   assert.match(queueTabSource, /Use In Run Of Show/);
+  assert.match(queueSongCardSource, /Assign To Next Open Slot/);
+  assert.match(queueSongCardSource, /Assign Selected Slot/);
   assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);
   assert.match(hostSource, /const syncAahfSceneLibrarySeedPack = useCallback\(async \(\{ silent = false \} = \{\}\) => \{/);
   assert.match(hostSource, /AAHF_SCENE_LIBRARY_SEED_ASSETS/);
@@ -459,9 +484,8 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   assert.match(hostSource, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
   assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
-  assert.match(
-    queueTabSource,
-    /<QueueListPanel[\s\S]*\/>\s*<div data-feature-id="panel-tv-moments">[\s\S]*Media Library/,
+  assert.ok(
+    queueTabSource.indexOf("<QueueListPanel") < queueTabSource.indexOf('data-feature-id="panel-tv-moments"'),
     "Media Library should render below the queue board instead of above it",
   );
 });

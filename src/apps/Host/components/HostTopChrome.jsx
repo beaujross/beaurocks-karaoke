@@ -22,6 +22,21 @@ const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', titl
     );
 };
 
+const OpsStatusPill = ({ label, state, iconClass, active = false, toneClass = '', title = '' }) => (
+    <div
+        title={title}
+        className={`inline-flex min-w-[118px] items-center gap-2 rounded-xl border px-2.5 py-2 text-left shadow-[0_10px_24px_rgba(0,0,0,0.18)] ${toneClass}`}
+    >
+        <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/20 ${active ? 'text-white' : 'text-zinc-300'}`}>
+            <i className={`${iconClass} text-[11px]`}></i>
+        </span>
+        <span className="min-w-0">
+            <span className="block text-[9px] font-black uppercase tracking-[0.18em] text-white/70">{label}</span>
+            <span className="block truncate text-[11px] font-semibold text-white">{state}</span>
+        </span>
+    </div>
+);
+
 const getRunOfShowDurationSec = (item = {}) => Math.max(
     0,
     Math.round(Number(
@@ -151,6 +166,8 @@ const HostTopChrome = ({
     runOfShowPreflightReport = null,
     onToggleRunOfShowAutomationPause,
     runOfShowFocusMode = false,
+    crowdPulse = null,
+    opsStatus = null,
     activeMomentFeedback = null,
     scenePresets = [],
     onLaunchScenePreset,
@@ -356,6 +373,8 @@ const HostTopChrome = ({
     const showMissionStatusBanner = missionControlEnabled
         && missionStatus === 'needs_attention'
         && missionRecommendation?.id !== 'crowd_check';
+    const crowdPulseMeta = crowdPulse && typeof crowdPulse === 'object' ? crowdPulse : null;
+    const opsStatusItems = Array.isArray(opsStatus?.items) ? opsStatus.items.filter(Boolean).slice(0, 4) : [];
     const normalizedRunOfShowDirector = React.useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || {}),
         [runOfShowDirector]
@@ -1667,7 +1686,7 @@ const HostTopChrome = ({
                                             </select>
                                         </label>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                                         <button
                                             type="button"
                                             onClick={() => { void quickRoomControls.onToggleBouncerMode?.(); }}
@@ -1704,6 +1723,19 @@ const HostTopChrome = ({
                                                 Ready Check
                                             </span>
                                             <span className="text-[11px] uppercase tracking-widest">Run</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { void quickRoomControls.onTogglePostPerformanceBackingPrompt?.(); }}
+                                            aria-pressed={quickRoomControls.postPerformanceBackingPromptEnabled === true}
+                                            title="Ask after each YouTube-backed performance whether the backing was good."
+                                            className={`${styles.btnStd} ${quickRoomControls.postPerformanceBackingPromptEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <i className="fa-solid fa-circle-question"></i>
+                                                Post-Song Track Check
+                                            </span>
+                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.postPerformanceBackingPromptEnabled ? 'On' : 'Off'}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -2460,6 +2492,60 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
+            {(crowdPulseMeta || opsStatusItems.length > 0) ? (
+                <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:items-stretch xl:justify-between">
+                    {crowdPulseMeta ? (
+                        <div
+                            data-feature-id="top-chrome-vibe-meter"
+                            className={`rounded-2xl border px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20'} xl:min-w-[340px]`}
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/75">Vibe Meter</div>
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                    {crowdPulseMeta.alignmentLabel || crowdPulseMeta.label || 'Waiting On Phones'}
+                                </span>
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-end gap-3">
+                                <div className="text-2xl font-black leading-none text-white">
+                                    {crowdPulseMeta.metrics?.alignmentPct || 0}%
+                                </div>
+                                <div className="pb-0.5 text-xs text-zinc-200">
+                                    {crowdPulseMeta.alignmentSummary || crowdPulseMeta.summary || 'No audience signal yet.'}
+                                </div>
+                            </div>
+                            <div className="mt-2 text-[11px] text-white/85">
+                                {crowdPulseMeta.hostDirective || crowdPulseMeta.recommendationTitle || 'Keep the room moving.'}
+                            </div>
+                        </div>
+                    ) : null}
+                    {opsStatusItems.length > 0 ? (
+                        <div
+                            data-feature-id="top-chrome-ops-strip"
+                            className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.18)]"
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/75">Ops Strip</div>
+                                {opsStatus?.summary ? (
+                                    <div className="text-[11px] text-zinc-400">{opsStatus.summary}</div>
+                                ) : null}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {opsStatusItems.map((item) => (
+                                    <OpsStatusPill
+                                        key={item.key || item.label}
+                                        label={item.label}
+                                        state={item.state}
+                                        iconClass={item.iconClass || 'fa-solid fa-circle'}
+                                        active={item.active !== false}
+                                        toneClass={item.toneClass || 'border-white/10 bg-black/20 text-zinc-100'}
+                                        title={item.title || ''}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
             {showMissionStatusBanner && (
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                     <i className="fa-solid fa-triangle-exclamation mr-2"></i>

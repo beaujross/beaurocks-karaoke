@@ -1,4 +1,5 @@
 import { deriveDirectoryExperience } from "../lib/directoryExperience";
+import { buildRoomRecapUrl } from "../../../lib/roomRecap";
 import {
   MARKETING_BRAND_BADGE_URL,
   buildPublicLocationImageUrl,
@@ -122,6 +123,7 @@ const buildRoomSupportBadge = (entry = {}, listingType = "") => {
 };
 
 export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options = {}) => {
+  const currentTimeMs = Date.now();
   const mapsApiKey = String(options?.mapsApiKey || "").trim();
   const allowGoogleImageApis = options?.allowGoogleImageApis !== false;
   const allowGoogleStaticFallback = options?.allowGoogleStaticFallback === true;
@@ -176,6 +178,10 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
   );
   const locationLabel = [city, state, address1].filter(Boolean).join(", ");
   const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
+  const roomRecapUrl = String(entry?.latestRecapUrl || "").trim() || buildRoomRecapUrl(roomCode);
+  const hostRecapCount = Math.max(0, Number(entry?.hostRecapCount || 0) || 0);
+  const latestRecapAtMs = Math.max(0, Number(entry?.latestRecapAtMs || 0) || 0);
+  const hasPublicRecap = listingType === "room_session" && !!roomCode && (hostRecapCount > 0 || latestRecapAtMs > 0);
   const virtualOnly = !!entry?.virtualOnly
     || !!entry?.isVirtualOnly
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
@@ -186,7 +192,6 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
   const hostLeaderboardRank = Math.max(0, Number(entry?.hostLeaderboardRank || 0) || 0);
   const hostLeaderboardScore = Math.max(0, Number(entry?.hostLeaderboardScore || 0) || 0);
   const hostHostedRooms = Math.max(0, Number(entry?.hostHostedRooms || 0) || 0);
-  const hostRecapCount = Math.max(0, Number(entry?.hostRecapCount || 0) || 0);
   const venueLeaderboardRank = Math.max(0, Number(entry?.venueLeaderboardRank || 0) || 0);
   const venueLeaderboardScore = Math.max(0, Number(entry?.venueLeaderboardScore || 0) || 0);
   const venueAverageRating = Math.max(0, Number(entry?.venueAverageRating || 0) || 0);
@@ -270,6 +275,10 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     startsAtMs,
     location,
     roomCode,
+    currentTimeMs,
+    recapUrl: hasPublicRecap ? roomRecapUrl : "",
+    hasPublicRecap,
+    latestRecapAtMs,
     virtualOnly,
     roomSupportBadge,
     recurringRule,

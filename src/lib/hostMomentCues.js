@@ -1,7 +1,7 @@
 import {
     RUN_OF_SHOW_MOMENT_CUE_IDS,
     RUN_OF_SHOW_MOMENT_CUE_TIMINGS
-} from './runOfShowDirector';
+} from './runOfShowDirector.js';
 
 export const HOST_MOMENT_CUES = Object.freeze([
     Object.freeze({

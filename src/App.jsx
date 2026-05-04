@@ -24,8 +24,15 @@ const ViewLoader = () => (
 
 const DEFAULT_CANONICAL_MARKETING_ORIGIN = 'https://beaurocks.app';
 const MANAGED_HOST_PATTERN = /\.(web\.app|firebaseapp\.com)$/i;
+const LEGAL_CONTACT_EMAIL = 'hello@beaurocks.app';
+const YOUTUBE_TERMS_URL = 'https://www.youtube.com/t/terms';
+const GOOGLE_PRIVACY_URL = 'https://policies.google.com/privacy';
 
 const normalizeOrigin = (value = '') => String(value || '').trim().replace(/\/+$/, '');
+const getLegalRoutePath = (slug = 'terms') => {
+    const base = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+    return `${base || ''}/karaoke/${String(slug || 'terms').trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/{2,}/g, '/');
+};
 
 const getCanonicalManagedHostRedirectUrl = (locationLike = null) => {
     if (!locationLike) return '';
@@ -231,32 +238,33 @@ const Landing = ({ onJoin, hasBeauRocksAccount = false }) => {
                     >
                         VIEW MARKETING SITE
                     </button>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] text-zinc-400">
+                        <a href={getLegalRoutePath('terms')} className="underline underline-offset-4 hover:text-zinc-200">Terms</a>
+                        <a href={getLegalRoutePath('privacy')} className="underline underline-offset-4 hover:text-zinc-200">Privacy</a>
+                        <a href={getLegalRoutePath('data-deletion')} className="underline underline-offset-4 hover:text-zinc-200">Data deletion</a>
+                    </div>
                 </div>
             </div>
         </div> 
     );
 };
 
-const KaraokeTerms = () => (
+const LegalPageShell = ({ eyebrow = 'BeauRocks Karaoke', title = '', children }) => (
     <div className="min-h-screen w-full bg-black text-white font-saira flex items-center justify-center p-6">
-        <div className="w-full max-w-3xl bg-zinc-900/90 border border-zinc-700 rounded-3xl p-8 shadow-2xl">
+        <div className="w-full max-w-4xl bg-zinc-900/90 border border-zinc-700 rounded-3xl p-8 shadow-2xl">
             <div className="flex items-center gap-4 mb-6">
                 <img src={ASSETS.logo} className="h-16 w-auto drop-shadow-[0_0_18px_rgba(255,103,182,0.7)]" alt="BeauRocks Karaoke" />
                 <div>
-                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">BeauRocks Karaoke</div>
-                    <h1 className="text-3xl font-bebas text-pink-300">Party Rules + Terms</h1>
+                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-400">{eyebrow}</div>
+                    <h1 className="text-3xl font-bebas text-pink-300">{title}</h1>
                 </div>
             </div>
-            <div className="space-y-4 text-base text-zinc-200 leading-relaxed">
-                <p>We want this room loud, joyful, and safe. By joining, you agree to play nice and keep the vibe respectful.</p>
-                <ul className="space-y-3">
-                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>No harassment, hate speech, threats, or illegal content. Keep it fun.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>Only share content you own or have permission to use.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>BeauRocks can remove content or users to keep the room safe and on-beat.</li>
-                    <li className="flex gap-2"><span className="text-cyan-300">&bull;</span>You're responsible for your content and conduct.</li>
-                </ul>
-                <p className="text-sm text-zinc-400">Questions? Reach out to support for the full legal terms and policies.</p>
+            <div className="mb-6 flex flex-wrap gap-3 text-xs uppercase tracking-[0.22em] text-cyan-200/80">
+                <a href={getLegalRoutePath('terms')} className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 hover:text-white">Terms</a>
+                <a href={getLegalRoutePath('privacy')} className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 hover:text-white">Privacy</a>
+                <a href={getLegalRoutePath('data-deletion')} className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-3 py-1 hover:text-white">Data Deletion</a>
             </div>
+            <div className="space-y-5 text-base text-zinc-200 leading-relaxed">{children}</div>
             <button
                 onClick={() => window.history.back()}
                 className="mt-6 w-full bg-zinc-800 hover:bg-zinc-700 text-white py-3 rounded-xl font-bold text-base"
@@ -265,6 +273,79 @@ const KaraokeTerms = () => (
             </button>
         </div>
     </div>
+);
+
+const KaraokeTerms = () => (
+    <LegalPageShell title="Terms Of Service">
+        <p>Last updated: 2026-05-02</p>
+        <p>This application uses YouTube API Services. By using BeauRocks Karaoke, you also agree to the <a href={YOUTUBE_TERMS_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>.</p>
+        <p>These terms apply to the BeauRocks Karaoke experience, including host, singer, and TV surfaces of the Service. By using the Service, you agree to these terms and our <a href={getLegalRoutePath('privacy')} className="text-cyan-200 underline underline-offset-4">Privacy Policy</a>.</p>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Use Of The Service</h2>
+            <p className="mt-2">You may use the Service to host or participate in karaoke events. You must use the Service lawfully, respect other participants, and only submit content you own or have permission to use.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">User Content And Conduct</h2>
+            <p className="mt-2">You are responsible for names, messages, photos, drawings, and other content you submit. BeauRocks may remove content or restrict access if needed to keep the Service safe, lawful, and operational.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Third-Party Services</h2>
+            <p className="mt-2">The Service may rely on third-party platforms including YouTube, Firebase, Apple Music, Stripe, and Twilio. Third-party availability, policies, and content restrictions may affect Service behavior.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Disclaimers</h2>
+            <p className="mt-2">The Service is provided on an as-is basis. We do not guarantee uninterrupted availability, permanent access to third-party content, or compatibility with every device or venue environment.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Contact</h2>
+            <p className="mt-2">Questions about these terms or the Service can be sent to <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-cyan-200 underline underline-offset-4">{LEGAL_CONTACT_EMAIL}</a>.</p>
+        </div>
+    </LegalPageShell>
+);
+
+const KaraokePrivacy = () => (
+    <LegalPageShell title="Privacy Policy">
+        <p>Last updated: 2026-05-02</p>
+        <p>This application uses YouTube API Services. Google may collect and process data as described in the <a href={GOOGLE_PRIVACY_URL} target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.</p>
+        <p>We collect only the information needed to operate BeauRocks Karaoke, including room participation data, host setup data, submitted content, and limited operational analytics.</p>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">What We Collect</h2>
+            <p className="mt-2">Depending on how you use the Service, we may collect account identifiers, room codes, display names, host settings, karaoke requests, uploaded media, moderation data, and basic operational telemetry.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">YouTube API Data</h2>
+            <p className="mt-2">For YouTube-backed karaoke search and indexing, we may temporarily store limited YouTube metadata such as video ID, title, channel name, thumbnail URL, and playability status. Room-scoped indexed entries are retained temporarily and refreshed or pruned according to our YouTube data lifecycle.</p>
+            <p className="mt-2">We do not use YouTube OAuth for these flows and do not act on behalf of a user's YouTube channel.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Retention And Deletion</h2>
+            <p className="mt-2">Operational data is retained according to product needs and deletion requests. Temporary room-scoped YouTube index entries are retained for up to 30 days from validation unless refreshed sooner, and expired or unusable entries are removed.</p>
+            <p className="mt-2">For deletion instructions, visit the <a href={getLegalRoutePath('data-deletion')} className="text-cyan-200 underline underline-offset-4">Data Deletion</a> page.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Contact</h2>
+            <p className="mt-2">Privacy questions or deletion requests can be sent to <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-cyan-200 underline underline-offset-4">{LEGAL_CONTACT_EMAIL}</a>.</p>
+        </div>
+    </LegalPageShell>
+);
+
+const KaraokeDataDeletion = () => (
+    <LegalPageShell title="Data Deletion">
+        <p>Last updated: 2026-05-02</p>
+        <p>You can request deletion of personal data associated with your use of BeauRocks Karaoke by emailing <a href={`mailto:${LEGAL_CONTACT_EMAIL}`} className="text-cyan-200 underline underline-offset-4">{LEGAL_CONTACT_EMAIL}</a>.</p>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">What To Include</h2>
+            <p className="mt-2">To help us locate the right records, include any relevant email address, room code, event date, display name, and a short description of the data you want removed.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">Room Deletion</h2>
+            <p className="mt-2">When an authorized host or workspace admin permanently deletes a room, the room record, room-scoped activity data, and the room host library are removed as part of the deletion process.</p>
+        </div>
+        <div>
+            <h2 className="text-xl font-bebas tracking-[0.08em] text-pink-200">YouTube Data</h2>
+            <p className="mt-2">This application uses YouTube API Services. We do not store YouTube OAuth account data for these flows. Temporary room-scoped YouTube index entries are refreshed or removed within the retention window and are also removed when the room host library is permanently deleted.</p>
+        </div>
+    </LegalPageShell>
 );
 
 const App = () => {
@@ -285,8 +366,15 @@ const App = () => {
     const [hasBeauRocksAccount, setHasBeauRocksAccount] = useState(false);
     const [authError, setAuthError] = useState(null);
     const [authReady, setAuthReady] = useState(false);
+    const normalizedPathname = typeof window !== 'undefined'
+        ? window.location.pathname.replace(/\/+$/, '')
+        : '';
     const isKaraokeTerms = typeof window !== 'undefined'
-        && window.location.pathname.replace(/\/+$/, '').endsWith('/karaoke/terms');
+        && normalizedPathname.endsWith('/karaoke/terms');
+    const isKaraokePrivacy = typeof window !== 'undefined'
+        && normalizedPathname.endsWith('/karaoke/privacy');
+    const isKaraokeDataDeletion = typeof window !== 'undefined'
+        && normalizedPathname.endsWith('/karaoke/data-deletion');
     const isDemoRoomCode = String(roomCode || '').trim().toUpperCase().startsWith('DEMO');
     const isDemoHostEmbed = typeof window !== 'undefined'
         && view === 'host'
@@ -356,6 +444,8 @@ const App = () => {
     }, [authReady, hasBeauRocksAccount, isDemoHostEmbed, view]);
     if (canonicalRedirectUrl) return <ViewLoader />;
     if (isKaraokeTerms) return <KaraokeTerms />;
+    if (isKaraokePrivacy) return <KaraokePrivacy />;
+    if (isKaraokeDataDeletion) return <KaraokeDataDeletion />;
     if (view === 'landing') return <Landing hasBeauRocksAccount={hasBeauRocksAccount} onJoin={(c) => { setRoomCode(c); setView('mobile'); }} />;
     if (view === 'tv') return (
         <Suspense fallback={<ViewLoader />}>

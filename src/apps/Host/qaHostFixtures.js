@@ -306,6 +306,34 @@ const buildBaseFixture = (roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS, o
     ]
 });
 
+const buildTriviaQuestionFixture = (nowMs = FIXED_QA_HOST_NOW_MS, overrides = {}) => ({
+    id: 'qa_trivia_round_1',
+    q: 'Which anthem gets the room singing first?',
+    options: ['Don\'t Stop Believin\'', 'Mr. Brightside', 'Dancing Queen', 'Hey Ya!'],
+    correct: 0,
+    status: 'active',
+    points: 100,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: nowMs - 5000,
+    revealAt: nowMs + 15000,
+    ...overrides,
+});
+
+const buildWyrDataFixture = (nowMs = FIXED_QA_HOST_NOW_MS, overrides = {}) => ({
+    id: 'qa_wyr_round_1',
+    question: 'Would you rather open with a power ballad or a crowd singalong?',
+    optionA: 'Power ballad',
+    optionB: 'Crowd singalong',
+    status: 'active',
+    points: 50,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: nowMs - 5000,
+    revealAt: nowMs + 15000,
+    ...overrides,
+});
+
 export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_HOST_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
     if (safeId === 'run-of-show-console-generic') {
@@ -519,8 +547,8 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     eventLabel: 'Co-Host Policy Demo',
                     supportProvider: 'givebutter',
                     supportLabel: 'Support AAHF Festival',
-                    supportUrl: 'https://givebutter.com/aahf-kickoff',
-                    supportCampaignCode: 'aahf_kickoff',
+                    supportUrl: 'https://givebutter.com/festival-kick-off-karaoke-party-y1ogra',
+                    supportCampaignCode: 'festival-kick-off-karaoke-party-y1ogra',
                     supportPoints: 25,
                     supportBadge: false,
                     supportOffers: [],
@@ -535,6 +563,64 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     supportCelebrationStyle: 'moneybags_burst',
                     promoCampaigns: [],
                 },
+            },
+        };
+    }
+    if (safeId === 'prompt-round-trivia-live') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                activeMode: 'trivia_pop',
+                triviaQuestion: buildTriviaQuestionFixture(nowMs),
+                wyrData: null,
+            },
+        };
+    }
+    if (safeId === 'prompt-round-trivia-reveal') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                activeMode: 'trivia_reveal',
+                triviaQuestion: buildTriviaQuestionFixture(nowMs, {
+                    status: 'reveal',
+                    revealAt: nowMs - 1000,
+                }),
+                wyrData: null,
+            },
+        };
+    }
+    if (safeId === 'prompt-round-wyr-live') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                activeMode: 'wyr',
+                triviaQuestion: null,
+                wyrData: buildWyrDataFixture(nowMs),
+            },
+        };
+    }
+    if (safeId === 'prompt-round-wyr-reveal') {
+        const fixture = buildBaseFixture(roomCode, nowMs);
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                activeMode: 'wyr_reveal',
+                triviaQuestion: null,
+                wyrData: buildWyrDataFixture(nowMs, {
+                    status: 'reveal',
+                    revealAt: nowMs - 1000,
+                }),
             },
         };
     }

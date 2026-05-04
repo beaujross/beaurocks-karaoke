@@ -42,11 +42,29 @@ test("entitlementsUsage.test", () => {
     used: 800,
     quota: aiQuota,
     periodKey: "202602",
+    sources: {
+      host_queue_media_search: { used: 32, source: "host_queue_media_search", label: "Host Queue Media Search" },
+      host_run_of_show: { used: 18, source: "host_run_of_show", label: "Host Run Of Show" },
+    },
+    actors: {
+      host_123456: { used: 41, uid: "host_123456", label: "host_123456" },
+    },
+    rooms: {
+      ABC123: { used: 50, roomCode: "ABC123", label: "ABC123" },
+    },
+    surfaces: {
+      host: { used: 44, surface: "host", label: "Host" },
+      workspace: { used: 6, surface: "workspace", label: "Workspace" },
+    },
   });
   assert.equal(meterSummary.used, 800);
   assert.equal(meterSummary.overageUnits, 50);
   assert.equal(meterSummary.estimatedOverageCents, 150);
   assert.equal(meterSummary.hardLimitReached, false);
+  assert.equal(meterSummary.breakdowns.topSources[0].key, "host_queue_media_search");
+  assert.equal(meterSummary.breakdowns.topActors[0].key, "host_123456");
+  assert.equal(meterSummary.breakdowns.topRooms[0].key, "ABC123");
+  assert.equal(meterSummary.breakdowns.topSurfaces[0].key, "host");
 
   const hardLimitSummary = buildUsageMeterSummary({
     meterId: "ai_generate_content",

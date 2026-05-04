@@ -170,6 +170,18 @@ let appCheckInitAttempted = false;
 let appCheckDisabledReason = "";
 
 const shouldEnableAppCheckClient = () => {
+  if (typeof window !== "undefined") {
+    const forcedOff = window.__app_check_force_disable === true;
+    const host = String(window.location?.hostname || "").trim().toLowerCase();
+    const isProdHost = (
+      host === "beaurocks.app"
+      || host === "app.beaurocks.app"
+      || host === "host.beaurocks.app"
+      || host === "tv.beaurocks.app"
+      || host.endsWith(".beaurocks.app")
+    );
+    if (forcedOff || isProdHost) return false;
+  }
   const explicit = parseOptionalBool(readEnv("VITE_APP_CHECK_ENABLED"));
   if (explicit !== null) return explicit;
   return false;
@@ -880,6 +892,12 @@ const executeRunOfShowAction = async (payload = {}) => {
   return data || null;
 };
 
+const castRunOfShowReleaseWindowVote = async (payload = {}) => {
+  await requireAppCheckToken("castRunOfShowReleaseWindowVote");
+  const data = await callFunction("castRunOfShowReleaseWindowVote", payload || {});
+  return data || null;
+};
+
 const manageRunOfShowTemplate = async (payload = {}) => {
   await requireAppCheckToken("manageRunOfShowTemplate");
   const data = await callFunction("manageRunOfShowTemplate", payload || {});
@@ -1206,6 +1224,7 @@ export {
   uploadAudienceRoomPhoto,
   uploadHostSceneMedia,
   submitAudienceQueueSong,
+  castRunOfShowReleaseWindowVote,
   castKaraokeBracketVote,
   manageKaraokeBracket,
   submitBracketRoundSong,

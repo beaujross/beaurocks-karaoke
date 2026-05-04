@@ -32,6 +32,8 @@ test('admin room settings own the detailed post-performance timing controls', ()
   assert.match(hostAppSource, /Post-performance sequence/);
   assert.match(hostAppSource, /The live stage rail only controls the overall pace slider\./);
   assert.match(hostAppSource, /Applause warm-up/);
+  assert.match(hostAppSource, /Default warm-up is off, so TV can roll straight into the applause countdown\./);
+  assert.match(hostAppSource, /Warm-up extension/);
   assert.match(hostAppSource, /Leaderboard beat/);
   assert.match(hostAppSource, /Next up beat/);
   assert.match(hostAppSource, /Show post-performance recap sequence on TV/);

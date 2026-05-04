@@ -91,7 +91,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-test('QueueListPanel renders live queue controls and a queue inspector at runtime', async () => {
+test('QueueListPanel renders live queue controls and inline queue card actions at runtime', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),
@@ -108,14 +108,15 @@ test('QueueListPanel renders live queue controls and a queue inspector at runtim
   assert.match(markup, /Queue Rules/);
   assert.match(markup, /Automation/);
   assert.match(markup, /Open Conveyor/);
-  assert.match(markup, /data-feature-id="queue-song-inspector"/);
-  assert.match(markup, /Queue Inspector/);
+  assert.match(markup, /data-feature-id="queue-song-inline-actions"/);
+  assert.match(markup, /Queue Actions/);
   assert.match(markup, /Start Singer/);
   assert.match(markup, /Move To Next/);
   assert.match(markup, /Edit Details/);
+  assert.doesNotMatch(markup, /Queue Inspector/);
 });
 
-test('QueueListPanel inspector adapts to held and review-needed queue items', async () => {
+test('QueueListPanel inline queue actions adapt to held and review-needed queue items', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),

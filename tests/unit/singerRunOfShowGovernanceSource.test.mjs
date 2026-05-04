@@ -8,9 +8,11 @@ const source = readFileSync('src/apps/Mobile/SingerApp.jsx', 'utf8');
 test('audience app exposes run-of-show release-window controls for crowd and co-host voters', () => {
   assert.match(source, /getRunOfShowOperatorRole/);
   assert.match(source, /getRunOfShowReleaseWindowTally/);
+  assert.match(source, /isRunOfShowReleaseWindowVotingOpen/);
+  assert.match(source, /getRunOfShowReleaseWindowRemainingMs/);
   assert.match(source, /const canSeeAudienceReleaseWindow = useMemo/);
   assert.match(source, /const castRunOfShowReleaseVote = async/);
-  assert.match(source, /runOfShowDirector\.releaseWindow\.votesByUid\.\$\{activeUid\}/);
+  assert.match(source, /castRunOfShowReleaseWindowVote/);
   assert.match(source, /Co-Host Song Face-Off/);
   assert.match(source, /Audience Song Face-Off/);
   assert.match(source, /Co-Host Slot Fill/);
@@ -44,6 +46,8 @@ test('audience app exposes run-of-show release-window controls for crowd and co-
   assert.match(source, /choiceLabels\?\.slot_scene/);
   assert.match(source, /choiceDetails\?\.keep_queue_moving/);
   assert.match(source, /You voted for \$\{voteLabel\}\./);
+  assert.match(source, /totalVotes \|\| 0\} total/);
+  assert.match(source, /Host confirms the winner after voting closes\./);
   assert.match(source, /authCurrentUid: isQaAudienceFixture \? '' : auth\.currentUser\?\.uid/);
   assert.match(source, /authReadyUid: isQaAudienceFixture \? '' : authReadyUid/);
 });

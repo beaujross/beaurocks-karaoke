@@ -98,13 +98,13 @@ const main = async () => {
     });
 
     await runCheck(checks, "host_live_adjustments_extend_and_toggle_audio", async () => {
-      await page.getByRole("button", { name: /more controls/i }).click({ force: true });
+      await page.getByRole("button", { name: /live adjustments|hide live adjustments/i }).click({ force: true });
       const panel = page.locator('[data-live-adjustment-panel="true"]').first();
       await panel.waitFor({ state: "visible", timeout: timeoutMs });
       await panel.getByText(/1:30 window/i).waitFor({ state: "visible", timeout: timeoutMs });
       await panel.getByRole("button", { name: /\+30 sec/i }).waitFor({ state: "visible", timeout: timeoutMs });
       await panel.getByRole("button", { name: /pause audio|resume audio/i }).waitFor({ state: "visible", timeout: timeoutMs });
-      return "more controls reveals the live adjustment panel";
+      return "live adjustments reveals the live adjustment panel";
     });
 
     await runCheck(checks, "host_compact_timeline_drag_reorders", async () => {

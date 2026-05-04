@@ -105,6 +105,34 @@ const buildReactionShowcase = (nowMs = FIXED_QA_TV_NOW_MS) => (
     })
 );
 
+const buildTriviaQuestionFixture = (nowMs = FIXED_QA_TV_NOW_MS, overrides = {}) => ({
+    id: 'qa_trivia_round_1',
+    q: 'Which anthem gets the room singing first?',
+    options: ['Don\'t Stop Believin\'', 'Mr. Brightside', 'Dancing Queen', 'Hey Ya!'],
+    correct: 0,
+    status: 'active',
+    points: 100,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: Number(nowMs || FIXED_QA_TV_NOW_MS) - 5000,
+    revealAt: Number(nowMs || FIXED_QA_TV_NOW_MS) + 15000,
+    ...overrides,
+});
+
+const buildWyrDataFixture = (nowMs = FIXED_QA_TV_NOW_MS, overrides = {}) => ({
+    id: 'qa_wyr_round_1',
+    question: 'Would you rather open with a power ballad or a crowd singalong?',
+    optionA: 'Power ballad',
+    optionB: 'Crowd singalong',
+    status: 'active',
+    points: 50,
+    durationSec: 20,
+    autoReveal: true,
+    startedAt: Number(nowMs || FIXED_QA_TV_NOW_MS) - 5000,
+    revealAt: Number(nowMs || FIXED_QA_TV_NOW_MS) + 15000,
+    ...overrides,
+});
+
 export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs = FIXED_QA_TV_NOW_MS } = {}) => {
     const safeId = String(fixtureId || '').trim().toLowerCase();
     const room = buildBaseRoom(roomCode);
@@ -294,6 +322,60 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
                     celebrationStyle: 'moneybags_burst',
                     createdAtMs: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1000,
                 },
+            },
+        };
+    }
+
+    if (safeId === 'prompt-round-trivia-live') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'trivia_pop',
+                triviaQuestion: buildTriviaQuestionFixture(nowMs),
+                wyrData: null,
+            },
+        };
+    }
+
+    if (safeId === 'prompt-round-trivia-reveal') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'trivia_reveal',
+                triviaQuestion: buildTriviaQuestionFixture(nowMs, {
+                    status: 'reveal',
+                    revealAt: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1000,
+                }),
+                wyrData: null,
+            },
+        };
+    }
+
+    if (safeId === 'prompt-round-wyr-live') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'wyr',
+                triviaQuestion: null,
+                wyrData: buildWyrDataFixture(nowMs),
+            },
+        };
+    }
+
+    if (safeId === 'prompt-round-wyr-reveal') {
+        return {
+            started: true,
+            room: {
+                ...room,
+                activeMode: 'wyr_reveal',
+                triviaQuestion: null,
+                wyrData: buildWyrDataFixture(nowMs, {
+                    status: 'reveal',
+                    revealAt: Number(nowMs || FIXED_QA_TV_NOW_MS) - 1000,
+                }),
             },
         };
     }

@@ -18,6 +18,7 @@ import {
     updateAudienceIdentity,
     uploadAudienceRoomPhoto,
     submitAudienceQueueSong,
+    castRunOfShowReleaseWindowVote,
     claimTimedLobbyCredits,
     submitAudienceEmailCapture,
     submitBracketRoundSong,
@@ -30,9 +31,18 @@ import {
     lockBingoMysteryPick
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
+import {
+    isYouTubeQuotaBlockedError,
+    searchYouTubeCatalog
+} from '../../lib/youtubeSearchClient';
+import { searchAppleCatalog } from '../../lib/appleSearchClient';
 import { emoji, EMOJI, getReactionEmoji } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
 import { buildSingerHowToPlay } from '../../lib/howToPlay';
+import {
+    AUDIENCE_JOIN_ACCESS_MODES,
+    normalizeAudienceJoinPolicy,
+} from '../../lib/audienceJoinPolicy';
 import { useToast } from '../../context/ToastContext';
 import { averageBand } from '../../lib/utils';
 import { PARTY_LIGHTS_STYLE, SINGER_APP_CONFIG } from '../../lib/uiConstants';
@@ -103,7 +113,9 @@ import {
 import { buildSurfaceUrl } from '../../lib/surfaceDomains';
 import {
     getRunOfShowOperatorRole,
-    getRunOfShowReleaseWindowTally
+    getRunOfShowReleaseWindowRemainingMs,
+    getRunOfShowReleaseWindowTally,
+    isRunOfShowReleaseWindowVotingOpen
 } from '../../lib/runOfShowDirector';
 import {
     COHOST_SIGNAL_COOLDOWN_MS,
@@ -453,9 +465,40 @@ const buildAudienceQueueRequestId = () => {
     return `${Date.now().toString(36)}_${randomPart}`.slice(0, 80);
 };
 
+const AUDIENCE_INSTALL_ID_STORAGE_KEY = `${APP_ID}_audience_install_id`;
+
+const sanitizeAudienceInstallId = (value = '') => String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 120);
+
+const buildAudienceInstallId = () => {
+    const randomPart = typeof crypto !== 'undefined' && crypto?.getRandomValues
+        ? Array.from(crypto.getRandomValues(new Uint32Array(4))).map((value) => value.toString(36)).join('')
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    return sanitizeAudienceInstallId(`aud_${randomPart}`);
+};
+
+const getPersistentAudienceInstallId = () => {
+    if (typeof window === 'undefined') return '';
+    try {
+        const existingValue = sanitizeAudienceInstallId(window.localStorage.getItem(AUDIENCE_INSTALL_ID_STORAGE_KEY) || '');
+        if (existingValue) return existingValue;
+        const nextValue = buildAudienceInstallId();
+        if (nextValue) {
+            window.localStorage.setItem(AUDIENCE_INSTALL_ID_STORAGE_KEY, nextValue);
+        }
+        return nextValue;
+    } catch {
+        return '';
+    }
+};
+
 const getJoinErrorMessage = (error) => {
+    const message = String(error?.message || '').toLowerCase();
     if (isQueueAppCheckError(error)) return 'Security check is still warming up. Refresh and try again.';
     if (isQueueUnauthenticatedError(error)) return 'Session is still connecting. Try again.';
+    if (message.includes('requires a beaurocks account')) return 'This room requires a BeauRocks account before you can join.';
     if (isQueuePermissionDeniedError(error)) return 'Join is still syncing. Wait a second and tap Join again.';
     if (isQueueRateLimitError(error)) return 'Join traffic is heavy right now. Wait 10 seconds, then retry. If venue Wi-Fi is crowded, try cellular.';
     if (isQueueNetworkError(error)) return 'Network issue while joining. Try again.';
@@ -1089,6 +1132,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [ytIndexFilter, setYtIndexFilter] = useState('');
     const [_showLogoTitle, setShowLogoTitle] = useState(true);
     const [authReadyUid, setAuthReadyUid] = useState(null);
+    const audienceInstallIdRef = useRef('');
     const activeUid = useMemo(
         () => resolveAudienceSessionUid({
             authCurrentUid: isQaAudienceFixture ? '' : auth.currentUser?.uid,
@@ -1097,6 +1141,11 @@ const SingerApp = ({ roomCode, uid }) => {
         }),
         [authReadyUid, isQaAudienceFixture, uid]
     );
+    useEffect(() => {
+        if (!audienceInstallIdRef.current) {
+            audienceInstallIdRef.current = getPersistentAudienceInstallId();
+        }
+    }, []);
     const accountProfileUid = useMemo(
         () => resolveAudienceSessionUid({
             authCurrentUid: isQaAudienceFixture ? '' : auth.currentUser?.uid,
@@ -1116,18 +1165,36 @@ const SingerApp = ({ roomCode, uid }) => {
         if (!value || typeof value !== 'object' || value.active !== true) return null;
         return value;
     }, [room?.runOfShowDirector?.releaseWindow]);
+    const [releaseWindowNowMs, setReleaseWindowNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!audienceReleaseWindow?.active) return undefined;
+        setReleaseWindowNowMs(Date.now());
+        const timer = setInterval(() => setReleaseWindowNowMs(Date.now()), 250);
+        return () => clearInterval(timer);
+    }, [audienceReleaseWindow?.active, audienceReleaseWindow?.closesAtMs, audienceReleaseWindow?.resolvedAtMs]);
+    const audienceReleaseWindowVotingOpen = useMemo(
+        () => isRunOfShowReleaseWindowVotingOpen(audienceReleaseWindow || {}, releaseWindowNowMs),
+        [audienceReleaseWindow, releaseWindowNowMs]
+    );
+    const audienceReleaseTimeLeftMs = useMemo(
+        () => getRunOfShowReleaseWindowRemainingMs(audienceReleaseWindow || {}, releaseWindowNowMs),
+        [audienceReleaseWindow, releaseWindowNowMs]
+    );
+    const audienceReleaseTimeLeftSec = audienceReleaseTimeLeftMs > 0
+        ? Math.max(0, Math.ceil(audienceReleaseTimeLeftMs / 1000))
+        : 0;
     const releaseWindowTally = useMemo(
         () => getRunOfShowReleaseWindowTally(audienceReleaseWindow || {}, room?.runOfShowRoles || {}),
         [audienceReleaseWindow, room?.runOfShowRoles]
     );
     const canSeeAudienceReleaseWindow = useMemo(() => {
-        if (!audienceReleaseWindow?.active) return false;
+        if (!audienceReleaseWindowVotingOpen) return false;
         const governanceMode = String(audienceReleaseWindow.governanceMode || '').trim().toLowerCase();
         if (governanceMode === 'cohost_vote') {
             return runOfShowOperatorRole === 'co_host' || runOfShowOperatorRole === 'host';
         }
         return governanceMode === 'crowd_signal' || governanceMode === 'crowd_vote';
-    }, [audienceReleaseWindow?.active, audienceReleaseWindow?.governanceMode, runOfShowOperatorRole]);
+    }, [audienceReleaseWindow, audienceReleaseWindowVotingOpen, runOfShowOperatorRole]);
     const audienceReleaseGovernanceMode = useMemo(
         () => String(audienceReleaseWindow?.governanceMode || '').trim().toLowerCase(),
         [audienceReleaseWindow?.governanceMode]
@@ -1461,6 +1528,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [catalogResultsLoading, setCatalogResultsLoading] = useState(false);
     const [youtubeResults, setYoutubeResults] = useState([]);
     const [youtubeResultsLoading, setYoutubeResultsLoading] = useState(false);
+    const [youtubeResultsError, setYoutubeResultsError] = useState('');
     const [catalogResolutionMap, setCatalogResolutionMap] = useState({});
     const [catalogResolutionLoadingMap, setCatalogResolutionLoadingMap] = useState({});
     const [catalogSearchOpen, setCatalogSearchOpen] = useState(false);
@@ -2372,11 +2440,11 @@ const SingerApp = ({ roomCode, uid }) => {
         if (top100Art[artKey] || top100ArtLoading[artKey]) return top100Art[artKey];
         setTop100ArtLoading(prev => ({ ...prev, [artKey]: true }));
         try {
-            const data = await callFunction('itunesSearch', {
+            const data = await searchAppleCatalog({
                 term: `${song.title} ${song.artist}`,
                 limit: 1,
                 roomCode,
-                usageContext: { source: 'audience_top100_artwork' }
+                usageSource: 'audience_top100_artwork'
             });
             const art = data?.results?.[0]?.artworkUrl100;
             if (art) {
@@ -2989,6 +3057,8 @@ const SingerApp = ({ roomCode, uid }) => {
         && audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.account
         && audienceFeatureAccess?.features?.customEmoji === AUDIENCE_FEATURE_ACCESS_LEVELS.open
         && audienceFeatureAccess?.features?.premiumReactions === AUDIENCE_FEATURE_ACCESS_LEVELS.open;
+    const roomJoinPolicy = normalizeAudienceJoinPolicy(room?.audienceJoinPolicy || {});
+    const roomJoinRequiresAccount = roomJoinPolicy.accessMode === AUDIENCE_JOIN_ACCESS_MODES.accountRequired;
     useEffect(() => {
         if (!supportEmbedOpen || !roomSupportWidgetId || typeof document === 'undefined') return undefined;
         const existing = document.querySelector(`script[src="${GIVEBUTTER_WIDGET_SCRIPT_SRC}"]`);
@@ -3031,10 +3101,14 @@ const SingerApp = ({ roomCode, uid }) => {
         supporterAccessLabel,
         premiumPerksLabel,
     });
-    const joinEmailActionLabel = simpleEmailCaptureMode
-        ? 'Optional: Save With Email'
-        : 'Optional: Continue With Email';
-    const joinAccessHelperText = festivalGuestJoinNoEmail
+    const joinEmailActionLabel = roomJoinRequiresAccount
+        ? 'Continue With Email to Join'
+        : simpleEmailCaptureMode
+            ? 'Optional: Save With Email'
+            : 'Optional: Continue With Email';
+    const joinAccessHelperText = roomJoinRequiresAccount
+        ? 'This room requires a BeauRocks account before joining. Email sign-in also keeps your room identity stable across refresh.'
+        : festivalGuestJoinNoEmail
         ? 'Join now. No BeauRocks email is required for AAHF tonight.'
         : simplifyFestivalSupportAccess
         ? 'Join now. Email save-in stays optional, and festival support happens later without slowing your first request.'
@@ -3047,6 +3121,8 @@ const SingerApp = ({ roomCode, uid }) => {
         ? 'JOINING...'
         : !activeUid
         ? 'CONNECTING...'
+        : roomJoinRequiresAccount && isAnon
+            ? 'CONTINUE WITH EMAIL'
         : joinCanSubmit
             ? 'JOIN THE PARTY'
             : 'ADD YOUR NAME';
@@ -3054,6 +3130,8 @@ const SingerApp = ({ roomCode, uid }) => {
         ? 'Adding you to the room now. This can take a moment.'
         : !activeUid
         ? 'Connecting you to the room now.'
+        : roomJoinRequiresAccount && isAnon
+            ? 'This room is account-only. Continue with email, then join.'
         : joinCanSubmit
             ? 'Songs opens first so you can add yourself fast.'
             : 'Add your name to light up the queue.';
@@ -5273,11 +5351,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setCatalogResultsLoading(true);
         const t = setTimeout(async () => { 
             try {
-                const data = await callFunction('itunesSearch', {
+                const data = await searchAppleCatalog({
                     term: searchQ,
                     limit: 6,
                     roomCode,
-                    usageContext: { source: 'audience_request_search' }
+                    usageSource: 'audience_request_search'
                 });
                 if (canceled) return;
                 setResults(data?.results || []);
@@ -5362,18 +5440,21 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (catalogSearchMode !== 'youtube' || !audienceManualBackingAllowed || searchQ.length < 3) {
             setYoutubeResults([]);
             setYoutubeResultsLoading(false);
+            setYoutubeResultsError('');
             return;
         }
         let cancelled = false;
         setYoutubeResultsLoading(true);
+        setYoutubeResultsError('');
         const t = setTimeout(async () => {
             try {
-                const data = await callFunction('youtubeSearch', {
+                const data = await searchYouTubeCatalog({
                     query: `${searchQ} karaoke`,
                     maxResults: 8,
                     playableOnly: room?.hideNonEmbeddableYouTube === true,
                     roomCode,
-                    usageContext: { source: 'audience_request_youtube_search' }
+                    usageSource: 'audience_request_youtube_search',
+                    usageSurface: 'audience',
                 });
                 if (cancelled) return;
                 const normalizedResults = normalizeAudienceYouTubeSearchItems(data?.items || [])
@@ -5383,9 +5464,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             : true
                     ));
                 setYoutubeResults(normalizedResults);
-            } catch {
+            } catch (error) {
                 if (cancelled) return;
                 setYoutubeResults([]);
+                setYoutubeResultsError(
+                    isYouTubeQuotaBlockedError(error)
+                        ? 'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Try song matches below or ask the host to paste a direct URL.'
+                        : 'Could not load YouTube results right now.'
+                );
             } finally {
                 if (!cancelled) {
                     setYoutubeResultsLoading(false);
@@ -5716,11 +5802,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         let canceled = false;
         const t = setTimeout(async () => {
             try {
-                const data = await callFunction('itunesSearch', {
+                const data = await searchAppleCatalog({
                     term: tight15SearchQ,
                     limit: 6,
                     roomCode,
-                    usageContext: { source: 'audience_tight15_search' }
+                    usageSource: 'audience_tight15_search'
                 });
                 if (canceled) return;
                 setTight15Results(data?.results || []);
@@ -5875,12 +5961,21 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         const finalEmoji = resolveAllowedAvatarEmoji(rawEmoji);
         if(!safeName) return false;
         if (isJoining) return false;
+        if (roomJoinRequiresAccount && isAnon) {
+            openVipUpgrade('email');
+            return false;
+        }
+        const installId = audienceInstallIdRef.current || getPersistentAudienceInstallId();
+        if (installId && !audienceInstallIdRef.current) {
+            audienceInstallIdRef.current = installId;
+        }
 
         const writeJoinProjection = async () => (
             joinRoomAudience({
                 roomCode,
                 name: safeName,
-                avatar: finalEmoji
+                avatar: finalEmoji,
+                installId,
             })
         );
 
@@ -5951,6 +6046,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             return true;
         } catch (error) {
             console.error('Audience join failed', error);
+            if (String(error?.message || '').toLowerCase().includes('requires a beaurocks account')) {
+                openVipUpgrade('email');
+            }
             toast(getJoinErrorMessage(error));
             return false;
         } finally {
@@ -8524,6 +8622,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             setShowRulesModal(true);
                             return;
                         }
+                        if (roomJoinRequiresAccount && isAnon) {
+                            openVipUpgrade('email');
+                            return;
+                        }
                         join();
                     }}
                     className={`w-full max-w-sm py-3.5 rounded-xl font-bold text-white shadow-lg text-lg transition-transform border-[5px] ${
@@ -8610,7 +8712,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <li>Be kind. No hate, threats, or harassment.</li>
                         <li>Only request content you own or can use.</li>
                     </ul>
-                    <label className="flex items-center gap-2 mb-4 text-[0.98rem] text-zinc-100">
+                    <label className="flex items-center gap-2 mb-3 text-[0.98rem] text-zinc-100">
                         <input
                             data-singer-rules-checkbox
                             type="checkbox"
@@ -8618,8 +8720,46 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             onChange={e => setTermsAccepted(e.target.checked)}
                             className="h-5 w-5 accent-pink-500"
                         />
-                        I agree and I am ready to join.
+                        I agree to the Terms of Service and Privacy Policy.
                     </label>
+                    <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-pink-200/78">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const base = import.meta.env.BASE_URL || '/';
+                                const termsUrl = `${window.location.origin}${base}karaoke/terms`;
+                                window.open(termsUrl, '_blank');
+                            }}
+                            className="underline underline-offset-4 hover:text-pink-100"
+                        >
+                            Terms of Service
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const base = import.meta.env.BASE_URL || '/';
+                                const privacyUrl = `${window.location.origin}${base}karaoke/privacy`;
+                                window.open(privacyUrl, '_blank');
+                            }}
+                            className="underline underline-offset-4 hover:text-pink-100"
+                        >
+                            Privacy Policy
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const base = import.meta.env.BASE_URL || '/';
+                                const deletionUrl = `${window.location.origin}${base}karaoke/data-deletion`;
+                                window.open(deletionUrl, '_blank');
+                            }}
+                            className="underline underline-offset-4 hover:text-pink-100"
+                        >
+                            Data deletion
+                        </button>
+                    </div>
+                    <p className="mb-4 text-[11px] leading-5 text-zinc-400">
+                        This application uses YouTube API Services. By using YouTube-backed search or request features, you also agree to the YouTube Terms of Service and acknowledge the Google Privacy Policy.
+                    </p>
                     <button
                         data-singer-rules-confirm
                         disabled={!termsAccepted || crowdSelfieSubmitting || isJoining}
@@ -8664,16 +8804,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     >
                         Not right now
                     </button>
-                        <button
-                            onClick={() => {
-                                const base = import.meta.env.BASE_URL || '/';
-                                const termsUrl = `${window.location.origin}${base}karaoke/terms`;
-                                window.open(termsUrl, '_blank');
-                            }}
-                            className="mt-2.5 text-[11px] text-pink-200/72 underline underline-offset-4 hover:text-pink-100"
-                        >
-                            View Terms of Service
-                        </button>
                 </div>
             </div>
         ) : null}
@@ -11479,14 +11609,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     };
     const castRunOfShowReleaseVote = async (choice = 'slot_scene') => {
         const safeChoice = String(choice || '').trim().toLowerCase();
-        if (!roomCode || !activeUid || !audienceReleaseWindow?.active) return;
+        if (!roomCode || !activeUid || !audienceReleaseWindowVotingOpen) return;
         if (!['slot_scene', 'keep_queue_moving'].includes(safeChoice)) return;
         const voteLabel = safeChoice === 'slot_scene'
             ? audienceReleaseChoiceLabels.slotScene
             : audienceReleaseChoiceLabels.keepQueueMoving;
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), {
-                [`runOfShowDirector.releaseWindow.votesByUid.${activeUid}`]: safeChoice
+            await castRunOfShowReleaseWindowVote({
+                roomCode,
+                choice: safeChoice
             });
             toast(`You voted for ${voteLabel}.`);
         } catch (error) {
@@ -11699,7 +11830,19 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 ) : null}
                             </div>
                             <div className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
-                                {audienceReleaseVoteCountLabel}
+                                Vote Open
+                            </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            {audienceReleaseTimeLeftSec > 0 ? (
+                                <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                                    <i className="fa-regular fa-clock"></i>
+                                    {audienceReleaseTimeLeftSec}s left
+                                </div>
+                            ) : null}
+                            <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
+                                <i className="fa-solid fa-check-to-slot"></i>
+                                {releaseWindowTally.totalVotes || 0} total
                             </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -11719,12 +11862,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className={`truncate text-[10px] uppercase tracking-[0.18em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
-                                            <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-white">
-                                                {releaseWindowTally.slotSceneCount}
-                                            </div>
-                                        </div>
+                                        <div className={`truncate text-[10px] uppercase tracking-[0.18em] ${audienceReleaseTone.choiceLabelClass}`}>{audienceReleaseChoiceLabels.slotScene}</div>
                                         <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
                                             {audienceReleaseChoiceDetails.slotScene || audienceReleaseChoiceSongs.slotScene?.singerName || 'Queued singer'}
                                         </div>
@@ -11750,12 +11888,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         )}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="truncate text-[10px] uppercase tracking-[0.18em] text-pink-200">{audienceReleaseChoiceLabels.keepQueueMoving}</div>
-                                            <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-white">
-                                                {releaseWindowTally.keepQueueMovingCount}
-                                            </div>
-                                        </div>
+                                        <div className="truncate text-[10px] uppercase tracking-[0.18em] text-pink-200">{audienceReleaseChoiceLabels.keepQueueMoving}</div>
                                         <div className="mt-1 truncate text-sm font-semibold leading-tight text-white">
                                             {audienceReleaseChoiceDetails.keepQueueMoving || audienceReleaseChoiceSongs.keepQueueMoving?.singerName || 'Queued singer'}
                                         </div>
@@ -11767,7 +11900,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             </button>
                         </div>
                         <div className="mt-2 text-[11px] text-zinc-400">
-                            {releaseWindowTally.summary}
+                            {releaseWindowTally.totalVotes > 0
+                                ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
+                                : 'One vote per joined user. Host confirms the winner after voting closes.'}
                         </div>
                     </div>
                 </div>
@@ -13644,6 +13779,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     ? 'Search direct YouTube karaoke backings first. Song matches stay below as a fallback if you need them.'
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
+                                            {catalogSearchMode === 'youtube' && (
+                                                <div className="mt-2 text-[11px] leading-5 text-zinc-400">
+                                                    This application uses YouTube API Services. By using YouTube search, you also agree to the{' '}
+                                                    <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>
+                                                    {' '}and acknowledge the{' '}
+                                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="mt-3">
                                             {renderCoHostQueueAssistCard('compact')}
@@ -13677,6 +13820,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     {youtubeResultsLoading ? (
                                                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
                                                             Searching YouTube karaoke results...
+                                                        </div>
+                                                    ) : youtubeResultsError ? (
+                                                        <div className="rounded-2xl border border-amber-300/25 bg-amber-500/10 px-4 py-5 text-sm text-amber-100">
+                                                            {youtubeResultsError}
                                                         </div>
                                                     ) : youtubeResults.length > 0 ? (
                                                         <div className="space-y-2">
