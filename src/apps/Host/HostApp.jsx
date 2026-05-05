@@ -356,8 +356,8 @@ const AAHF_SCENE_LIBRARY_SEED_ASSETS = Object.freeze([
     { fileName: 'aahf-morales-flyer.png', title: 'AAHF Morales Flyer', mediaUrl: '/images/aahf-morales-flyer.png', mediaType: 'image', durationSec: 20 },
     { fileName: 'aahf-strawberryfestival-flyer.png', title: 'AAHF Strawberry Festival Flyer', mediaUrl: '/images/aahf-strawberryfestival-flyer.png', mediaType: 'image', durationSec: 20 },
     { fileName: 'aahf-strawberyfields-flyer.png', title: 'AAHF Strawberry Fields Flyer', mediaUrl: '/images/aahf-strawberyfields-flyer.png', mediaType: 'image', durationSec: 20 },
-    { fileName: 'AHB Show for 12.17.mp4', title: 'AHB Show for 12.17', mediaUrl: '/images/AHB Show for 12.17.mp4', mediaType: 'video', durationSec: 300 },
-    { fileName: '2nd Annual Asian Arts & Heritage Festival 4.2025.mp4', title: '2nd Annual Asian Arts & Heritage Festival 4.2025', mediaUrl: '/images/2nd Annual Asian Arts & Heritage Festival 4.2025.mp4', mediaType: 'video', durationSec: 300 },
+    { fileName: 'AHB Show for 12.17.mp4', title: 'AHB Show for 12.17', mediaUrl: 'https://firebasestorage.googleapis.com/v0/b/beaurocks-karaoke-v2.firebasestorage.app/o/room_scene_media%2FAAHF%2F1777513080425_AHB_Show_for_12.17.mp4?alt=media&token=513d36dd-ba0a-495e-8de8-d924dad2d548', mediaType: 'video', durationSec: 300 },
+    { fileName: '2nd Annual Asian Arts & Heritage Festival 4.2025.mp4', title: '2nd Annual Asian Arts & Heritage Festival 4.2025', mediaUrl: 'https://firebasestorage.googleapis.com/v0/b/beaurocks-karaoke-v2.firebasestorage.app/o/room_scene_media%2FAAHF%2F1777513195576_2nd_Annual_Asian_Arts___Heritage_Festival_4.2025.mp4?alt=media&token=4cce3d26-7cdd-4a47-b315-8254cab59c5f', mediaType: 'video', durationSec: 300 },
 ]);
 const isAahfSceneLibraryTargetRoom = (roomCode = '') => String(roomCode || '').trim().toUpperCase() === 'AAHF';
 const normalizeSceneLibrarySeedToken = (value = '') => String(value || '').trim().toLowerCase();

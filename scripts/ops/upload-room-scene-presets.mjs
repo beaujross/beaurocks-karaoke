@@ -13,6 +13,7 @@ const ROOT_COLLECTION = `artifacts/${APP_ID}/public/data`;
 const SCENE_TITLE_OVERRIDES = Object.freeze({
   'AHB Show for 12.17.mp4': 'AHB Show for 12.17',
   '2nd Annual Asian Arts & Heritage Festival 4.2025.mp4': '2nd Annual Asian Arts & Heritage Festival 4.2025',
+  'Atticus_kick off video.mp4': 'Atticus Kick Off Video',
   'aahf-dance-4.11.png': 'AAHF Dance 4.11',
   'aahf-festivaleventlist-flyer.png': 'AAHF Festival Event List Flyer',
   'aahf-festivalfinale-al.png': 'AAHF Festival Finale AL',
