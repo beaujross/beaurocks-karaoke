@@ -41,7 +41,9 @@ const QueueSongCard = ({
     onAssignQueueSongToRunOfShowItem,
     onAssignQueueSongToNextOpenRunOfShowSlot,
     onApprovePending,
-    onDeletePending
+    onDeletePending,
+    lockedInLineup = false,
+    lineupSlotLabel = ''
 }) => {
     const [selectedSlotId, setSelectedSlotId] = React.useState('');
     const queueBacking = normalizeBackingChoice({
@@ -111,6 +113,8 @@ const QueueSongCard = ({
     const canFastAssignToOpenSlot = !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow
         && typeof onAssignQueueSongToNextOpenRunOfShowSlot === 'function'
         && !!nextOpenSlot?.id;
+    const canReorderQueueItem = !touchReorderEnabled && !isHeld && !lockedInLineup;
+    const canPromoteToNext = !lockedInLineup && !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow && typeof onMoveNext === 'function';
 
     React.useEffect(() => {
         if (!song?.id) {
@@ -124,7 +128,7 @@ const QueueSongCard = ({
     return (
         <div
             data-queue-id={song.id}
-            draggable={!touchReorderEnabled && !isHeld}
+            draggable={canReorderQueueItem}
             onDragStart={() => setDragQueueId(song.id)}
             onDragEnd={() => { setDragQueueId(null); setDragOverId(null); }}
             onDragOver={(e) => { e.preventDefault(); setDragOverId(song.id); }}
@@ -133,7 +137,7 @@ const QueueSongCard = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchEnd}
-            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${selected ? 'border-cyan-300/40 bg-cyan-500/[0.08]' : dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
+            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${lockedInLineup ? 'border-emerald-300/28 bg-emerald-500/[0.06]' : selected ? 'border-cyan-300/40 bg-cyan-500/[0.08]' : dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
         >
             <div className={`flex ${compactViewport ? 'flex-col gap-2' : 'items-start justify-between gap-2'}`}>
                 <button
@@ -142,18 +146,20 @@ const QueueSongCard = ({
                     className={`min-w-0 flex flex-1 items-start text-left ${compactViewport ? 'gap-1.5' : 'gap-2'}`}
                 >
                     <span className={`font-mono text-zinc-500 text-center text-[11px] ${compactViewport ? 'w-4 mt-0.5' : 'w-5 mt-0.5'}`}>{index + 1}</span>
-                    <span
-                        data-queue-drag-handle="true"
-                        className={`inline-flex items-center justify-center rounded-md border transition hover:text-zinc-300 ${
-                            touchReorderMode
+                        <span
+                            data-queue-drag-handle="true"
+                            className={`inline-flex items-center justify-center rounded-md border transition hover:text-zinc-300 ${
+                            lockedInLineup
+                                ? 'border-emerald-300/35 bg-emerald-500/10 text-emerald-100'
+                                : touchReorderMode
                                 ? 'border-cyan-300/45 bg-cyan-500/15 text-cyan-100 shadow-[0_0_0_1px_rgba(34,211,238,0.18)]'
                                 : 'border-white/10 bg-black/20 text-zinc-500'
                         } ${compactViewport ? 'min-h-[24px] min-w-[24px]' : 'min-h-[26px] min-w-[26px]'}`}
-                        title={touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue'}
-                        aria-label="Reorder queue item"
+                        title={lockedInLineup ? `${lineupSlotLabel || 'Locked lineup'} is protected during live operation` : (touchReorderEnabled ? 'Press and drag to reorder the queue' : 'Drag to reorder the queue')}
+                        aria-label={lockedInLineup ? 'Locked lineup slot' : 'Reorder queue item'}
                         style={touchReorderEnabled ? { touchAction: 'none' } : undefined}
                     >
-                        <i className="fa-solid fa-grip-lines text-xs"></i>
+                        <i className={`fa-solid ${lockedInLineup ? 'fa-lock' : 'fa-grip-lines'} text-xs`}></i>
                     </span>
                     {song.albumArtUrl && <img src={song.albumArtUrl} className={`${compactViewport ? 'w-7 h-7' : 'w-7 h-7'} rounded-lg shadow-sm mt-0.5`}/>}
                     <div className="min-w-0">
@@ -205,6 +211,12 @@ const QueueSongCard = ({
                                     Host Check
                                 </span>
                             ) : null}
+                            {lockedInLineup ? (
+                                <span className={`${statusPill} border-emerald-300/40 text-emerald-100 bg-emerald-500/10`}>
+                                    <i className="fa-solid fa-lock mr-1"></i>
+                                    {lineupSlotLabel || 'Locked'}
+                                </span>
+                            ) : null}
                         </div>
                         {showSupportText ? (
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
@@ -217,6 +229,11 @@ const QueueSongCard = ({
                                         : isAudienceSelectedUnverified
                                             ? 'Guest-picked backing is ready, with optional host review.'
                                             : lyricsSupportText}
+                            </div>
+                        ) : null}
+                        {lockedInLineup ? (
+                            <div className={`mt-1 text-zinc-400 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
+                                This spot is protected so the host can trust the next few performers and stay in flow.
                             </div>
                         ) : null}
                         {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (
@@ -301,7 +318,7 @@ const QueueSongCard = ({
                                     <i className="fa-solid fa-play mr-1.5"></i>Start
                                 </button>
                             )}
-                            {!isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow && typeof onMoveNext === 'function' ? (
+                            {canPromoteToNext ? (
                                 <button
                                     type="button"
                                     title="Move this singer next"
@@ -334,7 +351,7 @@ const QueueSongCard = ({
                     </div>
                 ) : (
                     <div className="w-full rounded-lg border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                        Drag this card with the handle to reorder the live queue.
+                        {lockedInLineup ? `${lineupSlotLabel || 'Locked lineup'} is protected while the room is live.` : 'Drag this card with the handle to reorder the live queue.'}
                     </div>
                 )}
             </div>
@@ -398,7 +415,7 @@ const QueueSongCard = ({
                                 Start Singer
                             </button>
                         )}
-                        {!isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow ? (
+                        {canPromoteToNext ? (
                             <button
                                 type="button"
                                 onClick={() => onMoveNext?.(song.id)}

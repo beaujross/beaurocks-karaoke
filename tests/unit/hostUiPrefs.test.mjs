@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import {
+  HOST_RUNTIME_MODE_EMPHASES,
+  HOST_RUNTIME_SHELL_MODES,
   buildHostUiPrefsPatch,
+  getHostRuntimeModeEmphasis,
+  getHostRuntimeShellMode,
   getHostUiPrefs,
   isPostPerformanceBackingPromptEnabled,
 } from '../../src/apps/Host/lib/hostUiPrefs.js';
@@ -27,5 +31,21 @@ test('hostUiPrefs patch helper merges into the existing object payload', () => {
       { postPerformanceBackingPromptEnabled: false },
     ),
     { postPerformanceBackingPromptEnabled: false, compactNav: false },
+  );
+});
+
+test('hostUiPrefs runtime shell helpers default safely and honor grouped values', () => {
+  assert.equal(getHostRuntimeShellMode({}), HOST_RUNTIME_SHELL_MODES.classic);
+  assert.equal(
+    getHostRuntimeShellMode({ hostUiPrefs: { runtimeShellMode: HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment } }),
+    HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment,
+  );
+  assert.equal(
+    getHostRuntimeModeEmphasis({ hostUiPrefs: { runtimeModeEmphasis: HOST_RUNTIME_MODE_EMPHASES.collaborative } }),
+    HOST_RUNTIME_MODE_EMPHASES.collaborative,
+  );
+  assert.equal(
+    getHostRuntimeModeEmphasis({ hostUiPrefs: { runtimeModeEmphasis: 'unknown' } }),
+    HOST_RUNTIME_MODE_EMPHASES.hostLed,
   );
 });

@@ -50,6 +50,7 @@ import {
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
     updateRoomAsHost,
+    publishPublicRoomRecap,
     uploadHostSceneMedia,
     manageKaraokeBracket,
     resolveKaraokeBracketMatch,
@@ -183,7 +184,9 @@ import {
     getViewDefaultSection
 } from './workspace/navConfig';
 import {
+    HOST_RUNTIME_SHELL_MODES,
     buildHostUiPrefsPatch,
+    getHostRuntimeShellMode,
     isPostPerformanceBackingPromptEnabled,
 } from './lib/hostUiPrefs';
 import HostWorkspaceShell from './workspace/HostWorkspaceShell';
@@ -3899,6 +3902,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         && new URLSearchParams(window.location.search).get('chat') === '1';
     const isMarketingDemoEmbed = typeof window !== 'undefined'
         && new URLSearchParams(window.location.search).get('mkDemoEmbed') === '1';
+    const hostPrototypeMode = useMemo(() => {
+        if (typeof window === 'undefined') return '';
+        return String(new URLSearchParams(window.location.search || '').get('hostPrototype') || '').trim().toLowerCase();
+    }, []);
+    const useFullscreenHostPrototype = hostPrototypeMode === 'night_pilot';
     const qaHostFixtureId = useMemo(() => {
         if (typeof window === 'undefined') return '';
         return String(new URLSearchParams(window.location.search || '').get('qaHostFixture') || '').trim();
@@ -6872,6 +6880,40 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         takeoverScene: 'announcement',
                         headline: 'Sponsor spotlight',
                         subhead: 'Quick branded thank-you before the next singer.',
+                        accentTheme: 'amber'
+                    }
+                }
+            },
+            trivia_break: {
+                type: 'trivia_break',
+                label: 'Trivia Break',
+                overrides: {
+                    title: 'Trivia Break',
+                    plannedDurationSec: 55,
+                    modeLaunchPlan: {
+                        modeKey: 'trivia_pop',
+                        launchConfig: {}
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'trivia_break',
+                        headline: 'Quick room trivia',
+                        subhead: 'One fast question before the next singer.',
+                        accentTheme: 'violet'
+                    }
+                }
+            },
+            winner_declaration: {
+                type: 'winner_declaration',
+                label: 'Declare Winner',
+                overrides: {
+                    title: 'Declare Winner',
+                    plannedDurationSec: 35,
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: 'winner_declaration',
+                        headline: 'Winner time',
+                        subhead: 'Call the room result before the next singer.',
                         accentTheme: 'amber'
                     }
                 }
@@ -13355,6 +13397,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const ok = window.confirm('Close this room and generate a recap?');
         if (!ok) return;
         setClosingRoom(true);
+        let roomClosed = false;
         try {
             const closedAtMs = nowMs();
             const reactionSnap = await getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), where('roomCode', '==', roomCode)));
@@ -13399,32 +13442,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             recap.highlights = [...tournamentMoments, ...(recap.highlights || [])].slice(0, 30);
 
             const roomPatch = { closedAt: closedAtMs, recap };
-            const discoverListingId = String(room?.discover?.listingId || '').trim();
-            const recapUrl = audienceBase
-                ? `${audienceBase}?room=${encodeURIComponent(roomCode)}&mode=recap`
-                : buildRoomRecapUrl(roomCode, window.location.origin);
-            const recapSyncTasks = [updateRoom(roomPatch)];
-            if (discoverListingId) {
-                recapSyncTasks.push(
-                    updateDoc(doc(db, 'room_sessions', discoverListingId), {
-                        hostRecapCount: Math.max(1, Number(room?.discover?.hostRecapCount || 0) || 0),
-                        latestRecapAtMs: closedAtMs,
-                        latestRecapRoomCode: roomCode,
-                        latestRecapUrl: recapUrl,
-                        officialStatus: 'completed',
-                        officialStatusLabel: 'Recap Ready',
-                        updatedAt: new Date().toISOString()
-                    }).catch((syncError) => {
-                        hostLogger.warn('Failed to sync room-session recap metadata', syncError);
-                    })
-                );
-            }
-            await Promise.all(recapSyncTasks);
+            await updateRoom(roomPatch);
+            roomClosed = true;
+
+            const publishedRecap = await publishPublicRoomRecap({
+                roomCode,
+                origin: audienceBase || (typeof window !== 'undefined' ? window.location.origin : ''),
+            });
+            const recapUrl = String(publishedRecap?.publicUrl || '').trim() || buildRoomRecapUrl(roomCode, audienceBase || window.location.origin);
             await navigator.clipboard.writeText(recapUrl);
-            toast('Room closed. Recap link copied.');
+            toast('Room closed. Public recap link copied.');
         } catch (e) {
             hostLogger.error(e);
-            toast('Recap failed');
+            if (roomClosed) {
+                const fallbackPreviewUrl = audienceBase
+                    ? `${audienceBase}?room=${encodeURIComponent(roomCode)}&mode=recap`
+                    : `${window.location.origin}?room=${encodeURIComponent(roomCode)}&mode=recap`;
+                try {
+                    await navigator.clipboard.writeText(fallbackPreviewUrl);
+                } catch {
+                    // Ignore clipboard fallback errors.
+                }
+                toast('Room closed, but public recap publish failed.');
+            } else {
+                toast('Recap failed');
+            }
         } finally {
             setClosingRoom(false);
         }
@@ -17586,6 +17628,28 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
+    const toggleRuntimeShellModeQuick = async () => {
+        const currentMode = getHostRuntimeShellMode(room);
+        const nextMode = currentMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment
+            ? HOST_RUNTIME_SHELL_MODES.classic
+            : HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment;
+        try {
+            await updateRoom({
+                hostUiPrefs: buildHostUiPrefsPatch(room, {
+                    runtimeShellMode: nextMode,
+                }),
+            });
+            toast(
+                nextMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment
+                    ? 'Social Game Night runtime shell on.'
+                    : 'Classic runtime shell restored.'
+            );
+        } catch (error) {
+            console.error('Failed to update runtime shell mode from host chrome', error);
+            toast('Could not update the runtime shell experiment.');
+        }
+    };
+
     const setRequestModeQuick = async (nextValue = '') => {
         const previous = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
         const safeMode = normalizeRoomRequestMode(nextValue, nextValue === REQUEST_MODES.guestBackingOptional);
@@ -17646,6 +17710,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const quickRoomControls = {
         bouncerMode: !!room?.bouncerMode,
         postPerformanceBackingPromptEnabled: isPostPerformanceBackingPromptEnabled(room),
+        runtimeShellMode: getHostRuntimeShellMode(room),
         queueLimitMode,
         queueLimitCount: Math.max(0, Number(queueLimitCount || 0)),
         queueRotation,
@@ -17657,6 +17722,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         requestModeOptions: REQUEST_MODE_OPTIONS,
         onToggleBouncerMode: toggleBouncerModeQuick,
         onTogglePostPerformanceBackingPrompt: togglePostPerformanceBackingPromptQuick,
+        onToggleRuntimeShellMode: toggleRuntimeShellModeQuick,
         onUpdateQueueSettings: updateQueueSettingsQuick,
         onSetRequestMode: setRequestModeQuick,
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
@@ -17932,6 +17998,49 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         ) : null}
                         {browsePanel}
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (useFullscreenHostPrototype) {
+        const prototypeExitHref = roomCode
+            ? `${hostBase}?mode=host&room=${encodeURIComponent(roomCode)}`
+            : `${hostBase}?mode=host`;
+        return (
+            <div
+                data-host-prototype-shell="night_pilot"
+                className="host-app min-h-screen bg-[#05070c] text-white font-saira"
+            >
+                {hostUpdateDeploymentBanner ? (
+                    <div className="px-4 pt-4">
+                        {hostUpdateDeploymentBanner}
+                    </div>
+                ) : null}
+                <div className="min-h-screen">
+                    <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading night pilot..." />}>
+                        <HostQueueTab
+                            {...queueTabProps}
+                            onFocusRunOfShowItem={(itemId) => {
+                                const safeItemId = String(itemId || '').trim();
+                                if (!safeItemId) return;
+                                setTab('run_of_show');
+                                setRunOfShowFocusRequest({
+                                    itemId: safeItemId,
+                                    token: Date.now(),
+                                });
+                            }}
+                            onPreviewRunOfShowItem={previewRunOfShowItem}
+                            onMoveRunOfShowItem={moveRunOfShowItem}
+                            onSkipRunOfShowItem={skipRunOfShowItem}
+                            runtimeVisible={true}
+                            fullscreenPrototype
+                            prototypeExitHref={prototypeExitHref}
+                            styles={STYLES}
+                            emoji={EMOJI}
+                            smallWaveform={SmallWaveform}
+                        />
+                    </React.Suspense>
                 </div>
             </div>
         );

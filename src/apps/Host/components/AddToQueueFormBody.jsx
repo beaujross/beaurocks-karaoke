@@ -187,10 +187,24 @@ const quickMomentPacks = [
         toneClass: 'border-emerald-300/22 bg-emerald-500/8',
     },
     {
+        id: 'trivia_break',
+        category: 'game',
+        title: 'Trivia Break',
+        detail: 'One quick room question between singers.',
+        toneClass: 'border-violet-300/22 bg-violet-500/8',
+    },
+    {
         id: 'applause_meter',
         category: 'game',
         title: 'Applause Meter',
         detail: 'Measure the room before the next singer.',
+        toneClass: 'border-amber-300/22 bg-amber-500/8',
+    },
+    {
+        id: 'winner_declaration',
+        category: 'announcement',
+        title: 'Declare Winner',
+        detail: 'Drop a quick winner reveal into the live plan.',
         toneClass: 'border-amber-300/22 bg-amber-500/8',
     },
     {

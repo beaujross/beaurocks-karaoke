@@ -38,6 +38,21 @@ export const QA_HOST_SCENARIOS = Object.freeze([
         expectedTexts: ['Live Stage', 'Performance Controls', 'Post-Performance Timing']
     },
     {
+        id: 'run-of-show-stage-live-generic',
+        roomCode: 'DEMOBR',
+        expectedTexts: ['Live Stage', 'Performance Controls', 'Post-Performance Timing']
+    },
+    {
+        id: 'run-of-show-stage-live-social',
+        roomCode: 'DEMOAAHF',
+        expectedTexts: ['Social Game Night Console', 'Performance Actions', 'Room Deck']
+    },
+    {
+        id: 'run-of-show-stage-live-generic-social',
+        roomCode: 'DEMOBR',
+        expectedTexts: ['Social Game Night Console', 'Performance Actions', 'Room Deck']
+    },
+    {
         id: 'cohost-queue-faceoff',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Co-Host Song Face-Off', 'Which queued song should go next?', 'Make Taylor Next']
@@ -378,6 +393,8 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     id: 'perf_live_1',
                     singerName: 'Alex Rivers',
                     singer: 'Alex Rivers',
+                    emoji: '🎤',
+                    photoUrl: 'https://i.pravatar.cc/240?img=12',
                     songTitle: 'Dreams',
                     title: 'Dreams',
                     artist: 'Fleetwood Mac',
@@ -386,6 +403,7 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
                     youtubeId: 'yt_demo_backing_01',
                     albumArtUrl: QA_DREAMS_ART_URL,
+                    duration: 212,
                     hostBonus: 25,
                     lyrics: 'Thunder only happens when it\'s raining',
                 },
@@ -393,6 +411,102 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     id: 'queue_next_1',
                     singerName: 'Jordan',
                     singer: 'Jordan',
+                    emoji: '✨',
+                    photoUrl: 'https://i.pravatar.cc/240?img=32',
+                    songTitle: 'Valerie',
+                    title: 'Valerie',
+                    artist: 'Amy Winehouse',
+                    artistName: 'Amy Winehouse',
+                    status: 'queued',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
+                    youtubeId: 'yt_demo_valerie_02',
+                    albumArtUrl: QA_VALERIE_ART_URL,
+                    duration: 198,
+                },
+                {
+                    id: 'queue_wait_2',
+                    singerName: 'Taylor',
+                    singer: 'Taylor',
+                    emoji: '🎸',
+                    photoUrl: 'https://i.pravatar.cc/240?img=47',
+                    songTitle: 'Since U Been Gone',
+                    title: 'Since U Been Gone',
+                    artist: 'Kelly Clarkson',
+                    artistName: 'Kelly Clarkson',
+                    status: 'queued',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_sinceu_03',
+                    youtubeId: 'yt_demo_sinceu_03',
+                    albumArtUrl: QA_SINCE_U_BEEN_GONE_ART_URL,
+                    duration: 187,
+                },
+                {
+                    id: 'queue_wait_3',
+                    singerName: 'Sam Lee',
+                    singer: 'Sam Lee',
+                    emoji: '🔥',
+                    photoUrl: 'https://i.pravatar.cc/240?img=14',
+                    songTitle: 'Mr. Brightside',
+                    title: 'Mr. Brightside',
+                    artist: 'The Killers',
+                    artistName: 'The Killers',
+                    status: 'queued',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_brightside_04',
+                    youtubeId: 'yt_demo_brightside_04',
+                    albumArtUrl: QA_DREAMS_ART_URL,
+                    duration: 223,
+                }
+            ],
+        };
+    }
+    if (safeId === 'run-of-show-stage-live-generic') {
+        const fixture = buildBaseFixture(roomCode, nowMs, {
+            hostName: 'BeauRocks Host',
+            eventProfileId: '',
+            eventProfileLabel: 'BeauRocks Night',
+            logoUrl: GENERIC_LOGO_URL,
+            lobbyOrbSkinUrl: GENERIC_LOGO_URL,
+            audienceBrandTheme: QA_GENERIC_AUDIENCE_BRAND_THEME,
+        });
+        return {
+            ...fixture,
+            tab: 'stage',
+            room: {
+                ...(fixture.room || {}),
+                videoPlaying: true,
+                videoStartTimestamp: nowMs - 45000,
+                pausedAt: null,
+                showPerformanceRecap: true,
+                applauseWarmupSec: 4,
+                applauseCountdownSec: 4,
+                applauseMeasureSec: 5,
+                performanceRecapBreakdownMs: 5000,
+                performanceRecapLeaderboardMs: 6000,
+            },
+            songs: [
+                {
+                    id: 'perf_live_1',
+                    singerName: 'Alex Rivers',
+                    singer: 'Alex Rivers',
+                    emoji: '🎤',
+                    photoUrl: 'https://i.pravatar.cc/240?img=12',
+                    songTitle: 'Dreams',
+                    title: 'Dreams',
+                    artist: 'Fleetwood Mac',
+                    artistName: 'Fleetwood Mac',
+                    status: 'performing',
+                    mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_backing_01',
+                    youtubeId: 'yt_demo_backing_01',
+                    albumArtUrl: QA_DREAMS_ART_URL,
+                    duration: 212,
+                    hostBonus: 25,
+                    lyrics: 'Thunder only happens when it\'s raining',
+                },
+                {
+                    id: 'queue_next_1',
+                    singerName: 'Jordan',
+                    singer: 'Jordan',
+                    emoji: '✨',
+                    photoUrl: 'https://i.pravatar.cc/240?img=32',
                     songTitle: 'Valerie',
                     title: 'Valerie',
                     artist: 'Amy Winehouse',
@@ -401,8 +515,35 @@ export const buildQaHostFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowM
                     mediaUrl: 'https://www.youtube.com/watch?v=yt_demo_valerie_02',
                     youtubeId: 'yt_demo_valerie_02',
                     albumArtUrl: QA_VALERIE_ART_URL,
+                    duration: 198,
                 }
             ],
+        };
+    }
+    if (safeId === 'run-of-show-stage-live-social') {
+        const fixture = buildQaHostFixture('run-of-show-stage-live', { roomCode, nowMs });
+        return {
+            ...fixture,
+            room: {
+                ...(fixture?.room || {}),
+                hostUiPrefs: {
+                    ...((fixture?.room && fixture.room.hostUiPrefs) || {}),
+                    runtimeShellMode: 'social_game_night_experiment',
+                },
+            },
+        };
+    }
+    if (safeId === 'run-of-show-stage-live-generic-social') {
+        const fixture = buildQaHostFixture('run-of-show-stage-live-generic', { roomCode, nowMs });
+        return {
+            ...fixture,
+            room: {
+                ...(fixture?.room || {}),
+                hostUiPrefs: {
+                    ...((fixture?.room && fixture.room.hostUiPrefs) || {}),
+                    runtimeShellMode: 'social_game_night_experiment',
+                },
+            },
         };
     }
     if (safeId === 'cohost-queue-faceoff') {

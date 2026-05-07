@@ -24,14 +24,16 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
     'Host queue tab should render the queue panel before Track Check helper content',
   );
 
-  const readyQueueIndex = queueListPanelSource.indexOf('label="Ready To Run"');
+  const lockedQueueIndex = queueListPanelSource.indexOf('Locked Next Performers');
+  const benchQueueIndex = queueListPanelSource.indexOf('Build The Bench');
   const quickAccessIndex = queueListPanelSource.indexOf('<QueueQuickAccessPanel');
   const inlineActionsIndex = queueSongCardSource.indexOf('data-feature-id="queue-song-inline-actions"');
-  assert.notStrictEqual(readyQueueIndex, -1, 'Queue list panel should still label the primary queue section');
+  assert.notStrictEqual(lockedQueueIndex, -1, 'Queue list panel should still expose the protected live lineup');
+  assert.notStrictEqual(benchQueueIndex, -1, 'Queue list panel should still expose the later ready bench');
   assert.notStrictEqual(quickAccessIndex, -1, 'Queue list panel should still render quick access controls');
   assert.notStrictEqual(inlineActionsIndex, -1, 'Queue songs should still expose inline queue actions');
   assert.ok(
-    readyQueueIndex < quickAccessIndex,
-    'Queue list panel should lead with the ready queue before quick access controls',
+    lockedQueueIndex < benchQueueIndex && benchQueueIndex < quickAccessIndex,
+    'Queue list panel should lead with the protected lineup, then the bench, before quick access controls',
   );
 });

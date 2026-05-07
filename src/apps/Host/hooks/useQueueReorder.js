@@ -1,6 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 
-const useQueueReorder = ({ queue, onPersist, toast, touchReorderActive = true }) => {
+const useQueueReorder = ({
+    queue,
+    onPersist,
+    toast,
+    touchReorderActive = true,
+    protectedCount = 0,
+    protectedLabel = 'locked lineup'
+}) => {
     const [dragQueueId, setDragQueueId] = useState(null);
     const [dragOverId, setDragOverId] = useState(null);
     const touchDragStateRef = useRef(null);
@@ -23,11 +30,15 @@ const useQueueReorder = ({ queue, onPersist, toast, touchReorderActive = true })
         const fromIdx = list.findIndex(s => s.id === fromId);
         const toIdx = list.findIndex(s => s.id === toId);
         if (fromIdx === -1 || toIdx === -1) return;
+        if (protectedCount > 0 && (fromIdx < protectedCount || toIdx < protectedCount)) {
+            toast?.(`The ${protectedLabel} is protected. Advance the room before reshuffling those spots.`);
+            return;
+        }
         const [moved] = list.splice(fromIdx, 1);
         list.splice(toIdx, 0, moved);
         await onPersist(list);
         toast?.('Queue reordered');
-    }, [queue, onPersist, toast]);
+    }, [protectedCount, protectedLabel, queue, onPersist, toast]);
 
     const handleTouchStart = useCallback((id, event) => {
         if (!touchReorderEnabled) return;

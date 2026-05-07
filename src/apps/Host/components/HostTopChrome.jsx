@@ -8,16 +8,16 @@ import {
     normalizeRunOfShowDirector
 } from '../../../lib/runOfShowDirector';
 
-const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', title = '' }) => {
+const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', title = '', compact = false }) => {
     const Comp = 'div';
     return (
         <Comp
             title={title}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
+            className={`inline-flex items-center ${compact ? 'gap-1 rounded-lg px-1.5 py-1' : 'gap-1.5 rounded-lg px-2 py-1'} border text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
         >
             <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
             {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
-            <span className="text-zinc-100 hidden lg:inline">{label}</span>
+            {!compact ? <span className="text-zinc-100 hidden lg:inline">{label}</span> : null}
         </Comp>
     );
 };
@@ -328,7 +328,9 @@ const HostTopChrome = ({
             .slice(0, 6),
         [scenePresets]
     );
-    const denseChrome = !!tabletTouchViewport || !!mediumViewport;
+    const experimentalRuntimeShellActive = quickRoomControls?.runtimeShellMode === 'social_game_night_experiment';
+    const minimalRuntimeChrome = experimentalRuntimeShellActive && tab === 'stage';
+    const denseChrome = minimalRuntimeChrome || !!tabletTouchViewport || !!mediumViewport;
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -336,7 +338,7 @@ const HostTopChrome = ({
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
     const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
-    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : denseChrome ? 'h-10 px-3 py-1.5 text-[12px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
+    const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome ? 'h-8 px-2.5 py-1 text-[11px]' : runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : denseChrome ? 'h-10 px-3 py-1.5 text-[12px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const automationActiveCount = [
         !!quickAutomationControls?.autoDj,
@@ -1028,27 +1030,27 @@ const HostTopChrome = ({
         setSettingsTab?.(sectionId === 'ops.automation' ? 'automations' : 'general');
     }, [closeAllTopMenus, openAdminWorkspace, setSettingsTab, setShowSettings]);
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col gap-2 shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
-        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between w-full">
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
+        <div className={`flex flex-col ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2.5'} lg:flex-row lg:items-center lg:justify-between w-full`}>
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className={`${runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
+                    className={`${minimalRuntimeChrome ? 'h-9 lg:h-10' : runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
                     alt="Beaurocks Karaoke"
                 />
-                <div data-host-room-code className={`${denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px]' : 'text-[14px] sm:text-[16px] lg:text-[18px]'} font-mono font-bold text-[#00C4D9] bg-black/40 px-2 py-0.5 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
+                <div data-host-room-code className={`${minimalRuntimeChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px] px-2 py-0.5' : 'text-[14px] sm:text-[16px] lg:text-[18px] px-2 py-0.5'} font-mono font-bold text-[#00C4D9] bg-black/40 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
                 {typeof onOpenHostDashboard === 'function' && (
                     <button
                         onClick={() => {
                             closeAllTopMenus();
                             onOpenHostDashboard();
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} px-2.5 text-xs`}
+                        className={`${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
                         title="Back to room manager and room creation"
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-layer-group"></i>
-                        <span className="hidden sm:inline">Room Manager</span>
+                        {!minimalRuntimeChrome ? <span className="hidden sm:inline">Room Manager</span> : null}
                     </button>
                 )}
                 <div className="relative" ref={launchMenuRef}>
@@ -1058,7 +1060,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowLaunchMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnSecondary} px-2.5 text-xs`}
+                        className={`${styles.btnStd} ${styles.btnSecondary} ${minimalRuntimeChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-rocket"></i>
@@ -1144,7 +1146,7 @@ const HostTopChrome = ({
                         </div>
                     )}
                 </div>
-                {showTimeClockEnabled && (
+                {showTimeClockEnabled && !minimalRuntimeChrome && (
                     <div className={`ml-1 flex ${denseChrome ? 'min-w-[146px]' : 'min-w-[168px]'} items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-3 py-1.5`}>
                         <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-9 w-9' : 'h-9 w-9'}`}>
                             <i className="fa-solid fa-clock"></i>
@@ -1163,7 +1165,7 @@ const HostTopChrome = ({
                     </div>
                 )}
             </div>
-            <div className="flex items-center gap-2 lg:gap-3 justify-between lg:justify-end">
+            <div className={`flex items-center ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2 lg:gap-3'} justify-between lg:justify-end`}>
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs lg:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
@@ -1198,35 +1200,37 @@ const HostTopChrome = ({
                                 }
                                 setTab(t.key);
                             }}
-                            className={`${denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                            className={`${minimalRuntimeChrome ? 'px-2 py-1 text-[11px]' : denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
                         >
                             {t.label}
                         </button>
                     ))}
                 </div>
-                <div className="flex items-center gap-1.5">
-                    <NavStatusLight
-                        label="Apple"
-                        iconClass="fa-brands fa-apple"
-                        active={appleMusicConnected}
-                        toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
-                        title={appleMusicConnected ? 'Apple Music connected.' : 'Apple Music not linked.'}
-                    />
-                    <NavStatusLight
-                        label="AI"
-                        iconClass="fa-solid fa-robot"
-                        active={aiToolsConnected}
-                        toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
-                        title={aiToolsConnected ? 'AI tools enabled.' : 'AI tools locked.'}
-                    />
-                    <NavStatusLight
-                        label={String(permissionLevel || 'unknown').toUpperCase()}
-                        iconClass="fa-solid fa-user-shield"
-                        active={authSessionReady}
-                        toneClass={permissionTone}
-                        title={authSessionReady ? 'Session active.' : 'Session not ready.'}
-                    />
-                </div>
+                {!minimalRuntimeChrome ? (
+                    <div className="flex items-center gap-1.5">
+                        <NavStatusLight
+                            label="Apple"
+                            iconClass="fa-brands fa-apple"
+                            active={appleMusicConnected}
+                            toneClass={appleMusicConnected ? 'border-emerald-400/35 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/35 bg-rose-500/10 text-rose-100'}
+                            title={appleMusicConnected ? 'Apple Music connected.' : 'Apple Music not linked.'}
+                        />
+                        <NavStatusLight
+                            label="AI"
+                            iconClass="fa-solid fa-robot"
+                            active={aiToolsConnected}
+                            toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
+                            title={aiToolsConnected ? 'AI tools enabled.' : 'AI tools locked.'}
+                        />
+                        <NavStatusLight
+                            label={String(permissionLevel || 'unknown').toUpperCase()}
+                            iconClass="fa-solid fa-user-shield"
+                            active={authSessionReady}
+                            toneClass={permissionTone}
+                            title={authSessionReady ? 'Session active.' : 'Session not ready.'}
+                        />
+                    </div>
+                ) : null}
                 <button
                     onClick={() => {
                         if (typeof openAdminWorkspace === 'function') {
@@ -1236,7 +1240,7 @@ const HostTopChrome = ({
                         setShowSettings(true);
                         setSettingsTab('general');
                     }}
-                    className="text-zinc-500 hover:text-white"
+                    className={`${minimalRuntimeChrome ? 'text-zinc-400' : 'text-zinc-500'} hover:text-white`}
                     title="Open Admin"
                 >
                     <i className="fa-solid fa-gear text-base lg:text-lg"></i>
@@ -1297,8 +1301,8 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
-                <div className={`host-top-quick-strip flex min-w-0 ${denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
+        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode || minimalRuntimeChrome ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : minimalRuntimeChrome ? 'px-2 py-1.5' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
+                <div className={`host-top-quick-strip flex min-w-0 ${minimalRuntimeChrome ? 'gap-1' : denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 {!runOfShowFocusMode ? (
                     <div className={quickStripItemClass} ref={audioMenuRef}>
                         <div className="flex flex-nowrap items-center gap-2">
@@ -1686,7 +1690,7 @@ const HostTopChrome = ({
                                             </select>
                                         </label>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
                                         <button
                                             type="button"
                                             onClick={() => { void quickRoomControls.onToggleBouncerMode?.(); }}
@@ -1736,6 +1740,19 @@ const HostTopChrome = ({
                                                 Post-Song Track Check
                                             </span>
                                             <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.postPerformanceBackingPromptEnabled ? 'On' : 'Off'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { void quickRoomControls.onToggleRuntimeShellMode?.(); }}
+                                            aria-pressed={quickRoomControls.runtimeShellMode === 'social_game_night_experiment'}
+                                            title="Switch between the classic host runtime and the Social Game Night experiment."
+                                            className={`${styles.btnStd} ${quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <i className="fa-solid fa-record-vinyl"></i>
+                                                Runtime Shell
+                                            </span>
+                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? 'Social' : 'Classic'}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -2492,7 +2509,7 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-            {(crowdPulseMeta || opsStatusItems.length > 0) ? (
+            {!minimalRuntimeChrome && (crowdPulseMeta || opsStatusItems.length > 0) ? (
                 <div className="mt-2 flex flex-col gap-2 xl:flex-row xl:items-stretch xl:justify-between">
                     {crowdPulseMeta ? (
                         <div
