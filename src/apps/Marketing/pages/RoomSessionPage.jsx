@@ -129,7 +129,8 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   const openSubmissionItems = getRunOfShowOpenSubmissionItems(runOfShowDirector);
   const runOfShowActive = roomItem?.runOfShowEnabled === true && String(roomItem?.programMode || "").trim().toLowerCase() === "run_of_show";
   const recap = roomItem?.recap && typeof roomItem.recap === "object" ? roomItem.recap : null;
-  const recapUrl = sessionItem?.roomCode ? buildRoomRecapUrl(sessionItem.roomCode) : "";
+  const recapUrl = String(sessionItem?.latestRecapUrl || "").trim()
+    || (sessionItem?.roomCode ? buildRoomRecapUrl(sessionItem.roomCode) : "");
   const recapAvailable = !!recap || Number(sessionItem?.hostRecapCount || 0) > 0 || !!String(sessionItem?.latestRecapUrl || "").trim();
   const recapPeople = Math.max(0, Number(recap?.metrics?.estimatedPeople || recap?.stats?.totalUsers || recap?.totalUsers || 0) || 0);
   const recapReactions = Math.max(0, Number(recap?.stats?.reactionCount || recap?.stats?.totalEmojiBursts || recap?.totalEmojiBursts || 0) || 0);

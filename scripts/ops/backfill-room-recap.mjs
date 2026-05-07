@@ -6,13 +6,19 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import {
   buildRoomRecapSummary,
-  buildRoomRecapUrl,
 } from "../../src/lib/roomRecap.js";
 
 const require = createRequire(import.meta.url);
+const {
+  buildPublicRoomRecapHtml,
+  buildPublicRoomRecapStoragePath,
+  buildPublicRoomRecapUrl,
+  resolveRecapBranding,
+} = require("../../functions/lib/publicRoomRecap.js");
 const thisFile = fileURLToPath(import.meta.url);
 const projectRoot = path.resolve(path.dirname(thisFile), "..", "..");
 const APP_ID = "bross-app";
+const STORAGE_BUCKET = "beaurocks-karaoke-v2.firebasestorage.app";
 
 const args = process.argv.slice(2);
 const hasFlag = (flag) => args.includes(flag);
@@ -31,7 +37,7 @@ Options:
   --session-id <id>       Optional room_session document id to sync
   --start <iso>           Event window start
   --end <iso>             Event window end
-  --origin <url>          Public origin for recap URLs (default: https://beaurocks.app)
+  --origin <url>          Public origin for recap URLs (default: https://app.beaurocks.app)
   --dry-run               Print payload only, do not write
   --help                  Show help
 `;
@@ -45,7 +51,7 @@ const roomCode = String(readArg("--room-code", "")).trim().toUpperCase();
 const sessionId = String(readArg("--session-id", "")).trim();
 const startRaw = String(readArg("--start", "")).trim();
 const endRaw = String(readArg("--end", "")).trim();
-const publicOrigin = String(readArg("--origin", "https://beaurocks.app")).trim() || "https://beaurocks.app";
+const publicOrigin = String(readArg("--origin", "https://app.beaurocks.app")).trim() || "https://app.beaurocks.app";
 const reportPath = String(readArg("--report", "")).trim();
 const dryRun = hasFlag("--dry-run");
 
@@ -149,10 +155,14 @@ const initializeFirebaseAdmin = async () => {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       projectId: serviceAccount.project_id || "beaurocks-karaoke-v2",
+      storageBucket: STORAGE_BUCKET,
     });
     return admin;
   }
-  admin.initializeApp({ projectId: "beaurocks-karaoke-v2" });
+  admin.initializeApp({
+    projectId: "beaurocks-karaoke-v2",
+    storageBucket: STORAGE_BUCKET,
+  });
   return admin;
 };
 
@@ -303,10 +313,25 @@ const run = async () => {
     recap.metrics.reactionsPerPerformance = Number(windowReport?.metrics?.reactionsPerPerformance || recap.metrics.reactionsPerPerformance || 0) || recap.metrics.reactionsPerPerformance;
   }
 
-  const recapUrl = buildRoomRecapUrl(roomCode, publicOrigin);
+  const recapUrl = buildPublicRoomRecapUrl(roomCode, publicOrigin);
+  const publicRecapStoragePath = buildPublicRoomRecapStoragePath(roomCode);
+  const html = buildPublicRoomRecapHtml({
+    roomCode,
+    roomData: room,
+    recap,
+    publicUrl: recapUrl,
+    origin: publicOrigin,
+  });
+  const branding = resolveRecapBranding({
+    roomCode,
+    roomName: room?.discover?.title || room?.roomName || room?.name || roomCode,
+    logoUrl: room?.logoUrl,
+    origin: publicOrigin,
+  });
   const output = {
     roomCode,
     recapUrl,
+    publicRecapStoragePath,
     estimatedPeople: recap?.metrics?.estimatedPeople || 0,
     reactions: recap?.stats?.reactionCount || 0,
     performedSongs: recap?.stats?.totalPerformedSongs || 0,
@@ -318,9 +343,24 @@ const run = async () => {
     return;
   }
 
+  await admin.storage().bucket(STORAGE_BUCKET).file(publicRecapStoragePath).save(html, {
+    resumable: false,
+    metadata: {
+      contentType: "text/html; charset=utf-8",
+      cacheControl: "public, max-age=300, s-maxage=1800",
+    },
+  });
+
   await root.collection("rooms").doc(roomCode).set(
     {
       recap,
+      latestRecapUrl: recapUrl,
+      publicRecap: {
+        publishedAtMs: Date.now(),
+        storagePath: publicRecapStoragePath,
+        url: recapUrl,
+        socialImageUrl: branding.socialImageUrl || "",
+      },
     },
     { merge: true }
   );

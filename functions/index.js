@@ -26,6 +26,13 @@ const {
   requestGeminiJson,
 } = require("./lib/geminiClient");
 const {
+  DEFAULT_PUBLIC_RECAP_ORIGIN,
+  buildPublicRoomRecapHtml,
+  buildPublicRoomRecapStoragePath,
+  buildPublicRoomRecapUrl,
+  resolveRecapBranding: resolvePublicRecapBranding,
+} = require("./lib/publicRoomRecap");
+const {
   DEFAULT_POP_TRIVIA_MAX_QUESTIONS,
   buildPopTriviaCacheKey,
   buildFallbackPopTriviaSeedRows,
@@ -45,6 +52,7 @@ const APP_ID = "bross-app";
 const POP_TRIVIA_CACHE_FIELD = "popTriviaSongCache";
 const ORGS_COLLECTION = "organizations";
 const STRIPE_SUBSCRIPTIONS_COLLECTION = "stripe_subscriptions";
+const DEFAULT_BEAUROCKS_LOGO_URL = "/images/logo-library/beaurocks-logo-neon trasnparent.png";
 
 setGlobalOptions({
   region: "us-west1",
@@ -16621,6 +16629,50 @@ const dispatchHostApplicationAlert = async ({ applicationId = "", application = 
   );
 };
 
+exports.publicRoomRecap = onRequest(
+  {
+    cors: true,
+  },
+  async (request, response) => {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.status(405).type("text/plain").send("Method not allowed");
+      return;
+    }
+
+    const rawPath = String(request.originalUrl || request.url || request.path || "").split("?")[0] || "";
+    const match = rawPath.match(/\/recaps\/([^/?#]+)/i);
+    const roomCode = normalizeRoomCode(match?.[1] || "");
+    if (!roomCode) {
+      response.status(404).type("text/html; charset=utf-8").send("<!doctype html><title>Recap not found</title><h1>Recap not found</h1>");
+      return;
+    }
+
+    const bucket = admin.storage().bucket();
+    const htmlPath = buildPublicRoomRecapStoragePath(roomCode);
+    const file = bucket.file(htmlPath);
+
+    try {
+      const [exists] = await file.exists();
+      if (!exists) {
+        response.status(404).type("text/html; charset=utf-8").send(`<!doctype html><title>${roomCode} recap not found</title><h1>${roomCode} recap not found</h1>`);
+        return;
+      }
+
+      const [buffer] = await file.download();
+      response.set("Cache-Control", "public, max-age=300, s-maxage=1800");
+      response.set("Content-Type", "text/html; charset=utf-8");
+      if (request.method === "HEAD") {
+        response.status(200).end();
+        return;
+      }
+      response.status(200).send(buffer);
+    } catch (error) {
+      console.error("publicRoomRecap failed", { roomCode, error: error?.message || error });
+      response.status(500).type("text/html; charset=utf-8").send("<!doctype html><title>Recap unavailable</title><h1>Recap unavailable</h1>");
+    }
+  }
+);
+
 exports.emailReminderWebhook = onRequest(
   {
     cors: true,
@@ -17539,6 +17591,101 @@ exports.assertRoomHostAccess = onCall({ cors: true }, async (request) => {
     roomCode: safeRoomCode,
     hostUid,
     hostUids,
+  };
+});
+
+exports.publishPublicRoomRecap = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "publish_public_room_recap", { perMinute: 24, perHour: 120 });
+  enforceAppCheckIfEnabled(request, "publish_public_room_recap");
+  const callerUid = requireAuth(request);
+  const roomCode = String(request.data?.roomCode || "").trim().toUpperCase();
+  ensureString(roomCode, "roomCode");
+
+  const requestedOrigin = String(request.data?.origin || "").trim();
+  const publicOrigin = isAllowedOrigin(requestedOrigin)
+    ? requestedOrigin.replace(/\/+$/, "")
+    : DEFAULT_PUBLIC_RECAP_ORIGIN;
+
+  const db = admin.firestore();
+  const rootRef = getRootRef();
+  const bucket = admin.storage().bucket();
+  const { roomRef, roomCode: safeRoomCode, roomData } = await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can publish recap pages.",
+  });
+
+  const recap = roomData?.recap && typeof roomData.recap === "object" ? roomData.recap : null;
+  if (!recap) {
+    throw new HttpsError("failed-precondition", "Room recap not found. Generate the recap before publishing.");
+  }
+
+  const publicUrl = buildPublicRoomRecapUrl(safeRoomCode, publicOrigin);
+  const htmlPath = buildPublicRoomRecapStoragePath(safeRoomCode);
+  const branding = resolvePublicRecapBranding({
+    roomCode: safeRoomCode,
+    roomName: roomData?.discover?.title || roomData?.roomName || roomData?.name || safeRoomCode,
+    logoUrl: roomData?.logoUrl,
+    defaultLogoUrl: DEFAULT_BEAUROCKS_LOGO_URL,
+    origin: publicOrigin,
+  });
+  const html = buildPublicRoomRecapHtml({
+    roomCode: safeRoomCode,
+    roomData,
+    recap,
+    publicUrl,
+    origin: publicOrigin,
+  });
+  const publishedAtMs = Date.now();
+
+  await bucket.file(htmlPath).save(html, {
+    resumable: false,
+    metadata: {
+      contentType: "text/html; charset=utf-8",
+      cacheControl: "public, max-age=300, s-maxage=1800",
+    },
+  });
+
+  await roomRef.set({
+    latestRecapUrl: publicUrl,
+    publicRecap: {
+      publishedAtMs,
+      storagePath: htmlPath,
+      url: publicUrl,
+      socialImageUrl: branding.socialImageUrl || "",
+    },
+    updatedAt: buildDirectoryNow(),
+  }, { merge: true });
+
+  const discoverListingId = safeDirectoryString(roomData?.discover?.listingId || "", 220);
+  if (discoverListingId) {
+    const sessionRef = db.collection("room_sessions").doc(discoverListingId);
+    const sessionSnap = await sessionRef.get();
+    const sessionData = sessionSnap.exists ? (sessionSnap.data() || {}) : {};
+    const existingCapabilities = Array.isArray(sessionData?.beauRocksCapabilities)
+      ? sessionData.beauRocksCapabilities.filter((entry) => typeof entry === "string")
+      : [];
+    const nextCapabilities = Array.from(new Set([...existingCapabilities, "recap_ready"]));
+    await sessionRef.set({
+      hostRecapCount: Math.max(1, Number(sessionData?.hostRecapCount || 0) || 0),
+      latestRecapAtMs: Math.max(0, Number(recap?.generatedAt || 0) || publishedAtMs),
+      latestRecapRoomCode: safeRoomCode,
+      latestRecapUrl: publicUrl,
+      officialStatus: "completed",
+      officialStatusLabel: "Recap Ready",
+      beauRocksCapabilities: nextCapabilities,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  }
+
+  return {
+    ok: true,
+    roomCode: safeRoomCode,
+    publicUrl,
+    storagePath: htmlPath,
+    publishedAtMs,
+    socialImageUrl: branding.socialImageUrl || "",
   };
 });
 

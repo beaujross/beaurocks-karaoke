@@ -35,9 +35,9 @@ export const participantKey = ({ name = "", uid = "" } = {}) => {
 export const buildRoomRecapUrl = (roomCode = "", origin = "") => {
   const safeRoomCode = String(roomCode || "").trim().toUpperCase();
   if (!safeRoomCode) return "";
-  const query = `?room=${encodeURIComponent(safeRoomCode)}&mode=recap`;
   const safeOrigin = String(origin || "").trim().replace(/\/+$/, "");
-  return safeOrigin ? `${safeOrigin}/${query}`.replace("/?", "?") : `/${query}`.replace("/?", "?");
+  const path = `/recaps/${encodeURIComponent(safeRoomCode)}`;
+  return safeOrigin ? `${safeOrigin}${path}` : path;
 };
 
 const labelFor = (value = "", fallback = "") => String(value || "").trim() || fallback;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { buildRoomRecapSummary, getSongArtworkUrl } from '../../src/lib/roomRecap.js';
+import { buildRoomRecapSummary, buildRoomRecapUrl, getSongArtworkUrl } from '../../src/lib/roomRecap.js';
 
 describe('roomRecap summary', () => {
   test('dedupes reaction leaders across uid and short-name records while keeping avatar metadata', () => {
@@ -55,5 +55,10 @@ describe('roomRecap summary', () => {
     expect(getSongArtworkUrl({ artworkUrl60: 'https://example.com/60.jpg' })).toBe('https://example.com/60.jpg');
     expect(getSongArtworkUrl({ artworkUrl100: 'https://example.com/100.jpg', artworkUrl60: 'https://example.com/60.jpg' })).toBe('https://example.com/100.jpg');
     expect(getSongArtworkUrl({ albumArtUrl: 'https://example.com/album.jpg', artworkUrl100: 'https://example.com/100.jpg' })).toBe('https://example.com/album.jpg');
+  });
+
+  test('builds stable public recap urls', () => {
+    expect(buildRoomRecapUrl('aahf')).toBe('/recaps/AAHF');
+    expect(buildRoomRecapUrl('vip777', 'https://app.beaurocks.app/')).toBe('https://app.beaurocks.app/recaps/VIP777');
   });
 });

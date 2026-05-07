@@ -853,6 +853,12 @@ const assertRoomHostAccess = async (roomCode = "") => {
   return data || null;
 };
 
+const publishPublicRoomRecap = async (payload = {}) => {
+  await requireAppCheckToken("publishPublicRoomRecap");
+  const data = await callFunction("publishPublicRoomRecap", payload || {});
+  return data || null;
+};
+
 const removeHostRoomDiscoveryListing = async (roomCode = "") => {
   await requireAppCheckToken("removeHostRoomDiscoveryListing");
   const data = await callFunction("removeHostRoomDiscoveryListing", { roomCode });
@@ -1251,6 +1257,7 @@ export {
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
   assertRoomHostAccess,
+  publishPublicRoomRecap,
   removeHostRoomDiscoveryListing,
   provisionHostRoom,
   updateRoomAsHost,

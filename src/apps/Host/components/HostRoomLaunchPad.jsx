@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import HostRoomLaunchPadBrowser from './HostRoomLaunchPadBrowser';
+import { buildRoomRecapUrl } from '../../../lib/roomRecap';
 
 const ROOM_BROWSER_PIN_STORAGE_KEY = 'bross_host_room_browser_pins_v1';
 
@@ -260,7 +261,7 @@ const RoomBrowserCard = ({
     const canManage = !joiningRoom && !roomBusy;
     const [detailsOpen, setDetailsOpen] = useState(false);
     const [plannedStartDraft, setPlannedStartDraft] = useState(() => roomItem?.roomStartsAtLocal || formatDateTimeLocalInput(roomItem?.roomStartsAtMs));
-    const recapUrl = audienceBase ? `${audienceBase}?room=${encodeURIComponent(roomItem.code)}&mode=recap` : '';
+    const recapUrl = buildRoomRecapUrl(roomItem.code, audienceBase);
 
     React.useEffect(() => {
         setPlannedStartDraft(roomItem?.roomStartsAtLocal || formatDateTimeLocalInput(roomItem?.roomStartsAtMs));
@@ -687,8 +688,9 @@ const HostRoomLaunchPad = ({
             return;
         }
         if (actionKey === 'recap') {
-            if (!audienceBase || typeof window === 'undefined') return;
-            window.open(`${audienceBase}?room=${encodeURIComponent(roomItem.code)}&mode=recap`, '_blank', 'noopener,noreferrer');
+            const recapUrl = buildRoomRecapUrl(roomItem.code, audienceBase);
+            if (!recapUrl || typeof window === 'undefined') return;
+            window.open(recapUrl, '_blank', 'noopener,noreferrer');
             return;
         }
         if (actionKey === 'cleanup') {

@@ -877,7 +877,7 @@ const run = async () => {
       const recapPage = await recapContext.newPage();
       try {
         await runCheck(checks, "recap_route_loads", async () => {
-          await recapPage.goto(`${baseUrl}?room=${encodeURIComponent(roomCode)}&mode=recap`, {
+          await recapPage.goto(`${baseUrl.replace(/\/+$/, '')}/recaps/${encodeURIComponent(roomCode)}`, {
             waitUntil: "domcontentloaded",
             timeout: timeoutMs,
           });
