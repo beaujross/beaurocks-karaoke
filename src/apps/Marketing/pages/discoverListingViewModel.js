@@ -1,5 +1,4 @@
 import { deriveDirectoryExperience } from "../lib/directoryExperience";
-import { buildRoomRecapUrl } from "../../../lib/roomRecap";
 import {
   MARKETING_BRAND_BADGE_URL,
   buildPublicLocationImageUrl,
@@ -8,6 +7,7 @@ import {
   resolveListingImageCandidates,
   resolveProfileAvatarUrl,
 } from "./shared";
+import { getRoomSessionRecapUrl, hasPublishedRoomSessionRecap } from "./discoverRoomSessionState";
 import { normalizeListingType } from "./discoverListingTypes";
 
 const MAP_TYPE_META = {
@@ -178,10 +178,22 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
   );
   const locationLabel = [city, state, address1].filter(Boolean).join(", ");
   const roomCode = String(entry?.roomCode || "").trim().toUpperCase();
-  const roomRecapUrl = String(entry?.latestRecapUrl || "").trim() || buildRoomRecapUrl(roomCode);
   const hostRecapCount = Math.max(0, Number(entry?.hostRecapCount || 0) || 0);
   const latestRecapAtMs = Math.max(0, Number(entry?.latestRecapAtMs || 0) || 0);
-  const hasPublicRecap = listingType === "room_session" && !!roomCode && (hostRecapCount > 0 || latestRecapAtMs > 0);
+  const endsAtMs = Math.max(0, Number(entry?.endsAtMs || 0) || 0);
+  const latestRecapUrl = String(entry?.latestRecapUrl || "").trim();
+  const hasPublicRecap = listingType === "room_session" && hasPublishedRoomSessionRecap({
+    roomCode,
+    latestRecapAtMs,
+    latestRecapUrl,
+  });
+  const roomRecapUrl = hasPublicRecap
+    ? getRoomSessionRecapUrl({
+      roomCode,
+      latestRecapAtMs,
+      latestRecapUrl,
+    })
+    : "";
   const virtualOnly = !!entry?.virtualOnly
     || !!entry?.isVirtualOnly
     || String(entry?.sessionMode || "").trim().toLowerCase() === "virtual";
@@ -273,6 +285,7 @@ export const buildDiscoverListing = (entry = {}, fallbackType = "venue", options
     timeLabel,
     cadenceBadges,
     startsAtMs,
+    endsAtMs,
     location,
     roomCode,
     currentTimeMs,

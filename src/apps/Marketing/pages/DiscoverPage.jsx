@@ -24,6 +24,7 @@ import {
 import { buildDiscoverListing } from "./discoverListingViewModel";
 import { buildOfficialListingSummary } from "./discoverOfficialSummary";
 import { LIVE_LOOKBACK_MS, rankDiscoverListings, sortDiscoverListings } from "./discoverRanking";
+import { getRoomSessionRecapUrl, isEndedRoomSessionWithPublicRecap } from "./discoverRoomSessionState";
 import {
   deriveDirectoryExperience,
   matchesDirectoryExperienceFilter,
@@ -1495,6 +1496,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
   }, []);
   const handleJoinRoom = useCallback((item, source = "discover") => {
     if (!item?.roomCode) return;
+    if (isEndedRoomSessionWithPublicRecap(item)) {
+      const recapUrl = getRoomSessionRecapUrl(item);
+      if (recapUrl && typeof window !== "undefined") {
+        window.location.assign(recapUrl);
+      }
+      return;
+    }
     trackEvent("mk_discover_join_room", {
       source,
       roomCode: item.roomCode,
@@ -1507,6 +1515,13 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
   }, [navigate]);
   const openHeroListing = useCallback((item, source = "discover_hero") => {
     if (!item) return;
+    if (isEndedRoomSessionWithPublicRecap(item)) {
+      const recapUrl = getRoomSessionRecapUrl(item);
+      if (recapUrl && typeof window !== "undefined") {
+        window.location.assign(recapUrl);
+      }
+      return;
+    }
     if (isJoinableRoomListing(item)) {
       handleJoinRoom(item, source);
       return;
@@ -1952,7 +1967,7 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
                 </div>
                 <div className="mk3-discover-live-card-actions">
                   <button type="button" onClick={() => openHeroListing(item, "discover_live_rail")}>
-                    {isJoinableRoomListing(item) ? "Join Room" : "Open Details"}
+                    {getListingActionMeta(item).label}
                   </button>
                 </div>
               </article>
@@ -2240,4 +2255,3 @@ const DiscoverPage = ({ navigate, mapsConfig, session, authFlow, buildHref, hero
 };
 
 export default DiscoverPage;
-

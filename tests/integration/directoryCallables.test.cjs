@@ -857,6 +857,9 @@ async function run() {
         status: "approved",
         visibility: "private",
         roomCode: "VIP123",
+        latestRecapAtMs: 1710000000000,
+        latestRecapUrl: "https://app.beaurocks.app/recaps/VIP123",
+        hostRecapCount: 2,
       });
       const result = await previewDirectoryRoomSessionByCode.run(
         requestFor("", { roomCode: "vip123" })
@@ -864,6 +867,9 @@ async function run() {
       assert.equal(result.ok, true);
       assert.equal(result.roomCode, "VIP123");
       assert.equal(result.session?.id, "session_by_code");
+      assert.equal(result.session?.latestRecapAtMs, 1710000000000);
+      assert.equal(result.session?.latestRecapUrl, "https://app.beaurocks.app/recaps/VIP123");
+      assert.equal(result.session?.hostRecapCount, 2);
     }],
 
     ["searchHostVenueAutocomplete returns approved public venue matches for hosts", async () => {

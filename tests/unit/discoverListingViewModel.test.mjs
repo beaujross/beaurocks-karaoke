@@ -12,6 +12,7 @@ test("discoverListingViewModel.test builds room-session listing presentation", (
     venueName: "Neon Lounge",
     roomCode: " br123 ",
     sessionMode: "virtual",
+    endsAtMs: Date.now() + 60_000,
     isOfficialBeauRocksRoom: true,
     officialBeauRocksStatus: "featured",
     officialBeauRocksStatusLabel: "Featured",
@@ -41,6 +42,7 @@ test("discoverListingViewModel.test builds room-session listing presentation", (
   assert.equal(listing.subtitle, "Virtual session");
   assert.equal(listing.detailLine, "Virtual | Neon Lounge | BR123");
   assert.equal(listing.roomCode, "BR123");
+  assert.equal(listing.endsAtMs > 0, true);
   assert.equal(listing.virtualOnly, true);
   assert.equal(listing.isOfficialBeauRocksListing, true);
   assert.equal(listing.isOfficialBeauRocksRoom, true);
@@ -52,6 +54,35 @@ test("discoverListingViewModel.test builds room-session listing presentation", (
   assert.ok(listing.googleImageCandidates.some((url) => url.includes("streetview")));
   assert.ok(listing.googleImageCandidates.some((url) => url.includes("staticmap")));
   assert.ok(listing.experience && typeof listing.experience === "object");
+});
+
+test("discoverListingViewModel.test only exposes public recap links for sessions with room-specific recap state", () => {
+  const recapListing = buildDiscoverListing({
+    id: "session-recap",
+    title: "AAHF Recap",
+    listingType: "room_session",
+    roomCode: "aahf",
+    endsAtMs: Date.now() - 10_000,
+    latestRecapAtMs: Date.now() - 5_000,
+  }, "room_session", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {},
+  });
+  assert.equal(recapListing.hasPublicRecap, true);
+  assert.equal(recapListing.recapUrl, "/recaps/AAHF");
+
+  const hostHistoryOnlyListing = buildDiscoverListing({
+    id: "session-history-only",
+    title: "Host has recaps elsewhere",
+    listingType: "room_session",
+    roomCode: "vip777",
+    hostRecapCount: 9,
+  }, "room_session", {
+    allowGoogleImageApis: false,
+    resolvedLocationFields: {},
+  });
+  assert.equal(hostHistoryOnlyListing.hasPublicRecap, false);
+  assert.equal(hostHistoryOnlyListing.recapUrl, "");
 });
 
 test("discoverListingViewModel.test builds venue listing fallback presentation", () => {

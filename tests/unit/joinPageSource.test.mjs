@@ -11,3 +11,9 @@ test("join page becomes a direct room-entry surface when a room code already exi
   assert.match(source, /Join Room Now/);
   assert.match(source, /Use Different Room Code/);
 });
+
+test("join page switches closed public rooms into recap mode", () => {
+  assert.match(source, /const previewHasPublicRecap = isEndedRoomSessionWithPublicRecap/);
+  assert.match(source, /View Public Recap/);
+  assert.match(source, /This room is closed\. The public recap is ready\./);
+});

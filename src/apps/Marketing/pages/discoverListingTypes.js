@@ -1,4 +1,5 @@
 import { buildMarketingPath } from "../routing";
+import { getRoomSessionRecapUrl, isEndedRoomSessionWithPublicRecap } from "./discoverRoomSessionState";
 
 export const normalizeListingType = (value = "") => {
   const token = String(value || "").trim().toLowerCase();
@@ -40,6 +41,9 @@ export const buildListingActionHref = (listing = null) => {
   if (!listing || typeof listing !== "object") return "";
   const listingType = normalizeListingType(listing?.listingType);
   const roomCode = String(listing?.roomCode || "").trim().toUpperCase();
+  if (listingType === "room_session" && isEndedRoomSessionWithPublicRecap(listing)) {
+    return getRoomSessionRecapUrl(listing);
+  }
   if (listingType === "room_session" && roomCode) {
     return buildMarketingPath({ page: "join", id: roomCode, params: { roomCode } });
   }
@@ -55,7 +59,7 @@ export const buildListingActionHref = (listing = null) => {
 export const getListingActionMeta = (listing = null) => {
   const href = buildListingActionHref(listing);
   const label = normalizeListingType(listing?.listingType) === "room_session" && String(listing?.roomCode || "").trim()
-    ? "Open room"
+    ? (isEndedRoomSessionWithPublicRecap(listing) ? "View recap" : "Open room")
     : "Open details";
   return { href, label };
 };

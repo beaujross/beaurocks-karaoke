@@ -3,6 +3,7 @@ import { directoryActions } from "../api/directoryApi";
 import { formatDateTime } from "./shared";
 import { buildSurfaceUrl } from "../../../lib/surfaceDomains";
 import { getJoinPreviewFallback } from "./joinFallback";
+import { getRoomSessionRecapUrl, isEndedRoomSessionWithPublicRecap } from "./discoverRoomSessionState";
 
 const STANDARD_ROOM_CODE_LENGTH = 4;
 const MAX_ROOM_CODE_LENGTH = 10;
@@ -22,12 +23,27 @@ const JoinPage = ({ navigate, id = "" }) => {
   const [showManualEntry, setShowManualEntry] = useState(false);
   const resolvedJoinCode = normalizeJoinEntryCode(roomCode || id || "");
   const hasJoinCodeInRoute = !!normalizeJoinEntryCode(id);
-  const isActiveJoinTarget = preview?.previewType === "active_room" || preview?.previewType === "directory_session";
+  const previewHasPublicRecap = isEndedRoomSessionWithPublicRecap({
+    roomCode: resolvedJoinCode,
+    ...preview,
+  });
+  const previewRecapUrl = getRoomSessionRecapUrl({
+    roomCode: resolvedJoinCode,
+    ...preview,
+  });
+  const isActiveJoinTarget = !previewHasPublicRecap
+    && (preview?.previewType === "active_room" || preview?.previewType === "directory_session");
   const heroTitle = preview?.title || `Room ${resolvedJoinCode || "Code"}`;
   const heroTimeLabel = preview?.startsAtMs ? formatDateTime(preview.startsAtMs) : "";
-  const heroContextLabel = preview?.venueName || preview?.hostName || preview?.visibility || "Live karaoke";
+  const heroContextLabel = previewHasPublicRecap
+    ? "Public event recap"
+    : preview?.venueName || preview?.hostName || preview?.visibility || "Live karaoke";
 
   const joinOnMobile = () => {
+    if (previewHasPublicRecap && previewRecapUrl) {
+      window.location.href = previewRecapUrl;
+      return;
+    }
     const code = normalizeJoinEntryCode(resolvedJoinCode || "");
     if (!code) {
       setStatus(`Enter a room code first. Standard codes are ${STANDARD_ROOM_CODE_LENGTH} characters.`);
@@ -69,6 +85,12 @@ const JoinPage = ({ navigate, id = "" }) => {
           if (payload?.previewType === "active_room") {
             setStatus("Active room found. You can join now.");
             setStatusTone("warning");
+          } else if (isEndedRoomSessionWithPublicRecap({
+            roomCode: token,
+            ...(payload || {}),
+          })) {
+            setStatus("This room is closed. The public recap is ready.");
+            setStatusTone("warning");
           }
         }
       } catch (error) {
@@ -92,12 +114,14 @@ const JoinPage = ({ navigate, id = "" }) => {
       <article className="mk3-detail-card">
         {hasJoinCodeInRoute && !showManualEntry ? (
           <>
-            <div className="mk3-chip">live room</div>
-            <h2>{loading ? "Getting the room ready..." : `Join ${heroTitle}`}</h2>
+            <div className="mk3-chip">{previewHasPublicRecap ? "event recap" : "live room"}</div>
+            <h2>{loading ? "Getting the room ready..." : previewHasPublicRecap ? `${heroTitle} Recap` : `Join ${heroTitle}`}</h2>
             <p>
               {loading
                 ? "Pulling up the room details and your direct join path."
-                : isActiveJoinTarget
+                : previewHasPublicRecap
+                  ? "This public event has wrapped. Open the recap to see how the room played."
+                  : isActiveJoinTarget
                   ? "This room is live now. Step in and head straight to song search."
                   : "This room code is ready. If the room is live, you can move straight into the audience experience."}
             </p>
@@ -115,14 +139,18 @@ const JoinPage = ({ navigate, id = "" }) => {
             ) : null}
             <div className="mk3-actions-block">
               <button type="button" onClick={joinOnMobile}>
-                {resolvedJoinCode ? `Join ${resolvedJoinCode} Now` : "Join Room Now"}
+                {previewHasPublicRecap
+                  ? "View Public Recap"
+                  : resolvedJoinCode
+                    ? `Join ${resolvedJoinCode} Now`
+                    : "Join Room Now"}
               </button>
               <button type="button" onClick={() => setShowManualEntry(true)}>
                 Use Different Room Code
               </button>
               {preview?.previewType === "directory_session" && preview.id ? (
                 <button type="button" onClick={() => navigate("session", preview.id)}>
-                  View Event Details
+                  {previewHasPublicRecap ? "View Session Details" : "View Event Details"}
                 </button>
               ) : null}
             </div>

@@ -55,6 +55,16 @@ test("discoverListingTypes.test builds listing action hrefs", () => {
     "/join/AB12"
   );
   assert.equal(
+    buildListingActionHref({
+      listingType: "room_session",
+      roomCode: "aahf",
+      endsAtMs: Date.now() - 1000,
+      currentTimeMs: Date.now(),
+      latestRecapAtMs: Date.now() - 500,
+    }),
+    "/recaps/AAHF"
+  );
+  assert.equal(
     buildListingActionHref({ listingType: "room_session", roomCode: "aahf", sourceType: "official_registry", id: "official_aahf_karaoke_kickoff_2026" }),
     "/join/AAHF"
   );
@@ -74,6 +84,16 @@ test("discoverListingTypes.test returns listing action meta", () => {
   assert.deepEqual(
     getListingActionMeta({ listingType: "room_session", roomCode: "joinme" }),
     { href: "/join/JOINME", label: "Open room" }
+  );
+  assert.deepEqual(
+    getListingActionMeta({
+      listingType: "room_session",
+      roomCode: "aahf",
+      endsAtMs: Date.now() - 1000,
+      currentTimeMs: Date.now(),
+      latestRecapAtMs: Date.now() - 500,
+    }),
+    { href: "/recaps/AAHF", label: "View recap" }
   );
   assert.deepEqual(
     getListingActionMeta({ listingType: "event", routePage: "event", id: "evt-2" }),

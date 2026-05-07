@@ -14550,6 +14550,9 @@ exports.previewDirectoryRoomSessionByCode = onCall({ cors: true }, async (reques
       venueId: safeDirectoryString(top.venueId || "", 220),
       venueName: safeDirectoryString(top.venueName || "", 220),
       visibility: normalizeDirectoryVisibility(top.visibility || "private", "private"),
+      latestRecapAtMs: Math.max(0, Number(top.latestRecapAtMs || 0) || 0),
+      latestRecapUrl: normalizeDirectoryOptionalUrl(top.latestRecapUrl || ""),
+      hostRecapCount: Math.max(0, Number(top.hostRecapCount || 0) || 0),
     },
   };
 });

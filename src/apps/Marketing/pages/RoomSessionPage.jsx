@@ -129,9 +129,12 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
   const openSubmissionItems = getRunOfShowOpenSubmissionItems(runOfShowDirector);
   const runOfShowActive = roomItem?.runOfShowEnabled === true && String(roomItem?.programMode || "").trim().toLowerCase() === "run_of_show";
   const recap = roomItem?.recap && typeof roomItem.recap === "object" ? roomItem.recap : null;
-  const recapUrl = String(sessionItem?.latestRecapUrl || "").trim()
-    || (sessionItem?.roomCode ? buildRoomRecapUrl(sessionItem.roomCode) : "");
-  const recapAvailable = !!recap || Number(sessionItem?.hostRecapCount || 0) > 0 || !!String(sessionItem?.latestRecapUrl || "").trim();
+  const sessionEnded = Number(sessionItem?.endsAtMs || 0) > 0 && Number(sessionItem?.endsAtMs || 0) <= Date.now();
+  const recapPublished = !!String(sessionItem?.latestRecapUrl || "").trim() || Number(sessionItem?.latestRecapAtMs || 0) > 0;
+  const recapUrl = recapPublished
+    ? (String(sessionItem?.latestRecapUrl || "").trim() || (sessionItem?.roomCode ? buildRoomRecapUrl(sessionItem.roomCode) : ""))
+    : "";
+  const recapAvailable = !!recap || recapPublished || Number(sessionItem?.hostRecapCount || 0) > 0;
   const recapPeople = Math.max(0, Number(recap?.metrics?.estimatedPeople || recap?.stats?.totalUsers || recap?.totalUsers || 0) || 0);
   const recapReactions = Math.max(0, Number(recap?.stats?.reactionCount || recap?.stats?.totalEmojiBursts || recap?.totalEmojiBursts || 0) || 0);
   const recapPerformances = Math.max(0, Number(recap?.stats?.totalPerformedSongs || recap?.totalSongs || 0) || 0);
@@ -219,7 +222,7 @@ const RoomSessionPage = ({ id, route, navigate, session, authFlow }) => {
     <section className="mk3-page mk3-two-col">
       <article className="mk3-detail-card">
         <div className="mk3-listing-title-block">
-          <div className="mk3-chip">live room</div>
+          <div className="mk3-chip">{sessionEnded ? "past room" : "live room"}</div>
           <h2>{sessionItem.title}</h2>
           <div className="mk3-detail-meta">{formatDateTime(sessionItem.startsAtMs)}</div>
         </div>
