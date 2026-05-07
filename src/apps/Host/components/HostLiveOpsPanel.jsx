@@ -68,6 +68,7 @@ export default function HostLiveOpsPanel({
     runOfShowOnDeckItem = null,
     onOpenRunOfShow,
     styles,
+    showTitle = true,
 }) {
     const hasCurrentPerformance = !!current?.id;
     const currentMoment = runOfShowLiveItem?.id ? runOfShowLiveItem : null;
@@ -82,12 +83,14 @@ export default function HostLiveOpsPanel({
     return (
         <section
             data-feature-id="host-live-ops-panel"
-            className="border-b border-white/10 px-4 py-3"
+            className="px-4 py-3"
         >
             <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                    <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-300">Live Snapshot</div>
-                </div>
+                {showTitle ? (
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] uppercase tracking-[0.25em] text-cyan-300">Live Snapshot</div>
+                    </div>
+                ) : <div className="min-w-0 flex-1" />}
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]">
                     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{queueCount} queued</span>
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">{readyQueueCount} ready</span>

@@ -54,6 +54,12 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-host-inbox', focusInbox\)/);
   assert.match(hostQueueTabSource, /<HostInboxPanel[\s\S]*moderationQueueItems=\{moderationQueueItems\}/);
   assert.match(hostQueueTabSource, /data-feature-id="open-tv-library"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-panel-layout-controls"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
+  assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
+  assert.match(hostQueueTabSource, /featureId="panel-live-snapshot"/);
+  assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
   assert.match(hostQueueTabSource, /onSceneLibraryModalChange\?\.\(sceneLibraryOpen\)/);
   assert.match(hostQueueTabSource, /multiple/);
@@ -68,6 +74,7 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   const source = readFileSync(liveOpsPanelPath, 'utf8');
 
   assert.match(source, /data-feature-id="host-live-ops-panel"/);
+  assert.match(source, /showTitle = true/);
   assert.match(source, /const SnapshotCard = \(\{/);
   assert.match(source, /Live Snapshot/);
   assert.match(source, /On Stage/);

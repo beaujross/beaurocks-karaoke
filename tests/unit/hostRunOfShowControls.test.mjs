@@ -425,7 +425,7 @@ test("HostApp auto-routes the post-performance backing prompt into inbox if the 
   const chromeSource = readFileSync(hostTopChromePath, "utf8");
 
   assert.match(source, /const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;/);
-  assert.match(source, /import \{ isPostPerformanceBackingPromptEnabled \} from '\.\.\/lib\/hostUiPrefs';/);
+  assert.match(source, /import \{[\s\S]*isPostPerformanceBackingPromptEnabled,[\s\S]*\} from '\.\.\/lib\/hostUiPrefs';/);
   assert.match(source, /const postPerformanceBackingPromptEnabled = isPostPerformanceBackingPromptEnabled\(room\);/);
   assert.match(source, /if \(!postPerformanceBackingPromptEnabled\) return;/);
   assert.match(source, /const currentPerformancePrompt = buildTrackCheckPromptFromPerformance\(room\?\.lastPerformance \|\| null\);/);
@@ -485,7 +485,7 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
   assert.ok(
-    queueTabSource.indexOf("<QueueListPanel") < queueTabSource.indexOf('data-feature-id="panel-tv-moments"'),
+    queueTabSource.indexOf("<QueueListPanel") < queueTabSource.lastIndexOf('{scenePresetsSection}'),
     "Media Library should render below the queue board instead of above it",
   );
 });

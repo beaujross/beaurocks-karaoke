@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import AddToQueueFormBody from './AddToQueueFormBody';
 import SoundboardControls from './SoundboardControls';
 import HostInboxPanel from './HostInboxPanel';
+import HostNightPilotPrototype from './HostNightPilotPrototype';
+import HostStageConsoleExperimental from './HostStageConsoleExperimental';
 import QueueListPanel from './QueueListPanel';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
@@ -96,7 +98,11 @@ import {
   normalizeMediaSceneSoundtrackConfig,
   normalizeMediaSceneAudienceReactionMode,
 } from '../../../lib/mediaSceneConfig';
-import { isPostPerformanceBackingPromptEnabled } from '../lib/hostUiPrefs';
+import buildHostRuntimeShellModel from '../lib/hostRuntimeShellModel';
+import {
+  getHostRuntimeShellMode,
+  isPostPerformanceBackingPromptEnabled,
+} from '../lib/hostUiPrefs';
 
 const QueueYouTubeSearchModal = React.lazy(() => import('./QueueYouTubeSearchModal'));
 const QueueEditSongModal = React.lazy(() => import('./QueueEditSongModal'));
@@ -458,16 +464,23 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
     const {
         stagePanelOpen,
         setStagePanelOpen,
+        liveOpsOpen,
+        setLiveOpsOpen,
+        tvControlsOpen,
+        setTvControlsOpen,
         soundboardOpen,
         setSoundboardOpen,
         applyWorkspacePreset,
+        expandAllPanels,
+        collapseAllPanels,
+        resetPanelLayout,
         searchQ,
         setSearchQ,
         autocompleteProvider,
@@ -618,6 +631,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [deferredTrackChecks, setDeferredTrackChecks] = useState([]);
     const [dismissedTrackCheckKeys, setDismissedTrackCheckKeys] = useState([]);
     const [desktopQueueSurfaceTab, setDesktopQueueSurfaceTab] = useState('queue');
+    const runtimeShellMode = getHostRuntimeShellMode(room);
+    const useExperimentalRuntimeShell = runtimeVisible && runtimeShellMode === 'social_game_night_experiment';
     const postPerformanceBackingPromptEnabled = isPostPerformanceBackingPromptEnabled(room);
     const essentialsMode = false;
     const roomChatMessages = chatMessages.filter((msg) => isLoungeChatMessage(msg));
@@ -1279,6 +1294,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         queue,
         toast,
         touchReorderActive: queueSurface.touchReorderActive,
+        protectedCount: Math.max(0, Math.min(queue.length, current?.id ? 2 : 3)),
+        protectedLabel: current?.id ? 'next two performers' : 'next three performers',
         onPersist: async (list) => {
             const base = nowMs();
             await Promise.all(list.map((item, idx) =>
@@ -1645,6 +1662,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     }, [queueSurface]);
+    const openQueueWorkspace = useCallback(() => {
+        setDesktopQueueSurfaceTab('queue');
+        queueSurface.activateCompactTab('queue');
+        setShowQueueList(true);
+    }, [queueSurface, setShowQueueList]);
+    const openAddWorkspace = useCallback(() => {
+        setDesktopQueueSurfaceTab('add');
+        queueSurface.activateCompactTab('add');
+        setShowAddForm(true);
+    }, [queueSurface, setShowAddForm]);
     const deferTrackCheckToInbox = useCallback((trackCheck = null, { focusInbox = false } = {}) => {
         const resolvedTrackCheck = trackCheck?.performanceKey
             ? trackCheck
@@ -2483,6 +2510,18 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             toast('Singer not found in queue.');
             return;
         }
+        const protectedReadyQueueCount = Math.max(0, Math.min(queue.length, current?.id ? 2 : 3));
+        const targetIndex = (queue || []).findIndex((song) => song.id === targetSongId);
+        if (targetIndex >= 0 && targetIndex < protectedReadyQueueCount) {
+            toast('That singer is already in the protected live lineup.');
+            return;
+        }
+        if (protectedReadyQueueCount > 0) {
+            toast(current?.id
+                ? 'The next two performers are locked. Let the room advance before changing them.'
+                : 'The next three performers are locked. Let the room advance before changing them.');
+            return;
+        }
         const base = nowMs();
         const ordered = [
             targetSong,
@@ -2503,7 +2542,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         }));
         pushAutoDjEvent(AUTO_DJ_EVENTS.RETRY, { songId: targetSongId, error: 'lineup_moved_next' });
         toast(`${targetSong.singerName || 'Singer'} moved next.`);
-    }, [pushAutoDjEvent, queue, songs, toast]);
+    }, [current?.id, pushAutoDjEvent, queue, songs, toast]);
     const applyQueueFaceOffWinner = useCallback(async () => {
         if (!activeQueueFaceOffWindow) return;
         if (!queueFaceOffWinnerChoice) {
@@ -2995,6 +3034,67 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }
 
     const nextQueueSong = queue[0];
+    const experimentalRuntimeModel = useMemo(() => buildHostRuntimeShellModel({
+        room,
+        current,
+        nextQueueSong,
+        queue,
+        reviewRequired,
+        assigned,
+        held,
+        scenePresets,
+        deferredTrackChecks,
+        postPerformanceBackingPrompt,
+        queueNeedsAttention: queueSurface.counts.needsAttention,
+        inboxTotalCount,
+        moderationPendingCount: Math.max(
+            Array.isArray(moderationQueueItems) ? moderationQueueItems.length : 0,
+            Number(moderationCounts?.totalPending || 0),
+        ),
+        runOfShowEnabled,
+        runOfShowStagedItem,
+        runOfShowNextItem,
+        runOfShowNeedsAttentionCount: Math.max(
+            0,
+            Number(runOfShowPreflightReport?.criticalCount || 0) + Number(runOfShowPreflightReport?.riskyCount || 0),
+        ),
+        currentSourceLabel,
+        currentSourcePlaying,
+        activeReleaseWindow,
+        autoDj,
+        nowMs: Date.now(),
+    }), [
+        activeReleaseWindow,
+        assigned,
+        autoDj,
+        current,
+        currentSourceLabel,
+        currentSourcePlaying,
+        deferredTrackChecks,
+        held,
+        inboxTotalCount,
+        moderationCounts?.totalPending,
+        moderationQueueItems,
+        nextQueueSong,
+        postPerformanceBackingPrompt,
+        queue,
+        queueSurface.counts.needsAttention,
+        reviewRequired,
+        room,
+        runOfShowEnabled,
+        runOfShowNextItem,
+        runOfShowPreflightReport?.criticalCount,
+        runOfShowPreflightReport?.riskyCount,
+        runOfShowStagedItem,
+        scenePresets,
+        room?.videoStartTimestamp,
+        room?.pausedAt,
+        room?.currentPerformanceMeta?.startedAtMs,
+        room?.currentPerformanceMeta?.durationSec,
+        room?.appleMusicPlayback?.startedAt,
+        room?.appleMusicPlayback?.pausedAt,
+        room?.appleMusicPlayback?.durationSec,
+    ]);
     const progressStageToNext = async () => {
         const currentlyPerforming = current ? songs.find((song) => song.id === current.id) : null;
         if (currentlyPerforming) {
@@ -3012,6 +3112,32 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             throw error;
         }
     };
+    const restartCurrentPlayback = useCallback(async () => {
+        if (!current) return;
+        if (currentUsesAppleBacking) {
+            await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+            await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
+            return;
+        }
+        await stopAppleMusic?.();
+        await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
+    }, [current, currentUsesAppleBacking, playAppleMusicTrack, stopAppleMusic, updateRoom]);
+    const openCurrentBackingWindow = useCallback(() => {
+        if (!currentMediaUrl) {
+            toast('Backing link is unavailable right now.');
+            return false;
+        }
+        if (typeof window === 'undefined') return false;
+        const popup = window.open(currentMediaUrl, '_blank', 'noopener,noreferrer');
+        if (!popup) {
+            toast('Could not open backing window. Check pop-up blocking and retry.');
+            return false;
+        }
+        return true;
+    }, [currentMediaUrl, toast]);
+    const toggleAudienceSync = useCallback(async () => {
+        await updateRoom({ audienceVideoMode: room?.audienceVideoMode === 'force' ? 'off' : 'force' });
+    }, [room?.audienceVideoMode, updateRoom]);
     const commandPaletteItems = [
             {
                 id: 'start-next',
@@ -3109,6 +3235,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         0,
         Number(runOfShowPreflightReport?.criticalCount || 0) + Number(runOfShowPreflightReport?.riskyCount || 0),
     );
+    const openPlannerWorkspace = useCallback(() => {
+        if (hasRunOfShowQueueHud) {
+            setDesktopQueueSurfaceTab('show');
+        }
+        onOpenRunOfShow?.();
+    }, [hasRunOfShowQueueHud, onOpenRunOfShow]);
     const autoCollapsedRunOfShowAddFormRef = useRef(false);
     const addToQueueWorkspaceActive = queueSurface.isCompactQueueSurface
         ? queueSurface.activeCompactTab === 'add'
@@ -3243,6 +3375,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         setShowQueueList(true);
         return result;
     }, [onStopRunOfShow, setShowAddForm, setShowQueueList]);
+    const startNextPerformanceFromShell = useCallback(async () => {
+        if (current?.id) {
+            await handleEndPerformance(current.id);
+            return;
+        }
+        if (!nextQueueSong?.id) return;
+        await updateStatus(nextQueueSong.id, 'performing');
+    }, [current?.id, handleEndPerformance, nextQueueSong, updateStatus]);
 
     const addToQueueSection = (
         <div className={`border-b border-white/10 bg-black/20 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'}`}>
@@ -3964,43 +4104,54 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     );
     const scenePresetsSection = (
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">Media Library</div>
-                    <div className="mt-1 text-xs text-zinc-400">Open the media library to manage scenes now and stage SFX and background-music lanes in one place.</div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
-                        {scenePresetCount} saved
-                    </span>
-                    <button type="button" data-feature-id="open-tv-library" onClick={() => setSceneLibraryOpen(true)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
-                        Open Media Library
-                    </button>
-                </div>
-            </div>
-            {activeMediaScene ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-                    <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
-                    <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
-                        End Scene
-                    </button>
+        <section data-feature-id="panel-tv-moments" className="rounded-2xl border border-white/10 bg-black/20 p-3">
+            <SectionHeader
+                label="Media Library"
+                open={tvControlsOpen}
+                onToggle={() => setTvControlsOpen((value) => !value)}
+                toneClass="text-sm font-black text-cyan-100"
+                featureId="panel-tv-moments-toggle"
+            />
+            {tvControlsOpen ? (
+                <div className="mt-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div className="text-xs font-black uppercase tracking-[0.22em] text-cyan-100">TV Scenes, SFX, BG Music</div>
+                            <div className="mt-1 text-xs text-zinc-400">Keep reusable host media separate from the live performance queue and launch it when the room needs a beat.</div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                {scenePresetCount} saved
+                            </span>
+                            <button type="button" data-feature-id="open-tv-library" onClick={() => setSceneLibraryOpen(true)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}>
+                                Open Media Library
+                            </button>
+                        </div>
+                    </div>
+                    {activeMediaScene ? (
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                            <span>Live on TV: {activeMediaScene.title || activeMediaScene.headline || 'Media scene'}</span>
+                            <button type="button" onClick={onClearScenePreset} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
+                                End Scene
+                            </button>
+                        </div>
+                    ) : null}
+                    {recentScenePresetTitles.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {recentScenePresetTitles.map((title) => (
+                                <span key={title} className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
+                                    {title}
+                                </span>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-3 text-xs text-zinc-500">
+                            No reusable media saved yet. Start with scene pads for sponsor cards, hype art, donation prompts, and next-up boards.
+                        </div>
+                    )}
                 </div>
             ) : null}
-            {recentScenePresetTitles.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {recentScenePresetTitles.map((title) => (
-                        <span key={title} className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-zinc-300">
-                            {title}
-                        </span>
-                    ))}
-                </div>
-            ) : (
-                <div className="mt-3 rounded-xl border border-dashed border-white/10 bg-zinc-950/35 px-3 py-3 text-xs text-zinc-500">
-                    No reusable media saved yet. Start with scene pads for sponsor cards, hype art, donation prompts, and next-up boards.
-                </div>
-            )}
-        </div>
+        </section>
     );
     const queueListSection = (
         <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
@@ -4057,9 +4208,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 runOfShowAssignableSlots={runOfShowAssignableSlots}
                 runOfShowOpenSlots={runOfShowOpenSlots}
                 queueSurfaceCounts={queueSurface.counts}
+                protectedReadyQueueCount={Math.max(0, Math.min(queue.length, current?.id ? 2 : 3))}
+                protectedReadyQueueTarget={current?.id ? 2 : 3}
+                lineupHasCurrentPerformer={!!current?.id}
                 onAssignQueueSongToRunOfShowItem={onAssignQueueSongToRunOfShowItem}
                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
+                onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -4590,9 +4745,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     }) : null}
                 </div>
             )}
-            <div data-feature-id="panel-tv-moments">
-                {scenePresetsSection}
-            </div>
+            {scenePresetsSection}
         </div>
     );
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
@@ -4740,6 +4893,69 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
             ) : queueListSection}
         </div>
+    ) : null;
+    const queueWorkspacePanel = queueSurface.isCompactQueueSurface
+        ? compactQueueSurfacePanel
+        : desktopQueueSurfacePanel;
+    const hostPanelLayoutControls = (
+        <section className={`${sectionPaddingClass} border-b border-white/10`} data-feature-id="host-panel-layout-controls">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Host Panel</div>
+                    <div className="mt-1 text-xs text-zinc-500">Sweep every host section open or closed, then reopen only what you need live.</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={expandAllPanels}
+                        data-feature-id="host-panel-expand-all"
+                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-[10px]`}
+                    >
+                        Expand All
+                    </button>
+                    <button
+                        type="button"
+                        onClick={collapseAllPanels}
+                        data-feature-id="host-panel-collapse-all"
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}
+                    >
+                        Collapse All
+                    </button>
+                    <button
+                        type="button"
+                        onClick={resetPanelLayout}
+                        data-feature-id="host-panel-reset-layout"
+                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px]`}
+                    >
+                        Reset
+                    </button>
+                </div>
+            </div>
+        </section>
+    );
+    const legacySoundboardSection = !essentialsMode && showLegacyLiveEffects ? (
+        <section className={`${sectionPaddingClass} border-b border-white/10`}>
+            <SectionHeader
+                label="Soundboard"
+                open={soundboardOpen}
+                onToggle={() => setSoundboardOpen(v => !v)}
+                featureId="panel-soundboard"
+            />
+            <SoundboardControls
+                soundboardOpen={soundboardOpen}
+                sfxMuted={sfxMuted}
+                setSfxMuted={setSfxMuted}
+                silenceAll={silenceAll}
+                styles={STYLES}
+                sfxLevel={sfxLevel}
+                sfxVolume={sfxVolume}
+                setSfxVolume={setSfxVolume}
+                sounds={SOUNDS}
+                customSounds={customSoundboardSounds}
+                playSfxSafe={playSfxSafe}
+                smallWaveform={SmallWaveform}
+            />
+        </section>
     ) : null;
 
     return (
@@ -4936,130 +5152,205 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 </div>
             )}
-            <div className={`flex-1 min-h-0 ${
-                isMobileLayout
-                    ? 'flex flex-col gap-3'
-                    : isTightLayout
-                        ? 'grid grid-cols-[minmax(228px,0.82fr)_minmax(0,1.2fr)] gap-3.5'
-                        : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
-            } overflow-hidden`}>
-            {/* LEFT CONTROLS */}
-            <div className={`w-full flex flex-col ${
-                isMobileLayout
-                    ? 'order-2 min-h-0 max-h-[38vh] pr-1.5'
-                    : isTightLayout
-                        ? 'order-2 min-h-0 pr-1'
-                        : 'min-h-0 pr-1'
-            }`}>
-                <div className={`${STYLES.panel} h-full min-h-0 flex flex-col overflow-hidden`}>
-                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
-                        <section className={`${sectionPaddingClass} border-b border-white/10`}>
-                        <SectionHeader
-                            label="Stage"
-                            open={stagePanelOpen}
-                            onToggle={() => setStagePanelOpen(v => !v)}
-                            featureId="panel-now-playing"
-                        />
-                        {stagePanelOpen && (
-                            <StageNowPlayingPanel
-                                room={room}
-                                current={current}
-                                lastPerformance={room?.lastPerformance || null}
-                                hasLyrics={hasLyrics}
-                                lobbyCount={lobbyCount}
-                                queueCount={queueSurface.stageSummary.queueCount}
-                                needsAttentionCount={queueSurface.counts.needsAttention}
-                                readyQueueCount={queueSurface.counts.ready}
-                                assignedQueueCount={queueSurface.counts.assigned}
-                                waitTimeSec={waitTimeSec}
-                                formatWaitTime={formatWaitTime}
-                                nextQueueSong={nextQueueSong}
-                                nextQueueText={queueSurface.stageSummary.nextQueueText}
-                                roomCode={roomCode}
-                                currentSourcePlaying={currentSourcePlaying}
-                                currentUsesAppleBacking={currentUsesAppleBacking}
-                                currentMediaUrl={currentMediaUrl}
-                                currentSourceLabel={currentSourceLabel}
-                                currentSourceToneClass={currentSourceToneClass}
-                                appleMusicStatus={appleMusicStatus}
-                                autoDj={autoDj}
-                                autoDjSequenceSummary={autoDjSequenceSummary}
-                                autoDjStepItems={autoDjStepItems}
-                                togglePlay={togglePlay}
-                                playAppleMusicTrack={playAppleMusicTrack}
-                                stopAppleMusic={stopAppleMusic}
-                                updateRoom={updateRoom}
-                                startEdit={startEdit}
-                                customBonus={customBonus}
-                                setCustomBonus={setCustomBonus}
-                                addBonusToCurrent={addBonusToCurrent}
-                                onRateBacking={rateBackingPreference}
-                                lastTrackCheckItem={visibleLastTrackCheck}
-                                onTrackCheckAction={handlePostPerformanceBackingPromptAction}
-                                onResolveAudienceBacking={resolveAudienceSelectedBacking}
-                                backingDecisionBusyKey={backingDecisionBusyKey}
-                                updateStatus={updateStatus}
-                                onMeasureApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
-                                onEndPerformance={(songId) => handleEndPerformance(songId)}
-                                onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
-                                progressStageToNext={progressStageToNext}
-                                showStageSummaryHeader={false}
-                                styles={STYLES}
-                                emoji={EMOJI}
-                            />
-                        )}
-                        </section>
-                        <HostLiveOpsPanel
-                            current={current}
-                            nextQueueSong={nextQueueSong}
-                            nextQueueText={queueSurface.stageSummary.nextQueueText}
-                            queueCount={queueSurface.stageSummary.queueCount}
-                            readyQueueCount={queueSurface.counts.ready}
-                            assignedQueueCount={queueSurface.counts.assigned}
-                            needsAttentionCount={queueSurface.counts.needsAttention}
-                            currentSourcePlaying={currentSourcePlaying}
-                            runOfShowEnabled={runOfShowEnabled}
-                            runOfShowLiveItem={runOfShowLiveItem}
-                            runOfShowFlightedItem={runOfShowStagedItem}
-                            runOfShowOnDeckItem={runOfShowNextItem}
-                            onOpenRunOfShow={onOpenRunOfShow}
-                            styles={STYLES}
-                        />
-                        {!essentialsMode && showLegacyLiveEffects && (
-                            <section className={`${sectionPaddingClass} border-b border-white/10`}>
-                            <SectionHeader
-                                label="Soundboard"
-                                open={soundboardOpen}
-                                onToggle={() => setSoundboardOpen(v => !v)}
-                                featureId="panel-soundboard"
-                            />
-                            <SoundboardControls
-                                soundboardOpen={soundboardOpen}
-                                sfxMuted={sfxMuted}
-                                setSfxMuted={setSfxMuted}
-                                silenceAll={silenceAll}
-                                styles={STYLES}
-                                sfxLevel={sfxLevel}
-                                sfxVolume={sfxVolume}
-                                setSfxVolume={setSfxVolume}
-                                sounds={SOUNDS}
-                                customSounds={customSoundboardSounds}
-                                playSfxSafe={playSfxSafe}
-                                smallWaveform={SmallWaveform}
-                            />
-                            </section>
-                        )}
-
+            {fullscreenPrototype ? (
+                <HostNightPilotPrototype
+                    runtimeModel={experimentalRuntimeModel}
+                    room={room}
+                    roomCode={roomCode}
+                    queueItems={[
+                        ...queue,
+                        ...pending,
+                        ...reviewRequired,
+                        ...assigned,
+                        ...held,
+                    ]}
+                    queueSections={[
+                        { key: 'ready', items: queue },
+                        { key: 'review', items: reviewRequired },
+                        { key: 'pending', items: pending },
+                        { key: 'assigned', items: assigned },
+                        { key: 'held', items: held },
+                    ]}
+                    styles={STYLES}
+                    customBonus={customBonus}
+                    onCustomBonusChange={setCustomBonus}
+                    onTogglePlay={togglePlay}
+                    onRestartPlayback={restartCurrentPlayback}
+                    onOpenBackingWindow={openCurrentBackingWindow}
+                    onEndPerformance={handleEndPerformance}
+                    onStartApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
+                    onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
+                    onAddBonusToCurrent={addBonusToCurrent}
+                    onEditCurrentPerformance={() => current && startEdit(current)}
+                    onToggleAudienceSync={toggleAudienceSync}
+                    audienceSyncActive={room?.audienceVideoMode === 'force'}
+                    audienceSyncDisabled={currentUsesAppleBacking}
+                    onApproveCurrentAudienceBacking={() => current && resolveAudienceSelectedBacking(current, 'approve')}
+                    onAvoidCurrentAudienceBacking={() => current && resolveAudienceSelectedBacking(current, 'avoid')}
+                    onRateCurrentBackingUp={() => current && rateBackingPreference(current, 'up')}
+                    onRateCurrentBackingDown={() => current && rateBackingPreference(current, 'down')}
+                    onOpenQueue={openQueueWorkspace}
+                    onOpenAdd={openAddWorkspace}
+                    onOpenInbox={focusInboxWorkspace}
+                    onOpenPlanner={openPlannerWorkspace}
+                    onOpenSceneLibrary={() => setSceneLibraryOpen(true)}
+                    onStartNextPerformance={startNextPerformanceFromShell}
+                    onExitPrototype={() => {
+                        if (typeof window !== 'undefined') {
+                            window.location.href = prototypeExitHref || `${hostBase}?mode=host${roomCode ? `&room=${encodeURIComponent(roomCode)}` : ''}`;
+                        }
+                    }}
+                />
+            ) : useExperimentalRuntimeShell ? (
+                <HostStageConsoleExperimental
+                    runtimeModel={experimentalRuntimeModel}
+                    room={room}
+                    styles={STYLES}
+                    customBonus={customBonus}
+                    onCustomBonusChange={setCustomBonus}
+                    onTogglePlay={togglePlay}
+                    onRestartPlayback={restartCurrentPlayback}
+                    onOpenBackingWindow={openCurrentBackingWindow}
+                    onEndPerformance={handleEndPerformance}
+                    onStartApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
+                    onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
+                    onAddBonusToCurrent={addBonusToCurrent}
+                    onEditCurrentPerformance={() => current && startEdit(current)}
+                    onAdvanceToNext={progressStageToNext}
+                    canAdvanceToNext={!!nextQueueSong}
+                    onApproveCurrentAudienceBacking={() => current && resolveAudienceSelectedBacking(current, 'approve')}
+                    onAvoidCurrentAudienceBacking={() => current && resolveAudienceSelectedBacking(current, 'avoid')}
+                    onRateCurrentBackingUp={() => current && rateBackingPreference(current, 'up')}
+                    onRateCurrentBackingDown={() => current && rateBackingPreference(current, 'down')}
+                    onToggleAudienceSync={toggleAudienceSync}
+                    audienceSyncActive={room?.audienceVideoMode === 'force'}
+                    audienceSyncDisabled={currentUsesAppleBacking}
+                    onOpenQueue={openQueueWorkspace}
+                    onOpenAdd={openAddWorkspace}
+                    onOpenInbox={focusInboxWorkspace}
+                    onOpenPlanner={openPlannerWorkspace}
+                    onOpenSceneLibrary={() => setSceneLibraryOpen(true)}
+                    onStartNextPerformance={startNextPerformanceFromShell}
+                    workspacePanel={queueWorkspacePanel}
+                    utilityPanel={legacySoundboardSection}
+                />
+            ) : (
+                <div className={`flex-1 min-h-0 ${
+                    isMobileLayout
+                        ? 'flex flex-col gap-3'
+                        : isTightLayout
+                            ? 'grid grid-cols-[minmax(228px,0.82fr)_minmax(0,1.2fr)] gap-3.5'
+                            : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
+                } overflow-hidden`}>
+                {/* LEFT CONTROLS */}
+                <div className={`w-full flex flex-col ${
+                    isMobileLayout
+                        ? 'order-2 min-h-0 max-h-[38vh] pr-1.5'
+                        : isTightLayout
+                            ? 'order-2 min-h-0 pr-1'
+                            : 'min-h-0 pr-1'
+                }`}>
+                    <div className={`${STYLES.panel} h-full min-h-0 flex flex-col overflow-hidden`}>
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                            <>
+                                {hostPanelLayoutControls}
+                                <section className={`${sectionPaddingClass} border-b border-white/10`}>
+                                <SectionHeader
+                                    label="Stage"
+                                    open={stagePanelOpen}
+                                    onToggle={() => setStagePanelOpen(v => !v)}
+                                    featureId="panel-now-playing"
+                                />
+                                {stagePanelOpen && (
+                                    <StageNowPlayingPanel
+                                        room={room}
+                                        current={current}
+                                        lastPerformance={room?.lastPerformance || null}
+                                        hasLyrics={hasLyrics}
+                                        lobbyCount={lobbyCount}
+                                        queueCount={queueSurface.stageSummary.queueCount}
+                                        needsAttentionCount={queueSurface.counts.needsAttention}
+                                        readyQueueCount={queueSurface.counts.ready}
+                                        assignedQueueCount={queueSurface.counts.assigned}
+                                        waitTimeSec={waitTimeSec}
+                                        formatWaitTime={formatWaitTime}
+                                        nextQueueSong={nextQueueSong}
+                                        nextQueueText={queueSurface.stageSummary.nextQueueText}
+                                        roomCode={roomCode}
+                                        currentSourcePlaying={currentSourcePlaying}
+                                        currentUsesAppleBacking={currentUsesAppleBacking}
+                                        currentMediaUrl={currentMediaUrl}
+                                        currentSourceLabel={currentSourceLabel}
+                                        currentSourceToneClass={currentSourceToneClass}
+                                        appleMusicStatus={appleMusicStatus}
+                                        autoDj={autoDj}
+                                        autoDjSequenceSummary={autoDjSequenceSummary}
+                                        autoDjStepItems={autoDjStepItems}
+                                        togglePlay={togglePlay}
+                                        playAppleMusicTrack={playAppleMusicTrack}
+                                        stopAppleMusic={stopAppleMusic}
+                                        updateRoom={updateRoom}
+                                        startEdit={startEdit}
+                                        customBonus={customBonus}
+                                        setCustomBonus={setCustomBonus}
+                                        addBonusToCurrent={addBonusToCurrent}
+                                        onRateBacking={rateBackingPreference}
+                                        lastTrackCheckItem={visibleLastTrackCheck}
+                                        onTrackCheckAction={handlePostPerformanceBackingPromptAction}
+                                        onResolveAudienceBacking={resolveAudienceSelectedBacking}
+                                        backingDecisionBusyKey={backingDecisionBusyKey}
+                                        updateStatus={updateStatus}
+                                        onMeasureApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
+                                        onEndPerformance={(songId) => handleEndPerformance(songId)}
+                                        onOpenBackingWindow={openCurrentBackingWindow}
+                                        onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
+                                        progressStageToNext={progressStageToNext}
+                                        showStageSummaryHeader={false}
+                                        styles={STYLES}
+                                        emoji={EMOJI}
+                                    />
+                                )}
+                                </section>
+                                <section className={`${sectionPaddingClass} border-b border-white/10`}>
+                                    <SectionHeader
+                                        label="Live Snapshot"
+                                        open={liveOpsOpen}
+                                        onToggle={() => setLiveOpsOpen((value) => !value)}
+                                        featureId="panel-live-snapshot"
+                                    />
+                                    {liveOpsOpen ? (
+                                        <HostLiveOpsPanel
+                                            current={current}
+                                            nextQueueSong={nextQueueSong}
+                                            nextQueueText={queueSurface.stageSummary.nextQueueText}
+                                            queueCount={queueSurface.stageSummary.queueCount}
+                                            readyQueueCount={queueSurface.counts.ready}
+                                            assignedQueueCount={queueSurface.counts.assigned}
+                                            needsAttentionCount={queueSurface.counts.needsAttention}
+                                            currentSourcePlaying={currentSourcePlaying}
+                                            runOfShowEnabled={runOfShowEnabled}
+                                            runOfShowLiveItem={runOfShowLiveItem}
+                                            runOfShowFlightedItem={runOfShowStagedItem}
+                                            runOfShowOnDeckItem={runOfShowNextItem}
+                                            onOpenRunOfShow={onOpenRunOfShow}
+                                            styles={STYLES}
+                                            showTitle={false}
+                                        />
+                                    ) : null}
+                                </section>
+                            </>
+                            {legacySoundboardSection}
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {queueSurface.isCompactQueueSurface ? (
-                compactQueueSurfacePanel
-            ) : (
-                desktopQueueSurfacePanel
+                {queueSurface.isCompactQueueSurface ? (
+                    compactQueueSurfacePanel
+                ) : (
+                    desktopQueueSurfacePanel
+                )}
+                </div>
             )}
-            </div>
         </div>
     );
 };

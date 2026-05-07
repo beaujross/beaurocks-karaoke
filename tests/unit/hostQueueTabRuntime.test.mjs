@@ -84,6 +84,7 @@ const buildHostQueueTabProps = (overrides = {}) => ({
   onToggleRunOfShowPause: noop,
   onStopRunOfShow: noop,
   onClearRunOfShow: noop,
+  onAddQuickRunOfShowMoment: noop,
   onReturnCurrentToQueue: noop,
   runOfShowAssignableSlots: [],
   runOfShowOpenSlots: [],
@@ -215,9 +216,15 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
 
   const markup = await renderQueueTabMarkup();
 
+  assert.match(markup, /data-feature-id="host-panel-layout-controls"/);
+  assert.match(markup, /Expand All/);
+  assert.match(markup, /Collapse All/);
+  assert.match(markup, /Reset/);
+  assert.match(markup, /data-feature-id="panel-live-snapshot"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
+  assert.match(markup, /data-feature-id="panel-tv-moments-toggle"/);
   assert.match(markup, /Media Library/);
   assert.match(markup, /data-feature-id="open-tv-library"/);
   assert.match(markup, /Open Media Library/);
@@ -231,6 +238,7 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
     commandPaletteRequestToken: 3,
   });
 
+  assert.match(markup, /data-feature-id="host-panel-layout-controls"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
@@ -458,4 +466,50 @@ test('HostQueueTab add workspace exposes explicit performance placement actions 
   assert.match(markup, /Add Next/);
   assert.match(markup, /Add Later/);
   assert.match(markup, /Queue Only/);
+});
+
+test('HostQueueTab protects the live lineup and exposes quick between-song inserts in queue view', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    songs: [
+      {
+        id: 'live-1',
+        status: 'performing',
+        singerName: 'Alex',
+        songTitle: 'Dreams',
+        artist: 'Fleetwood Mac',
+      },
+      {
+        id: 'queue-1',
+        status: 'requested',
+        singerName: 'Jordan',
+        songTitle: 'Valerie',
+        artist: 'Amy Winehouse',
+      },
+      {
+        id: 'queue-2',
+        status: 'requested',
+        singerName: 'Taylor',
+        songTitle: 'Since U Been Gone',
+        artist: 'Kelly Clarkson',
+      },
+      {
+        id: 'queue-3',
+        status: 'requested',
+        singerName: 'Sam',
+        songTitle: 'Mr. Brightside',
+        artist: 'The Killers',
+      },
+    ],
+    currentBgTrackUploadId: '',
+    onAddQuickRunOfShowMoment: noop,
+  });
+
+  assert.match(markup, /Locked Next Performers/);
+  assert.match(markup, /Build The Bench/);
+  assert.match(markup, /Trivia Next/);
+  assert.match(markup, /Winner Next/);
+  assert.match(markup, /Vote Next/);
+  assert.match(markup, /fa-lock/);
 });

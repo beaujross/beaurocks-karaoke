@@ -42,6 +42,7 @@ const StageNowPlayingPanel = ({
     progressStageToNext,
     lastTrackCheckItem = null,
     onTrackCheckAction,
+    onOpenBackingWindow = null,
     showStageSummaryHeader = true,
     styles,
     emoji
@@ -53,6 +54,14 @@ const StageNowPlayingPanel = ({
     const currentBackingDecisionBusy = currentAudienceSelectedUnverified && String(backingDecisionBusyKey || '').startsWith(`${current?.id}:`);
     const transportButtonClass = 'min-h-[54px] rounded-lg border border-white/10 bg-black/35 px-2 py-2 text-white transition hover:border-cyan-300/35 hover:bg-cyan-500/10 disabled:cursor-not-allowed disabled:opacity-45';
     const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
+    const openBackingWindow = () => {
+        if (typeof onOpenBackingWindow === 'function') {
+            onOpenBackingWindow();
+            return;
+        }
+        if (!currentBackingUrl || typeof window === 'undefined') return;
+        window.open(currentBackingUrl, '_blank', 'noopener,noreferrer');
+    };
     return (
         <>
         {showStageSummaryHeader ? (
@@ -223,7 +232,10 @@ const StageNowPlayingPanel = ({
                 </div>
                 <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-2">
                     <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Transport</div>
+                        <div>
+                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Playback Track</div>
+                            <div className="mt-1 text-[11px] text-zinc-500">Keep the backing under control without touching the live performer flow.</div>
+                        </div>
                         <button
                             type="button"
                             onClick={() => setShowStageDetails((prev) => !prev)}
@@ -232,7 +244,12 @@ const StageNowPlayingPanel = ({
                             {showStageDetails ? 'Less' : 'More'}
                         </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    <div className="mb-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300">
+                        <span className="font-semibold text-white">{currentSourceLabel || 'Backing Track'}</span>
+                        <span className="mx-2 text-white/30">|</span>
+                        <span>{currentSourcePlaying ? 'Playing now' : 'Ready to start'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         <button
                             onClick={togglePlay}
                             className={transportButtonClass}
@@ -268,6 +285,27 @@ const StageNowPlayingPanel = ({
                             </div>
                         </button>
                         <button
+                            onClick={openBackingWindow}
+                            disabled={!currentMediaUrl}
+                            className={`${transportButtonClass} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            title="Open backing in a separate window"
+                        >
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-100">
+                                    <i className="fa-solid fa-up-right-from-square text-sm"></i>
+                                </span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Pop Out</span>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-2">
+                    <div className="mb-2">
+                        <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Performance Flow</div>
+                        <div className="mt-1 text-[11px] text-zinc-500">End the song, capture the room beat, and stage the next protected performer.</div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button
                             onClick={() => {
                                 if (typeof onEndPerformance === 'function') {
                                     onEndPerformance(current.id);
@@ -286,6 +324,23 @@ const StageNowPlayingPanel = ({
                             </div>
                         </button>
                         <button
+                            onClick={() => {
+                                if (typeof onMeasureApplause === 'function') {
+                                    onMeasureApplause();
+                                    return;
+                                }
+                                updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
+                            }}
+                            className={`${transportButtonClass} border-amber-300/35 bg-amber-500/12 hover:border-amber-200/55 hover:bg-amber-500/18`}
+                        >
+                            <div className="flex flex-col items-center justify-center gap-1 text-center">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">
+                                    <i className="fa-solid fa-microphone-lines text-sm"></i>
+                                </span>
+                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-50">Applause</span>
+                            </div>
+                        </button>
+                        <button
                             onClick={progressStageToNext}
                             disabled={!nextQueueSong}
                             className={`${transportButtonClass} border-cyan-300/35 bg-cyan-500/12 hover:border-cyan-200/55 hover:bg-cyan-500/18 ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
@@ -298,24 +353,8 @@ const StageNowPlayingPanel = ({
                                 <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50">Next</span>
                             </div>
                         </button>
-                        <button
-                            onClick={() => window.open(current.mediaUrl, '_blank')}
-                            disabled={!currentMediaUrl}
-                            className={`${transportButtonClass} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            title="Open backing in a separate window"
-                        >
-                            <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-100">
-                                    <i className="fa-solid fa-up-right-from-square text-sm"></i>
-                                </span>
-                                <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Pop Out</span>
-                            </div>
-                        </button>
                     </div>
-                </div>
-                <div className="bg-black/30 border border-white/10 rounded-lg p-2 mb-2">
-                    <div className="mb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">Stage Options</div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <button
                             onClick={() => onReturnCurrentToQueue?.(current.id)}
                             className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1.5 text-[11px]`}
@@ -324,18 +363,6 @@ const StageNowPlayingPanel = ({
                         </button>
                         <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1.5 text-[11px]`}>
                             <i className="fa-solid fa-pen-to-square mr-2"></i>Edit Current Song
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (typeof onMeasureApplause === 'function') {
-                                    onMeasureApplause();
-                                    return;
-                                }
-                                updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
-                            }}
-                            className={`${styles.btnStd} ${styles.btnPrimary} px-2 py-1.5 text-[11px]`}
-                        >
-                            <i className="fa-solid fa-microphone-lines mr-2"></i>Applause
                         </button>
                     </div>
                     {room?.applausePeak !== undefined && room?.applausePeak !== null && (

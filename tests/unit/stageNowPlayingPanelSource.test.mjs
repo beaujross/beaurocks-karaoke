@@ -13,8 +13,8 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
 
   assert.match(
     source,
-    /Now Performing[\s\S]*Track note[\s\S]*Transport/,
-    "Backing-track note actions should live with the now-performing song, above transport controls",
+    /Now Performing[\s\S]*Track note[\s\S]*Playback Track/,
+    "Backing-track note actions should live with the now-performing song, above playback controls",
   );
   assert.match(
     source,
@@ -23,8 +23,18 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /Transport[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stage Options/,
-    "End and next actions should remain in the compact transport block above secondary stage options",
+    /Playback Track[\s\S]*Pop Out[\s\S]*Performance Flow[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
+    "Playback controls should stay separate from performance flow, while end/next actions remain high in the stage card",
+  );
+  assert.match(
+    source,
+    /onOpenBackingWindow = null/,
+    "The stage panel should accept a host-provided backing-window handler so browser failures can be handled higher up",
+  );
+  assert.match(
+    source,
+    /const currentBackingUrl = String\(currentMediaUrl \|\| current\?\.mediaUrl \|\| ''\)\.trim\(\);[\s\S]*window\.open\(currentBackingUrl, '_blank', 'noopener,noreferrer'\)/s,
+    "Pop-out fallback should use the resolved backing URL and safe window flags",
   );
   assert.match(
     source,
@@ -33,8 +43,8 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.doesNotMatch(
     source,
-    /Performance Controls/,
-    "The old lower performance-control section should not push end controls below the fold",
+    /Transport|Stage Options|Performance Controls/,
+    "The old mixed transport and stage-options labels should be replaced by clearer playback and performance groupings",
   );
   assert.doesNotMatch(
     source,

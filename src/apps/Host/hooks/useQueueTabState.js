@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-const PANEL_LAYOUT_DEFAULTS = {
+export const PANEL_LAYOUT_DEFAULTS = {
     stagePanelOpen: true,
+    liveOpsOpen: true,
     tvControlsOpen: true,
     soundboardOpen: false,
     chatOpen: true,
@@ -19,7 +20,7 @@ const PANEL_LAYOUT_DEFAULTS = {
 
 const PANEL_LAYOUT_KEYS = Object.keys(PANEL_LAYOUT_DEFAULTS);
 
-const PANEL_LAYOUT_PRESETS = {
+export const PANEL_LAYOUT_PRESETS = {
     default: { ...PANEL_LAYOUT_DEFAULTS },
     performance: {
         ...PANEL_LAYOUT_DEFAULTS,
@@ -77,15 +78,32 @@ const sanitizePart = (value = '', fallback = 'default') => {
     return cleaned || fallback;
 };
 
-const parsePersistedState = (raw) => {
+export const resolvePanelLayoutState = (nextLayout = {}) => {
+    const resolved = { ...PANEL_LAYOUT_DEFAULTS, ...nextLayout };
+    return PANEL_LAYOUT_KEYS.reduce((acc, key) => {
+        acc[key] = !!resolved[key];
+        return acc;
+    }, {});
+};
+
+export const matchPanelLayoutPreset = (layout = {}) => {
+    const resolvedLayout = resolvePanelLayoutState(layout);
+    return Object.entries(PANEL_LAYOUT_PRESETS).find(([, preset]) => (
+        PANEL_LAYOUT_KEYS.every((key) => Boolean(resolvedLayout[key]) === Boolean(preset[key]))
+    ))?.[0] || null;
+};
+
+export const parsePersistedPanelState = (raw) => {
     if (!raw) return null;
     try {
         const parsed = JSON.parse(raw);
         if (!parsed || typeof parsed !== 'object') return null;
-        const layout = {};
-        PANEL_LAYOUT_KEYS.forEach((key) => {
-            if (typeof parsed.layout?.[key] === 'boolean') layout[key] = parsed.layout[key];
-        });
+        const layout = resolvePanelLayoutState(
+            PANEL_LAYOUT_KEYS.reduce((acc, key) => {
+                if (typeof parsed.layout?.[key] === 'boolean') acc[key] = parsed.layout[key];
+                return acc;
+            }, {})
+        );
         const workspace = typeof parsed.workspace === 'string' ? parsed.workspace : null;
         return { layout, workspace };
     } catch {
@@ -95,6 +113,7 @@ const parsePersistedState = (raw) => {
 
 const useQueueTabState = ({ hostName, roomCode }) => {
     const [stagePanelOpen, setStagePanelOpen] = useState(PANEL_LAYOUT_DEFAULTS.stagePanelOpen);
+    const [liveOpsOpen, setLiveOpsOpen] = useState(PANEL_LAYOUT_DEFAULTS.liveOpsOpen);
     const [tvControlsOpen, setTvControlsOpen] = useState(PANEL_LAYOUT_DEFAULTS.tvControlsOpen);
     const [soundboardOpen, setSoundboardOpen] = useState(PANEL_LAYOUT_DEFAULTS.soundboardOpen);
     const [chatOpen, setChatOpen] = useState(PANEL_LAYOUT_DEFAULTS.chatOpen);
@@ -180,6 +199,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
 
     const panelLayout = useMemo(() => ({
         stagePanelOpen,
+        liveOpsOpen,
         tvControlsOpen,
         soundboardOpen,
         chatOpen,
@@ -195,6 +215,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
         assignedQueueOpen
     }), [
         stagePanelOpen,
+        liveOpsOpen,
         tvControlsOpen,
         soundboardOpen,
         chatOpen,
@@ -211,8 +232,9 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     ]);
 
     const applyPanelLayout = (nextLayout = {}) => {
-        const resolved = { ...PANEL_LAYOUT_DEFAULTS, ...nextLayout };
+        const resolved = resolvePanelLayoutState(nextLayout);
         setStagePanelOpen(!!resolved.stagePanelOpen);
+        setLiveOpsOpen(!!resolved.liveOpsOpen);
         setTvControlsOpen(!!resolved.tvControlsOpen);
         setSoundboardOpen(!!resolved.soundboardOpen);
         setChatOpen(!!resolved.chatOpen);
@@ -245,7 +267,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
             return;
         }
         const hydrateTimer = setTimeout(() => {
-            const persisted = parsePersistedState(window.localStorage.getItem(storageKey));
+            const persisted = parsePersistedPanelState(window.localStorage.getItem(storageKey));
             const nextLayout = persisted?.layout || PANEL_LAYOUT_DEFAULTS;
             const workspace = persisted?.workspace;
             applyPanelLayout(nextLayout);
@@ -274,8 +296,7 @@ const useQueueTabState = ({ hostName, roomCode }) => {
 
     useEffect(() => {
         if (!hydratedLayoutRef.current || activeWorkspace === 'custom') return;
-        const preset = PANEL_LAYOUT_PRESETS[activeWorkspace] || PANEL_LAYOUT_PRESETS.default;
-        const matchesPreset = PANEL_LAYOUT_KEYS.every((key) => Boolean(panelLayout[key]) === Boolean(preset[key]));
+        const matchesPreset = matchPanelLayoutPreset(panelLayout) === activeWorkspace;
         if (!matchesPreset) {
             const workspaceTimer = setTimeout(() => setActiveWorkspace('custom'), 0);
             return () => clearTimeout(workspaceTimer);
@@ -298,6 +319,8 @@ const useQueueTabState = ({ hostName, roomCode }) => {
     return {
         stagePanelOpen,
         setStagePanelOpen,
+        liveOpsOpen,
+        setLiveOpsOpen,
         tvControlsOpen,
         setTvControlsOpen,
         soundboardOpen,
