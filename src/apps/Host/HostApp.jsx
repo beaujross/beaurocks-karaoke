@@ -12846,26 +12846,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         scenePresetsHydrated,
         syncAahfSceneLibrarySeedPack,
     ]);
-    const uploadMediaFileToTvLibrary = useCallback(async (file, options = {}) => {
-        const uploaded = await uploadRoomMediaAsset(file, {
-            title: String(options?.title || '').trim(),
-            successToast: false
-        });
-        if (!uploaded) return null;
-        return saveMediaAssetAsScenePreset(uploaded, {
-            title: String(options?.title || '').trim() || getRoomMediaTitle(uploaded),
-            durationSec: Math.max(5, Math.min(600, Number(options?.durationSec || 20) || 20))
-        });
-    }, [saveMediaAssetAsScenePreset, uploadRoomMediaAsset]);
-    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
-        const uploaded = await uploadRoomMediaAsset(file, {
-            title: String(options?.title || '').trim(),
-            successToast: false
-        });
-        if (!uploaded) return null;
-        await applyScenePresetToRunOfShow(uploaded);
-        return uploaded;
-    }, [applyScenePresetToRunOfShow, uploadRoomMediaAsset]);
     const uploadAudioFilesToLibrary = useCallback(async (fileList, options = {}) => {
         const files = Array.from(fileList || []).filter(Boolean);
         if (!files.length) return { uploadedCount: 0 };
@@ -13980,6 +13960,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             inboxPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
     }, [handleTopChromeTabChange]);
+    const focusTopChromeMenu = useCallback((featureId) => {
+        handleTopChromeTabChange('stage');
+        if (typeof window === 'undefined') return;
+        window.requestAnimationFrame(() => {
+            const menuToggle = document.querySelector(`[data-feature-id="${featureId}"]`);
+            menuToggle?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (menuToggle?.getAttribute('aria-expanded') !== 'true') {
+                menuToggle?.click?.();
+            }
+        });
+    }, [handleTopChromeTabChange]);
+    const focusOverlayLiveControls = useCallback(() => {
+        focusTopChromeMenu('deck-overlays-menu-toggle');
+    }, [focusTopChromeMenu]);
+    const openQueueWorkspaceFromAdmin = useCallback(() => {
+        leaveAdminWithTarget('stage');
+    }, [leaveAdminWithTarget]);
+    const openSceneLibraryFromAdmin = useCallback(() => {
+        setSceneLibraryModalOpen(true);
+        leaveAdminWithTarget('stage');
+    }, [leaveAdminWithTarget]);
+    const openRunOfShowWorkspaceFromAdmin = useCallback(() => {
+        leaveAdminWithTarget('run_of_show');
+    }, [leaveAdminWithTarget]);
     const handleStageQuickStartOpenRoomSetup = useCallback(() => {
         updateStageQuickStartProgress({ roomSetupOpened: true });
         openNightSetupWizard(room?.hostNightPreset || hostNightPreset || 'casual');
@@ -17286,39 +17290,30 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hasPendingRoomSettings = !!persistedRoomSettingsPayload
         && JSON.stringify(draftRoomSettingsPayload) !== JSON.stringify(persistedRoomSettingsPayload);
     const showSaveAction = canSaveRoomSettings || hasPendingRoomSettings;
-    const viewScopedSettingsItems = HOST_WORKSPACE_SECTIONS
-        .filter((section) => section.view === activeWorkspaceView)
-        .map((section) => {
-            const tabKey = SECTION_TO_SETTINGS_TAB[section.id];
-            const meta = HOST_SETTINGS_META[tabKey];
-            if (!tabKey || !meta || !isSettingsNavVisible(meta)) return null;
-            return {
-                key: tabKey,
-                label: meta.label,
-                icon: meta.icon || 'fa-gear',
-                description: meta.description || '',
-                sectionLabel: meta.sectionLabel || '',
-                ownership: meta.ownership || 'config'
-            };
-        })
-        .filter(Boolean);
-    const flatSettingsItems = HOST_SETTINGS_SECTIONS.flatMap((section) =>
-        section.items.map((item) => ({
-            key: item.key,
-            label: item.label,
-            icon: item.icon || 'fa-gear',
-            description: item.description || '',
-            sectionLabel: section.label,
-            ownership: item.ownership || 'config',
-            hiddenInAdminNav: item.hiddenInAdminNav === true
-        }))
-    ).filter((item) => isSettingsNavVisible(item));
-    const navigationItemsForRail = settingsNavQuery.trim()
-        ? flatSettingsItems.filter((item) => {
-            const haystack = `${item.label} ${item.description} ${item.sectionLabel}`.toLowerCase();
-            return haystack.includes(settingsNavQuery.trim().toLowerCase());
-        })
-        : (viewScopedSettingsItems.length ? viewScopedSettingsItems : flatSettingsItems);
+    const settingsNavigationGroups = settingsNavigationSections.map((section) => ({
+        ...section,
+        items: section.items
+            .map((item) => ({
+                key: item.key,
+                label: item.label,
+                icon: item.icon || 'fa-gear',
+                description: item.description || '',
+                sectionLabel: section.label,
+                ownership: item.ownership || 'config',
+                keywords: item.keywords || '',
+                hiddenInAdminNav: item.hiddenInAdminNav === true
+            }))
+            .filter((item) => isSettingsNavVisible(item))
+    })).filter((section) => section.items.length > 0);
+    const navigationGroupsForRail = settingsNavQuery.trim()
+        ? settingsNavigationGroups
+        : tab === 'admin'
+            ? settingsNavigationGroups
+            : settingsNavigationGroups.filter((section) => section.id === activeWorkspaceView);
+    const visibleNavigationGroups = navigationGroupsForRail.length > 0
+        ? navigationGroupsForRail
+        : settingsNavigationGroups;
+    const navigationItemsForRail = visibleNavigationGroups.flatMap((section) => section.items);
     const settingsNavigationContent = (
         <div className="space-y-3" data-admin-sections-nav>
             {tab !== 'admin' && (
@@ -17336,59 +17331,77 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             )}
             <div className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden">
                 <div className={`text-xs uppercase tracking-[0.18em] text-zinc-400 border-b border-zinc-900 ${slimAdminRail ? 'px-2 py-2 text-center' : 'px-3 py-2'}`}>
-                    {slimAdminRail ? 'Sections' : `Sections In ${activeWorkspaceMeta?.label || 'Workspace'}`}
+                    {slimAdminRail ? 'Sections' : tab === 'admin' ? 'All Settings' : `Sections In ${activeWorkspaceMeta?.label || 'Workspace'}`}
                 </div>
-                <div className="divide-y divide-zinc-900">
-                    {navigationItemsForRail.map((item) => {
-                        const isActive = settingsTab === item.key;
-                        const badge = settingsNavBadges[item.key];
-                        return (
-                            <button
-                                key={`settings-item-${item.key}`}
-                                data-admin-section-item={item.key}
-                                onClick={() => handleSettingsNavSelect(item.key)}
-                                className={`w-full transition-colors ${slimAdminRail ? 'px-2 py-2.5 text-center' : 'px-3 py-3 text-left'} ${
-                                    isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-200 hover:bg-zinc-900/80 hover:text-white'
-                                }`}
-                            >
-                                {slimAdminRail ? (
-                                    <div className="flex flex-col items-center gap-1.5">
-                                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isActive ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'}`}>
-                                            <i className={`fa-solid ${item.icon} text-sm`}></i>
-                                        </div>
-                                        <div className="text-[11px] font-semibold leading-tight text-center">{item.label}</div>
-                                        {badge ? (
-                                            <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-100">{badge}</span>
-                                        ) : null}
-                                    </div>
-                                ) : (
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="min-w-0 flex items-start gap-2">
-                                            <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
-                                            <div className="min-w-0">
-                                                <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{item.sectionLabel || 'Host Settings'}</div>
-                                                <div className="flex items-center gap-2">
-                                                    <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
-                                                    <span className="truncate text-[15px] leading-5 font-semibold">{item.label}</span>
-                                                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] ${
-                                                        (SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).className
-                                                    }`}>
-                                                        {(SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).label}
-                                                    </span>
+                <div className={slimAdminRail ? 'divide-y divide-zinc-900' : 'space-y-3 p-3'}>
+                    {visibleNavigationGroups.map((section) => (
+                        <div
+                            key={`settings-section-group-${section.id}`}
+                            data-admin-section-group={section.id}
+                            className={slimAdminRail ? '' : `rounded-xl border overflow-hidden ${section.id === activeWorkspaceView ? 'border-cyan-400/25 bg-cyan-500/[0.03]' : 'border-zinc-900 bg-zinc-950/70'}`}
+                        >
+                            {!slimAdminRail ? (
+                                <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${section.id === activeWorkspaceView ? 'border-cyan-400/20 bg-cyan-500/[0.05]' : 'border-zinc-900 bg-zinc-950/80'}`}>
+                                    <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">{section.label}</div>
+                                    <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] text-zinc-300">
+                                        {section.items.length}
+                                    </span>
+                                </div>
+                            ) : null}
+                            <div className={slimAdminRail ? '' : 'divide-y divide-zinc-900'}>
+                                {section.items.map((item) => {
+                                    const isActive = settingsTab === item.key;
+                                    const badge = settingsNavBadges[item.key];
+                                    return (
+                                        <button
+                                            key={`settings-item-${item.key}`}
+                                            data-admin-section-item={item.key}
+                                            onClick={() => handleSettingsNavSelect(item.key)}
+                                            className={`w-full transition-colors ${slimAdminRail ? 'px-2 py-2.5 text-center' : 'px-3 py-3 text-left'} ${
+                                                isActive ? 'bg-cyan-500/10 text-cyan-100' : 'bg-transparent text-zinc-200 hover:bg-zinc-900/80 hover:text-white'
+                                            }`}
+                                        >
+                                            {slimAdminRail ? (
+                                                <div className="flex flex-col items-center gap-1.5">
+                                                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl border ${isActive ? 'border-cyan-300/40 bg-cyan-500/12 text-cyan-100' : 'border-zinc-700 bg-zinc-900/80 text-zinc-400'}`}>
+                                                        <i className={`fa-solid ${item.icon} text-sm`}></i>
+                                                    </div>
+                                                    <div className="text-[11px] font-semibold leading-tight text-center">{item.label}</div>
+                                                    {badge ? (
+                                                        <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-[9px] text-zinc-100">{badge}</span>
+                                                    ) : null}
                                                 </div>
-                                                {!!item.description && (
-                                                    <div className="mt-0.5 text-xs text-zinc-400 leading-snug">{item.description}</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        {badge ? (
-                                            <span className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-100">{badge}</span>
-                                        ) : null}
-                                    </div>
-                                )}
-                            </button>
-                        );
-                    })}
+                                            ) : (
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex items-start gap-2">
+                                                        <span className={`mt-0.5 h-4 w-0.5 rounded-full ${isActive ? 'bg-cyan-300' : 'bg-zinc-700'}`}></span>
+                                                        <div className="min-w-0">
+                                                            <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">{item.sectionLabel || 'Host Settings'}</div>
+                                                            <div className="flex items-center gap-2">
+                                                                <i className={`fa-solid ${item.icon} text-sm ${isActive ? 'text-cyan-300' : 'text-zinc-500'}`}></i>
+                                                                <span className="truncate text-[15px] leading-5 font-semibold">{item.label}</span>
+                                                                <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] ${
+                                                                    (SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).className
+                                                                }`}>
+                                                                    {(SETTINGS_OWNERSHIP_META[item.ownership] || SETTINGS_OWNERSHIP_META.config).label}
+                                                                </span>
+                                                            </div>
+                                                            {!!item.description && (
+                                                                <div className="mt-0.5 text-xs text-zinc-400 leading-snug">{item.description}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {badge ? (
+                                                        <span className="rounded border border-zinc-600 px-2 py-0.5 text-[10px] text-zinc-100">{badge}</span>
+                                                    ) : null}
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
                     {navigationItemsForRail.length === 0 && (
                         <div className="rounded-md border border-amber-400/30 bg-amber-500/10 m-2 px-2.5 py-2 text-xs text-amber-200">
                             No section matches "{settingsNavQuery}".
@@ -19211,7 +19224,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Unsaved Changes
                                             </span>
                                         )}
-                                        {inAdminWorkspace && (
+                                        {tab === 'admin' && (
                                             <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
                                                 <div data-feature-id="admin-host-panel-mode-toggle" className="flex items-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 p-1">
                                                     <span className="px-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Host Panel</span>
@@ -19322,8 +19335,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
                                     <span className="px-2 py-1 rounded-full border border-white/15">Mode: {room?.activeMode || 'karaoke'}</span>
                                     <span className="px-2 py-1 rounded-full border border-white/15">Queue: {queuedSongs.length}</span>
-                                    <span className="px-2 py-1 rounded-full border border-white/15">Audience Preview: {audiencePreviewVisible ? 'On' : 'Off'}</span>
-                                    <span className="px-2 py-1 rounded-full border border-white/15">TV Preview: {publicTvPreviewVisible ? 'On' : 'Off'}</span>
                                     <span className={`px-2 py-1 rounded-full border ${appleMusicAuthorized ? 'border-emerald-400/30 text-emerald-200 bg-emerald-500/10' : 'border-zinc-500/30 text-zinc-300 bg-zinc-900/70'}`}>
                                         Apple {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
                                     </span>
@@ -19355,29 +19366,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     4. Open Live Modes
                                 </button>
                                 <button
-                                    onClick={async () => {
-                                        setSettingsTab('media');
-                                        if (appleMusicAuthorized) {
-                                            toast('Apple Music already connected.');
-                                            return;
-                                        }
-                                        await connectAppleMusic();
-                                    }}
+                                    onClick={() => setSettingsTab('media')}
                                     className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnSecondary} justify-start`}
                                 >
-                                    {appleMusicAuthorized ? 'Apple Music Connected' : 'Connect Apple Music'}
+                                    {appleMusicAuthorized ? 'Media + Apple Music' : 'Open Media Setup'}
                                 </button>
                                 <button
-                                    onClick={() => setSettingsTab('chat')}
+                                    onClick={focusHostInbox}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
-                                    Chat + DMs
+                                    Open Main Inbox
                                 </button>
                                 <button
                                     onClick={() => setSettingsTab('moderation')}
                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
                                 >
-                                    Review Approvals
+                                    Moderation Policy
                                 </button>
                             </div>
                         </div>
@@ -19433,37 +19437,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </button>
                                 ))}
                             </div>
-                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                                <button
-                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
-                                    className={`${STYLES.btnStd} ${audiencePreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
-                                >
-                                    <i className="fa-solid fa-mobile-screen-button"></i>
-                                    {audiencePreviewVisible ? 'Audience Preview On' : 'Audience Preview Off'}
-                                </button>
-                                <button
-                                    onClick={() => setAudiencePreviewCollapsed(prev => !prev)}
-                                    disabled={!audiencePreviewVisible}
-                                    className={`${STYLES.btnStd} ${audiencePreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!audiencePreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    <i className={`fa-solid ${audiencePreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
-                                    {audiencePreviewCollapsed ? 'Expand Preview' : 'Compact Preview'}
-                                </button>
-                                <button
-                                    onClick={() => setPublicTvPreviewVisible(prev => !prev)}
-                                    className={`${STYLES.btnStd} ${publicTvPreviewVisible ? STYLES.btnInfo : STYLES.btnNeutral}`}
-                                >
-                                    <i className="fa-solid fa-display"></i>
-                                    {publicTvPreviewVisible ? 'Public TV Preview On' : 'Public TV Preview Off'}
-                                </button>
-                                <button
-                                    onClick={() => setPublicTvPreviewCollapsed(prev => !prev)}
-                                    disabled={!publicTvPreviewVisible}
-                                    className={`${STYLES.btnStd} ${publicTvPreviewCollapsed ? STYLES.btnInfo : STYLES.btnNeutral} ${!publicTvPreviewVisible ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    <i className={`fa-solid ${publicTvPreviewCollapsed ? 'fa-expand' : 'fa-compress'}`}></i>
-                                    {publicTvPreviewCollapsed ? 'Expand TV Preview' : 'Compact TV Preview'}
-                                </button>
+                            <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-black/20 p-4">
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <div className="max-w-2xl">
+                                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Live Previews</div>
+                                        <div className="mt-1 text-sm text-zinc-200">
+                                            Audience and Public TV previews stay in the live Overlays menu so Admin does not own a second set of runtime visibility controls.
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={focusOverlayLiveControls}
+                                        className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
+                                    >
+                                        <i className="fa-solid fa-display"></i>
+                                        Open Live Display Controls
+                                    </button>
+                                </div>
                             </div>
                             <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
                                 <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
@@ -20944,54 +20934,37 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Audience + submission policy
                                     </div>
                                     <div className="text-sm text-zinc-400 mt-1">
-                                        Keep visibility and chat scope here. Review incoming items from the global moderation inbox in the top bar.
+                                        Keep policy and routing here. Review incoming items from the global moderation inbox in the top bar.
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                     <div className="bg-zinc-900/50 border border-emerald-500/15 rounded-xl p-4 space-y-3">
-                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Chat policy</div>
-                                        <button
-                                            onClick={async () => {
-                                                const next = chatAudienceMode === 'vip' ? 'all' : 'vip';
-                                                setChatAudienceMode(next);
-                                                await updateRoom({ chatAudienceMode: next });
-                                            }}
-                                            className={`${STYLES.btnStd} ${chatAudienceMode === 'vip' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
-                                        >
-                                            <i className="fa-solid fa-crown"></i>
-                                            {chatAudienceMode === 'vip' ? 'VIP-only audience chat' : 'All audience chat enabled'}
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                const next = !chatShowOnTv;
-                                                setChatShowOnTv(next);
-                                                const nextMode = next ? (chatTvMode || 'auto') : 'auto';
-                                                if (!next) setChatTvMode('auto');
-                                                await updateRoom({ chatShowOnTv: next, chatTvMode: nextMode });
-                                            }}
-                                            className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
-                                        >
-                                            <i className="fa-solid fa-tv"></i>
-                                            {chatShowOnTv ? 'TV chat enabled' : 'TV chat disabled'}
-                                        </button>
-                                        <button
-                                            onClick={async () => {
-                                                const nextMode = chatTvMode === 'fullscreen' ? 'auto' : 'fullscreen';
-                                                setChatShowOnTv(true);
-                                                setChatTvMode(nextMode);
-                                                await updateRoom({ chatShowOnTv: true, chatTvMode: nextMode });
-                                            }}
-                                            className={`${STYLES.btnStd} ${chatTvMode === 'fullscreen' ? STYLES.btnHighlight : STYLES.btnNeutral} justify-start`}
-                                        >
-                                            <i className="fa-solid fa-expand"></i>
-                                            {chatTvMode === 'fullscreen' ? 'TV chat fullscreen' : 'TV chat sidebar / auto'}
-                                        </button>
+                                        <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Policy snapshot</div>
+                                        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-3 space-y-2 text-sm text-zinc-300">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span>Audience chat</span>
+                                                <span className="font-semibold text-white">{chatEnabled ? 'Enabled' : 'Disabled'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span>Audience scope</span>
+                                                <span className="font-semibold text-white">{chatAudienceMode === 'vip' ? 'VIP only' : 'All guests'}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span>TV mode</span>
+                                                <span className="font-semibold text-white">
+                                                    {!chatShowOnTv ? 'Off' : chatTvMode === 'fullscreen' ? 'Fullscreen' : 'Sidebar / auto'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-zinc-500">
+                                            Live chat visibility runs from the top Overlays menu and the inbox workspace.
+                                        </div>
                                         <button
                                             onClick={() => selectSettingsTab('chat')}
                                             className={`${STYLES.btnStd} ${STYLES.btnSecondary} justify-start`}
                                         >
-                                            <i className="fa-solid fa-comments"></i>
-                                            Open full chat controls
+                                            <i className="fa-solid fa-sliders"></i>
+                                            Open chat policy
                                         </button>
                                     </div>
                                     <div className="bg-zinc-900/50 border border-emerald-500/15 rounded-xl p-4 space-y-3">
@@ -21735,6 +21708,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
                         {settingsTab === 'media' && (
                             <>
+                        <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-r from-[#0f1b2e]/92 via-[#0d1322]/95 to-[#1c1230]/88 p-4 space-y-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="max-w-2xl">
+                                    <div className="text-xs uppercase tracking-[0.24em] text-cyan-100/75">Runtime Handoff</div>
+                                    <div className="mt-1 text-lg font-semibold text-white">Admin manages the library. Live routing happens from the runtime workspaces.</div>
+                                    <div className="mt-1 text-sm text-cyan-100/75">
+                                        Queueing, scene launches, and run-of-show placement stay in their canonical live surfaces so this section does not write to multiple runtime owners.
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button onClick={openQueueWorkspaceFromAdmin} className={`${STYLES.btnStd} ${STYLES.btnHighlight}`}>
+                                        <i className="fa-solid fa-list"></i>
+                                        Open Queue Workspace
+                                    </button>
+                                    <button onClick={openSceneLibraryFromAdmin} className={`${STYLES.btnStd} ${STYLES.btnInfo}`}>
+                                        <i className="fa-solid fa-photo-film"></i>
+                                        Open Media Library
+                                    </button>
+                                    <button onClick={openRunOfShowWorkspaceFromAdmin} className={`${STYLES.btnStd} ${STYLES.btnSecondary}`}>
+                                        <i className="fa-solid fa-clapperboard"></i>
+                                        Open Run Of Show
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         <div className="mt-6 rounded-xl border border-cyan-400/30 bg-gradient-to-br from-[#12152b]/90 via-[#10192c]/90 to-[#20132d]/85 p-4 space-y-2 shadow-[0_0_24px_rgba(0,196,217,0.12)]">
                             <div className="text-xs text-cyan-100/80 uppercase tracking-widest">YouTube playlist index</div>
                             <div className="flex flex-wrap gap-2 items-center">
@@ -21955,6 +21953,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="host-form-helper ml-0 sm:ml-auto">Cloud uploads are room-wide. Offline backups stay on this host device.</div>
                             </div>
                             <div className="host-form-helper">Audio/video/image. Max 150MB. Scene images stay capped at 20MB. Room storage target: 2GB.</div>
+                            <div className="rounded-lg border border-cyan-400/20 bg-black/20 px-3 py-3 text-sm text-cyan-100/75">
+                                Uploads land in the room library here. Queue placement, TV scenes, and run-of-show assignment now happen from the live Queue, Media Library, and Run Of Show workspaces.
+                            </div>
                             <div className="flex items-center justify-between text-sm text-cyan-100/60">
                                 <span>Room storage used</span>
                                 <span className="text-cyan-100/85">{formatBytes(roomUploadBytes)} (~${estimateStorageMonthly(roomUploadBytes).toFixed(2)}/mo)</span>
@@ -21962,47 +21963,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             {pendingLocalFile && (
                                 <div className="flex flex-wrap items-center gap-2 text-sm text-cyan-100/75">
                                     <span className="flex-1 truncate">{pendingLocalFile.name}</span>
-                                    {String(pendingLocalFile?.type || '').startsWith('audio/') || String(pendingLocalFile?.type || '').startsWith('video/') ? (
-                                        <button
-                                            onClick={async () => {
-                                                await handleLocalUpload(pendingLocalFile, true);
-                                                setPendingLocalFile(null);
-                                            }}
-                                            className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1`}
-                                            disabled={uploadingLocal}
-                                        >
-                                            <i className="fa-solid fa-plus mr-1"></i> Upload + Queue
-                                        </button>
-                                    ) : null}
-                                    {String(pendingLocalFile?.type || '').startsWith('image/') || String(pendingLocalFile?.type || '').startsWith('video/') ? (
-                                        <>
-                                            <button
-                                                onClick={async () => {
-                                                    await uploadMediaFileToTvLibrary(pendingLocalFile, {
-                                                        durationSec: 20,
-                                                    });
-                                                    setPendingLocalFile(null);
-                                                }}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1`}
-                                                disabled={uploadingLocal}
-                                            >
-                                                Save To TV Library
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    await uploadMediaFileToRunOfShow(pendingLocalFile, {
-                                                        durationSec: 20,
-                                                        placement: 'append',
-                                                    });
-                                                    setPendingLocalFile(null);
-                                                }}
-                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1`}
-                                                disabled={uploadingLocal}
-                                            >
-                                                Use In Run Of Show
-                                            </button>
-                                        </>
-                                    ) : null}
                                     <button
                                         onClick={async () => {
                                             await handleLocalUpload(pendingLocalFile, false);
@@ -22040,21 +22000,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             {item.title}
                                             <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
                                         </div>
-                                        {canQueueRoomMedia(item) ? (
-                                            <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
-                                                <i className="fa-solid fa-plus mr-1"></i> Add to Queue
-                                            </button>
-                                        ) : null}
-                                        {canUseRoomMediaAsScene(item) ? (
-                                            <>
-                                                <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
-                                                    TV Library
-                                                </button>
-                                                <button onClick={() => applyScenePresetToRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
-                                                    Use In Run Of Show
-                                                </button>
-                                            </>
-                                        ) : null}
                                         {item._local ? (
                                             <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                 Remove Local
@@ -22092,21 +22037,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {item.title}
                                                 <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
                                             </div>
-                                            {canQueueRoomMedia(item) ? (
-                                                <button onClick={() => addLocalItemToQueue(item)} className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2 py-1 text-sm`}>
-                                                    <i className="fa-solid fa-plus mr-1"></i> Add
-                                                </button>
-                                            ) : null}
-                                            {canUseRoomMediaAsScene(item) ? (
-                                                <>
-                                                    <button onClick={() => saveMediaAssetAsScenePreset(item, { durationSec: 20 })} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
-                                                        TV Library
-                                                    </button>
-                                                    <button onClick={() => applyScenePresetToRunOfShow(item)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}>
-                                                        Use In Run Of Show
-                                                    </button>
-                                                </>
-                                            ) : null}
                                             {item._local ? (
                                                 <button onClick={() => deleteOfflineBackup(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
                                                     Remove Local
@@ -22210,44 +22140,23 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         {settingsTab === 'chat' && (
                             <div className="space-y-4">
                                 <div className="rounded-xl border border-cyan-300/25 bg-cyan-500/8 p-4">
-                                    <div className="text-sm uppercase tracking-[0.3em] text-cyan-100/80">Live Chat Console</div>
-                                    <div className="mt-1 text-sm text-zinc-300">Read room chat, reply to host DMs, and send audience messages from here during the show.</div>
-                                    <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
-                                        <HostChatPanel
-                                            chatOpen={true}
-                                            chatUnread={chatUnread}
-                                            openChatSettings={openChatSettings}
-                                            styles={STYLES}
-                                            appBase={hostBase}
-                                            hostBase={hostBase}
-                                            roomCode={roomCode}
-                                            chatEnabled={chatEnabled}
-                                            setChatEnabled={setChatEnabled}
-                                            updateRoom={updateRoom}
-                                            chatShowOnTv={chatShowOnTv}
-                                            setChatShowOnTv={setChatShowOnTv}
-                                            chatAudienceMode={chatAudienceMode}
-                                            setChatAudienceMode={setChatAudienceMode}
-                                            handleChatViewMode={handleChatViewMode}
-                                            chatViewMode={chatViewMode}
-                                            dmUnread={dmUnread}
-                                            dmTargetUid={dmTargetUid}
-                                            setDmTargetUid={setDmTargetUid}
-                                            users={users}
-                                            dmDraft={dmDraft}
-                                            setDmDraft={setDmDraft}
-                                            sendHostDmMessage={sendHostDmMessage}
-                                            roomChatMessages={roomChatMessages}
-                                            hostDmMessages={hostDmMessages}
-                                            pinnedChatIds={pinnedChatIds}
-                                            setPinnedChatIds={setPinnedChatIds}
-                                            emoji={EMOJI}
-                                            chatDraft={chatDraft}
-                                            setChatDraft={setChatDraft}
-                                            sendHostChat={sendHostChat}
-                                            showSettingsButton={false}
-                                            showPopoutButton={false}
-                                        />
+                                    <div className="text-sm uppercase tracking-[0.3em] text-cyan-100/80">Chat Policy + Routing</div>
+                                    <div className="mt-1 text-sm text-zinc-300">Use this section for saved chat behavior. Live messages, DMs, and moderation stay in the main inbox and chat workspace during the show.</div>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                        <button
+                                            onClick={focusHostInbox}
+                                            className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
+                                        >
+                                            <i className="fa-solid fa-inbox"></i>
+                                            Open Main Inbox
+                                        </button>
+                                        <button
+                                            onClick={focusOverlayLiveControls}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral}`}
+                                        >
+                                            <i className="fa-solid fa-tv"></i>
+                                            Open Live Display Controls
+                                        </button>
                                     </div>
                                 </div>
                                 <React.Suspense fallback={<DeferredHostSurfaceFallback label="Loading chat settings..." />}>

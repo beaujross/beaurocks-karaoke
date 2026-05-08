@@ -4,6 +4,15 @@ import { test } from 'vitest';
 
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 const navConfigSource = readFileSync('src/apps/Host/workspace/navConfig.js', 'utf8');
+const getAdminSection = (startKey, nextKey) => {
+  const startMarker = `{settingsTab === '${startKey}' && (`;
+  const endMarker = `{settingsTab === '${nextKey}' && (`;
+  const startIndex = hostAppSource.indexOf(startMarker);
+  const endIndex = hostAppSource.indexOf(endMarker, startIndex + startMarker.length);
+  assert.notEqual(startIndex, -1, `Expected to find admin section ${startKey}`);
+  assert.notEqual(endIndex, -1, `Expected to find following admin section ${nextKey}`);
+  return hostAppSource.slice(startIndex, endIndex);
+};
 
 test('admin settings frame queue and automation as defaults rather than live controls', () => {
   assert.match(hostAppSource, /Queue defaults/);
@@ -36,6 +45,28 @@ test('admin room settings own the detailed post-performance timing controls', ()
   assert.match(hostAppSource, /Leaderboard beat/);
   assert.match(hostAppSource, /Next up beat/);
   assert.match(hostAppSource, /Show post-performance recap sequence on TV/);
+});
+
+test('admin keeps preview, chat, and moderation controls in their canonical homes', () => {
+  const generalSection = getAdminSection('general', 'gamepad');
+  const moderationSection = getAdminSection('moderation', 'billing');
+  const chatSection = getAdminSection('chat', 'live_effects');
+
+  assert.match(generalSection, /Open Live Display Controls/);
+  assert.match(generalSection, /Audience and Public TV previews stay in the live Overlays menu/);
+  assert.doesNotMatch(generalSection, /Audience Preview On|Public TV Preview On/);
+  assert.match(generalSection, /Open Main Inbox/);
+  assert.match(generalSection, /Moderation Policy/);
+
+  assert.match(moderationSection, /Policy snapshot/);
+  assert.match(moderationSection, /Open chat policy/);
+  assert.match(moderationSection, /Open main inbox/);
+  assert.doesNotMatch(moderationSection, /TV chat enabled|TV chat fullscreen|Open full chat controls/);
+
+  assert.match(chatSection, /Chat Policy \+ Routing/);
+  assert.match(chatSection, /Open Main Inbox/);
+  assert.match(chatSection, /Open Live Display Controls/);
+  assert.doesNotMatch(chatSection, /<HostChatPanel/);
 });
 
 test('admin navigation keeps core config sections wired into the workspace registry', () => {
@@ -106,6 +137,11 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
+    /tab === 'admin' && \(\s*<div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">[\s\S]*data-feature-id="admin-host-panel-mode-toggle"/,
+    'Admin should keep the host panel mode toggle visible across the admin workspace, not only in the full-admin substate',
+  );
+  assert.match(
+    hostAppSource,
     /Host Panel[\s\S]*Classic[\s\S]*Experimental/s,
     'Admin should let hosts switch directly between classic and experimental panel modes',
   );
@@ -118,5 +154,20 @@ test('admin navigation keeps core config sections wired into the workspace regis
     hostAppSource,
     /if \(!experimentalHostPanelActive\) \{\s*void toggleRuntimeShellModeQuick\(\);\s*\}/s,
     'Experimental mode button should enable the experimental shell when classic mode is active',
+  );
+  assert.match(
+    hostAppSource,
+    /tab === 'admin'\s*\?\s*settingsNavigationGroups\s*:\s*settingsNavigationGroups\.filter\(\(section\) => section\.id === activeWorkspaceView\)/,
+    'Full Admin should show the complete grouped settings directory instead of scoping the rail to the active workspace only',
+  );
+  assert.match(
+    hostAppSource,
+    /tab === 'admin' \? 'All Settings' : `Sections In \$\{activeWorkspaceMeta\?\.label \|\| 'Workspace'\}`/,
+    'The admin rail should clearly indicate when it is showing the full settings directory',
+  );
+  assert.match(
+    hostAppSource,
+    /data-admin-section-group=\{section\.id\}/,
+    'Admin settings navigation should render grouped section buckets so sections do not disappear behind view filtering',
   );
 });

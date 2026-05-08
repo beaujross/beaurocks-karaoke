@@ -8,6 +8,16 @@ const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
+const hostAppSource = readFileSync(hostAppPath, 'utf8');
+const getAdminSection = (startKey, nextKey) => {
+  const startMarker = `{settingsTab === '${startKey}' && (`;
+  const endMarker = `{settingsTab === '${nextKey}' && (`;
+  const startIndex = hostAppSource.indexOf(startMarker);
+  const endIndex = hostAppSource.indexOf(endMarker, startIndex + startMarker.length);
+  assert.notEqual(startIndex, -1, `Expected to find admin section ${startKey}`);
+  assert.notEqual(endIndex, -1, `Expected to find following admin section ${nextKey}`);
+  return hostAppSource.slice(startIndex, endIndex);
+};
 
 test('mission setup keeps preset selection compact and applies full preset package', () => {
   const primaryPicksSource = readFileSync(primaryPicksPath, 'utf8');
@@ -88,8 +98,6 @@ test('mission setup exposes an autopilot plan instead of a third stacked assist 
 });
 
 test('night setup wizard can close without forcing hosts through every step', () => {
-  const hostAppSource = readFileSync(hostAppPath, 'utf8');
-
   assert.match(
     hostAppSource,
     /event\.key !== 'Escape' \|\| nightSetupApplying/,
@@ -118,7 +126,6 @@ test('night setup wizard can close without forcing hosts through every step', ()
 });
 
 test('host panel presents readiness and one launch action before deeper setup', () => {
-  const hostAppSource = readFileSync(hostAppPath, 'utf8');
   const topChromeSource = readFileSync(topChromePath, 'utf8');
 
   assert.doesNotMatch(
@@ -188,38 +195,48 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
 });
 
-test('host setup keeps room uploads available for local playback checks', () => {
-  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+test('host setup keeps room uploads available while routing live media actions back to runtime workspaces', () => {
+  const mediaSection = getAdminSection('media', 'marquee');
 
   assert.match(
-    hostAppSource,
+    mediaSection,
     /Room Uploads/,
     'Host app should keep the room upload library visible for local media checks',
   );
   assert.match(
-    hostAppSource,
+    mediaSection,
     /accept="video\/\*,audio\/\*,image\/\*"/,
     'Room uploads should accept local audio, video, and image files',
   );
   assert.match(
-    hostAppSource,
-    /Upload \+ Queue/,
-    'Hosts should still be able to upload a local file straight into the queue',
+    mediaSection,
+    /Open Queue Workspace/,
+    'Admin media should hand queue actions back to the live queue workspace',
   );
   assert.match(
-    hostAppSource,
-    /Save To TV Library/,
-    'Room uploads should let hosts save uploaded image or video assets into the TV library',
+    mediaSection,
+    /Open Media Library/,
+    'Admin media should hand scene and TV media actions back to the media library workspace',
   );
   assert.match(
-    hostAppSource,
-    /Use In Run Of Show/,
-    'Room uploads should let hosts send uploaded image or video assets into the run of show from the shared upload surface',
+    mediaSection,
+    /Open Run Of Show/,
+    'Admin media should hand run-of-show placement back to the run-of-show workspace',
   );
   assert.match(
-    hostAppSource,
+    mediaSection,
+    /Upload Only/,
+    'Room uploads should still allow a plain library upload without live routing',
+  );
+  assert.match(
+    mediaSection,
     /Save Offline Backup/,
     'Hosts should still be able to save an offline local backup on the host device',
+  );
+  assert.doesNotMatch(
+    mediaSection,
+    /Upload \+ Queue|Save To TV Library|Use In Run Of Show/,
+    'Admin media should stop duplicating direct runtime actions inside the library manager',
   );
 });
 

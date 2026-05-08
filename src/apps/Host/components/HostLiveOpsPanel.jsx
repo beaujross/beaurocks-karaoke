@@ -114,6 +114,7 @@ export default function HostLiveOpsPanel({
     styles,
     showTitle = true,
     compact = false,
+    inline = false,
 }) {
     const hasCurrentPerformance = !!current?.id;
     const currentMoment = runOfShowLiveItem?.id ? runOfShowLiveItem : null;
@@ -124,6 +125,94 @@ export default function HostLiveOpsPanel({
             : null;
     const nextSingerLabel = String(nextQueueText || '').trim() || (nextQueueSong ? buildQueueSongLabel(nextQueueSong) : 'No singer ready');
     const plannedMomentCount = Number(!!runOfShowLiveItem?.id) + Number(!!runOfShowFlightedItem?.id) + Number(!!runOfShowOnDeckItem?.id);
+    const inlineSummaryCards = (
+        <div className="grid gap-2 sm:grid-cols-3">
+            <SnapshotCard
+                label="On Stage"
+                title={hasCurrentPerformance ? buildQueueSongLabel(current) : 'No one on stage'}
+                detail={hasCurrentPerformance
+                    ? (currentSourcePlaying ? 'Backing live' : 'Ready on stage')
+                    : currentMoment
+                        ? `${getRunOfShowSceneTitle(currentMoment)} live`
+                        : 'Room idle'}
+                meta={hasCurrentPerformance ? (currentSourcePlaying ? 'Playing' : 'Ready') : currentMoment ? 'Moment Live' : 'Idle'}
+                artworkUrl={hasCurrentPerformance ? buildQueueSongArtworkUrl(current) : getRunOfShowSceneArtwork(currentMoment)}
+                avatarEmoji={hasCurrentPerformance ? buildQueueSongEmoji(current) : getRunOfShowSceneEmoji(currentMoment)}
+                toneClass={hasCurrentPerformance
+                    ? 'border-emerald-300/22 bg-emerald-500/8'
+                    : currentMoment
+                        ? 'border-fuchsia-300/20 bg-fuchsia-500/8'
+                        : 'border-white/10 bg-black/20'}
+                metaToneClass={hasCurrentPerformance
+                    ? (currentSourcePlaying ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/30 bg-amber-500/12 text-amber-100')
+                    : currentMoment
+                        ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
+                        : 'border-white/10 bg-black/20 text-zinc-200'}
+                compact
+            />
+            <SnapshotCard
+                label="Next Singer"
+                title={nextSingerLabel}
+                detail={nextQueueSong
+                    ? 'Queue-first move'
+                    : 'No singer ready'}
+                meta={nextQueueSong ? 'Ready' : 'Open'}
+                artworkUrl={buildQueueSongArtworkUrl(nextQueueSong)}
+                avatarEmoji={buildQueueSongEmoji(nextQueueSong)}
+                toneClass={nextQueueSong ? 'border-cyan-300/22 bg-cyan-500/8' : 'border-white/10 bg-black/20'}
+                metaToneClass={nextQueueSong
+                    ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
+                    : 'border-white/10 bg-black/20 text-zinc-200'}
+                compact
+            />
+            <SnapshotCard
+                label="Planned"
+                title={queuedMoment ? getRunOfShowSceneTitle(queuedMoment) : (runOfShowEnabled ? 'Next planned slot is open' : 'Planner is optional')}
+                detail={queuedMoment
+                    ? getRunOfShowSceneSummary(queuedMoment)
+                    : runOfShowEnabled
+                        ? 'Open slot'
+                        : 'Planner off'}
+                meta={queuedMoment ? (runOfShowFlightedItem?.id ? 'Armed' : 'On Deck') : (runOfShowEnabled ? 'Plan' : 'Planner Off')}
+                artworkUrl={getRunOfShowSceneArtwork(queuedMoment)}
+                avatarEmoji={getRunOfShowSceneEmoji(queuedMoment)}
+                toneClass={queuedMoment ? 'border-violet-300/22 bg-violet-500/8' : 'border-white/10 bg-black/20'}
+                metaToneClass={queuedMoment
+                    ? (runOfShowFlightedItem?.id
+                        ? 'border-violet-300/30 bg-violet-500/12 text-violet-100'
+                        : 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100')
+                    : (runOfShowEnabled
+                        ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
+                        : 'border-white/10 bg-black/20 text-zinc-200')}
+                compact
+            />
+        </div>
+    );
+
+    if (compact && inline) {
+        return (
+            <section data-feature-id="host-live-ops-panel" className="min-w-0 flex-1 px-0 py-0">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.14em]">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{queueCount} queued</span>
+                        <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">{readyQueueCount} ready</span>
+                        {assignedQueueCount > 0 ? <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-1 text-violet-100">{assignedQueueCount} linked</span> : null}
+                        {needsAttentionCount > 0 ? <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-amber-100">{needsAttentionCount} issues</span> : null}
+                    </div>
+                    {typeof onOpenRunOfShow === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => onOpenRunOfShow?.()}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[30px] px-2.5 py-1 text-[10px]`}
+                        >
+                            Planner
+                        </button>
+                    ) : null}
+                </div>
+                {inlineSummaryCards}
+            </section>
+        );
+    }
 
     return (
         <section
@@ -154,65 +243,7 @@ export default function HostLiveOpsPanel({
             </div>
 
             <div className={`grid gap-2 ${compact ? 'mt-2 grid-cols-3' : 'mt-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]'}`}>
-                <SnapshotCard
-                    label="On Stage"
-                    title={hasCurrentPerformance ? buildQueueSongLabel(current) : 'No one on stage'}
-                    detail={hasCurrentPerformance
-                        ? (currentSourcePlaying ? 'Backing live' : 'Ready on stage')
-                        : currentMoment
-                            ? `${getRunOfShowSceneTitle(currentMoment)} live`
-                            : 'Room idle'}
-                    meta={hasCurrentPerformance ? (currentSourcePlaying ? 'Playing' : 'Ready') : currentMoment ? 'Moment Live' : 'Idle'}
-                    artworkUrl={hasCurrentPerformance ? buildQueueSongArtworkUrl(current) : getRunOfShowSceneArtwork(currentMoment)}
-                    avatarEmoji={hasCurrentPerformance ? buildQueueSongEmoji(current) : getRunOfShowSceneEmoji(currentMoment)}
-                    toneClass={hasCurrentPerformance
-                        ? 'border-emerald-300/22 bg-emerald-500/8'
-                        : currentMoment
-                            ? 'border-fuchsia-300/20 bg-fuchsia-500/8'
-                            : 'border-white/10 bg-black/20'}
-                    metaToneClass={hasCurrentPerformance
-                        ? (currentSourcePlaying ? 'border-emerald-300/30 bg-emerald-500/12 text-emerald-100' : 'border-amber-300/30 bg-amber-500/12 text-amber-100')
-                        : currentMoment
-                            ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
-                            : 'border-white/10 bg-black/20 text-zinc-200'}
-                    compact={compact}
-                />
-                <SnapshotCard
-                    label="Next Singer"
-                    title={nextSingerLabel}
-                    detail={nextQueueSong
-                        ? 'Queue-first move'
-                        : 'No singer ready'}
-                    meta={nextQueueSong ? 'Ready' : 'Open'}
-                    artworkUrl={buildQueueSongArtworkUrl(nextQueueSong)}
-                    avatarEmoji={buildQueueSongEmoji(nextQueueSong)}
-                    toneClass={nextQueueSong ? 'border-cyan-300/22 bg-cyan-500/8' : 'border-white/10 bg-black/20'}
-                    metaToneClass={nextQueueSong
-                        ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
-                        : 'border-white/10 bg-black/20 text-zinc-200'}
-                    compact={compact}
-                />
-                <SnapshotCard
-                    label="Planned"
-                    title={queuedMoment ? getRunOfShowSceneTitle(queuedMoment) : (runOfShowEnabled ? 'Next planned slot is open' : 'Planner is optional')}
-                    detail={queuedMoment
-                        ? getRunOfShowSceneSummary(queuedMoment)
-                        : runOfShowEnabled
-                            ? 'Open slot'
-                            : 'Planner off'}
-                    meta={queuedMoment ? (runOfShowFlightedItem?.id ? 'Armed' : 'On Deck') : (runOfShowEnabled ? 'Plan' : 'Planner Off')}
-                    artworkUrl={getRunOfShowSceneArtwork(queuedMoment)}
-                    avatarEmoji={getRunOfShowSceneEmoji(queuedMoment)}
-                    toneClass={queuedMoment ? 'border-violet-300/22 bg-violet-500/8' : 'border-white/10 bg-black/20'}
-                    metaToneClass={queuedMoment
-                        ? (runOfShowFlightedItem?.id
-                            ? 'border-violet-300/30 bg-violet-500/12 text-violet-100'
-                            : 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100')
-                        : (runOfShowEnabled
-                            ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
-                            : 'border-white/10 bg-black/20 text-zinc-200')}
-                    compact={compact}
-                />
+                {inlineSummaryCards}
             </div>
 
             {!compact ? (

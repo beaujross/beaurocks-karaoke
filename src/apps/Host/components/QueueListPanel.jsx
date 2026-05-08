@@ -102,7 +102,7 @@ export const QueueSummaryBar = ({
             }
             : null
     ].filter(Boolean);
-    const showQueueSummaryChips = queueSummaryChips.length > 1 || queueSummaryChips.some((chip) => chip.key !== 'ready');
+    const showQueueSummaryChips = (queueSummaryChips.length > 1 || queueSummaryChips.some((chip) => chip.key !== 'ready')) && !embedded;
 
     const queueSummary = lockedLineupCount < lockedLineupTarget
         ? {

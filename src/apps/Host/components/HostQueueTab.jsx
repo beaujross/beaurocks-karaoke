@@ -547,12 +547,39 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [scenePresetSavingId, setScenePresetSavingId] = useState('');
     const [audioLibraryDrafts, setAudioLibraryDrafts] = useState({});
     const [audioLibrarySavingId, setAudioLibrarySavingId] = useState('');
+    const [sceneLibraryChromeOffset, setSceneLibraryChromeOffset] = useState(112);
+    const sceneLibraryScrollRef = useRef(null);
+    const sceneLibraryViewportInsetTop = `max(env(safe-area-inset-top), ${sceneLibraryChromeOffset}px)`;
+    const sceneLibraryViewportInsetBottom = 'max(env(safe-area-inset-bottom), 0.75rem)';
+    const sceneLibraryViewportHeight = `calc(100dvh - ${sceneLibraryViewportInsetTop} - ${sceneLibraryViewportInsetBottom})`;
     useEffect(() => {
         onSceneLibraryModalChange?.(sceneLibraryOpen);
         return () => {
             onSceneLibraryModalChange?.(false);
         };
     }, [onSceneLibraryModalChange, sceneLibraryOpen]);
+    useEffect(() => {
+        if (!sceneLibraryOpen || typeof window === 'undefined') return undefined;
+        const hostTopChrome = document.querySelector('[data-host-top-chrome="true"]');
+        const updateSceneLibraryInsets = () => {
+            const chromeHeight = hostTopChrome?.getBoundingClientRect?.().height || 0;
+            setSceneLibraryChromeOffset(Math.max(112, Math.ceil(chromeHeight + 20)));
+        };
+        updateSceneLibraryInsets();
+        const scrollResetFrame = window.requestAnimationFrame(() => {
+            sceneLibraryScrollRef.current?.scrollTo?.({ top: 0, behavior: 'auto' });
+        });
+        const resizeObserver = typeof ResizeObserver !== 'undefined' && hostTopChrome
+            ? new ResizeObserver(() => updateSceneLibraryInsets())
+            : null;
+        resizeObserver?.observe(hostTopChrome);
+        window.addEventListener('resize', updateSceneLibraryInsets);
+        return () => {
+            window.cancelAnimationFrame(scrollResetFrame);
+            window.removeEventListener('resize', updateSceneLibraryInsets);
+            resizeObserver?.disconnect();
+        };
+    }, [sceneLibraryOpen]);
 
     const SectionHeader = ({ label, open, onToggle, toneClass = '', featureId = '' }) => (
         <button
@@ -3283,6 +3310,36 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         }))
     ), [deferredTrackChecks, handlePostPerformanceBackingPromptAction, postPerformanceBackingPromptBusy]);
     const visibleLastTrackCheck = null;
+    const queueWorkspaceToneMap = {
+        queue: {
+            activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
+            shellClass: 'border-cyan-300/16 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_34%),linear-gradient(180deg,rgba(8,18,28,0.82),rgba(9,11,18,0.98))]',
+            headerClass: 'border-cyan-300/14 bg-[linear-gradient(180deg,rgba(12,26,38,0.82),rgba(8,13,20,0.82))]',
+            sectionToneClass: 'text-cyan-100',
+        },
+        add: {
+            activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
+            shellClass: 'border-fuchsia-300/16 bg-[radial-gradient(circle_at_top,rgba(217,70,239,0.08),transparent_34%),linear-gradient(180deg,rgba(24,10,23,0.82),rgba(12,10,18,0.98))]',
+            headerClass: 'border-fuchsia-300/14 bg-[linear-gradient(180deg,rgba(33,15,32,0.82),rgba(17,10,20,0.82))]',
+            sectionToneClass: 'text-fuchsia-100',
+        },
+        inbox: {
+            activeToneClass: 'border-amber-300/30 bg-[linear-gradient(180deg,rgba(44,28,12,0.98),rgba(24,16,9,0.98))] text-amber-100 shadow-[0_-10px_30px_rgba(245,158,11,0.14)]',
+            shellClass: 'border-amber-300/16 bg-[radial-gradient(circle_at_top,rgba(245,158,11,0.08),transparent_34%),linear-gradient(180deg,rgba(28,19,12,0.82),rgba(14,12,10,0.98))]',
+            headerClass: 'border-amber-300/14 bg-[linear-gradient(180deg,rgba(37,24,13,0.82),rgba(19,13,9,0.82))]',
+            sectionToneClass: 'text-amber-100',
+        },
+        show: {
+            activeToneClass: 'border-emerald-300/30 bg-[linear-gradient(180deg,rgba(13,41,33,0.98),rgba(8,23,18,0.98))] text-emerald-100 shadow-[0_-10px_30px_rgba(16,185,129,0.14)]',
+            shellClass: 'border-emerald-300/16 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,rgba(11,24,20,0.82),rgba(9,14,12,0.98))]',
+            headerClass: 'border-emerald-300/14 bg-[linear-gradient(180deg,rgba(15,31,26,0.82),rgba(10,17,14,0.82))]',
+            sectionToneClass: 'text-emerald-100',
+        },
+    };
+    const activeQueueWorkspaceToneKey = queueSurface.isCompactQueueSurface
+        ? (queueSurface.activeCompactTab === 'inbox' ? 'inbox' : queueSurface.activeCompactTab === 'add' ? 'add' : 'queue')
+        : (desktopQueueSurfaceTab === 'show' ? 'show' : desktopQueueSurfaceTab === 'inbox' ? 'inbox' : desktopQueueSurfaceTab === 'add' ? 'add' : 'queue');
+    const activeQueueWorkspaceTone = queueWorkspaceToneMap[activeQueueWorkspaceToneKey] || queueWorkspaceToneMap.queue;
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
     const getQueueWorkspaceTabButtonClass = (active = false, activeToneClass = '') => (
         `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
@@ -3300,7 +3357,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         onClick = null,
         featureId = '',
         badgeToneClass = 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
-        activeToneClass = 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(20,28,42,0.98),rgba(11,17,27,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.12)]',
+        activeToneClass = queueWorkspaceToneMap.queue.activeToneClass,
     } = {}) => (
         <button
             key={id}
@@ -3320,7 +3377,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </button>
     );
     const inboxWorkspaceSection = (
-        <div data-feature-id="panel-inbox" className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4">
+        <div data-feature-id="panel-inbox" className={`flex-1 overflow-y-auto custom-scrollbar px-4 py-4 ${activeQueueWorkspaceToneKey === 'inbox' ? 'bg-amber-500/[0.03]' : ''}`}>
             <HostInboxPanel
                 roomCode={roomCode}
                 hostBase={hostBase}
@@ -3380,7 +3437,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [current?.id, handleEndPerformance, nextQueueSong, updateStatus]);
 
     const addToQueueSection = (
-        <div className={`border-b border-white/10 bg-black/20 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'}`}>
+        <div className={`border-b border-white/10 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'} ${addToQueueWorkspaceActive ? 'bg-fuchsia-500/[0.04]' : 'bg-black/20'}`}>
             <SectionHeader
                 label="Build Next Performer"
                 open={addToQueueSectionOpen}
@@ -3391,7 +3448,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     }
                     setShowAddForm(v => !v);
                 }}
-                toneClass="text-base font-black text-[#00C4D9]"
+                toneClass={`text-base font-black ${addToQueueWorkspaceActive ? activeQueueWorkspaceTone.sectionToneClass : 'text-[#00C4D9]'}`}
                 featureId="panel-add-to-queue"
             />
             {addToQueueSectionOpen && (
@@ -3598,7 +3655,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 ) : null}
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
+            <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
                 {mediaLibraryTab === 'scenes' ? (
                 <div className={sceneLibraryGridClass}>
                     {(scenePresets || []).map((preset) => {
@@ -4155,7 +4212,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 label="Live Queue"
                 open={showQueueList}
                 onToggle={() => setShowQueueList(v => !v)}
-                toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
+                toneClass={`text-base font-black ${activeQueueWorkspaceToneKey === 'queue' ? activeQueueWorkspaceTone.sectionToneClass : 'text-[#00C4D9]'} px-1 sticky top-0 z-20 ${activeQueueWorkspaceToneKey === 'queue' ? 'bg-cyan-950/80' : 'bg-zinc-950/95'} backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
                 featureId="panel-queue-list"
             />
             <QueueListPanel
@@ -4748,50 +4805,55 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         ? queueSurface.activeCompactTab === 'queue'
         : desktopQueueSurfaceTab === 'queue';
     const queueWorkspaceHeader = showQueueWorkspaceHeader ? (
-        <div data-feature-id="queue-workspace-top-chrome" className="border-b border-white/10 bg-black/20 px-3 py-3">
-            <div className="grid gap-2.5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)] xl:items-start">
-                <QueueSummaryBar
-                    showQueueSummaryBar={showQueueSummaryBar}
-                    onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
-                    reviewRequiredCount={reviewQueueItems.length}
-                    pending={pending}
-                    queue={queue}
-                    assigned={assigned}
-                    held={held}
-                    queueSurfaceCounts={queueSurface.counts}
-                    runOfShowOpenSlots={runOfShowOpenSlots}
-                    onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
-                    onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
-                    protectedReadyQueueCount={Math.max(0, Math.min(queue.length, current?.id ? 2 : 3))}
-                    protectedReadyQueueTarget={current?.id ? 2 : 3}
-                    lineupHasCurrentPerformer={!!current?.id}
-                    styles={STYLES}
-                    compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
-                    embedded
-                />
-                <HostLiveOpsPanel
-                    current={current}
-                    nextQueueSong={nextQueueSong}
-                    nextQueueText={queueSurface.stageSummary.nextQueueText}
-                    queueCount={queueSurface.stageSummary.queueCount}
-                    readyQueueCount={queueSurface.counts.ready}
-                    assignedQueueCount={queueSurface.counts.assigned}
-                    needsAttentionCount={queueSurface.counts.needsAttention}
-                    currentSourcePlaying={currentSourcePlaying}
-                    runOfShowEnabled={runOfShowEnabled}
-                    runOfShowLiveItem={runOfShowLiveItem}
-                    runOfShowFlightedItem={runOfShowStagedItem}
-                    runOfShowOnDeckItem={runOfShowNextItem}
-                    onOpenRunOfShow={onOpenRunOfShow}
-                    styles={STYLES}
-                    showTitle={false}
-                    compact
-                />
+        <div data-feature-id="queue-workspace-top-chrome" className={`border-b border-white/10 px-3 py-3 ${activeQueueWorkspaceTone.headerClass}`}>
+            <div className="flex flex-wrap items-start gap-2.5">
+                <div className="min-w-[16rem] flex-[1_1_18rem]">
+                    <QueueSummaryBar
+                        showQueueSummaryBar={showQueueSummaryBar}
+                        onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
+                        reviewRequiredCount={reviewQueueItems.length}
+                        pending={pending}
+                        queue={queue}
+                        assigned={assigned}
+                        held={held}
+                        queueSurfaceCounts={queueSurface.counts}
+                        runOfShowOpenSlots={runOfShowOpenSlots}
+                        onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
+                        onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
+                        protectedReadyQueueCount={Math.max(0, Math.min(queue.length, current?.id ? 2 : 3))}
+                        protectedReadyQueueTarget={current?.id ? 2 : 3}
+                        lineupHasCurrentPerformer={!!current?.id}
+                        styles={STYLES}
+                        compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
+                        embedded
+                    />
+                </div>
+                <div className="min-w-[20rem] flex-[2_1_34rem]">
+                    <HostLiveOpsPanel
+                        current={current}
+                        nextQueueSong={nextQueueSong}
+                        nextQueueText={queueSurface.stageSummary.nextQueueText}
+                        queueCount={queueSurface.stageSummary.queueCount}
+                        readyQueueCount={queueSurface.counts.ready}
+                        assignedQueueCount={queueSurface.counts.assigned}
+                        needsAttentionCount={queueSurface.counts.needsAttention}
+                        currentSourcePlaying={currentSourcePlaying}
+                        runOfShowEnabled={runOfShowEnabled}
+                        runOfShowLiveItem={runOfShowLiveItem}
+                        runOfShowFlightedItem={runOfShowStagedItem}
+                        runOfShowOnDeckItem={runOfShowNextItem}
+                        onOpenRunOfShow={onOpenRunOfShow}
+                        styles={STYLES}
+                        showTitle={false}
+                        compact
+                        inline
+                    />
+                </div>
             </div>
         </div>
     ) : null;
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
-        <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
+        <div className={`${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} min-h-0 flex flex-col overflow-hidden min-w-0`}>
             <div className={queueWorkspaceTabListClass}>
                 {renderQueueWorkspaceTabButton({
                     id: 'queue',
@@ -4801,7 +4863,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('queue'),
                     featureId: 'queue-surface-tab-queue-desktop',
                     badge: queueSurface.counts.ready,
-                    activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
+                    activeToneClass: queueWorkspaceToneMap.queue.activeToneClass,
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'add',
@@ -4810,7 +4872,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     active: desktopQueueSurfaceTab === 'add',
                     onClick: () => setDesktopQueueSurfaceTab('add'),
                     featureId: 'queue-surface-tab-add-desktop',
-                    activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
+                    activeToneClass: queueWorkspaceToneMap.add.activeToneClass,
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'inbox',
@@ -4820,7 +4882,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('inbox'),
                     featureId: 'queue-surface-tab-inbox-desktop',
                     badge: inboxTotalCount,
-                    activeToneClass: 'border-amber-300/30 bg-[linear-gradient(180deg,rgba(44,28,12,0.98),rgba(24,16,9,0.98))] text-amber-100 shadow-[0_-10px_30px_rgba(245,158,11,0.14)]',
+                    activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
                     badgeToneClass: inboxNeedsHostCount > 0
                         ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
                         : 'border-white/10 bg-black/20 text-zinc-200',
@@ -4833,22 +4895,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('show'),
                     featureId: 'queue-surface-tab-show-desktop',
                     badge: runOfShowNeedsAttentionCount,
-                    activeToneClass: 'border-emerald-300/30 bg-[linear-gradient(180deg,rgba(13,41,33,0.98),rgba(8,23,18,0.98))] text-emerald-100 shadow-[0_-10px_30px_rgba(16,185,129,0.14)]',
+                    activeToneClass: queueWorkspaceToneMap.show.activeToneClass,
                     badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
                 }) : null}
             </div>
             {queueWorkspaceHeader}
             {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud
-                ? runOfShowQueueHudSection
+                ? <div className="flex-1 min-h-0 overflow-hidden bg-emerald-500/[0.03]">{runOfShowQueueHudSection}</div>
                 : desktopQueueSurfaceTab === 'inbox'
                     ? inboxWorkspaceSection
                 : desktopQueueSurfaceTab === 'add'
-                    ? <div className="flex-1 min-h-0 overflow-hidden">{addToQueueSection}</div>
+                    ? <div className="flex-1 min-h-0 overflow-hidden bg-fuchsia-500/[0.03]">{addToQueueSection}</div>
                     : queueListSection}
         </div>
     ) : null;
     const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
-        <div className="border-b border-white/10 bg-black/20 px-3 py-3">
+        <div className={`border-b border-white/10 px-3 py-3 ${activeQueueWorkspaceTone.headerClass}`}>
             <div className="flex flex-wrap items-center gap-2">
                 <div className="flex flex-wrap items-end gap-1.5">
                     {renderQueueWorkspaceTabButton({
@@ -4859,6 +4921,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         onClick: () => queueSurface.activateCompactTab('queue'),
                         featureId: 'queue-surface-tab-queue',
                         badge: queueSurface.counts.ready,
+                        activeToneClass: queueWorkspaceToneMap.queue.activeToneClass,
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'add-mobile',
@@ -4867,6 +4930,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         active: queueSurface.activeCompactTab === 'add',
                         onClick: () => queueSurface.activateCompactTab('add'),
                         featureId: 'queue-surface-tab-add',
+                        activeToneClass: queueWorkspaceToneMap.add.activeToneClass,
                     })}
                     {renderQueueWorkspaceTabButton({
                         id: 'inbox-mobile',
@@ -4876,6 +4940,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         onClick: () => queueSurface.activateCompactTab('inbox'),
                         featureId: 'queue-surface-tab-inbox',
                         badge: inboxTotalCount,
+                        activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
                         badgeToneClass: inboxNeedsHostCount > 0
                             ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
                             : 'border-white/10 bg-black/20 text-zinc-200',
@@ -4899,13 +4964,13 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     ) : null;
     const compactQueueSurfacePanel = queueSurface.isCompactQueueSurface ? (
-        <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
+        <div className={`flex-1 ${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
             {compactQueueSurfaceControls}
             {queueWorkspaceHeader}
             {queueSurface.activeCompactTab === 'inbox' ? (
                 inboxWorkspaceSection
             ) : queueSurface.activeCompactTab === 'add' ? (
-                <div className="min-h-0 overflow-y-auto custom-scrollbar">
+                <div className="min-h-0 overflow-y-auto custom-scrollbar bg-fuchsia-500/[0.03]">
                     {addToQueueSection}
                 </div>
             ) : queueListSection}
@@ -5020,19 +5085,28 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {sceneLibraryOpen ? (
                 <div
                     data-feature-id="tv-moments-library-modal"
-                    className="fixed inset-0 z-[360] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/78 p-2 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm sm:p-4 md:p-5"
+                    className="fixed inset-0 z-[360] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/78 p-2 backdrop-blur-sm sm:p-4 md:p-5"
+                    style={{
+                        paddingTop: sceneLibraryViewportInsetTop,
+                        paddingBottom: sceneLibraryViewportInsetBottom,
+                    }}
                     onClick={() => setSceneLibraryOpen(false)}
                 >
                     <button
                         type="button"
                         aria-label="Close Media Library"
                         onClick={() => setSceneLibraryOpen(false)}
-                        className="fixed right-3 top-[max(env(safe-area-inset-top),0.75rem)] z-[365] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/35 hover:text-cyan-100 sm:right-4 sm:top-4"
+                        className="fixed right-3 z-[365] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/35 hover:text-cyan-100 sm:right-4"
+                        style={{ top: `calc(${sceneLibraryViewportInsetTop} - 0.5rem)` }}
                     >
                         <i className="fa-solid fa-xmark text-sm"></i>
                     </button>
                     <div
-                        className="flex h-[min(calc(100dvh-1rem),68rem)] w-full max-w-6xl min-h-0 min-w-0 flex-col sm:h-[min(calc(100dvh-1.5rem),68rem)]"
+                        className="flex w-full max-w-6xl min-h-0 min-w-0 flex-col self-start overflow-hidden"
+                        style={{
+                            height: sceneLibraryViewportHeight,
+                            maxHeight: sceneLibraryViewportHeight,
+                        }}
                         onClick={(event) => event.stopPropagation()}
                     >
                         {scenePresetLibrarySection}

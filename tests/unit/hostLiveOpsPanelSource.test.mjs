@@ -68,6 +68,14 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.doesNotMatch(hostQueueTabSource, /const compactQueueStatusChips = \[/);
   assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
+  assert.match(hostQueueTabSource, /flex items-start justify-center overflow-y-auto overscroll-contain/);
+  assert.match(hostQueueTabSource, /const \[sceneLibraryChromeOffset, setSceneLibraryChromeOffset\] = useState\(112\);/);
+  assert.match(hostQueueTabSource, /document\.querySelector\('\[data-host-top-chrome="true"\]'\)/);
+  assert.match(hostQueueTabSource, /const sceneLibraryViewportHeight = `calc\(100dvh - \$\{sceneLibraryViewportInsetTop\} - \$\{sceneLibraryViewportInsetBottom\}\)`;/);
+  assert.match(hostQueueTabSource, /style=\{\{\s*paddingTop: sceneLibraryViewportInsetTop,\s*paddingBottom: sceneLibraryViewportInsetBottom,\s*\}\}/s);
+  assert.match(hostQueueTabSource, /style=\{\{ top: `calc\(\$\{sceneLibraryViewportInsetTop\} - 0\.5rem\)` \}\}/);
+  assert.match(hostQueueTabSource, /height: sceneLibraryViewportHeight,\s*maxHeight: sceneLibraryViewportHeight,/s);
+  assert.match(hostQueueTabSource, /sceneLibraryScrollRef\.current\?\.scrollTo\?\.\(\{ top: 0, behavior: 'auto' \}\)/);
   assert.match(hostQueueTabSource, /onSceneLibraryModalChange\?\.\(sceneLibraryOpen\)/);
   assert.match(hostQueueTabSource, /multiple/);
   assert.match(hostQueueTabSource, /Upload Scenes/);
@@ -79,6 +87,7 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
 
   assert.match(source, /data-feature-id="host-live-ops-panel"/);
   assert.match(source, /showTitle = true/);
+  assert.match(source, /inline = false/);
   assert.match(source, /const SnapshotCard = \(\{/);
   assert.match(source, /basis-\[188px\]/);
   assert.match(source, /const getRunOfShowSceneArtwork = \(item = \{\}\) =>/);
@@ -91,6 +100,7 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   assert.match(source, /Planned/);
   assert.match(source, /artworkUrl=\{getRunOfShowSceneArtwork\(queuedMoment\)\}/);
   assert.match(source, /avatarEmoji=\{getRunOfShowSceneEmoji\(queuedMoment\)\}/);
+  assert.match(source, /if \(compact && inline\)/);
   assert.match(source, /meta=\{queuedMoment \? \(runOfShowFlightedItem\?\.id \? 'Armed' : 'On Deck'\) : \(runOfShowEnabled \? 'Plan' : 'Planner Off'\)\}/);
   assert.match(source, /\? 'Open slot'/);
   assert.match(source, />\s*Planner\s*</);
