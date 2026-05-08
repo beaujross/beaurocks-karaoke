@@ -36,12 +36,13 @@ const SnapshotCard = ({
     meta = '',
     toneClass = 'border-white/10 bg-black/20 text-zinc-100',
     metaToneClass = 'border-white/10 bg-black/20 text-zinc-200',
+    compact = false,
 }) => (
-    <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
+    <div className={`${compact ? 'rounded-xl px-2.5 py-2.5' : 'rounded-2xl px-3 py-3'} border ${toneClass}`}>
         <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0 flex-1 basis-[188px]">
+            <div className={`min-w-0 flex-1 ${compact ? 'basis-[164px]' : 'basis-[188px]'}`}>
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-                <div className="mt-1 break-words text-sm font-black leading-tight text-white">{title}</div>
+                <div className={`mt-1 break-words font-black leading-tight text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>{title}</div>
                 <div className="mt-1 break-words text-[11px] leading-snug text-zinc-400">{detail}</div>
             </div>
             {meta ? (
@@ -69,6 +70,7 @@ export default function HostLiveOpsPanel({
     onOpenRunOfShow,
     styles,
     showTitle = true,
+    compact = false,
 }) {
     const hasCurrentPerformance = !!current?.id;
     const currentMoment = runOfShowLiveItem?.id ? runOfShowLiveItem : null;
@@ -83,7 +85,7 @@ export default function HostLiveOpsPanel({
     return (
         <section
             data-feature-id="host-live-ops-panel"
-            className="px-4 py-3"
+            className={compact ? 'px-3 py-2.5' : 'px-4 py-3'}
         >
             <div className="flex flex-wrap items-start justify-between gap-3">
                 {showTitle ? (
@@ -96,10 +98,19 @@ export default function HostLiveOpsPanel({
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">{readyQueueCount} ready</span>
                     {assignedQueueCount > 0 ? <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-1 text-violet-100">{assignedQueueCount} linked</span> : null}
                     {needsAttentionCount > 0 ? <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2 py-1 text-amber-100">{needsAttentionCount} issues</span> : null}
+                    {compact && typeof onOpenRunOfShow === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => onOpenRunOfShow?.()}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[30px] px-2.5 py-1 text-[10px]`}
+                        >
+                            Planner
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
-            <div className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+            <div className={`grid gap-2 ${compact ? 'mt-2 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]' : 'mt-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]'}`}>
                 <SnapshotCard
                     label="On Stage"
                     title={hasCurrentPerformance ? buildQueueSongLabel(current) : 'No one on stage'}
@@ -119,6 +130,7 @@ export default function HostLiveOpsPanel({
                         : currentMoment
                             ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100'
                             : 'border-white/10 bg-black/20 text-zinc-200'}
+                    compact={compact}
                 />
                 <SnapshotCard
                     label="Next Singer"
@@ -131,6 +143,7 @@ export default function HostLiveOpsPanel({
                     metaToneClass={nextQueueSong
                         ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
                         : 'border-white/10 bg-black/20 text-zinc-200'}
+                    compact={compact}
                 />
                 <SnapshotCard
                     label="Planned"
@@ -149,25 +162,28 @@ export default function HostLiveOpsPanel({
                         : (runOfShowEnabled
                             ? 'border-amber-300/25 bg-amber-500/10 text-amber-100'
                             : 'border-white/10 bg-black/20 text-zinc-200')}
+                    compact={compact}
                 />
             </div>
 
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                <div className="text-[11px] text-zinc-400">
-                    {runOfShowEnabled
-                        ? `${plannedMomentCount} in horizon`
-                        : 'Queue-first'}
+            {!compact ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+                    <div className="text-[11px] text-zinc-400">
+                        {runOfShowEnabled
+                            ? `${plannedMomentCount} in horizon`
+                            : 'Queue-first'}
+                    </div>
+                    {typeof onOpenRunOfShow === 'function' ? (
+                        <button
+                            type="button"
+                            onClick={() => onOpenRunOfShow?.()}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[36px] px-3 py-1.5 text-[11px]`}
+                        >
+                            Planner
+                        </button>
+                    ) : null}
                 </div>
-                {typeof onOpenRunOfShow === 'function' ? (
-                    <button
-                        type="button"
-                        onClick={() => onOpenRunOfShow?.()}
-                        className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} min-h-[36px] px-3 py-1.5 text-[11px]`}
-                    >
-                        Planner
-                    </button>
-                ) : null}
-            </div>
+            ) : null}
         </section>
     );
 }

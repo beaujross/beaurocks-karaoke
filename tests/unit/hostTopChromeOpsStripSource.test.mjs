@@ -9,8 +9,8 @@ const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 test('host top chrome keeps the vibe meter but drops the redundant ops strip', () => {
   assert.match(source, /data-feature-id="top-chrome-vibe-meter"/);
   assert.match(source, /Vibe Meter/);
-  assert.match(source, /crowdPulseMeta\.alignmentLabel/);
-  assert.match(source, /crowdPulseMeta\.hostDirective/);
+  assert.match(source, /const crowdPulseLabel = crowdPulseMeta\?\.alignmentLabel/);
+  assert.match(source, /const crowdPulseDirective = crowdPulseMeta\?\.hostDirective/);
   assert.doesNotMatch(source, /OpsStatusPill/);
   assert.doesNotMatch(source, /data-feature-id="top-chrome-ops-strip"/);
   assert.doesNotMatch(source, /Ops Strip/);

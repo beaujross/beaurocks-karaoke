@@ -360,6 +360,10 @@ const HostTopChrome = ({
         && missionStatus === 'needs_attention'
         && missionRecommendation?.id !== 'crowd_check';
     const crowdPulseMeta = crowdPulse && typeof crowdPulse === 'object' ? crowdPulse : null;
+    const crowdPulseLabel = crowdPulseMeta?.alignmentLabel || crowdPulseMeta?.label || 'Waiting On Phones';
+    const crowdPulseSummary = crowdPulseMeta?.alignmentSummary || crowdPulseMeta?.summary || 'No audience signal yet.';
+    const crowdPulseDirective = crowdPulseMeta?.hostDirective || crowdPulseMeta?.recommendationTitle || 'Keep the room moving.';
+    const crowdPulsePct = crowdPulseMeta?.metrics?.alignmentPct || 0;
     const normalizedRunOfShowDirector = React.useMemo(
         () => normalizeRunOfShowDirector(runOfShowDirector || {}),
         [runOfShowDirector]
@@ -1212,6 +1216,19 @@ const HostTopChrome = ({
                             toneClass={permissionTone}
                             title={authSessionReady ? 'Session active.' : 'Session not ready.'}
                         />
+                        {crowdPulseMeta ? (
+                            <div
+                                data-feature-id="top-chrome-vibe-meter"
+                                title={`${crowdPulseSummary} ${crowdPulseDirective}`.trim()}
+                                className={`inline-flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] ${crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20 text-zinc-100'}`}
+                            >
+                                <span className="font-black text-white/80">Vibe Meter</span>
+                                <span className="font-black text-white">{crowdPulsePct}%</span>
+                                <span className={`max-w-[10rem] truncate rounded-full border px-2 py-0.5 ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                    {crowdPulseLabel}
+                                </span>
+                            </div>
+                        ) : null}
                     </div>
                 ) : null}
                 <button
@@ -2492,32 +2509,6 @@ const HostTopChrome = ({
                     )}
                 </div>
             </div>
-            {!minimalRuntimeChrome && crowdPulseMeta ? (
-                <div className="mt-2">
-                    <div
-                        data-feature-id="top-chrome-vibe-meter"
-                        className={`rounded-2xl border px-3 py-2.5 shadow-[0_12px_28px_rgba(0,0,0,0.22)] ${crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20'} xl:min-w-[340px]`}
-                    >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-white/75">Vibe Meter</div>
-                            <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
-                                {crowdPulseMeta.alignmentLabel || crowdPulseMeta.label || 'Waiting On Phones'}
-                            </span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-end gap-3">
-                            <div className="text-2xl font-black leading-none text-white">
-                                {crowdPulseMeta.metrics?.alignmentPct || 0}%
-                            </div>
-                            <div className="pb-0.5 text-xs text-zinc-200">
-                                {crowdPulseMeta.alignmentSummary || crowdPulseMeta.summary || 'No audience signal yet.'}
-                            </div>
-                        </div>
-                        <div className="mt-2 text-[11px] text-white/85">
-                            {crowdPulseMeta.hostDirective || crowdPulseMeta.recommendationTitle || 'Keep the room moving.'}
-                        </div>
-                    </div>
-                </div>
-            ) : null}
             {showMissionStatusBanner && (
                 <div className="mt-2 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                     <i className="fa-solid fa-triangle-exclamation mr-2"></i>

@@ -44,7 +44,8 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /runOfShowFlightedItem=\{runOfShowStagedItem\}/);
   assert.match(hostQueueTabSource, /runOfShowOnDeckItem=\{runOfShowNextItem\}/);
   assert.match(hostQueueTabSource, /showStageSummaryHeader=\{false\}/);
-  assert.match(hostQueueTabSource, /h-full min-h-0 flex flex-col overflow-hidden/);
+  assert.match(hostQueueTabSource, /allowHostPanelPageScroll/);
+  assert.match(hostQueueTabSource, /h-full min-h-0 overflow-hidden/);
   assert.match(hostQueueTabSource, /flex-1 min-h-0 overflow-y-auto custom-scrollbar/);
   assert.match(hostQueueTabSource, /queueWorkspaceTabListClass/);
   assert.match(hostQueueTabSource, /renderQueueWorkspaceTabButton/);
@@ -60,7 +61,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
   assert.match(hostQueueTabSource, /data-feature-id="queue-workspace-top-chrome"/);
   assert.match(hostQueueTabSource, /<QueueSummaryBar/);
-  assert.match(hostQueueTabSource, /<QueueQuickAccessPanel/);
+  assert.match(hostQueueTabSource, /renderQuickAccessInline=\{!!queueQuickControls\}/);
   assert.doesNotMatch(hostQueueTabSource, /const compactQueueStatusChips = \[/);
   assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);

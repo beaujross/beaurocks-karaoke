@@ -4,7 +4,7 @@ import SoundboardControls from './SoundboardControls';
 import HostInboxPanel from './HostInboxPanel';
 import HostNightPilotPrototype from './HostNightPilotPrototype';
 import HostStageConsoleExperimental from './HostStageConsoleExperimental';
-import QueueListPanel, { QueueQuickAccessPanel, QueueSummaryBar } from './QueueListPanel';
+import QueueListPanel, { QueueSummaryBar } from './QueueListPanel';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
 import RunOfShowQueueHud from './RunOfShowQueueHud';
@@ -3224,6 +3224,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const isMobileLayout = layoutMode === 'mobile';
     const isTightLayout = layoutMode === 'laptop-tight';
     const isDenseLayout = mediumViewport || isTightLayout;
+    const allowHostPanelPageScroll = isMobileLayout || compactViewport || mediumViewport;
     const sectionPaddingClass = isDenseLayout ? 'px-3 py-3' : 'px-4 py-4';
     const activeEditingSong = editingSongId ? songs.find((song) => song.id === editingSongId) || null : null;
     const hasRunOfShowPlan = Array.isArray(runOfShowDirector?.items) && runOfShowDirector.items.length > 0;
@@ -4152,7 +4153,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </section>
     );
     const queueListSection = (
-        <div className={`flex-1 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
+        <div className={`flex-1 min-h-0 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
             <SectionHeader
                 label="Queue"
@@ -4215,7 +4216,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
                 quickControls={queueQuickControls}
                 renderSummaryBarInline={false}
-                renderQuickAccessInline={false}
+                renderQuickAccessInline={!!queueQuickControls}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -4789,18 +4790,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     runOfShowOnDeckItem={runOfShowNextItem}
                     onOpenRunOfShow={onOpenRunOfShow}
                     styles={STYLES}
-                    showTitle
+                    showTitle={false}
+                    compact
                 />
             </div>
-            {queueQuickControls ? (
-                <div className="mt-3">
-                    <QueueQuickAccessPanel
-                        styles={STYLES}
-                        quickControls={queueQuickControls}
-                        embedded
-                    />
-                </div>
-            ) : null}
         </div>
     ) : null;
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
@@ -4985,7 +4978,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     ) : null;
 
     return (
-        <div className={`h-full flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} overflow-hidden relative`}>
+        <div className={`${allowHostPanelPageScroll ? 'min-h-full overflow-visible' : 'h-full overflow-hidden'} flex flex-col ${compactViewport ? 'gap-2' : 'gap-3'} relative`}>
             {ytSearchOpen ? (
                 <React.Suspense fallback={null}>
                     <QueueYouTubeSearchModal
@@ -5030,9 +5023,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {sceneLibraryOpen ? (
                 <div
                     data-feature-id="tv-moments-library-modal"
-                    className="fixed inset-0 z-[330] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/78 p-3 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm sm:items-center sm:p-4 md:p-5"
+                    className="fixed inset-0 z-[360] flex items-center justify-center overflow-y-auto overscroll-contain bg-black/78 p-2 pt-[max(env(safe-area-inset-top),0.75rem)] pb-[max(env(safe-area-inset-bottom),0.75rem)] backdrop-blur-sm sm:p-4 md:p-5"
                     onClick={() => setSceneLibraryOpen(false)}
                 >
+                    <button
+                        type="button"
+                        aria-label="Close Media Library"
+                        onClick={() => setSceneLibraryOpen(false)}
+                        className="fixed right-3 top-[max(env(safe-area-inset-top),0.75rem)] z-[365] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white shadow-[0_12px_28px_rgba(0,0,0,0.38)] backdrop-blur-sm transition hover:border-cyan-300/35 hover:text-cyan-100 sm:right-4 sm:top-4"
+                    >
+                        <i className="fa-solid fa-xmark text-sm"></i>
+                    </button>
                     <div
                         className="flex h-[min(calc(100dvh-1rem),68rem)] w-full max-w-6xl min-h-0 min-w-0 flex-col sm:h-[min(calc(100dvh-1.5rem),68rem)]"
                         onClick={(event) => event.stopPropagation()}
@@ -5261,23 +5262,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     utilityPanel={legacySoundboardSection}
                 />
             ) : (
-                <div className={`flex-1 min-h-0 ${
+                <div className={`flex-1 ${allowHostPanelPageScroll ? 'min-h-full' : 'min-h-0'} ${
                     isMobileLayout
                         ? 'flex flex-col gap-3'
                         : isTightLayout
                             ? 'grid grid-cols-[minmax(228px,0.82fr)_minmax(0,1.2fr)] gap-3.5'
                             : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
-                } overflow-hidden`}>
+                } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
                 {/* LEFT CONTROLS */}
                 <div className={`w-full flex flex-col ${
                     isMobileLayout
-                        ? 'order-2 min-h-0 max-h-[38vh] pr-1.5'
+                        ? (allowHostPanelPageScroll ? 'order-2 min-h-0' : 'order-2 min-h-0 max-h-[38vh] pr-1.5')
                         : isTightLayout
                             ? 'order-2 min-h-0 pr-1'
                             : 'min-h-0 pr-1'
                 }`}>
-                    <div className={`${STYLES.panel} h-full min-h-0 flex flex-col overflow-hidden`}>
-                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    <div className={`${STYLES.panel} ${allowHostPanelPageScroll ? 'min-h-0 overflow-visible' : 'h-full min-h-0 overflow-hidden'} flex flex-col`}>
+                        <div className={allowHostPanelPageScroll ? '' : 'flex-1 min-h-0 overflow-y-auto custom-scrollbar'}>
                             <>
                                 {hostPanelLayoutControls}
                                 <section className={`${sectionPaddingClass} border-b border-white/10`}>
