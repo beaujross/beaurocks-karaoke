@@ -4,7 +4,7 @@ import SoundboardControls from './SoundboardControls';
 import HostInboxPanel from './HostInboxPanel';
 import HostNightPilotPrototype from './HostNightPilotPrototype';
 import HostStageConsoleExperimental from './HostStageConsoleExperimental';
-import QueueListPanel from './QueueListPanel';
+import QueueListPanel, { QueueQuickAccessPanel, QueueSummaryBar } from './QueueListPanel';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
 import RunOfShowQueueHud from './RunOfShowQueueHud';
@@ -464,15 +464,13 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', queueQuickControls = null, runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
     const {
         stagePanelOpen,
         setStagePanelOpen,
-        liveOpsOpen,
-        setLiveOpsOpen,
         tvControlsOpen,
         setTvControlsOpen,
         soundboardOpen,
@@ -4215,6 +4213,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
                 onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
+                quickControls={queueQuickControls}
+                renderSummaryBarInline={false}
+                renderQuickAccessInline={false}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -4748,6 +4749,60 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             {scenePresetsSection}
         </div>
     );
+    const showQueueWorkspaceHeader = queueSurface.isCompactQueueSurface
+        ? queueSurface.activeCompactTab === 'queue'
+        : desktopQueueSurfaceTab === 'queue';
+    const queueWorkspaceHeader = showQueueWorkspaceHeader ? (
+        <div data-feature-id="queue-workspace-top-chrome" className="border-b border-white/10 bg-black/20 px-3 py-3">
+            <div className="grid gap-3 xl:grid-cols-[minmax(320px,0.88fr)_minmax(0,1.12fr)] xl:items-start">
+                <QueueSummaryBar
+                    showQueueSummaryBar={showQueueSummaryBar}
+                    onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
+                    reviewRequiredCount={reviewQueueItems.length}
+                    pending={pending}
+                    queue={queue}
+                    assigned={assigned}
+                    held={held}
+                    queueSurfaceCounts={queueSurface.counts}
+                    runOfShowOpenSlots={runOfShowOpenSlots}
+                    onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
+                    onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
+                    protectedReadyQueueCount={Math.max(0, Math.min(queue.length, current?.id ? 2 : 3))}
+                    protectedReadyQueueTarget={current?.id ? 2 : 3}
+                    lineupHasCurrentPerformer={!!current?.id}
+                    styles={STYLES}
+                    compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
+                    embedded
+                />
+                <HostLiveOpsPanel
+                    current={current}
+                    nextQueueSong={nextQueueSong}
+                    nextQueueText={queueSurface.stageSummary.nextQueueText}
+                    queueCount={queueSurface.stageSummary.queueCount}
+                    readyQueueCount={queueSurface.counts.ready}
+                    assignedQueueCount={queueSurface.counts.assigned}
+                    needsAttentionCount={queueSurface.counts.needsAttention}
+                    currentSourcePlaying={currentSourcePlaying}
+                    runOfShowEnabled={runOfShowEnabled}
+                    runOfShowLiveItem={runOfShowLiveItem}
+                    runOfShowFlightedItem={runOfShowStagedItem}
+                    runOfShowOnDeckItem={runOfShowNextItem}
+                    onOpenRunOfShow={onOpenRunOfShow}
+                    styles={STYLES}
+                    showTitle
+                />
+            </div>
+            {queueQuickControls ? (
+                <div className="mt-3">
+                    <QueueQuickAccessPanel
+                        styles={STYLES}
+                        quickControls={queueQuickControls}
+                        embedded
+                    />
+                </div>
+            ) : null}
+        </div>
+    ) : null;
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
         <div className={`${STYLES.panel} min-h-0 flex flex-col overflow-hidden min-w-0`}>
             <div className={queueWorkspaceTabListClass}>
@@ -4791,6 +4846,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
                 }) : null}
             </div>
+            {queueWorkspaceHeader}
             {desktopQueueSurfaceTab === 'show' && hasRunOfShowQueueHud
                 ? runOfShowQueueHudSection
                 : desktopQueueSurfaceTab === 'inbox'
@@ -4800,40 +4856,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     : queueListSection}
         </div>
     ) : null;
-    const compactQueueStatusChips = [
-        queueSurface.counts.needsAttention > 0
-            ? {
-                key: 'needsAttention',
-                className: 'rounded-full border border-amber-300/30 bg-amber-500/10 px-2.5 py-1 text-amber-100',
-                label: `Needs Attention ${queueSurface.counts.needsAttention}`
-            }
-            : null,
-        {
-            key: 'ready',
-            className: 'rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2.5 py-1 text-cyan-100',
-            label: `Ready ${queueSurface.counts.ready}`
-        },
-        queueSurface.counts.assigned > 0
-            ? {
-                key: 'assigned',
-                className: 'rounded-full border border-violet-300/30 bg-violet-500/10 px-2.5 py-1 text-violet-100',
-                label: `Assigned ${queueSurface.counts.assigned}`
-            }
-            : null
-    ].filter(Boolean);
-    const showCompactQueueStatusChips = compactQueueStatusChips.length > 1 || compactQueueStatusChips.some((chip) => chip.key !== 'ready');
     const compactQueueSurfaceControls = queueSurface.isCompactQueueSurface ? (
         <div className="border-b border-white/10 bg-black/20 px-3 py-3">
-            {showCompactQueueStatusChips ? (
-                <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.16em]">
-                    {compactQueueStatusChips.map((chip) => (
-                        <span key={chip.key} className={chip.className}>
-                            {chip.label}
-                        </span>
-                    ))}
-                </div>
-            ) : null}
-            <div className={`${showCompactQueueStatusChips ? 'mt-3 ' : ''}flex flex-wrap items-center gap-2`}>
+            <div className="flex flex-wrap items-center gap-2">
                 <div className="flex flex-wrap items-end gap-1.5">
                     {renderQueueWorkspaceTabButton({
                         id: 'queue-mobile',
@@ -4885,6 +4910,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const compactQueueSurfacePanel = queueSurface.isCompactQueueSurface ? (
         <div className={`flex-1 ${STYLES.panel} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
             {compactQueueSurfaceControls}
+            {queueWorkspaceHeader}
             {queueSurface.activeCompactTab === 'inbox' ? (
                 inboxWorkspaceSection
             ) : queueSurface.activeCompactTab === 'add' ? (
@@ -5310,33 +5336,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         emoji={EMOJI}
                                     />
                                 )}
-                                </section>
-                                <section className={`${sectionPaddingClass} border-b border-white/10`}>
-                                    <SectionHeader
-                                        label="Live Snapshot"
-                                        open={liveOpsOpen}
-                                        onToggle={() => setLiveOpsOpen((value) => !value)}
-                                        featureId="panel-live-snapshot"
-                                    />
-                                    {liveOpsOpen ? (
-                                        <HostLiveOpsPanel
-                                            current={current}
-                                            nextQueueSong={nextQueueSong}
-                                            nextQueueText={queueSurface.stageSummary.nextQueueText}
-                                            queueCount={queueSurface.stageSummary.queueCount}
-                                            readyQueueCount={queueSurface.counts.ready}
-                                            assignedQueueCount={queueSurface.counts.assigned}
-                                            needsAttentionCount={queueSurface.counts.needsAttention}
-                                            currentSourcePlaying={currentSourcePlaying}
-                                            runOfShowEnabled={runOfShowEnabled}
-                                            runOfShowLiveItem={runOfShowLiveItem}
-                                            runOfShowFlightedItem={runOfShowStagedItem}
-                                            runOfShowOnDeckItem={runOfShowNextItem}
-                                            onOpenRunOfShow={onOpenRunOfShow}
-                                            styles={STYLES}
-                                            showTitle={false}
-                                        />
-                                    ) : null}
                                 </section>
                             </>
                             {legacySoundboardSection}

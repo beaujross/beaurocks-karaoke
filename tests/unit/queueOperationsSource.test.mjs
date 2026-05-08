@@ -6,15 +6,18 @@ const queueSongCardSource = readFileSync('src/apps/Host/components/QueueSongCard
 const queueListPanelSource = readFileSync('src/apps/Host/components/QueueListPanel.jsx', 'utf8');
 
 test('queue rows expose deeper actions inline instead of routing to a separate inspector', () => {
-  assert.match(queueSongCardSource, /Queue Actions/);
   assert.match(queueSongCardSource, /selected \? 'Less' : 'More'/);
   assert.match(queueSongCardSource, /onSelect\?\.\(song\)/);
   assert.match(queueSongCardSource, /Approve/);
   assert.match(queueSongCardSource, /Review/);
   assert.match(queueSongCardSource, /Linked/);
-  assert.match(queueSongCardSource, /Edit Details/);
-  assert.match(queueSongCardSource, /Hold Singer/);
-  assert.match(queueSongCardSource, /Remove From Queue/);
+  assert.match(queueSongCardSource, /title="Edit queue item details"/);
+  assert.match(queueSongCardSource, /title="Temporarily hold this singer"/);
+  assert.match(queueSongCardSource, /title=\{isPendingApproval \? 'Remove this pending request' : 'Remove this singer from the queue'\}/);
+  assert.match(queueSongCardSource, /data-feature-id="queue-song-slot-assignment"/);
+  assert.doesNotMatch(queueSongCardSource, /Queue Actions/);
+  assert.doesNotMatch(queueSongCardSource, /data-feature-id="queue-song-inline-actions"/);
+  assert.doesNotMatch(queueSongCardSource, /data-feature-id="queue-song-expanded-actions"/);
 });
 
 test('queue list keeps queue-item operations inside the cards and preserves live controls', () => {

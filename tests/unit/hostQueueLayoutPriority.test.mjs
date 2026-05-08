@@ -27,7 +27,7 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
   const lockedQueueIndex = queueListPanelSource.indexOf('Locked Next Performers');
   const benchQueueIndex = queueListPanelSource.indexOf('Build The Bench');
   const quickAccessIndex = queueListPanelSource.indexOf('<QueueQuickAccessPanel');
-  const inlineActionsIndex = queueSongCardSource.indexOf('data-feature-id="queue-song-inline-actions"');
+  const inlineActionsIndex = queueSongCardSource.indexOf("selected ? 'Less' : 'More'");
   assert.notStrictEqual(lockedQueueIndex, -1, 'Queue list panel should still expose the protected live lineup');
   assert.notStrictEqual(benchQueueIndex, -1, 'Queue list panel should still expose the later ready bench');
   assert.notStrictEqual(quickAccessIndex, -1, 'Queue list panel should still render quick access controls');

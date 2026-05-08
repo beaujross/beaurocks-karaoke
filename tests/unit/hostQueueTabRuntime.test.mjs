@@ -220,7 +220,7 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.match(markup, /Expand All/);
   assert.match(markup, /Collapse All/);
   assert.match(markup, /Reset/);
-  assert.match(markup, /data-feature-id="panel-live-snapshot"/);
+  assert.match(markup, /data-feature-id="queue-workspace-top-chrome"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);

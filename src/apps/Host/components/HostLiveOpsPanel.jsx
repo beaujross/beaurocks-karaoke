@@ -38,14 +38,14 @@ const SnapshotCard = ({
     metaToneClass = 'border-white/10 bg-black/20 text-zinc-200',
 }) => (
     <div className={`rounded-2xl border px-3 py-3 ${toneClass}`}>
-        <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 basis-[188px]">
                 <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-                <div className="mt-1 text-sm font-black leading-tight text-white">{title}</div>
-                <div className="mt-1 text-[11px] leading-snug text-zinc-400">{detail}</div>
+                <div className="mt-1 break-words text-sm font-black leading-tight text-white">{title}</div>
+                <div className="mt-1 break-words text-[11px] leading-snug text-zinc-400">{detail}</div>
             </div>
             {meta ? (
-                <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${metaToneClass}`}>
+                <span className={`inline-flex w-fit shrink-0 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${metaToneClass}`}>
                     {meta}
                 </span>
             ) : null}
@@ -99,7 +99,7 @@ export default function HostLiveOpsPanel({
                 </div>
             </div>
 
-            <div className="mt-3 grid gap-2 xl:grid-cols-3">
+            <div className="mt-3 grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
                 <SnapshotCard
                     label="On Stage"
                     title={hasCurrentPerformance ? buildQueueSongLabel(current) : 'No one on stage'}

@@ -2,13 +2,6 @@ import React from 'react';
 import { normalizeBackingChoice, isQueueEntryPlayable } from '../../../lib/playbackSource';
 import { isAudienceSelectedUnverifiedResolution, requiresBackingHostReview } from '../../../lib/requestModes';
 
-const buildQueueSongLabel = (song = {}) => {
-    const singerName = String(song?.singerName || '').trim();
-    const songTitle = String(song?.songTitle || '').trim();
-    if (singerName && songTitle) return `${singerName} - ${songTitle}`;
-    return singerName || songTitle || 'Queue item';
-};
-
 const QueueSongCard = ({
     song,
     index,
@@ -115,6 +108,22 @@ const QueueSongCard = ({
         && !!nextOpenSlot?.id;
     const canReorderQueueItem = !touchReorderEnabled && !isHeld && !lockedInLineup;
     const canPromoteToNext = !lockedInLineup && !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow && typeof onMoveNext === 'function';
+    const canShowSelectedExtras = selected && showCompactActionRail;
+    const canShowRunOfShowAssignment = selected
+        && !isHeld
+        && !needsTrackReview
+        && !isPendingApproval
+        && (((typeof onAssignQueueSongToRunOfShowItem === 'function') && runOfShowAssignableSlots.length) || canFastAssignToOpenSlot);
+    const actionRailContainerClass = compactViewport
+        ? 'w-full'
+        : selected
+            ? 'shrink-0 min-w-[192px]'
+            : 'shrink-0 min-w-[88px]';
+    const actionRailLayoutClass = compactViewport
+        ? 'grid grid-cols-3 gap-1'
+        : selected
+            ? 'grid grid-cols-2 gap-1'
+            : 'flex flex-col gap-1';
 
     React.useEffect(() => {
         if (!song?.id) {
@@ -266,8 +275,8 @@ const QueueSongCard = ({
                     </div>
                 </button>
                 {showCompactActionRail ? (
-                    <div className={`${compactViewport ? 'w-full' : 'shrink-0 min-w-[88px]'}`}>
-                        <div className={`${compactViewport ? 'grid grid-cols-3 gap-1' : 'flex flex-col gap-1'}`}>
+                    <div className={actionRailContainerClass}>
+                        <div className={actionRailLayoutClass}>
                             {isHeld ? (
                                 <button
                                     type="button"
@@ -347,6 +356,48 @@ const QueueSongCard = ({
                             >
                                 <i className={`fa-solid ${selected ? 'fa-chevron-up' : 'fa-sliders'} mr-1.5`}></i>{selected ? 'Less' : 'More'}
                             </button>
+                            {canShowSelectedExtras && typeof startEdit === 'function' ? (
+                                <button
+                                    type="button"
+                                    title="Edit queue item details"
+                                    onClick={() => startEdit?.(song)}
+                                    className={`${styles.btnStd} ${styles.btnSecondary} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-pen-to-square mr-1.5"></i>Edit
+                                </button>
+                            ) : null}
+                            {canShowSelectedExtras && !isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow ? (
+                                <button
+                                    type="button"
+                                    title="Temporarily hold this singer"
+                                    onClick={() => onHoldSinger?.(song.id, 'not_here')}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-pause mr-1.5"></i>Hold
+                                </button>
+                            ) : null}
+                            {canShowSelectedExtras && canFastAssignToOpenSlot ? (
+                                <button
+                                    type="button"
+                                    title={runOfShowOpenSlots.length === 1
+                                        ? `Assign to ${nextOpenSlot.label}`
+                                        : 'Assign to the next open run-of-show slot'}
+                                    onClick={() => onAssignQueueSongToNextOpenRunOfShowSlot(song.id)}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-link mr-1.5"></i>Assign
+                                </button>
+                            ) : null}
+                            {canShowSelectedExtras ? (
+                                <button
+                                    type="button"
+                                    title={isPendingApproval ? 'Remove this pending request' : 'Remove this singer from the queue'}
+                                    onClick={() => onRemove?.(song.id)}
+                                    className={`${styles.btnStd} ${styles.btnDanger} ${compactViewport ? 'px-2 py-1 text-[10px] min-h-[24px] justify-center' : 'px-2 py-1 text-[10px] min-h-[24px] justify-start'}`}
+                                >
+                                    <i className="fa-solid fa-trash mr-1.5"></i>Remove
+                                </button>
+                            ) : null}
                         </div>
                     </div>
                 ) : (
@@ -355,152 +406,55 @@ const QueueSongCard = ({
                     </div>
                 )}
             </div>
-            {selected ? (
-                <div className="mt-2 rounded-xl border border-cyan-300/18 bg-black/25 px-3 py-3" data-feature-id="queue-song-inline-actions">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-300">Queue Actions</div>
-                            <div className="mt-1 text-sm font-semibold text-white">{buildQueueSongLabel(song)}</div>
-                            <div className="mt-1 text-xs text-zinc-400">
-                                {String(song?.artist || '').trim() || 'Artist not set'}{song?.duration ? ` | ${song.duration}s` : ''}
-                            </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]">
-                            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{songStatus || 'queued'}</span>
-                            {song?.runOfShowItemId ? (
-                                <span className="rounded-full border border-violet-300/30 bg-violet-500/10 px-2 py-1 text-violet-100">Linked To Show</span>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                        {isHeld ? (
+            {canShowRunOfShowAssignment ? (
+                <div className="mt-2 rounded-xl border border-white/10 bg-black/20 p-2.5" data-feature-id="queue-song-slot-assignment">
+                    {canFastAssignToOpenSlot ? (
+                        <div className="flex flex-wrap items-center gap-2">
                             <button
                                 type="button"
-                                onClick={() => onRestoreSinger?.(song.id)}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
+                                onClick={() => onAssignQueueSongToNextOpenRunOfShowSlot(song.id)}
+                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[34px] px-3 py-1.5 text-[10px]`}
                             >
-                                Restore Singer
+                                {runOfShowOpenSlots.length === 1
+                                    ? `Assign To ${nextOpenSlot.label}`
+                                    : 'Assign To Next Open Slot'}
                             </button>
-                        ) : needsTrackReview ? (
-                            <button
-                                type="button"
-                                onClick={() => startEdit?.(song)}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
-                            >
-                                Pick Backing
-                            </button>
-                        ) : isPendingApproval ? (
-                            <button
-                                type="button"
-                                onClick={() => onApprovePending?.(song.id)}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
-                            >
-                                Approve Request
-                            </button>
-                        ) : isAssignedToRunOfShow ? (
-                            <button
-                                type="button"
-                                onClick={() => startEdit?.(song)}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
-                            >
-                                Edit Linked Song
-                            </button>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={() => updateStatus(song.id, 'performing')}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] text-[11px]`}
-                            >
-                                Start Singer
-                            </button>
-                        )}
-                        {canPromoteToNext ? (
-                            <button
-                                type="button"
-                                onClick={() => onMoveNext?.(song.id)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] text-[11px]`}
-                            >
-                                Move To Next
-                            </button>
-                        ) : null}
-                        <button
-                            type="button"
-                            onClick={() => startEdit?.(song)}
-                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[40px] text-[11px]`}
-                        >
-                            Edit Details
-                        </button>
-                        {!isHeld && !needsTrackReview && !isPendingApproval && !isAssignedToRunOfShow ? (
-                            <button
-                                type="button"
-                                onClick={() => onHoldSinger?.(song.id, 'not_here')}
-                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] text-[11px]`}
-                            >
-                                Hold Singer
-                            </button>
-                        ) : null}
-                        <button
-                            type="button"
-                            onClick={() => onRemove?.(song.id)}
-                            className={`${styles.btnStd} ${styles.btnDanger} min-h-[40px] text-[11px]`}
-                        >
-                            Remove From Queue
-                        </button>
-                    </div>
-
-                    {((typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length) || canFastAssignToOpenSlot) && !isHeld && !needsTrackReview && !isPendingApproval ? (
-                        <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Run Of Show Slot</div>
-                            {canFastAssignToOpenSlot ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => onAssignQueueSongToNextOpenRunOfShowSlot(song.id)}
-                                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[40px] px-3 text-[11px]`}
-                                    >
-                                        {runOfShowOpenSlots.length === 1
-                                            ? `Assign To ${nextOpenSlot.label}`
-                                            : 'Assign To Next Open Slot'}
-                                    </button>
-                                    {runOfShowOpenSlots.length > 1 ? (
-                                        <div className="text-xs text-zinc-400">
-                                            Next open: {nextOpenSlot.label}
-                                        </div>
-                                    ) : null}
+                            {runOfShowOpenSlots.length > 1 ? (
+                                <div className="text-[10px] text-zinc-400">
+                                    Next open: {nextOpenSlot.label}
                                 </div>
                             ) : null}
-                            {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                    <select
-                                        value={selectedSlotId}
-                                        onChange={(event) => setSelectedSlotId(event.target.value)}
-                                        className="min-w-[180px] rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
-                                    >
-                                        {runOfShowAssignableSlots.map((slot) => (
-                                            <option key={slot.id} value={slot.id}>{slot.label}</option>
-                                        ))}
-                                    </select>
-                                    <button
-                                        type="button"
-                                        disabled={!selectedSlotId}
-                                        onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
-                                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[40px] px-3 text-[11px] disabled:opacity-45`}
-                                    >
-                                        {song?.runOfShowItemId ? 'Reassign Selected Slot' : 'Assign Selected Slot'}
-                                    </button>
-                                </div>
-                            ) : null}
-                            {assignedRunOfShowSlot ? (
-                                <div className="mt-2 text-xs text-zinc-400">Selected slot: {assignedRunOfShowSlot.label}</div>
-                            ) : selectedSlotId ? (
-                                <div className="mt-2 text-xs text-zinc-400">
-                                    Selected slot: {runOfShowAssignableSlots.find((slot) => slot.id === selectedSlotId)?.label || selectedSlotId}
-                                </div>
-                            ) : canFastAssignToOpenSlot ? (
-                                <div className="mt-2 text-xs text-zinc-400">Open slot: {nextOpenSlot.label}</div>
-                            ) : null}
                         </div>
+                    ) : null}
+                    {typeof onAssignQueueSongToRunOfShowItem === 'function' && runOfShowAssignableSlots.length ? (
+                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                            <select
+                                value={selectedSlotId}
+                                onChange={(event) => setSelectedSlotId(event.target.value)}
+                                className="min-w-[180px] max-w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2 text-sm text-white outline-none"
+                            >
+                                {runOfShowAssignableSlots.map((slot) => (
+                                    <option key={slot.id} value={slot.id}>{slot.label}</option>
+                                ))}
+                            </select>
+                            <button
+                                type="button"
+                                disabled={!selectedSlotId}
+                                onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
+                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[34px] px-3 py-1.5 text-[10px] disabled:opacity-45`}
+                            >
+                                {song?.runOfShowItemId ? 'Reassign Slot' : 'Assign Slot'}
+                            </button>
+                        </div>
+                    ) : null}
+                    {assignedRunOfShowSlot ? (
+                        <div className="mt-2 text-[10px] text-zinc-400">Selected slot: {assignedRunOfShowSlot.label}</div>
+                    ) : selectedSlotId ? (
+                        <div className="mt-2 text-[10px] text-zinc-400">
+                            Selected slot: {runOfShowAssignableSlots.find((slot) => slot.id === selectedSlotId)?.label || selectedSlotId}
+                        </div>
+                    ) : canFastAssignToOpenSlot ? (
+                        <div className="mt-2 text-[10px] text-zinc-400">Open slot: {nextOpenSlot.label}</div>
                     ) : null}
                 </div>
             ) : null}

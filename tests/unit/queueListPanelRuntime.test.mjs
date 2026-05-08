@@ -108,12 +108,14 @@ test('QueueListPanel renders live queue controls and inline queue card actions a
   assert.match(markup, /Queue Rules/);
   assert.match(markup, /Automation/);
   assert.match(markup, /Open Conveyor/);
-  assert.match(markup, /data-feature-id="queue-song-inline-actions"/);
-  assert.match(markup, /Queue Actions/);
-  assert.match(markup, /Start Singer/);
-  assert.match(markup, /Move To Next/);
-  assert.match(markup, /Edit Details/);
+  assert.doesNotMatch(markup, /data-feature-id="queue-song-expanded-actions"/);
+  assert.match(markup, /Start/);
+  assert.match(markup, /Next/);
+  assert.match(markup, /Edit/);
+  assert.match(markup, /Hold/);
+  assert.match(markup, /Remove/);
   assert.doesNotMatch(markup, /Queue Inspector/);
+  assert.doesNotMatch(markup, /Queue Actions/);
 });
 
 test('QueueListPanel inline queue actions adapt to held and review-needed queue items', async () => {
@@ -137,7 +139,7 @@ test('QueueListPanel inline queue actions adapt to held and review-needed queue 
       quickControls: null,
     })),
   );
-  assert.match(heldMarkup, /Restore Singer/);
+  assert.match(heldMarkup, /Restore/);
 
   const reviewMarkup = renderToStaticMarkup(
     React.createElement(QueueListPanel, buildQueueListPanelProps({
@@ -151,7 +153,7 @@ test('QueueListPanel inline queue actions adapt to held and review-needed queue 
       quickControls: null,
     })),
   );
-  assert.match(reviewMarkup, /Pick Backing/);
+  assert.match(reviewMarkup, /Review/);
 });
 
 test('QueueListPanel exposes fast run-of-show fill actions when open slots and ready queue coexist', async () => {
@@ -180,7 +182,7 @@ test('QueueListPanel exposes fast run-of-show fill actions when open slots and r
   assert.match(markup, /Fill Next Slot/);
   assert.match(markup, /Fill All Suggested/);
   assert.match(markup, /Assign To Next Open Slot/);
-  assert.match(markup, /Assign Selected Slot/);
+  assert.match(markup, /Assign Slot/);
 });
 
 test('QueueListPanel tightens copy when there is only one open run-of-show slot', async () => {
@@ -230,5 +232,5 @@ test('QueueListPanel does not show fast-fill actions for assignable slots that a
 
   assert.doesNotMatch(markup, /data-feature-id="queue-open-slot-actions"/);
   assert.doesNotMatch(markup, /Fill Next Slot/);
-  assert.match(markup, /Assign Selected Slot/);
+  assert.match(markup, /Assign Slot/);
 });

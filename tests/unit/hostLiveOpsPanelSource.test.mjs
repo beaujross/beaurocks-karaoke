@@ -58,16 +58,16 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
-  assert.match(hostQueueTabSource, /featureId="panel-live-snapshot"/);
+  assert.match(hostQueueTabSource, /data-feature-id="queue-workspace-top-chrome"/);
+  assert.match(hostQueueTabSource, /<QueueSummaryBar/);
+  assert.match(hostQueueTabSource, /<QueueQuickAccessPanel/);
+  assert.doesNotMatch(hostQueueTabSource, /const compactQueueStatusChips = \[/);
   assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
   assert.match(hostQueueTabSource, /onSceneLibraryModalChange\?\.\(sceneLibraryOpen\)/);
   assert.match(hostQueueTabSource, /multiple/);
   assert.match(hostQueueTabSource, /Upload Scenes/);
-  assert.ok(
-    hostQueueTabSource.indexOf('label="Stage"') < hostQueueTabSource.indexOf('<HostLiveOpsPanel'),
-    'Stage should render before the room snapshot strip so transport stays higher in the left rail',
-  );
+  assert.match(hostQueueTabSource, /\{queueWorkspaceHeader\}[\s\S]*: queueListSection/);
 });
 
 test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
@@ -76,6 +76,8 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   assert.match(source, /data-feature-id="host-live-ops-panel"/);
   assert.match(source, /showTitle = true/);
   assert.match(source, /const SnapshotCard = \(\{/);
+  assert.match(source, /basis-\[188px\]/);
+  assert.match(source, /\[grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)\)\]/);
   assert.match(source, /Live Snapshot/);
   assert.match(source, /On Stage/);
   assert.match(source, /Next Singer/);

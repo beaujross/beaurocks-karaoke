@@ -17728,6 +17728,35 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
         onTriggerReadyCheck: startReadyCheck,
     };
+    const queueQuickControls = {
+        queueRuleSummary: `${NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === queueLimitMode)?.label || 'No Limits'} | ${NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === queueRotation)?.label || 'Round Robin'}${queueFirstTimeBoost ? ' + First-Time Boost' : ''}`,
+        automationSummary: `${autoDj ? 'Auto DJ on' : 'Auto DJ off'} | ${autoEndOnTrackFinish ? 'Auto end on' : 'Auto end off'} | ${autoCrowdMomentsEnabled ? 'Auto party on' : 'Auto party off'}`,
+        rotationLabel: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === queueRotation)?.label || 'Round Robin',
+        limitLabel: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === queueLimitMode)?.label || 'No Limits',
+        firstTimeBoost: !!queueFirstTimeBoost,
+        showReadyCheck: true,
+        autoDj: !!autoDj,
+        autoEndOnTrackFinish: !!autoEndOnTrackFinish,
+        autoPartyEnabled: !!autoCrowdMomentsEnabled,
+        popTriviaEnabled: !!popTriviaEnabled,
+        onCycleQueueRotation: () => {
+            const currentIndex = Math.max(0, NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.findIndex((option) => option.id === queueRotation));
+            const nextOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[(currentIndex + 1) % NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.length] || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
+            return updateQueueSettingsQuick({ rotation: nextOption?.id || 'round_robin' });
+        },
+        onCycleQueueLimitMode: () => {
+            const currentIndex = Math.max(0, NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.findIndex((option) => option.id === queueLimitMode));
+            const nextOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[(currentIndex + 1) % NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.length] || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
+            return updateQueueSettingsQuick({ limitMode: nextOption?.id || 'none' });
+        },
+        onToggleFirstTimeBoost: () => updateQueueSettingsQuick({ firstTimeBoost: !queueFirstTimeBoost }),
+        onTriggerReadyCheck: startReadyCheck,
+        onToggleAutoDj: toggleAutoDjQuick,
+        onToggleAutoEnd: toggleAutoEndQuick,
+        onToggleAutoParty: toggleAutoPartyEnabled,
+        onTogglePopTrivia: togglePopTriviaQuick,
+        onOpenRunOfShow: () => setTab('run_of_show'),
+    };
 
     const queueTabProps = {
         songs,
@@ -17868,6 +17897,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         getYtDiagnosticsKey,
         getTrackDiagnosticsTone,
         getTrackDiagnosticsSupport,
+        queueQuickControls,
         runOfShowAssignableSlots,
         runOfShowOpenSlots: runOfShowOpenPerformanceSlots,
         onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem,
@@ -18218,7 +18248,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onToggleRunOfShowAutomationPause={toggleRunOfShowAutomationPause}
                     runOfShowFocusMode={tab === 'run_of_show'}
                     crowdPulse={crowdPulse}
-                    opsStatus={hostOpsStatus}
                     activeMomentFeedback={activeMomentFeedback}
                     scenePresets={scenePresets}
                     onLaunchScenePreset={launchScenePreset}

@@ -22,9 +22,10 @@ const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
     </button>
 );
 
-const QueueQuickAccessPanel = ({
+export const QueueQuickAccessPanel = ({
     styles,
     quickControls = null,
+    embedded = false,
 }) => {
     if (!quickControls) return null;
 
@@ -94,7 +95,7 @@ const QueueQuickAccessPanel = ({
     return (
         <div
             data-feature-id="queue-live-controls"
-            className="mb-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-3"
+            className={`${embedded ? '' : 'mb-3 '}rounded-2xl border border-white/10 bg-black/20 px-3 py-3`}
         >
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -158,81 +159,26 @@ const QueueQuickAccessPanel = ({
     );
 };
 
-const QueueListPanel = ({
-    showQueueList,
+export const QueueSummaryBar = ({
     showQueueSummaryBar = true,
     onToggleQueueSummaryBar,
     reviewRequiredCount = 0,
-    pending,
-    pendingQueueOpen = true,
-    onTogglePendingQueue,
-    queue,
-    readyQueueOpen = true,
-    onToggleReadyQueue,
+    pending = [],
+    queue = [],
     assigned = [],
-    assignedQueueOpen = true,
-    onToggleAssignedQueue,
     held = [],
-    reviewRequired = [],
-    onApprovePending,
-    onDeletePending,
-    onMoveNext,
-    onHoldSinger,
-    onRestoreSinger,
-    dragQueueId,
-    dragOverId,
-    setDragQueueId,
-    setDragOverId,
-    reorderQueue,
-    touchReorderAvailable = false,
-    touchReorderEnabled,
-    touchReorderMode = false,
-    handleTouchStart,
-    handleTouchMove,
-    handleTouchEnd,
-    updateStatus,
-    startEdit,
-    onRetryLyrics,
-    onFetchTimedLyrics,
-    onApproveAudienceBacking,
-    onAvoidAudienceBacking,
-    backingDecisionBusyKey = '',
-    statusPill,
-    styles,
-    compactViewport = false,
-    runOfShowAssignableSlots = [],
-    runOfShowOpenSlots = [],
     queueSurfaceCounts = null,
-    onAssignQueueSongToRunOfShowItem,
-    onAssignQueueSongToNextOpenRunOfShowSlot,
+    runOfShowOpenSlots = [],
     onFillRunOfShowOpenSlotsFromQueue,
     onAddQuickRunOfShowMoment,
-    quickControls = null,
     protectedReadyQueueCount = 0,
     protectedReadyQueueTarget = 0,
     lineupHasCurrentPerformer = false,
+    styles,
+    compactViewport = false,
+    embedded = false,
 }) => {
-    const [selectedSongId, setSelectedSongId] = React.useState('');
     const counts = queueSurfaceCounts || {};
-    const allSongs = React.useMemo(
-        () => [...reviewRequired, ...pending, ...queue, ...assigned, ...held],
-        [assigned, held, pending, queue, reviewRequired]
-    );
-    const selectedSong = React.useMemo(
-        () => allSongs.find((song) => song.id === selectedSongId) || queue[0] || pending[0] || assigned[0] || held[0] || null,
-        [allSongs, assigned, held, pending, queue, selectedSongId]
-    );
-
-    React.useEffect(() => {
-        if (!selectedSong?.id && selectedSongId) {
-            setSelectedSongId('');
-            return;
-        }
-        if (!selectedSongId && selectedSong?.id) {
-            setSelectedSongId(selectedSong.id);
-        }
-    }, [selectedSong?.id, selectedSongId]);
-    if (!showQueueList) return null;
     const needsAttentionCount = Number.isFinite(Number(counts.needsAttention))
         ? Number(counts.needsAttention)
         : (Number(reviewRequiredCount || 0) + Number(pending.length || 0));
@@ -241,11 +187,9 @@ const QueueListPanel = ({
     const heldCount = Number.isFinite(Number(counts.held)) ? Number(counts.held) : held.length;
     const safeProtectedReadyQueueCount = Math.max(0, Math.min(queue.length, Number(protectedReadyQueueCount || 0)));
     const safeProtectedReadyQueueTarget = Math.max(safeProtectedReadyQueueCount, Number(protectedReadyQueueTarget || 0));
-    const lockedReadyQueue = queue.slice(0, safeProtectedReadyQueueCount);
     const laterReadyQueue = queue.slice(safeProtectedReadyQueueCount);
     const lockedLineupCount = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueCount;
     const lockedLineupTarget = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueTarget;
-    const lockedLineupComplete = lockedLineupTarget > 0 && lockedLineupCount >= lockedLineupTarget;
     const queueSummaryChips = [
         needsAttentionCount
             ? {
@@ -308,145 +252,251 @@ const QueueListPanel = ({
             accentClass: 'text-amber-100'
         }
         : needsAttentionCount > 0
-        ? {
-            eyebrow: 'Queue needs attention',
-            title: `${needsAttentionCount} request${needsAttentionCount === 1 ? '' : 's'} waiting on host action`,
-            detail: reviewRequiredCount > 0 && pending.length > 0
-                ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the room.`
-                : reviewRequiredCount > 0
-                    ? `${reviewRequiredCount} request${reviewRequiredCount === 1 ? '' : 's'} still need a host track pick.`
-                : 'Clear these first so the live lane reflects what can actually go on stage.',
-            toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
-            accentClass: 'text-amber-100'
-        }
-        : readyCount === 0 && assignedCount === 0 && heldCount === 0
             ? {
-                eyebrow: 'Queue status',
-                title: 'Queue is empty',
-                detail: 'Add songs or approve requests to keep the room moving.',
-                toneClass: 'border-white/10 bg-black/25 text-zinc-300',
-                accentClass: 'text-zinc-100'
+                eyebrow: 'Queue needs attention',
+                title: `${needsAttentionCount} request${needsAttentionCount === 1 ? '' : 's'} waiting on host action`,
+                detail: reviewRequiredCount > 0 && pending.length > 0
+                    ? `${reviewRequiredCount} track pick${reviewRequiredCount === 1 ? '' : 's'} and ${pending.length} approval${pending.length === 1 ? '' : 's'} are holding the room.`
+                    : reviewRequiredCount > 0
+                        ? `${reviewRequiredCount} request${reviewRequiredCount === 1 ? '' : 's'} still need a host track pick.`
+                    : 'Clear these first so the live lane reflects what can actually go on stage.',
+                toneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+                accentClass: 'text-amber-100'
             }
-            : runOfShowOpenSlots.length > 0 && readyCount > 0
+            : readyCount === 0 && assignedCount === 0 && heldCount === 0
                 ? {
-                    eyebrow: 'Run of show ready',
-                    title: `${runOfShowOpenSlots.length} open slot${runOfShowOpenSlots.length === 1 ? '' : 's'} can pull from queue`,
-                    detail: runOfShowOpenSlots.length === 1
-                        ? 'One tap can drop the next ready song straight into the open performance slot.'
-                        : 'Use Fill Next Slot or Fill All Suggested to absorb queued singers into open performance slots.',
-                    toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
-                    accentClass: 'text-cyan-100'
+                    eyebrow: 'Queue status',
+                    title: 'Queue is empty',
+                    detail: 'Add songs or approve requests to keep the room moving.',
+                    toneClass: 'border-white/10 bg-black/25 text-zinc-300',
+                    accentClass: 'text-zinc-100'
                 }
-                : readyCount > 0
+                : runOfShowOpenSlots.length > 0 && readyCount > 0
                     ? {
-                        eyebrow: 'Lineup protected',
-                        title: `${lockedLineupCount}/${lockedLineupTarget} live spots locked`,
-                        detail: laterReadyQueue.length > 0
-                            ? `${laterReadyQueue.length} more ready performance${laterReadyQueue.length === 1 ? '' : 's'} are waiting behind the protected lineup.`
-                            : 'Stage can advance without touching review or slot assignment.',
-                        toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
-                        accentClass: 'text-emerald-100'
+                        eyebrow: 'Run of show ready',
+                        title: `${runOfShowOpenSlots.length} open slot${runOfShowOpenSlots.length === 1 ? '' : 's'} can pull from queue`,
+                        detail: runOfShowOpenSlots.length === 1
+                            ? 'One tap can drop the next ready song straight into the open performance slot.'
+                            : 'Use Fill Next Slot or Fill All Suggested to absorb queued singers into open performance slots.',
+                        toneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+                        accentClass: 'text-cyan-100'
                     }
-                    : {
-                        eyebrow: heldCount > 0 ? 'Singers held' : 'Run of show linked',
-                        title: heldCount > 0
-                            ? `${heldCount} singer${heldCount === 1 ? '' : 's'} temporarily held`
-                            : `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
-                        detail: heldCount > 0
-                            ? 'Held singers stay recoverable but will not be picked by Start Next or Auto-DJ.'
-                            : 'These songs are tied to show slots and will move through the run-of-show lane.',
-                        toneClass: heldCount > 0 ? 'border-zinc-300/20 bg-zinc-500/10 text-zinc-200' : 'border-violet-300/25 bg-violet-500/10 text-violet-100',
-                        accentClass: heldCount > 0 ? 'text-zinc-100' : 'text-violet-100'
-                    };
+                    : readyCount > 0
+                        ? {
+                            eyebrow: 'Lineup protected',
+                            title: `${lockedLineupCount}/${lockedLineupTarget} live spots locked`,
+                            detail: laterReadyQueue.length > 0
+                                ? `${laterReadyQueue.length} more ready performance${laterReadyQueue.length === 1 ? '' : 's'} are waiting behind the protected lineup.`
+                                : 'Stage can advance without touching review or slot assignment.',
+                            toneClass: 'border-emerald-300/25 bg-emerald-500/10 text-emerald-100',
+                            accentClass: 'text-emerald-100'
+                        }
+                        : {
+                            eyebrow: heldCount > 0 ? 'Singers held' : 'Run of show linked',
+                            title: heldCount > 0
+                                ? `${heldCount} singer${heldCount === 1 ? '' : 's'} temporarily held`
+                                : `${assignedCount} song${assignedCount === 1 ? '' : 's'} already assigned`,
+                            detail: heldCount > 0
+                                ? 'Held singers stay recoverable but will not be picked by Start Next or Auto-DJ.'
+                                : 'These songs are tied to show slots and will move through the run-of-show lane.',
+                            toneClass: heldCount > 0 ? 'border-zinc-300/20 bg-zinc-500/10 text-zinc-200' : 'border-violet-300/25 bg-violet-500/10 text-violet-100',
+                            accentClass: heldCount > 0 ? 'text-zinc-100' : 'text-violet-100'
+                        };
 
     const canFillRunOfShowFromQueue = runOfShowOpenSlots.length > 0 && readyCount > 0 && typeof onFillRunOfShowOpenSlotsFromQueue === 'function';
 
-    return (
-        <>
-            {showQueueSummaryBar ? (
-                <div className={`mb-3 rounded-2xl border px-3 shadow-[0_10px_26px_rgba(0,0,0,0.18)] ${queueSummary.toneClass} ${compactViewport ? 'py-2.5' : 'py-3'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                            <div className={`text-[10px] uppercase tracking-[0.22em] ${queueSummary.accentClass}`}>{queueSummary.eyebrow}</div>
-                            <div className="mt-1 text-sm font-semibold text-white">{queueSummary.title}</div>
-                            <div className="mt-1 text-xs text-zinc-300">{queueSummary.detail}</div>
-                        </div>
-                        {typeof onToggleQueueSummaryBar === 'function' ? (
-                            <button
-                                type="button"
-                                onClick={onToggleQueueSummaryBar}
-                                className="inline-flex min-h-[34px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 transition hover:border-cyan-300/35 hover:text-white"
-                            >
-                                Hide Bar
-                            </button>
-                        ) : null}
-                    </div>
-                    {showQueueSummaryChips ? (
-                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
-                            {queueSummaryChips.map((chip) => (
-                                <span key={chip.key} className={chip.className}>{chip.label}</span>
-                            ))}
-                        </div>
-                    ) : null}
-                    {canFillRunOfShowFromQueue ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-2" data-feature-id="queue-open-slot-actions">
-                            <button
-                                type="button"
-                                onClick={() => onFillRunOfShowOpenSlotsFromQueue?.({ limit: 1 })}
-                                className={`${styles.btnStd} ${styles.btnPrimary} min-h-[38px] px-3 text-[11px]`}
-                            >
-                                Fill Next Slot
-                            </button>
-                            {Math.min(runOfShowOpenSlots.length, readyCount) > 1 ? (
-                                <button
-                                    type="button"
-                                    onClick={() => onFillRunOfShowOpenSlotsFromQueue?.()}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
-                                >
-                                    Fill All Suggested
-                                </button>
-                            ) : null}
-                        </div>
-                    ) : null}
-                    {typeof onAddQuickRunOfShowMoment === 'function' ? (
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => onAddQuickRunOfShowMoment?.('trivia_break', { placement: 'next' })}
-                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
-                            >
-                                Trivia Next
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onAddQuickRunOfShowMoment?.('winner_declaration', { placement: 'next' })}
-                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
-                            >
-                                Winner Next
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => onAddQuickRunOfShowMoment?.('would_you_rather', { placement: 'next' })}
-                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
-                            >
-                                Vote Next
-                            </button>
-                        </div>
-                    ) : null}
+    return showQueueSummaryBar ? (
+        <div className={`${embedded ? '' : 'mb-3 '}rounded-2xl border px-3 shadow-[0_10px_26px_rgba(0,0,0,0.18)] ${queueSummary.toneClass} ${compactViewport ? 'py-2.5' : 'py-3'}`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                    <div className={`text-[10px] uppercase tracking-[0.22em] ${queueSummary.accentClass}`}>{queueSummary.eyebrow}</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{queueSummary.title}</div>
+                    <div className="mt-1 text-xs text-zinc-300">{queueSummary.detail}</div>
                 </div>
-            ) : (
-                typeof onToggleQueueSummaryBar === 'function' ? (
-                    <div className="mb-3 flex justify-end">
+                {typeof onToggleQueueSummaryBar === 'function' ? (
+                    <button
+                        type="button"
+                        onClick={onToggleQueueSummaryBar}
+                        className="inline-flex min-h-[34px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-200 transition hover:border-cyan-300/35 hover:text-white"
+                    >
+                        Hide Bar
+                    </button>
+                ) : null}
+            </div>
+            {showQueueSummaryChips ? (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.15em]">
+                    {queueSummaryChips.map((chip) => (
+                        <span key={chip.key} className={chip.className}>{chip.label}</span>
+                    ))}
+                </div>
+            ) : null}
+            {canFillRunOfShowFromQueue ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2" data-feature-id="queue-open-slot-actions">
+                    <button
+                        type="button"
+                        onClick={() => onFillRunOfShowOpenSlotsFromQueue?.({ limit: 1 })}
+                        className={`${styles.btnStd} ${styles.btnPrimary} min-h-[38px] px-3 text-[11px]`}
+                    >
+                        Fill Next Slot
+                    </button>
+                    {Math.min(runOfShowOpenSlots.length, readyCount) > 1 ? (
                         <button
                             type="button"
-                            onClick={onToggleQueueSummaryBar}
-                            className="inline-flex min-h-[34px] items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300 transition hover:border-cyan-300/35 hover:text-white"
+                            onClick={() => onFillRunOfShowOpenSlotsFromQueue?.()}
+                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
                         >
-                            Show Queue Bar
+                            Fill All Suggested
                         </button>
-                    </div>
-            ) : null
-            )}
+                    ) : null}
+                </div>
+            ) : null}
+            {typeof onAddQuickRunOfShowMoment === 'function' ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onAddQuickRunOfShowMoment?.('trivia_break', { placement: 'next' })}
+                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
+                    >
+                        Trivia Next
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onAddQuickRunOfShowMoment?.('winner_declaration', { placement: 'next' })}
+                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
+                    >
+                        Winner Next
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onAddQuickRunOfShowMoment?.('would_you_rather', { placement: 'next' })}
+                        className={`${styles.btnStd} ${styles.btnNeutral} min-h-[38px] px-3 text-[11px]`}
+                    >
+                        Vote Next
+                    </button>
+                </div>
+            ) : null}
+        </div>
+    ) : (
+        typeof onToggleQueueSummaryBar === 'function' ? (
+            <div className={`${embedded ? '' : 'mb-3 '}flex ${embedded ? '' : 'justify-end'}`}>
+                <button
+                    type="button"
+                    onClick={onToggleQueueSummaryBar}
+                    className="inline-flex min-h-[34px] items-center justify-center rounded-full border border-white/10 bg-black/20 px-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-300 transition hover:border-cyan-300/35 hover:text-white"
+                >
+                    Show Queue Bar
+                </button>
+            </div>
+        ) : null
+    );
+};
+
+const QueueListPanel = ({
+    showQueueList,
+    showQueueSummaryBar = true,
+    onToggleQueueSummaryBar,
+    reviewRequiredCount = 0,
+    pending,
+    pendingQueueOpen = true,
+    onTogglePendingQueue,
+    queue,
+    readyQueueOpen = true,
+    onToggleReadyQueue,
+    assigned = [],
+    assignedQueueOpen = true,
+    onToggleAssignedQueue,
+    held = [],
+    reviewRequired = [],
+    onApprovePending,
+    onDeletePending,
+    onMoveNext,
+    onHoldSinger,
+    onRestoreSinger,
+    dragQueueId,
+    dragOverId,
+    setDragQueueId,
+    setDragOverId,
+    reorderQueue,
+    touchReorderAvailable = false,
+    touchReorderEnabled,
+    touchReorderMode = false,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+    updateStatus,
+    startEdit,
+    onRetryLyrics,
+    onFetchTimedLyrics,
+    onApproveAudienceBacking,
+    onAvoidAudienceBacking,
+    backingDecisionBusyKey = '',
+    statusPill,
+    styles,
+    compactViewport = false,
+    runOfShowAssignableSlots = [],
+    runOfShowOpenSlots = [],
+    queueSurfaceCounts = null,
+    onAssignQueueSongToRunOfShowItem,
+    onAssignQueueSongToNextOpenRunOfShowSlot,
+    onFillRunOfShowOpenSlotsFromQueue,
+    onAddQuickRunOfShowMoment,
+    quickControls = null,
+    renderSummaryBarInline = true,
+    renderQuickAccessInline = true,
+    protectedReadyQueueCount = 0,
+    protectedReadyQueueTarget = 0,
+    lineupHasCurrentPerformer = false,
+}) => {
+    const [selectedSongId, setSelectedSongId] = React.useState('');
+    const counts = queueSurfaceCounts || {};
+    const allSongs = React.useMemo(
+        () => [...reviewRequired, ...pending, ...queue, ...assigned, ...held],
+        [assigned, held, pending, queue, reviewRequired]
+    );
+    const selectedSong = React.useMemo(
+        () => allSongs.find((song) => song.id === selectedSongId) || queue[0] || pending[0] || assigned[0] || held[0] || null,
+        [allSongs, assigned, held, pending, queue, selectedSongId]
+    );
+
+    React.useEffect(() => {
+        if (!selectedSong?.id && selectedSongId) {
+            setSelectedSongId('');
+            return;
+        }
+        if (!selectedSongId && selectedSong?.id) {
+            setSelectedSongId(selectedSong.id);
+        }
+    }, [selectedSong?.id, selectedSongId]);
+    if (!showQueueList) return null;
+    const safeProtectedReadyQueueCount = Math.max(0, Math.min(queue.length, Number(protectedReadyQueueCount || 0)));
+    const lockedReadyQueue = queue.slice(0, safeProtectedReadyQueueCount);
+    const laterReadyQueue = queue.slice(safeProtectedReadyQueueCount);
+    const lockedLineupCount = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueCount;
+    const lockedLineupTarget = Number(lineupHasCurrentPerformer ? 1 : 0) + Math.max(safeProtectedReadyQueueCount, Number(protectedReadyQueueTarget || 0));
+    const lockedLineupComplete = lockedLineupTarget > 0 && lockedLineupCount >= lockedLineupTarget;
+
+    return (
+        <>
+            {renderSummaryBarInline ? (
+                <QueueSummaryBar
+                    showQueueSummaryBar={showQueueSummaryBar}
+                    onToggleQueueSummaryBar={onToggleQueueSummaryBar}
+                    reviewRequiredCount={reviewRequiredCount}
+                    pending={pending}
+                    queue={queue}
+                    assigned={assigned}
+                    held={held}
+                    queueSurfaceCounts={queueSurfaceCounts}
+                    runOfShowOpenSlots={runOfShowOpenSlots}
+                    onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
+                    onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
+                    protectedReadyQueueCount={protectedReadyQueueCount}
+                    protectedReadyQueueTarget={protectedReadyQueueTarget}
+                    lineupHasCurrentPerformer={lineupHasCurrentPerformer}
+                    styles={styles}
+                    compactViewport={compactViewport}
+                />
+            ) : null}
             <div className="mb-3">
                 {touchReorderAvailable && touchReorderMode ? (
                     <div className="mb-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
@@ -710,10 +760,12 @@ const QueueListPanel = ({
                     ))}
                 </div>
             ) : null}
-            <QueueQuickAccessPanel
-                styles={styles}
-                quickControls={quickControls}
-            />
+            {renderQuickAccessInline ? (
+                <QueueQuickAccessPanel
+                    styles={styles}
+                    quickControls={quickControls}
+                />
+            ) : null}
         </>
     );
 };
