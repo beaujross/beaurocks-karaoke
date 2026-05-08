@@ -4335,7 +4335,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const tightHostViewport = !compactHostViewport && mediumHostViewport;
     const hostStageLayoutMode = compactHostViewport ? 'mobile' : (tightHostViewport ? 'laptop-tight' : 'desktop');
     const compactPreviewDock = viewportWidth <= 1100;
-    const slimAdminRail = viewportWidth <= 900;
+    const slimAdminRail = tab !== 'admin' && viewportWidth <= 900;
     const [audioPanelOpen, setAudioPanelOpen] = useState(() => {
         if (typeof window === 'undefined') return true;
         return window.innerHeight > 900;
@@ -13964,8 +13964,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (typeof window === 'undefined') return;
         window.requestAnimationFrame(() => {
             window.dispatchEvent(new CustomEvent('beaurocks:focus-queue-live-controls'));
-            const queueControls = document.querySelector('[data-feature-id="queue-live-controls"]');
-            queueControls?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            const roomSettingsMenu = document.querySelector('[data-feature-id="deck-room-settings-menu-toggle"]');
+            roomSettingsMenu?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (roomSettingsMenu?.getAttribute('aria-expanded') !== 'true') {
+                roomSettingsMenu?.click?.();
+            }
         });
     }, [handleTopChromeTabChange]);
     const focusHostInbox = useCallback(() => {
@@ -17728,36 +17731,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
         onTriggerReadyCheck: startReadyCheck,
     };
-    const queueQuickControls = {
-        queueRuleSummary: `${NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === queueLimitMode)?.label || 'No Limits'} | ${NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === queueRotation)?.label || 'Round Robin'}${queueFirstTimeBoost ? ' + First-Time Boost' : ''}`,
-        automationSummary: `${autoDj ? 'Auto DJ on' : 'Auto DJ off'} | ${autoEndOnTrackFinish ? 'Auto end on' : 'Auto end off'} | ${autoCrowdMomentsEnabled ? 'Auto party on' : 'Auto party off'}`,
-        rotationLabel: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === queueRotation)?.label || 'Round Robin',
-        limitLabel: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === queueLimitMode)?.label || 'No Limits',
-        firstTimeBoost: !!queueFirstTimeBoost,
-        showReadyCheck: true,
-        autoDj: !!autoDj,
-        autoEndOnTrackFinish: !!autoEndOnTrackFinish,
-        autoPartyEnabled: !!autoCrowdMomentsEnabled,
-        popTriviaEnabled: !!popTriviaEnabled,
-        onCycleQueueRotation: () => {
-            const currentIndex = Math.max(0, NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.findIndex((option) => option.id === queueRotation));
-            const nextOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[(currentIndex + 1) % NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.length] || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
-            return updateQueueSettingsQuick({ rotation: nextOption?.id || 'round_robin' });
-        },
-        onCycleQueueLimitMode: () => {
-            const currentIndex = Math.max(0, NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.findIndex((option) => option.id === queueLimitMode));
-            const nextOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[(currentIndex + 1) % NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.length] || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
-            return updateQueueSettingsQuick({ limitMode: nextOption?.id || 'none' });
-        },
-        onToggleFirstTimeBoost: () => updateQueueSettingsQuick({ firstTimeBoost: !queueFirstTimeBoost }),
-        onTriggerReadyCheck: startReadyCheck,
-        onToggleAutoDj: toggleAutoDjQuick,
-        onToggleAutoEnd: toggleAutoEndQuick,
-        onToggleAutoParty: toggleAutoPartyEnabled,
-        onTogglePopTrivia: togglePopTriviaQuick,
-        onOpenRunOfShow: () => setTab('run_of_show'),
-    };
-
+    const experimentalHostPanelActive = quickRoomControls.runtimeShellMode === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment;
     const queueTabProps = {
         songs,
         room,
@@ -17897,7 +17871,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         getYtDiagnosticsKey,
         getTrackDiagnosticsTone,
         getTrackDiagnosticsSupport,
-        queueQuickControls,
         runOfShowAssignableSlots,
         runOfShowOpenSlots: runOfShowOpenPerformanceSlots,
         onAssignQueueSongToRunOfShowItem: assignQueueSongToRunOfShowItem,
@@ -19116,14 +19089,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2 text-sm text-zinc-400 flex-wrap">
-                                    <button
-                                        data-admin-sections-toggle
-                                        onClick={() => setSettingsNavOpen((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
-                                    >
-                                        <i className="fa-solid fa-bars"></i>
-                                        Sections
-                                    </button>
+                                    {!inAdminWorkspace && (
+                                        <button
+                                            data-admin-sections-toggle
+                                            onClick={() => setSettingsNavOpen((prev) => !prev)}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} md:hidden`}
+                                        >
+                                            <i className="fa-solid fa-bars"></i>
+                                            Sections
+                                        </button>
+                                    )}
                                     <button
                                         onClick={() => setShowAdminFieldHelp((prev) => !prev)}
                                         className={`${STYLES.btnStd} ${showAdminFieldHelp ? STYLES.btnInfo : STYLES.btnSecondary}`}
@@ -19192,7 +19167,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             fullBleed={inAdminWorkspace}
                         >
                             <div className={`h-full min-h-0 grid grid-cols-1 ${slimAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
-                                <aside className={`${settingsNavOpen ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar ${slimAdminRail ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
+                                <aside className={`${(inAdminWorkspace || settingsNavOpen) ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar ${slimAdminRail ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
                                     <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
                                         <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Sections</div>
@@ -19238,6 +19213,41 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         )}
                                         {inAdminWorkspace && (
                                             <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
+                                                <div data-feature-id="admin-host-panel-mode-toggle" className="flex items-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 p-1">
+                                                    <span className="px-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Host Panel</span>
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={!experimentalHostPanelActive}
+                                                        onClick={() => {
+                                                            if (experimentalHostPanelActive) {
+                                                                void toggleRuntimeShellModeQuick();
+                                                            }
+                                                        }}
+                                                        className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition ${
+                                                            !experimentalHostPanelActive
+                                                                ? 'border border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
+                                                                : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        Classic
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        aria-pressed={experimentalHostPanelActive}
+                                                        onClick={() => {
+                                                            if (!experimentalHostPanelActive) {
+                                                                void toggleRuntimeShellModeQuick();
+                                                            }
+                                                        }}
+                                                        className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition ${
+                                                            experimentalHostPanelActive
+                                                                ? 'border border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100'
+                                                                : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
+                                                        }`}
+                                                    >
+                                                        Experimental
+                                                    </button>
+                                                </div>
                                                 <button
                                                     onClick={openActiveRoomTv}
                                                     className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
@@ -20394,7 +20404,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
                                         <div className="text-sm font-semibold text-white">Automation Defaults + Policy</div>
-                                        <div className="mt-1 text-xs text-zinc-400">These are room defaults. Use Queue Controls in the queue tab for live pacing changes.</div>
+                                        <div className="mt-1 text-xs text-zinc-400">These are room defaults. Use the top Room and Automation menus for live pacing changes.</div>
                                     </div>
                                     <span className="rounded-full border border-white/10 bg-black/25 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
                                         Defaults + policy
@@ -20793,7 +20803,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                                 <div className="bg-zinc-900/50 border border-cyan-500/15 rounded-xl p-4">
                                     <div className="text-xs uppercase tracking-[0.28em] text-zinc-500">Automation tuning</div>
-                                    <div className="mt-2 text-sm text-zinc-400">Queue Controls in the queue tab are for live changes. Use Queue Controls for live automation changes during the show.</div>
+                                    <div className="mt-2 text-sm text-zinc-400">Top-chrome Room and Automation menus are for live changes during the show.</div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
                                         <label className="text-sm text-zinc-300">
                                             Ready check duration (sec)

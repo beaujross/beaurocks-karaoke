@@ -1174,8 +1174,7 @@ const HostTopChrome = ({
                         { key: 'stage', label: 'Queue' },
                         { key: 'run_of_show', label: 'Show' },
                         { key: 'games', label: 'Games' },
-                        { key: 'lobby', label: 'Audience' },
-                        { key: 'admin', label: 'Admin' }
+                        { key: 'lobby', label: 'Audience' }
                     ].map(t => (
                         <button
                             key={t.key}
@@ -1220,11 +1219,13 @@ const HostTopChrome = ({
                             <div
                                 data-feature-id="top-chrome-vibe-meter"
                                 title={`${crowdPulseSummary} ${crowdPulseDirective}`.trim()}
-                                className={`inline-flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[10px] uppercase tracking-[0.14em] ${crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20 text-zinc-100'}`}
+                                className={`inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || crowdPulseMeta.alignmentPanelClass || crowdPulseMeta.panelClass || 'border-white/10 bg-black/20 text-zinc-100'}`}
                             >
-                                <span className="font-black text-white/80">Vibe Meter</span>
+                                <span className={`inline-flex h-2 w-2 rounded-full ${crowdPulsePct > 0 ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-zinc-400 shadow-[0_0_8px_rgba(161,161,170,0.4)]'}`}></span>
+                                <i className="fa-solid fa-bolt text-[10px] text-zinc-200"></i>
+                                <span className="text-zinc-100 hidden lg:inline">Vibe</span>
                                 <span className="font-black text-white">{crowdPulsePct}%</span>
-                                <span className={`max-w-[10rem] truncate rounded-full border px-2 py-0.5 ${crowdPulseMeta.alignmentChipClass || crowdPulseMeta.chipClass || 'border-white/10 bg-black/25 text-zinc-200'}`}>
+                                <span className="max-w-[8rem] truncate text-zinc-100/90">
                                     {crowdPulseLabel}
                                 </span>
                             </div>
@@ -1579,6 +1580,7 @@ const HostTopChrome = ({
                         <button
                             type="button"
                             data-feature-id="deck-room-settings-menu-toggle"
+                            aria-expanded={showRoomQuickMenu}
                             onClick={() => {
                                 const next = !showRoomQuickMenu;
                                 closeAllTopMenus();

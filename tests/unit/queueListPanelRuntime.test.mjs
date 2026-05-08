@@ -91,7 +91,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-test('QueueListPanel renders live queue controls and inline queue card actions at runtime', async () => {
+test('QueueListPanel keeps queue actions inline without rendering a duplicate queue-controls slab', async () => {
   vi.doMock('../../src/lib/firebase.js', () => ({
     db: {},
     doc: (...parts) => ({ parts }),
@@ -103,11 +103,11 @@ test('QueueListPanel renders live queue controls and inline queue card actions a
     React.createElement(QueueListPanel, buildQueueListPanelProps()),
   );
 
-  assert.match(markup, /data-feature-id="queue-live-controls"/);
-  assert.match(markup, /Queue Controls/);
-  assert.match(markup, /Queue Rules/);
-  assert.match(markup, /Automation/);
-  assert.match(markup, /Open Conveyor/);
+  assert.doesNotMatch(markup, /data-feature-id="queue-live-controls"/);
+  assert.doesNotMatch(markup, /Queue Controls/);
+  assert.doesNotMatch(markup, /Queue Rules/);
+  assert.doesNotMatch(markup, /Automation/);
+  assert.doesNotMatch(markup, /Open Conveyor/);
   assert.doesNotMatch(markup, /data-feature-id="queue-song-expanded-actions"/);
   assert.match(markup, /Start/);
   assert.match(markup, /Next/);

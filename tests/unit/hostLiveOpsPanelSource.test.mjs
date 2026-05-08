@@ -37,6 +37,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostAppSource, /performanceElapsedSec/);
   assert.match(hostAppSource, /toast\(`Co-host: \$\{freshSignal\.hostLabel\}/);
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-queue-live-controls'\)\)/);
+  assert.match(hostAppSource, /querySelector\('\[data-feature-id="deck-room-settings-menu-toggle"\]'\)/);
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-host-inbox'\)\)/);
   assert.match(hostQueueTabSource, /import HostLiveOpsPanel from '\.\/HostLiveOpsPanel';/);
   assert.match(hostQueueTabSource, /import HostInboxPanel from '\.\/HostInboxPanel';/);
@@ -61,7 +62,9 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
   assert.match(hostQueueTabSource, /data-feature-id="queue-workspace-top-chrome"/);
   assert.match(hostQueueTabSource, /<QueueSummaryBar/);
-  assert.match(hostQueueTabSource, /renderQuickAccessInline=\{!!queueQuickControls\}/);
+  assert.doesNotMatch(hostQueueTabSource, /querySelector\('\[data-feature-id="queue-live-controls"\]'\)/);
+  assert.doesNotMatch(hostQueueTabSource, /data-feature-id="queue-live-controls"/);
+  assert.doesNotMatch(hostQueueTabSource, /renderQuickAccessInline=\{!!queueQuickControls\}/);
   assert.doesNotMatch(hostQueueTabSource, /const compactQueueStatusChips = \[/);
   assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
@@ -78,11 +81,16 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   assert.match(source, /showTitle = true/);
   assert.match(source, /const SnapshotCard = \(\{/);
   assert.match(source, /basis-\[188px\]/);
+  assert.match(source, /const getRunOfShowSceneArtwork = \(item = \{\}\) =>/);
+  assert.match(source, /const getRunOfShowSceneEmoji = \(item = \{\}\) =>/);
   assert.match(source, /\[grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)\)\]/);
+  assert.match(source, /compact \? 'mt-2 grid-cols-3' : 'mt-3 \[grid-template-columns:repeat\(auto-fit,minmax\(220px,1fr\)\)\]'/);
   assert.match(source, /Live Snapshot/);
   assert.match(source, /On Stage/);
   assert.match(source, /Next Singer/);
   assert.match(source, /Planned/);
+  assert.match(source, /artworkUrl=\{getRunOfShowSceneArtwork\(queuedMoment\)\}/);
+  assert.match(source, /avatarEmoji=\{getRunOfShowSceneEmoji\(queuedMoment\)\}/);
   assert.match(source, /meta=\{queuedMoment \? \(runOfShowFlightedItem\?\.id \? 'Armed' : 'On Deck'\) : \(runOfShowEnabled \? 'Plan' : 'Planner Off'\)\}/);
   assert.match(source, /\? 'Open slot'/);
   assert.match(source, />\s*Planner\s*</);

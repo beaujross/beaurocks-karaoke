@@ -23,8 +23,8 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /Playback Track[\s\S]*Pop Out[\s\S]*Performance Flow[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
-    "Playback controls should stay separate from performance flow, while end/next actions remain high in the stage card",
+    /Track note[\s\S]*Performance Flow[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue[\s\S]*Playback Track[\s\S]*Pop Out/,
+    "Performance actions should stay tied to the now-performing card, while playback transport remains a distinct control group below",
   );
   assert.match(
     source,
@@ -40,6 +40,16 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     source,
     /min-h-\[54px\]/,
     "Transport buttons should stay compact enough for constrained host-panel heights",
+  );
+  assert.doesNotMatch(
+    source,
+    /showStageDetails|Audience sync|TV Display Mode|Lyrics View|Auto Lyrics|setCustomBonus|addBonusToCurrent/,
+    "The left stage rail should not unfurl a secondary More drawer with duplicate room and TV controls",
+  );
+  assert.doesNotMatch(
+    source,
+    /Keep the backing under control without touching the live performer flow\.|End the song, capture the room beat, and stage the next protected performer\./,
+    "The stage rail should not spend vertical space on helper copy under the playback and performance headers",
   );
   assert.doesNotMatch(
     source,

@@ -20,19 +20,12 @@ test('queue rows expose deeper actions inline instead of routing to a separate i
   assert.doesNotMatch(queueSongCardSource, /data-feature-id="queue-song-expanded-actions"/);
 });
 
-test('queue list keeps queue-item operations inside the cards and preserves live controls', () => {
+test('queue list keeps queue-item operations inside the cards without a duplicate queue-controls slab', () => {
   assert.doesNotMatch(queueListPanelSource, /data-feature-id="queue-song-inspector"/);
-  assert.match(queueListPanelSource, /data-feature-id="queue-live-controls"/);
-  assert.match(queueListPanelSource, /Queue Controls/);
-  assert.match(queueListPanelSource, /Queue Rules/);
-  assert.match(queueListPanelSource, /Automation/);
-  assert.match(queueListPanelSource, /Rotation/);
-  assert.match(queueListPanelSource, /Request Cap/);
-  assert.match(queueListPanelSource, /First-Time Boost/);
-  assert.match(queueListPanelSource, /Auto DJ/);
-  assert.match(queueListPanelSource, /Auto End/);
-  assert.match(queueListPanelSource, /Auto Party/);
-  assert.match(queueListPanelSource, /Pop Trivia/);
+  assert.doesNotMatch(queueListPanelSource, /data-feature-id="queue-live-controls"/);
+  assert.doesNotMatch(queueListPanelSource, /Queue Controls/);
+  assert.doesNotMatch(queueListPanelSource, /Queue Rules/);
+  assert.doesNotMatch(queueListPanelSource, /Open Conveyor/);
   assert.match(queueListPanelSource, /Fill Next Slot/);
   assert.match(queueListPanelSource, /Fill All Suggested/);
   assert.match(queueListPanelSource, /Awaiting Approval/);

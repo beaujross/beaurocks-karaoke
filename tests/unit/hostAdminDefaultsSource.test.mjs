@@ -7,12 +7,11 @@ const navConfigSource = readFileSync('src/apps/Host/workspace/navConfig.js', 'ut
 
 test('admin settings frame queue and automation as defaults rather than live controls', () => {
   assert.match(hostAppSource, /Queue defaults/);
-  assert.match(hostAppSource, /These are room defaults\. Use Queue Controls in the queue tab for live pacing changes\./);
+  assert.match(hostAppSource, /These are room defaults\. Use the top Room and Automation menus for live pacing changes\./);
   assert.match(hostAppSource, /Screens \+ Overlays/);
   assert.match(hostAppSource, /Default TV chat, marquee, scoring, and audience-facing screen behavior\./);
   assert.match(hostAppSource, /Automation Defaults \+ Policy/);
-  assert.match(hostAppSource, /Queue Controls in the queue tab are for live changes\./);
-  assert.match(hostAppSource, /Use Queue Controls for live automation changes during the show\./);
+  assert.match(hostAppSource, /Top-chrome Room and Automation menus are for live changes during the show\./);
   assert.match(hostAppSource, /Auto Party Policy/);
   assert.doesNotMatch(hostAppSource, /Trigger Ready Check/);
   assert.doesNotMatch(hostAppSource, /Now In Night Setup/);
@@ -84,5 +83,40 @@ test('admin navigation keeps core config sections wired into the workspace regis
     hostAppSource,
     /key: 'marquee',[\s\S]*?ownership: 'config',\s*description: 'Marquee timing, overlay messaging, and idle-screen content\.'/,
     'Overlays should remain a first-class admin navigation section',
+  );
+  assert.match(
+    hostAppSource,
+    /const slimAdminRail = tab !== 'admin' && viewportWidth <= 900;/,
+    'Full Admin should not collapse into the slim icon-only rail',
+  );
+  assert.match(
+    hostAppSource,
+    /!\s*inAdminWorkspace && \(\s*<button[\s\S]*data-admin-sections-toggle/s,
+    'The compact sections toggle should only exist outside the full Admin workspace',
+  );
+  assert.match(
+    hostAppSource,
+    /\$\{\(inAdminWorkspace \|\| settingsNavOpen\) \? 'block' : 'hidden'\} md:block border-b md:border-b-0 md:border-r border-white\/10 bg-zinc-950 overflow-y-auto custom-scrollbar/,
+    'The full Admin workspace should keep the settings rail visible instead of hiding it behind the drawer state',
+  );
+  assert.match(
+    hostAppSource,
+    /data-feature-id="admin-host-panel-mode-toggle"/,
+    'Full Admin should expose a visible host panel mode toggle in the workspace header',
+  );
+  assert.match(
+    hostAppSource,
+    /Host Panel[\s\S]*Classic[\s\S]*Experimental/s,
+    'Admin should let hosts switch directly between classic and experimental panel modes',
+  );
+  assert.match(
+    hostAppSource,
+    /if \(experimentalHostPanelActive\) \{\s*void toggleRuntimeShellModeQuick\(\);\s*\}/s,
+    'Classic mode button should restore the classic panel when the experimental shell is active',
+  );
+  assert.match(
+    hostAppSource,
+    /if \(!experimentalHostPanelActive\) \{\s*void toggleRuntimeShellModeQuick\(\);\s*\}/s,
+    'Experimental mode button should enable the experimental shell when classic mode is active',
   );
 });

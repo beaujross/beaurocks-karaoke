@@ -29,21 +29,64 @@ const getRunOfShowSceneSummary = (item = {}) => {
     return String(item?.notes || '').trim() || 'Show scene';
 };
 
+const getRunOfShowSceneArtwork = (item = {}) => (
+    String(
+        item?.albumArtUrl
+        || item?.artworkUrl
+        || item?.backingPlan?.artworkUrl
+        || item?.presentationPlan?.backgroundMedia
+        || ''
+    ).trim()
+);
+
+const getRunOfShowSceneEmoji = (item = {}) => {
+    const type = String(item?.type || '').trim().toLowerCase();
+    if (type === 'performance') return String(item?.emoji || '').trim() || '🎤';
+    if (type.includes('trivia') || type.includes('game') || type.includes('would_you_rather')) return '✨';
+    if (type === 'announcement' || type === 'intro' || type === 'closing') return '📣';
+    return '🎬';
+};
+
+const buildQueueSongArtworkUrl = (song = {}) => (
+    String(song?.albumArtUrl || song?.artworkUrl100 || song?.artworkUrl || song?.art || '').trim()
+);
+
+const buildQueueSongEmoji = (song = {}) => (
+    String(song?.emoji || '').trim() || '🎤'
+);
+
 const SnapshotCard = ({
     label,
     title,
     detail,
     meta = '',
+    artworkUrl = '',
+    avatarEmoji = '',
     toneClass = 'border-white/10 bg-black/20 text-zinc-100',
     metaToneClass = 'border-white/10 bg-black/20 text-zinc-200',
     compact = false,
 }) => (
     <div className={`${compact ? 'rounded-xl px-2.5 py-2.5' : 'rounded-2xl px-3 py-3'} border ${toneClass}`}>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className={`min-w-0 flex-1 ${compact ? 'basis-[164px]' : 'basis-[188px]'}`}>
-                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
-                <div className={`mt-1 break-words font-black leading-tight text-white ${compact ? 'text-[13px]' : 'text-sm'}`}>{title}</div>
-                <div className="mt-1 break-words text-[11px] leading-snug text-zinc-400">{detail}</div>
+        <div className={`flex items-start justify-between gap-2 ${compact ? 'min-w-0' : 'flex-wrap'}`}>
+            <div className={`min-w-0 flex-1 ${compact ? '' : 'basis-[188px]'}`}>
+                <div className="flex min-w-0 items-start gap-2">
+                    {artworkUrl ? (
+                        <img
+                            src={artworkUrl}
+                            alt=""
+                            className={`mt-0.5 shrink-0 rounded-lg border border-white/10 object-cover ${compact ? 'h-10 w-10' : 'h-11 w-11'}`}
+                        />
+                    ) : avatarEmoji ? (
+                        <span className={`mt-0.5 inline-flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/25 ${compact ? 'h-10 w-10 text-lg' : 'h-11 w-11 text-xl'}`}>
+                            {avatarEmoji}
+                        </span>
+                    ) : null}
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">{label}</div>
+                        <div className={`mt-1 font-black leading-tight text-white ${compact ? 'overflow-hidden text-ellipsis whitespace-nowrap text-[13px]' : 'break-words text-sm'}`}>{title}</div>
+                        <div className={`mt-1 text-[11px] leading-snug text-zinc-400 ${compact ? 'overflow-hidden text-ellipsis whitespace-nowrap' : 'break-words'}`}>{detail}</div>
+                    </div>
+                </div>
             </div>
             {meta ? (
                 <span className={`inline-flex w-fit shrink-0 rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${metaToneClass}`}>
@@ -110,7 +153,7 @@ export default function HostLiveOpsPanel({
                 </div>
             </div>
 
-            <div className={`grid gap-2 ${compact ? 'mt-2 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]' : 'mt-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]'}`}>
+            <div className={`grid gap-2 ${compact ? 'mt-2 grid-cols-3' : 'mt-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]'}`}>
                 <SnapshotCard
                     label="On Stage"
                     title={hasCurrentPerformance ? buildQueueSongLabel(current) : 'No one on stage'}
@@ -120,6 +163,8 @@ export default function HostLiveOpsPanel({
                             ? `${getRunOfShowSceneTitle(currentMoment)} live`
                             : 'Room idle'}
                     meta={hasCurrentPerformance ? (currentSourcePlaying ? 'Playing' : 'Ready') : currentMoment ? 'Moment Live' : 'Idle'}
+                    artworkUrl={hasCurrentPerformance ? buildQueueSongArtworkUrl(current) : getRunOfShowSceneArtwork(currentMoment)}
+                    avatarEmoji={hasCurrentPerformance ? buildQueueSongEmoji(current) : getRunOfShowSceneEmoji(currentMoment)}
                     toneClass={hasCurrentPerformance
                         ? 'border-emerald-300/22 bg-emerald-500/8'
                         : currentMoment
@@ -139,6 +184,8 @@ export default function HostLiveOpsPanel({
                         ? 'Queue-first move'
                         : 'No singer ready'}
                     meta={nextQueueSong ? 'Ready' : 'Open'}
+                    artworkUrl={buildQueueSongArtworkUrl(nextQueueSong)}
+                    avatarEmoji={buildQueueSongEmoji(nextQueueSong)}
                     toneClass={nextQueueSong ? 'border-cyan-300/22 bg-cyan-500/8' : 'border-white/10 bg-black/20'}
                     metaToneClass={nextQueueSong
                         ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
@@ -154,6 +201,8 @@ export default function HostLiveOpsPanel({
                             ? 'Open slot'
                             : 'Planner off'}
                     meta={queuedMoment ? (runOfShowFlightedItem?.id ? 'Armed' : 'On Deck') : (runOfShowEnabled ? 'Plan' : 'Planner Off')}
+                    artworkUrl={getRunOfShowSceneArtwork(queuedMoment)}
+                    avatarEmoji={getRunOfShowSceneEmoji(queuedMoment)}
                     toneClass={queuedMoment ? 'border-violet-300/22 bg-violet-500/8' : 'border-white/10 bg-black/20'}
                     metaToneClass={queuedMoment
                         ? (runOfShowFlightedItem?.id

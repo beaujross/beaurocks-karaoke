@@ -225,6 +225,7 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.match(markup, /data-feature-id="panel-queue-list"/);
   assert.match(markup, /data-feature-id="panel-tv-moments"/);
   assert.match(markup, /data-feature-id="panel-tv-moments-toggle"/);
+  assert.match(markup, /Live Queue/);
   assert.match(markup, /Media Library/);
   assert.match(markup, /data-feature-id="open-tv-library"/);
   assert.match(markup, /Open Media Library/);
@@ -508,8 +509,9 @@ test('HostQueueTab protects the live lineup and exposes quick between-song inser
 
   assert.match(markup, /Locked Next Performers/);
   assert.match(markup, /Build The Bench/);
-  assert.match(markup, /Trivia Next/);
-  assert.match(markup, /Winner Next/);
-  assert.match(markup, /Vote Next/);
+  assert.match(markup, /Lock the lineup|Lineup protected/);
+  assert.doesNotMatch(markup, /Trivia Next/);
+  assert.doesNotMatch(markup, /Winner Next/);
+  assert.doesNotMatch(markup, /Vote Next/);
   assert.match(markup, /fa-lock/);
 });

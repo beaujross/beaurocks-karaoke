@@ -163,8 +163,8 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
-    /querySelector\('\[data-feature-id="queue-live-controls"\]'\)/,
-    'Readiness should target the queue live-controls anchor instead of reopening setup',
+    /querySelector\('\[data-feature-id="deck-room-settings-menu-toggle"\]'\)/,
+    'Readiness should target the top room-settings quick menu instead of reopening setup',
   );
   assert.match(
     hostAppSource,

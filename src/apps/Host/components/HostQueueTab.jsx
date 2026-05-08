@@ -464,7 +464,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', queueQuickControls = null, runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -772,7 +772,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }, [audioLibraryDrafts, onUpdateAudioLibraryItem]);
     const {
         current,
-        hasLyrics,
         reviewRequired,
         queue,
         assigned,
@@ -3256,10 +3255,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const focusQueueControls = () => {
             setDesktopQueueSurfaceTab('queue');
             queueSurface.activateCompactTab('queue');
-            window.requestAnimationFrame(() => {
-                const node = document.querySelector('[data-feature-id="queue-live-controls"]');
-                node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
         };
         const focusInbox = () => {
             focusInboxWorkspace();
@@ -3289,10 +3284,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     ), [deferredTrackChecks, handlePostPerformanceBackingPromptAction, postPerformanceBackingPromptBusy]);
     const visibleLastTrackCheck = null;
     const queueWorkspaceTabListClass = `flex flex-wrap items-end gap-1.5 border-b border-white/10 ${isDenseLayout ? 'px-3 pt-3' : 'px-4 pt-4'}`;
-    const getQueueWorkspaceTabButtonClass = (active = false) => (
+    const getQueueWorkspaceTabButtonClass = (active = false, activeToneClass = '') => (
         `inline-flex min-h-[42px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
             active
-                ? 'border-cyan-300/30 border-b-transparent bg-[linear-gradient(180deg,rgba(20,28,42,0.98),rgba(11,17,27,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.12)]'
+                ? `${activeToneClass} border-b-transparent`
                 : 'border-transparent bg-white/[0.03] text-zinc-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white'
         }`
     );
@@ -3305,6 +3300,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         onClick = null,
         featureId = '',
         badgeToneClass = 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+        activeToneClass = 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(20,28,42,0.98),rgba(11,17,27,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.12)]',
     } = {}) => (
         <button
             key={id}
@@ -3312,7 +3308,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             onClick={onClick}
             data-feature-id={featureId || undefined}
             aria-pressed={active}
-            className={getQueueWorkspaceTabButtonClass(active)}
+            className={getQueueWorkspaceTabButtonClass(active, activeToneClass)}
         >
             {icon ? <i className={`fa-solid ${icon} text-[10px]`}></i> : null}
             <span>{label}</span>
@@ -3386,7 +3382,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const addToQueueSection = (
         <div className={`border-b border-white/10 bg-black/20 relative ${addToQueueWorkspaceActive && !queueSurface.isCompactQueueSurface ? 'flex min-h-0 flex-1 flex-col p-3 overflow-hidden' : 'p-3'}`}>
             <SectionHeader
-                label="Add"
+                label="Build Next Performer"
                 open={addToQueueSectionOpen}
                 onToggle={() => {
                     if (addToQueueWorkspaceActive) {
@@ -4108,7 +4104,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 label="Media Library"
                 open={tvControlsOpen}
                 onToggle={() => setTvControlsOpen((value) => !value)}
-                toneClass="text-sm font-black text-cyan-100"
+                toneClass="text-base font-black text-[#00C4D9]"
                 featureId="panel-tv-moments-toggle"
             />
             {tvControlsOpen ? (
@@ -4156,7 +4152,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         <div className={`flex-1 min-h-0 overflow-y-auto ${compactViewport ? 'p-2.5 space-y-2.5' : 'p-3 space-y-3'} custom-scrollbar`}>
             {queueSurface.isCompactQueueSurface ? runOfShowQueueHudSection : null}
             <SectionHeader
-                label="Queue"
+                label="Live Queue"
                 open={showQueueList}
                 onToggle={() => setShowQueueList(v => !v)}
                 toneClass={`text-base font-black text-[#00C4D9] px-1 sticky top-0 z-20 bg-zinc-950/95 backdrop-blur ${compactViewport ? 'py-2 rounded-lg border border-white/10' : ''}`}
@@ -4214,9 +4210,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
                 onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
-                quickControls={queueQuickControls}
                 renderSummaryBarInline={false}
-                renderQuickAccessInline={!!queueQuickControls}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -4755,7 +4749,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         : desktopQueueSurfaceTab === 'queue';
     const queueWorkspaceHeader = showQueueWorkspaceHeader ? (
         <div data-feature-id="queue-workspace-top-chrome" className="border-b border-white/10 bg-black/20 px-3 py-3">
-            <div className="grid gap-3 xl:grid-cols-[minmax(320px,0.88fr)_minmax(0,1.12fr)] xl:items-start">
+            <div className="grid gap-2.5 xl:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.2fr)] xl:items-start">
                 <QueueSummaryBar
                     showQueueSummaryBar={showQueueSummaryBar}
                     onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
@@ -4807,6 +4801,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('queue'),
                     featureId: 'queue-surface-tab-queue-desktop',
                     badge: queueSurface.counts.ready,
+                    activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'add',
@@ -4815,6 +4810,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     active: desktopQueueSurfaceTab === 'add',
                     onClick: () => setDesktopQueueSurfaceTab('add'),
                     featureId: 'queue-surface-tab-add-desktop',
+                    activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
                 })}
                 {renderQueueWorkspaceTabButton({
                     id: 'inbox',
@@ -4824,6 +4820,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('inbox'),
                     featureId: 'queue-surface-tab-inbox-desktop',
                     badge: inboxTotalCount,
+                    activeToneClass: 'border-amber-300/30 bg-[linear-gradient(180deg,rgba(44,28,12,0.98),rgba(24,16,9,0.98))] text-amber-100 shadow-[0_-10px_30px_rgba(245,158,11,0.14)]',
                     badgeToneClass: inboxNeedsHostCount > 0
                         ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
                         : 'border-white/10 bg-black/20 text-zinc-200',
@@ -4836,6 +4833,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onClick: () => setDesktopQueueSurfaceTab('show'),
                     featureId: 'queue-surface-tab-show-desktop',
                     badge: runOfShowNeedsAttentionCount,
+                    activeToneClass: 'border-emerald-300/30 bg-[linear-gradient(180deg,rgba(13,41,33,0.98),rgba(8,23,18,0.98))] text-emerald-100 shadow-[0_-10px_30px_rgba(16,185,129,0.14)]',
                     badgeToneClass: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
                 }) : null}
             </div>
@@ -4918,10 +4916,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         : desktopQueueSurfacePanel;
     const hostPanelLayoutControls = (
         <section className={`${sectionPaddingClass} border-b border-white/10`} data-feature-id="host-panel-layout-controls">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-200">Host Panel</div>
-                    <div className="mt-1 text-xs text-zinc-500">Sweep every host section open or closed, then reopen only what you need live.</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -5293,7 +5290,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         room={room}
                                         current={current}
                                         lastPerformance={room?.lastPerformance || null}
-                                        hasLyrics={hasLyrics}
                                         lobbyCount={lobbyCount}
                                         queueCount={queueSurface.stageSummary.queueCount}
                                         needsAttentionCount={queueSurface.counts.needsAttention}
@@ -5318,9 +5314,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         stopAppleMusic={stopAppleMusic}
                                         updateRoom={updateRoom}
                                         startEdit={startEdit}
-                                        customBonus={customBonus}
-                                        setCustomBonus={setCustomBonus}
-                                        addBonusToCurrent={addBonusToCurrent}
                                         onRateBacking={rateBackingPreference}
                                         lastTrackCheckItem={visibleLastTrackCheck}
                                         onTrackCheckAction={handlePostPerformanceBackingPromptAction}
