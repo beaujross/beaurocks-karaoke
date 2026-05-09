@@ -50,6 +50,7 @@ import {
     getMyUsageInvoiceDraft,
     saveMyUsageInvoiceDraft,
     listMyUsageInvoices,
+    manageHostSettingsDefaults,
     updateRoomAsHost,
     publishPublicRoomRecap,
     uploadHostSceneMedia,
@@ -154,6 +155,42 @@ import {
     isRecoverableAppCheckError,
 } from '../../lib/appCheckErrors';
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
+import {
+    CROWD_MODE_PRESETS,
+    buildCrowdModePatch,
+    getCrowdModeSummary,
+} from '../../lib/hostCrowdModes';
+import {
+    OPERATING_STYLE_PRESETS,
+    buildOperatingStylePatch,
+    getOperatingStyleSummary,
+} from '../../lib/hostOperatingStyles';
+import {
+    HOST_SETTINGS_HISTORY_ACTIONS,
+    appendHostSettingsHistoryEntry,
+    buildHostSettingsHistoryEntry,
+    buildHostSettingsRestoreOperation,
+    buildHostSettingsUndoOperation,
+    hasMeaningfulHostSettingsDelta,
+} from '../../lib/hostSettingsChangeHistory.js';
+import {
+    HOST_SETTINGS_RUNTIME_ROLES,
+    HOST_SETTINGS_WORKSPACE_ROLES,
+} from '../../lib/hostSettingsPermissions.js';
+import {
+    HOST_SETTINGS_SAVE_TARGETS,
+    HOST_SETTINGS_SOURCE_TYPES,
+    buildHostSettingsSaveRequest,
+    getAvailableHostSettingsSaveTargets,
+    getHostSettingsSaveTargetLabel,
+} from '../../lib/hostSettingsSavePolicy.js';
+import { getHostSettingsTargetEntitlementState } from '../../lib/hostSettingsEntitlementPolicy.js';
+import { buildHostSettingsPersistenceWritePlan } from '../../lib/hostSettingsPersistenceModel.js';
+import { modeAllowsHostSettingsSaveTarget } from '../../lib/hostSettingsModeProfiles.js';
+import {
+    HOST_SETTINGS_TELEMETRY_EVENTS,
+    buildHostSettingsTelemetryPayload,
+} from '../../lib/hostSettingsTelemetry.js';
 import {
     buildRunOfShowGameLaunchRoomUpdates,
     findRoomUserByUid,
@@ -1391,8 +1428,8 @@ const NIGHT_SETUP_STEPS = [
     {
         id: 2,
         label: 'Main Event',
-        subtitle: 'Choose spotlight mode',
-        sections: ['Section 1: Spotlight Mode', 'Section 2: Live Toggles']
+        subtitle: 'Choose room format',
+        sections: ['Section 1: Room Format', 'Section 2: Live Toggles']
     }
 ];
 
@@ -4920,6 +4957,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [audienceBingoReopenEnabled, setAudienceBingoReopenEnabled] = useState(true);
     const [autoLyricsOnQueue, setAutoLyricsOnQueue] = useState(false);
     const [popTriviaEnabled, setPopTriviaEnabled] = useState(false);
+    const [draftHostSettingsBundleHistory, setDraftHostSettingsBundleHistory] = useState([]);
+    const [liveHostSettingsBundleHistory, setLiveHostSettingsBundleHistory] = useState([]);
+    const [savedHostSettingsBundles, setSavedHostSettingsBundles] = useState({
+        hostDefault: { bundles: {}, loaded: false },
+        workspaceTemplate: { bundles: {}, loaded: false },
+        loading: false,
+    });
     const roomPresetConfig = useMemo(() => {
         const activePresetId = String(room?.hostNightPreset || '').trim();
         const fallbackPreset = BUILTIN_HOST_NIGHT_PRESETS[activePresetId] || BUILTIN_HOST_NIGHT_PRESETS.casual;
@@ -16006,7 +16050,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             { label: 'Host identity', ok: !!String(hostName || '').trim() },
             { label: 'Room code assigned', ok: !!String(roomCode || '').trim() },
             { label: 'Night type selected', ok: !!String(selectedPreset?.id || '').trim() },
-            { label: 'Spotlight mode selected', ok: !!String(selectedMode?.id || '').trim() },
+            { label: 'Room format selected', ok: !!String(selectedMode?.id || '').trim() },
             { label: 'Queue policy set', ok: !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim() },
             { label: 'Branding logo', ok: !!String(logoUrl || '').trim() },
             {
@@ -16114,9 +16158,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const tonightPlanFields = [
             { key: 'night', label: 'Night', value: selectedPreset.label },
             { key: 'pacing', label: 'Pacing', value: pacingLabel },
-            { key: 'spotlight', label: 'Spotlight', value: selectedMode.label },
+            { key: 'spotlight', label: 'Format', value: selectedMode.label },
             { key: 'readiness', label: 'Readiness', value: readinessLabel }
         ];
+        const roomFormatLauncher = roomCode ? (
+            <SelfServeModeLauncher
+                room={room}
+                roomCode={roomCode}
+                updateRoom={updateRoom}
+                toast={toast}
+                context="setup"
+            />
+        ) : null;
 
         if (missionControlEnabled) {
             const missionPreset = hostNightPresets[missionDraft?.archetype] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
@@ -16165,7 +16218,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 { label: 'Max Break', value: `${missionPartyPreview?.maxBreakDurationSec || 20}s` },
                 { label: 'Group Streak', value: `x${missionPartyPreview?.maxConsecutiveNonKaraokeModes || 1}` }
             ];
-            const missionSummary = `Archetype: ${missionPreset.label} | Constraint: ${missionFlowRuleLabel} | Host Style: ${missionAssistLabel} | Spotlight: ${missionMode.label}`;
+            const missionSummary = `Archetype: ${missionPreset.label} | Constraint: ${missionFlowRuleLabel} | Host Style: ${missionAssistLabel} | Format: ${missionMode.label}`;
 
             return (
                 <MissionSetupShell
@@ -16336,6 +16389,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     }
                                 ]}
                             />
+                            {roomFormatLauncher}
                         </>
                     )}
                     sideContent={(
@@ -16390,7 +16444,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 <div className="min-w-0">
                                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Pre-Show Setup</div>
                                     <div className="text-2xl md:text-3xl font-black text-white mt-1">Set The Night Flow</div>
-                                    <div className="text-sm text-zinc-400 mt-1">Pick night type, queue rules, and spotlight mode.</div>
+                                    <div className="text-sm text-zinc-400 mt-1">Pick night type, queue rules, and room format.</div>
                                 </div>
                                 <div className="flex-1 min-w-0 lg:px-4">
                                     <div className="flex flex-wrap lg:flex-nowrap items-center justify-center gap-2">
@@ -16589,7 +16643,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 {nightSetupStep === 2 && (
                                     <div className="space-y-4">
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Spotlight Mode</div>
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Format</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                                             {NIGHT_SETUP_PRIMARY_MODES.map((mode) => (
@@ -16662,6 +16716,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 <div className="text-xs text-zinc-400 mt-2">Run scheduled banners for promos, reminders, and calls to action.</div>
                                             </button>
                                         </div>
+                                    </div>
+                                )}
+                                {roomFormatLauncher && (
+                                    <div className="space-y-3">
+                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Optional Format Layer</div>
+                                        </div>
+                                        {roomFormatLauncher}
                                     </div>
                                 )}
                             </div>
@@ -16761,8 +16823,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         );
     };
 
-    if(view === 'landing') {
-        return ( 
+    const landingView = view === 'landing' ? ( 
         <div
             className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
             style={{
@@ -17121,8 +17182,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
             )}
         </div>
-    );
-    }
+    ) : null;
 
     const settingsNavigationSections = (() => {
         const q = settingsNavQuery.trim().toLowerCase();
@@ -17291,6 +17351,550 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const hasPendingRoomSettings = !!persistedRoomSettingsPayload
         && JSON.stringify(draftRoomSettingsPayload) !== JSON.stringify(persistedRoomSettingsPayload);
     const showSaveAction = canSaveRoomSettings || hasPendingRoomSettings;
+    const hostSettingsRuntimeRole = HOST_SETTINGS_RUNTIME_ROLES.host;
+    const hostSettingsWorkspaceRole = hostPermissionLevel === 'owner'
+        ? HOST_SETTINGS_WORKSPACE_ROLES.owner
+        : hostPermissionLevel === 'admin'
+            ? HOST_SETTINGS_WORKSPACE_ROLES.admin
+            : hostPermissionLevel === 'member'
+                ? HOST_SETTINGS_WORKSPACE_ROLES.member
+                : HOST_SETTINGS_WORKSPACE_ROLES.none;
+    const availableHostSettingsSaveTargets = getAvailableHostSettingsSaveTargets({
+        runtimeRole: hostSettingsRuntimeRole,
+        workspaceRole: hostSettingsWorkspaceRole,
+    });
+    const savedHostDefaultBundles = savedHostSettingsBundles.hostDefault?.bundles || {};
+    const savedWorkspaceTemplateBundles = savedHostSettingsBundles.workspaceTemplate?.bundles || {};
+    const hostSettingsModeProfileId = room?.selfServeMode?.enabled
+        ? 'self_serve'
+        : (programMode === RUN_OF_SHOW_PROGRAM_MODES.runOfShow || room?.runOfShowEnabled)
+            ? 'run_of_show_showcase'
+            : getHostRuntimeShellMode(room) === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment
+                ? 'social_game_night'
+                : 'standard';
+    const readableHostSettingsTargets = [HOST_SETTINGS_SAVE_TARGETS.hostDefault, HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate].filter((target) => {
+        if (!modeAllowsHostSettingsSaveTarget({ modeId: hostSettingsModeProfileId, target })) return false;
+        if (!availableHostSettingsSaveTargets.includes(target)) {
+            return target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate;
+        }
+        return getHostSettingsTargetEntitlementState({
+            target,
+            capabilities,
+        }).canRead;
+    });
+    const modeAwareHostSettingsSaveTargets = availableHostSettingsSaveTargets.filter((target) => {
+        if (!modeAllowsHostSettingsSaveTarget({
+            modeId: hostSettingsModeProfileId,
+            target,
+        })) return false;
+        return getHostSettingsTargetEntitlementState({
+            target,
+            capabilities,
+        }).canSave;
+    });
+    const hostSettingsSaveScopeLabels = modeAwareHostSettingsSaveTargets.map((target) => getHostSettingsSaveTargetLabel(target));
+    const getCurrentCrowdModeState = () => ({
+        chatShowOnTv: !!chatShowOnTv,
+        chatTvMode: chatTvMode || 'auto',
+        showScoring: !!showScoring,
+        marqueeEnabled: !!marqueeEnabled,
+        popTriviaEnabled: !!popTriviaEnabled,
+    });
+    const getCurrentOperatingStyleState = () => ({
+        autoPlayMedia: !!autoPlayMedia,
+        readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
+        queueSettings: {
+            limitMode: String(queueLimitMode || 'none'),
+            limitCount: Math.max(0, Number(queueLimitCount || 0)),
+            rotation: String(queueRotation || 'round_robin'),
+            firstTimeBoost: !!queueFirstTimeBoost,
+        },
+    });
+    const applyCrowdModeState = (patch = {}) => {
+        setChatShowOnTv(!!patch.chatShowOnTv);
+        setChatTvMode(patch.chatTvMode || 'auto');
+        setShowScoring(patch.showScoring !== false);
+        setMarqueeEnabled(!!patch.marqueeEnabled);
+        setPopTriviaEnabled(!!patch.popTriviaEnabled);
+    };
+    const applyOperatingStyleState = (patch = {}) => {
+        setAutoPlayMedia(!!patch.autoPlayMedia);
+        setReadyCheckDurationSec(Math.max(3, Number(patch.readyCheckDurationSec || 10) || 10));
+        setQueueLimitMode(String(patch?.queueSettings?.limitMode || 'none'));
+        setQueueLimitCount(Math.max(0, Number(patch?.queueSettings?.limitCount || 0)));
+        setQueueRotation(String(patch?.queueSettings?.rotation || 'round_robin'));
+        setQueueFirstTimeBoost(patch?.queueSettings?.firstTimeBoost !== false);
+    };
+    const trackHostSettingsTelemetry = (payload = {}) => {
+        try {
+            const eventName = payload?.eventName || HOST_SETTINGS_TELEMETRY_EVENTS.bundleApplied;
+            const telemetryPayload = buildHostSettingsTelemetryPayload({
+                roomCode,
+                roomMode: room?.activeMode || 'karaoke',
+                runtimeRole: hostSettingsRuntimeRole,
+                workspaceRole: hostSettingsWorkspaceRole,
+                ...payload,
+            });
+            trackEvent(eventName, telemetryPayload);
+        } catch (error) {
+            hostLogger.debug('Host settings telemetry skipped', error);
+        }
+    };
+    const appendBundleHistory = (setHistory, entry = null) => {
+        if (!entry || !hasMeaningfulHostSettingsDelta(entry)) return entry;
+        setHistory((previous) => appendHostSettingsHistoryEntry(previous, entry, 12));
+        return entry;
+    };
+    const recordHostSettingsBundleEntry = ({
+        setHistory,
+        eventName = HOST_SETTINGS_TELEMETRY_EVENTS.bundleApplied,
+        action = HOST_SETTINGS_HISTORY_ACTIONS.bundleApplied,
+        bundleId = '',
+        presetId = '',
+        label = '',
+        before = {},
+        after = {},
+        surface = '',
+        sourceType = HOST_SETTINGS_SOURCE_TYPES.preset,
+        sourceId = '',
+        saveTarget = HOST_SETTINGS_SAVE_TARGETS.tonight,
+    } = {}) => {
+        const entry = buildHostSettingsHistoryEntry({
+            action,
+            bundleId,
+            label,
+            before,
+            after,
+            provenance: {
+                sourceType,
+                sourceId: sourceId || presetId || bundleId,
+                savedTo: saveTarget,
+            },
+            actorUid: auth.currentUser?.uid || uid || '',
+            actorRole: hostSettingsRuntimeRole,
+            nowMs: nowMs(),
+        });
+        if (!hasMeaningfulHostSettingsDelta(entry)) return null;
+        appendBundleHistory(setHistory, {
+            ...entry,
+            surface,
+            presetId,
+        });
+        trackHostSettingsTelemetry({
+            eventName,
+            bundleId,
+            presetId,
+            saveTarget,
+            surface,
+            sourceType,
+            sourceId: sourceId || presetId || bundleId,
+            before,
+            after,
+        });
+        return entry;
+    };
+    const loadSavedHostSettingsTarget = async (target = HOST_SETTINGS_SAVE_TARGETS.hostDefault) => {
+        if (target !== HOST_SETTINGS_SAVE_TARGETS.hostDefault && target !== HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate) return null;
+        const result = await manageHostSettingsDefaults({
+            action: 'get',
+            target,
+        });
+        setSavedHostSettingsBundles((previous) => ({
+            ...previous,
+            [target === HOST_SETTINGS_SAVE_TARGETS.hostDefault ? 'hostDefault' : 'workspaceTemplate']: {
+                bundles: result?.bundles || {},
+                loaded: true,
+                accessState: result?.accessState || null,
+            },
+        }));
+        return result || null;
+    };
+    const refreshSavedHostSettingsBundles = async () => {
+        if (!hostAuthSessionReady) return;
+        setSavedHostSettingsBundles((previous) => ({ ...previous, loading: true }));
+        try {
+            const nonTonightTargets = readableHostSettingsTargets.filter((target) => target !== HOST_SETTINGS_SAVE_TARGETS.tonight);
+            for (const target of nonTonightTargets) {
+                await loadSavedHostSettingsTarget(target);
+            }
+        } catch (error) {
+            hostLogger.debug('Saved host settings bundle refresh skipped', error);
+        } finally {
+            setSavedHostSettingsBundles((previous) => ({ ...previous, loading: false }));
+        }
+    };
+    useEffect(() => {
+        if (!hostAuthSessionReady) return;
+        refreshSavedHostSettingsBundles();
+    }, [hostAuthSessionReady, refreshSavedHostSettingsBundles]);
+    const saveHostSettingsBundleTarget = async ({
+        target = HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+        bundleKey = '',
+        settings = {},
+        sourceType = HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+        sourceId = '',
+        surface = 'setup_workspace',
+    } = {}) => {
+        const actorUid = auth.currentUser?.uid || uid || '';
+        const safeTarget = target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate
+            ? HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate
+            : HOST_SETTINGS_SAVE_TARGETS.hostDefault;
+        if (!modeAllowsHostSettingsSaveTarget({ modeId: hostSettingsModeProfileId, target: safeTarget })) {
+            toast(`${getHostSettingsSaveTargetLabel(safeTarget)} is not available in this room format.`);
+            return null;
+        }
+        const entitlementState = getHostSettingsTargetEntitlementState({
+            target: safeTarget,
+            capabilities,
+        });
+        if (!entitlementState.canSave) {
+            toast(entitlementState.message || `${getHostSettingsSaveTargetLabel(safeTarget)} is not available on this plan.`);
+            trackHostSettingsTelemetry({
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.saveDenied,
+                bundleId: bundleKey,
+                saveTarget: safeTarget,
+                surface,
+                sourceType,
+                sourceId: sourceId || roomCode || bundleKey,
+                deniedReason: 'capability_blocked',
+                before: settings,
+                after: settings,
+            });
+            return null;
+        }
+        const saveRequest = buildHostSettingsSaveRequest({
+            target: safeTarget,
+            sourceType,
+            sourceId: sourceId || roomCode || bundleKey,
+            actorUid,
+            actorRole: hostSettingsRuntimeRole,
+            runtimeRole: hostSettingsRuntimeRole,
+            workspaceRole: hostSettingsWorkspaceRole,
+            settings,
+        });
+        if (!saveRequest.allowed) {
+            toast(`You cannot save this to ${getHostSettingsSaveTargetLabel(safeTarget).toLowerCase()}.`);
+            trackHostSettingsTelemetry({
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.saveDenied,
+                bundleId: bundleKey,
+                saveTarget: safeTarget,
+                surface,
+                sourceType,
+                sourceId: saveRequest.provenance?.sourceId || '',
+                deniedReason: 'permission_denied',
+                before: settings,
+                after: settings,
+            });
+            return null;
+        }
+        const writePlan = buildHostSettingsPersistenceWritePlan({
+            target: safeTarget,
+            actorUid,
+            orgId: orgContext?.orgId || '',
+            roomCode,
+            bundleKey,
+            settings: saveRequest.settings,
+            provenance: saveRequest.provenance,
+        });
+        let result = null;
+        try {
+            result = await manageHostSettingsDefaults({
+                action: 'save',
+                target: safeTarget,
+                bundleKey,
+                settings: saveRequest.settings,
+                provenance: saveRequest.provenance,
+                writePlan,
+            });
+        } catch (error) {
+            toast(error?.message || `Could not save to ${getHostSettingsSaveTargetLabel(safeTarget).toLowerCase()}.`);
+            trackHostSettingsTelemetry({
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.saveDenied,
+                bundleId: bundleKey,
+                saveTarget: safeTarget,
+                surface,
+                sourceType,
+                sourceId: saveRequest.provenance?.sourceId || '',
+                deniedReason: isAppCheckThrottledError(error) ? 'app_check_throttled' : 'save_failed',
+                before: settings,
+                after: settings,
+            });
+            return null;
+        }
+        setSavedHostSettingsBundles((previous) => ({
+            ...previous,
+            [safeTarget === HOST_SETTINGS_SAVE_TARGETS.hostDefault ? 'hostDefault' : 'workspaceTemplate']: {
+                bundles: {
+                    ...(previous[safeTarget === HOST_SETTINGS_SAVE_TARGETS.hostDefault ? 'hostDefault' : 'workspaceTemplate']?.bundles || {}),
+                    [bundleKey]: result?.bundle || {},
+                },
+                loaded: true,
+                accessState: result?.accessState || null,
+            },
+        }));
+        trackHostSettingsTelemetry({
+            eventName: HOST_SETTINGS_TELEMETRY_EVENTS.saveRequested,
+            bundleId: bundleKey,
+            saveTarget: safeTarget,
+            surface,
+            sourceType,
+            sourceId: saveRequest.provenance?.sourceId || '',
+            before: settings,
+            after: settings,
+        });
+        toast(`${bundleKey === 'crowd_mode' ? 'Crowd mode' : 'Operating style'} saved to ${getHostSettingsSaveTargetLabel(safeTarget).toLowerCase()}.`);
+        return result || null;
+    };
+    const applySavedHostSettingsBundle = ({
+        target = HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+        bundleKey = '',
+        surface = 'setup_workspace',
+    } = {}) => {
+        const sourceBuckets = target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate
+            ? savedWorkspaceTemplateBundles
+            : savedHostDefaultBundles;
+        const record = sourceBuckets?.[bundleKey] || null;
+        const patch = record?.settings && typeof record.settings === 'object' ? record.settings : null;
+        if (!patch) {
+            toast(`No saved ${bundleKey === 'crowd_mode' ? 'crowd mode' : 'operating style'} found in ${getHostSettingsSaveTargetLabel(target).toLowerCase()}.`);
+            return;
+        }
+        if (bundleKey === 'crowd_mode') {
+            const before = getCurrentCrowdModeState();
+            applyCrowdModeState(patch);
+            recordHostSettingsBundleEntry({
+                setHistory: setDraftHostSettingsBundleHistory,
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.restoreApplied,
+                action: HOST_SETTINGS_HISTORY_ACTIONS.restoreApplied,
+                bundleId: bundleKey,
+                label: `Restore from ${getHostSettingsSaveTargetLabel(target)}`,
+                before,
+                after: patch,
+                surface,
+                sourceType: target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate
+                    ? HOST_SETTINGS_SOURCE_TYPES.workspaceTemplate
+                    : HOST_SETTINGS_SOURCE_TYPES.hostDefault,
+                sourceId: record?.provenance?.sourceId || target,
+            });
+        } else if (bundleKey === 'operating_style') {
+            const before = getCurrentOperatingStyleState();
+            applyOperatingStyleState(patch);
+            recordHostSettingsBundleEntry({
+                setHistory: setDraftHostSettingsBundleHistory,
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.restoreApplied,
+                action: HOST_SETTINGS_HISTORY_ACTIONS.restoreApplied,
+                bundleId: bundleKey,
+                label: `Restore from ${getHostSettingsSaveTargetLabel(target)}`,
+                before,
+                after: patch,
+                surface,
+                sourceType: target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate
+                    ? HOST_SETTINGS_SOURCE_TYPES.workspaceTemplate
+                    : HOST_SETTINGS_SOURCE_TYPES.hostDefault,
+                sourceId: record?.provenance?.sourceId || target,
+            });
+        }
+        toast(`${bundleKey === 'crowd_mode' ? 'Crowd mode' : 'Operating style'} loaded from ${getHostSettingsSaveTargetLabel(target).toLowerCase()}.`);
+    };
+    const draftCrowdModeHistoryEntry = [...draftHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'crowd_mode') || null;
+    const draftOperatingStyleHistoryEntry = [...draftHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'operating_style') || null;
+    const liveCrowdModeHistoryEntry = [...liveHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'crowd_mode') || null;
+    const liveOperatingStyleHistoryEntry = [...liveHostSettingsBundleHistory].reverse().find((entry) => entry?.bundleId === 'operating_style') || null;
+    const currentCrowdModeSummary = getCrowdModeSummary(getCurrentCrowdModeState());
+    const currentOperatingStyleSummary = getOperatingStyleSummary(getCurrentOperatingStyleState());
+    const applyDraftCrowdModePreset = (presetId = '') => {
+        const before = getCurrentCrowdModeState();
+        const patch = buildCrowdModePatch(presetId, before);
+        applyCrowdModeState(patch);
+        const presetLabel = CROWD_MODE_PRESETS.find((preset) => preset.id === presetId)?.label || 'Custom Crowd Mode';
+        const entry = recordHostSettingsBundleEntry({
+            setHistory: setDraftHostSettingsBundleHistory,
+            bundleId: 'crowd_mode',
+            presetId,
+            label: `${presetLabel} setup`,
+            before,
+            after: patch,
+            surface: 'setup_workspace',
+        });
+        if (entry) toast(`${presetLabel} staged for room setup.`);
+    };
+    const applyDraftOperatingStylePreset = (presetId = '') => {
+        const before = getCurrentOperatingStyleState();
+        const patch = buildOperatingStylePatch(presetId);
+        applyOperatingStyleState(patch);
+        const presetLabel = OPERATING_STYLE_PRESETS.find((preset) => preset.id === presetId)?.label || 'Custom Operating Style';
+        const entry = recordHostSettingsBundleEntry({
+            setHistory: setDraftHostSettingsBundleHistory,
+            bundleId: 'operating_style',
+            presetId,
+            label: `${presetLabel} setup`,
+            before,
+            after: patch,
+            surface: 'setup_workspace',
+        });
+        if (entry) toast(`${presetLabel} staged for room setup.`);
+    };
+    const undoDraftBundle = (bundleId = '') => {
+        const entry = bundleId === 'crowd_mode'
+            ? draftCrowdModeHistoryEntry
+            : draftOperatingStyleHistoryEntry;
+        if (!entry) return;
+        const operation = buildHostSettingsUndoOperation(entry);
+        const currentState = bundleId === 'crowd_mode'
+            ? getCurrentCrowdModeState()
+            : getCurrentOperatingStyleState();
+        if (bundleId === 'crowd_mode') applyCrowdModeState(operation.undoPatch);
+        else applyOperatingStyleState(operation.undoPatch);
+        recordHostSettingsBundleEntry({
+            setHistory: setDraftHostSettingsBundleHistory,
+            eventName: HOST_SETTINGS_TELEMETRY_EVENTS.undoApplied,
+            action: HOST_SETTINGS_HISTORY_ACTIONS.undoApplied,
+            bundleId,
+            label: operation.summary,
+            before: currentState,
+            after: operation.undoPatch,
+            surface: 'setup_workspace',
+            sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+            sourceId: entry?.id || bundleId,
+        });
+        toast(operation.summary);
+    };
+    const restoreDraftBundleFromRoom = (bundleId = '') => {
+        if (!persistedRoomSettingsPayload) return;
+        const restorePatch = bundleId === 'crowd_mode'
+            ? {
+                chatShowOnTv: !!persistedRoomSettingsPayload.chatShowOnTv,
+                chatTvMode: persistedRoomSettingsPayload.chatTvMode || 'auto',
+                showScoring: persistedRoomSettingsPayload.showScoring !== false,
+                marqueeEnabled: !!persistedRoomSettingsPayload.marqueeEnabled,
+                popTriviaEnabled: !!persistedRoomSettingsPayload.popTriviaEnabled,
+            }
+            : {
+                autoPlayMedia: !!persistedRoomSettingsPayload.autoPlayMedia,
+                readyCheckDurationSec: Math.max(3, Number(persistedRoomSettingsPayload.readyCheckDurationSec || 10) || 10),
+                queueSettings: {
+                    limitMode: persistedRoomSettingsPayload?.queueSettings?.limitMode || 'none',
+                    limitCount: Math.max(0, Number(persistedRoomSettingsPayload?.queueSettings?.limitCount || 0)),
+                    rotation: persistedRoomSettingsPayload?.queueSettings?.rotation || 'round_robin',
+                    firstTimeBoost: persistedRoomSettingsPayload?.queueSettings?.firstTimeBoost !== false,
+                },
+            };
+        const operation = buildHostSettingsRestoreOperation({
+            sourceLabel: 'saved room settings',
+            restorePatch,
+        });
+        const currentState = bundleId === 'crowd_mode'
+            ? getCurrentCrowdModeState()
+            : getCurrentOperatingStyleState();
+        if (bundleId === 'crowd_mode') applyCrowdModeState(restorePatch);
+        else applyOperatingStyleState(restorePatch);
+        recordHostSettingsBundleEntry({
+            setHistory: setDraftHostSettingsBundleHistory,
+            eventName: HOST_SETTINGS_TELEMETRY_EVENTS.restoreApplied,
+            action: HOST_SETTINGS_HISTORY_ACTIONS.restoreApplied,
+            bundleId,
+            label: operation.summary,
+            before: currentState,
+            after: restorePatch,
+            surface: 'setup_workspace',
+            sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+            sourceId: roomCode || 'room',
+        });
+        toast(operation.summary);
+    };
+    const applyLiveCrowdModePreset = async (presetId = '', options = {}) => {
+        const before = getCurrentCrowdModeState();
+        const patch = buildCrowdModePatch(presetId, before);
+        applyCrowdModeState(patch);
+        try {
+            await updateRoom(patch);
+            const presetLabel = CROWD_MODE_PRESETS.find((preset) => preset.id === presetId)?.label || 'Custom Crowd Mode';
+            recordHostSettingsBundleEntry({
+                setHistory: setLiveHostSettingsBundleHistory,
+                bundleId: 'crowd_mode',
+                presetId,
+                label: `${presetLabel} live`,
+                before,
+                after: patch,
+                surface: options?.surface || 'top_chrome',
+            });
+            toast(`${presetLabel} live.`);
+        } catch (error) {
+            console.error('Failed to apply crowd mode preset from live controls', error);
+            applyCrowdModeState(before);
+            toast('Could not update crowd mode.');
+        }
+    };
+    const applyLiveOperatingStylePreset = async (presetId = '', options = {}) => {
+        const before = getCurrentOperatingStyleState();
+        const patch = buildOperatingStylePatch(presetId);
+        applyOperatingStyleState(patch);
+        try {
+            await updateRoom({
+                autoPlayMedia: !!patch.autoPlayMedia,
+                readyCheckDurationSec: Math.max(3, Number(patch.readyCheckDurationSec || 10) || 10),
+                queueSettings: {
+                    limitMode: patch?.queueSettings?.limitMode || 'none',
+                    limitCount: Math.max(0, Number(patch?.queueSettings?.limitCount || 0)),
+                    rotation: patch?.queueSettings?.rotation || 'round_robin',
+                    firstTimeBoost: patch?.queueSettings?.firstTimeBoost !== false,
+                }
+            });
+            const presetLabel = OPERATING_STYLE_PRESETS.find((preset) => preset.id === presetId)?.label || 'Custom Operating Style';
+            recordHostSettingsBundleEntry({
+                setHistory: setLiveHostSettingsBundleHistory,
+                bundleId: 'operating_style',
+                presetId,
+                label: `${presetLabel} live`,
+                before,
+                after: patch,
+                surface: options?.surface || 'top_chrome',
+            });
+            toast(`${presetLabel} live.`);
+        } catch (error) {
+            console.error('Failed to apply operating style preset from live controls', error);
+            applyOperatingStyleState(before);
+            toast('Could not update operating style.');
+        }
+    };
+    const undoLiveBundle = async (bundleId = '', options = {}) => {
+        const entry = bundleId === 'crowd_mode'
+            ? liveCrowdModeHistoryEntry
+            : liveOperatingStyleHistoryEntry;
+        if (!entry) return;
+        const operation = buildHostSettingsUndoOperation(entry);
+        const currentState = bundleId === 'crowd_mode'
+            ? getCurrentCrowdModeState()
+            : getCurrentOperatingStyleState();
+        if (bundleId === 'crowd_mode') applyCrowdModeState(operation.undoPatch);
+        else applyOperatingStyleState(operation.undoPatch);
+        try {
+            await updateRoom(operation.undoPatch);
+            recordHostSettingsBundleEntry({
+                setHistory: setLiveHostSettingsBundleHistory,
+                eventName: HOST_SETTINGS_TELEMETRY_EVENTS.undoApplied,
+                action: HOST_SETTINGS_HISTORY_ACTIONS.undoApplied,
+                bundleId,
+                label: operation.summary,
+                before: currentState,
+                after: operation.undoPatch,
+                surface: options?.surface || 'top_chrome',
+                sourceType: HOST_SETTINGS_SOURCE_TYPES.runtimeOverride,
+                sourceId: entry?.id || bundleId,
+            });
+            toast(operation.summary);
+        } catch (error) {
+            console.error('Failed to undo host settings bundle from live controls', error);
+            if (bundleId === 'crowd_mode') applyCrowdModeState(currentState);
+            else applyOperatingStyleState(currentState);
+            toast('Could not undo that live change.');
+        }
+    };
+    const savedHostDefaultCrowdMode = savedHostDefaultBundles?.crowd_mode || null;
+    const savedWorkspaceCrowdMode = savedWorkspaceTemplateBundles?.crowd_mode || null;
+    const savedHostDefaultOperatingStyle = savedHostDefaultBundles?.operating_style || null;
+    const savedWorkspaceOperatingStyle = savedWorkspaceTemplateBundles?.operating_style || null;
+    if (landingView) return landingView;
     const settingsNavigationGroups = settingsNavigationSections.map((section) => ({
         ...section,
         items: section.items
@@ -17519,9 +18123,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
     };
 
-    const toggleAutoPlayMediaQuick = async () => {
+    const toggleAutoPlayMediaQuick = async (nextValue) => {
         const previous = !!autoPlayMedia;
-        const next = !previous;
+        const next = typeof nextValue === 'boolean' ? nextValue : !previous;
         setAutoPlayMedia(next);
         try {
             await updateRoom({ autoPlayMedia: next });
@@ -18242,6 +18846,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onAddScenePresetToRunOfShow={applyScenePresetToRunOfShow}
                     onClearScenePreset={clearScenePreset}
                     onReplayPurchaseCelebration={replayLatestPurchaseCelebration}
+                    onApplyCrowdModePreset={applyLiveCrowdModePreset}
+                    onUndoCrowdModePreset={undoLiveBundle}
+                    onApplyOperatingStylePreset={applyLiveOperatingStylePreset}
+                    onUndoOperatingStylePreset={undoLiveBundle}
+                    liveCrowdModeHistoryLabel={liveCrowdModeHistoryEntry?.label ? `Last live crowd mode: ${liveCrowdModeHistoryEntry.label}` : 'Live changes affect tonight only.'}
+                    liveOperatingStyleHistoryLabel={liveOperatingStyleHistoryEntry?.label ? `Last live operating style: ${liveOperatingStyleHistoryEntry.label}` : 'Live changes affect tonight only.'}
                 />
             {hostUpdateDeploymentBanner && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
@@ -18406,14 +19016,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'games' && (
                     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
-                            <div className="mb-4">
-                                <SelfServeModeLauncher
-                                    room={room}
-                                    roomCode={roomCode}
-                                    updateRoom={updateRoom}
-                                    toast={toast}
-                                />
-                            </div>
                             <UnifiedGameLauncher
                                 room={room}
                                 roomCode={roomCode}
@@ -19188,7 +19790,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             showContext={!inAdminWorkspace}
                             fullBleed={inAdminWorkspace}
                         >
-                            <div className={`h-full min-h-0 grid grid-cols-1 ${slimAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]'}`}>
+                            <div className={`h-full min-h-0 grid grid-cols-1 ${slimAdminRail ? 'md:grid-cols-[112px_minmax(0,1fr)] xl:grid-cols-[124px_minmax(0,1fr)]' : 'md:grid-cols-[248px_minmax(0,1fr)] xl:grid-cols-[264px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'}`}>
                                 <aside className={`${(inAdminWorkspace || settingsNavOpen) ? 'block' : 'hidden'} md:block border-b md:border-b-0 md:border-r border-white/10 bg-zinc-950 overflow-y-auto custom-scrollbar ${slimAdminRail ? 'p-2 md:p-2.5' : 'p-3 md:p-4'}`}>
                                     <div data-admin-sections-rail>
                                     <div className="mb-2 flex items-center justify-between md:hidden">
@@ -19331,11 +19933,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                                 <div
                                     data-admin-help={showAdminFieldHelp ? 'on' : 'off'}
-                                    className="host-admin-content flex-1 overflow-y-auto custom-scrollbar p-4 md:p-5"
+                                    className={`host-admin-content flex-1 overflow-y-auto custom-scrollbar ${inAdminWorkspace ? 'p-3 md:p-4 xl:p-5' : 'p-4 md:p-5'}`}
                                 >
                         {settingsTab === 'general' && (
                         <>
-                        <div className="mb-5 bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
+                        <div className="mb-5 grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+                        <div className="bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div>
                                     <div className="text-sm uppercase tracking-widest text-cyan-300">Run Tonight</div>
@@ -19349,7 +19952,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </span>
                                 </div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2 mt-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-2 mt-3">
                                 <button
                                     onClick={handleStageQuickStartOpenRoomSetup}
                                     className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
@@ -19484,7 +20087,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     </div>
                                 </div>
                             </div>
-                            <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/8 p-4">
+                        </div>
+                        <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/8 p-4">
                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                     <div className="max-w-2xl">
                                         <div className="text-[10px] uppercase tracking-[0.22em] text-amber-200">Audience Access</div>
@@ -19675,6 +20279,122 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </summary>
                             <div className="mt-4 space-y-6">
+                        <div className="rounded-xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-xs uppercase tracking-[0.22em] text-emerald-200">Operating style</div>
+                                    <div role="status" aria-live="polite" aria-atomic="true">
+                                        <div className="mt-1 text-sm font-semibold text-white">{currentOperatingStyleSummary.label}</div>
+                                        <div className="mt-1 text-xs text-zinc-300">{currentOperatingStyleSummary.description}</div>
+                                    </div>
+                                </div>
+                                <span className="rounded-full border border-emerald-300/20 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-100">
+                                    {currentOperatingStyleSummary.presetId === 'custom' ? 'Fine tuned' : 'Preset'}
+                                </span>
+                            </div>
+                            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                {OPERATING_STYLE_PRESETS.map((preset) => {
+                                    const selected = currentOperatingStyleSummary.presetId === preset.id;
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            onClick={() => applyDraftOperatingStylePreset(preset.id)}
+                                            aria-pressed={selected}
+                                            aria-label={`Use ${preset.label} operating style`}
+                                            className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnNeutral} min-h-[72px] justify-start text-left`}
+                                        >
+                                            <span className="flex flex-col items-start">
+                                                <span className="font-semibold">{preset.label}</span>
+                                                <span className="mt-1 text-[11px] text-zinc-300 normal-case tracking-normal">{preset.description}</span>
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="host-form-helper mt-3">
+                                Operating styles bundle queue guardrails, auto stage playback, and ready-check pacing. Use the detailed controls below only when tonight needs exceptions.
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                <div className="text-zinc-400">
+                                    {draftOperatingStyleHistoryEntry?.label
+                                        ? `Last setup style: ${draftOperatingStyleHistoryEntry.label}`
+                                        : `Can promote later to: ${hostSettingsSaveScopeLabels.join(', ')}`}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {modeAwareHostSettingsSaveTargets.includes(HOST_SETTINGS_SAVE_TARGETS.hostDefault) ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => saveHostSettingsBundleTarget({
+                                                target: HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+                                                bundleKey: 'operating_style',
+                                                settings: getCurrentOperatingStyleState(),
+                                                sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+                                                sourceId: roomCode || 'setup_room',
+                                            })}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Save as my default
+                                        </button>
+                                    ) : null}
+                                    {savedHostDefaultOperatingStyle ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => applySavedHostSettingsBundle({
+                                                target: HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+                                                bundleKey: 'operating_style',
+                                            })}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Use my default
+                                        </button>
+                                    ) : null}
+                                    {modeAwareHostSettingsSaveTargets.includes(HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate) ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => saveHostSettingsBundleTarget({
+                                                target: HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate,
+                                                bundleKey: 'operating_style',
+                                                settings: getCurrentOperatingStyleState(),
+                                                sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+                                                sourceId: roomCode || 'setup_room',
+                                            })}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Save to workspace template
+                                        </button>
+                                    ) : null}
+                                    {savedWorkspaceOperatingStyle ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => applySavedHostSettingsBundle({
+                                                target: HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate,
+                                                bundleKey: 'operating_style',
+                                            })}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Use workspace template
+                                        </button>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={() => undoDraftBundle('operating_style')}
+                                        disabled={!draftOperatingStyleHistoryEntry}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em] ${draftOperatingStyleHistoryEntry ? '' : 'opacity-50 cursor-not-allowed'}`}
+                                    >
+                                        Undo
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => restoreDraftBundleFromRoom('operating_style')}
+                                        disabled={!persistedRoomSettingsPayload}
+                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em] ${persistedRoomSettingsPayload ? '' : 'opacity-50 cursor-not-allowed'}`}
+                                    >
+                                        Restore saved room value
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                         <div className="space-y-2">
                             <div className="text-sm uppercase tracking-widest text-zinc-400">Queue settings</div>
                             <div className="grid grid-cols-2 gap-2">
@@ -20284,39 +21004,121 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </div>
                             </summary>
                             <div className="mt-4 space-y-5">
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowScoring((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${showScoring ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
-                                    >
-                                        <i className="fa-solid fa-star-half-stroke"></i>
-                                        {showScoring ? 'Scoring On' : 'Scoring Off'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowFameLevel((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${showFameLevel ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
-                                    >
-                                        <i className="fa-solid fa-medal"></i>
-                                        {showFameLevel ? 'Fame Levels On' : 'Fame Levels Off'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setChatShowOnTv((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${chatShowOnTv ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
-                                    >
-                                        <i className="fa-solid fa-comments"></i>
-                                        {chatShowOnTv ? 'TV Chat On' : 'TV Chat Off'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setMarqueeEnabled((prev) => !prev)}
-                                        className={`${STYLES.btnStd} ${marqueeEnabled ? STYLES.btnInfo : STYLES.btnNeutral} justify-start`}
-                                    >
-                                        <i className="fa-solid fa-panorama"></i>
-                                        {marqueeEnabled ? 'Marquee On' : 'Marquee Off'}
-                                    </button>
+                                <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Crowd mode</div>
+                                            <div role="status" aria-live="polite" aria-atomic="true">
+                                                <div className="mt-1 text-sm font-semibold text-white">{currentCrowdModeSummary.label}</div>
+                                                <div className="mt-1 text-xs text-zinc-300">{currentCrowdModeSummary.description}</div>
+                                            </div>
+                                        </div>
+                                        <span className="rounded-full border border-cyan-300/20 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                            {currentCrowdModeSummary.presetId === 'custom' ? 'Fine tuned' : 'Preset'}
+                                        </span>
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-2">
+                                        {CROWD_MODE_PRESETS.map((preset) => {
+                                            const selected = currentCrowdModeSummary.presetId === preset.id;
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    onClick={() => applyDraftCrowdModePreset(preset.id)}
+                                                    aria-pressed={selected}
+                                                    aria-label={`Use ${preset.label} crowd mode`}
+                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnNeutral} min-h-[72px] justify-start text-left`}
+                                                >
+                                                    <span className="flex flex-col items-start">
+                                                        <span className="font-semibold">{preset.label}</span>
+                                                        <span className="mt-1 text-[11px] text-zinc-300 normal-case tracking-normal">{preset.description}</span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="host-form-helper mt-3">
+                                        Crowd modes bundle TV chat, scoring, marquee, and pop trivia. Fine-tune the individual controls below only when tonight needs exceptions.
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                        <div className="text-zinc-400">
+                                            {draftCrowdModeHistoryEntry?.label
+                                                ? `Last setup crowd mode: ${draftCrowdModeHistoryEntry.label}`
+                                                : `Can promote later to: ${hostSettingsSaveScopeLabels.join(', ')}`}
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {modeAwareHostSettingsSaveTargets.includes(HOST_SETTINGS_SAVE_TARGETS.hostDefault) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => saveHostSettingsBundleTarget({
+                                                        target: HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+                                                        bundleKey: 'crowd_mode',
+                                                        settings: getCurrentCrowdModeState(),
+                                                        sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+                                                        sourceId: roomCode || 'setup_room',
+                                                    })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                                >
+                                                    Save as my default
+                                                </button>
+                                            ) : null}
+                                            {savedHostDefaultCrowdMode ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applySavedHostSettingsBundle({
+                                                        target: HOST_SETTINGS_SAVE_TARGETS.hostDefault,
+                                                        bundleKey: 'crowd_mode',
+                                                    })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                                >
+                                                    Use my default
+                                                </button>
+                                            ) : null}
+                                            {modeAwareHostSettingsSaveTargets.includes(HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate) ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => saveHostSettingsBundleTarget({
+                                                        target: HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate,
+                                                        bundleKey: 'crowd_mode',
+                                                        settings: getCurrentCrowdModeState(),
+                                                        sourceType: HOST_SETTINGS_SOURCE_TYPES.roomOverride,
+                                                        sourceId: roomCode || 'setup_room',
+                                                    })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                                >
+                                                    Save to workspace template
+                                                </button>
+                                            ) : null}
+                                            {savedWorkspaceCrowdMode ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applySavedHostSettingsBundle({
+                                                        target: HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate,
+                                                        bundleKey: 'crowd_mode',
+                                                    })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                                >
+                                                    Use workspace template
+                                                </button>
+                                            ) : null}
+                                            <button
+                                                type="button"
+                                                onClick={() => undoDraftBundle('crowd_mode')}
+                                                disabled={!draftCrowdModeHistoryEntry}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em] ${draftCrowdModeHistoryEntry ? '' : 'opacity-50 cursor-not-allowed'}`}
+                                            >
+                                                Undo
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => restoreDraftBundleFromRoom('crowd_mode')}
+                                                disabled={!persistedRoomSettingsPayload}
+                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em] ${persistedRoomSettingsPayload ? '' : 'opacity-50 cursor-not-allowed'}`}
+                                            >
+                                                Restore saved room value
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">

@@ -2,6 +2,16 @@ import React from 'react';
 import ModerationInboxChip from './ModerationInboxChip';
 import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
 import {
+    CROWD_MODE_PRESETS,
+    buildCrowdModePatch,
+    getCrowdModeSummary,
+} from '../../../lib/hostCrowdModes';
+import {
+    OPERATING_STYLE_PRESETS,
+    buildOperatingStylePatch,
+    getOperatingStyleSummary,
+} from '../../../lib/hostOperatingStyles';
+import {
     getRunOfShowHudActionKey,
     getRunOfShowHudState,
     getRunOfShowItemLabel,
@@ -159,6 +169,12 @@ const HostTopChrome = ({
     onAddScenePresetToRunOfShow,
     onClearScenePreset,
     onReplayPurchaseCelebration,
+    onApplyCrowdModePreset,
+    onUndoCrowdModePreset,
+    onApplyOperatingStylePreset,
+    onUndoOperatingStylePreset,
+    liveCrowdModeHistoryLabel = '',
+    liveOperatingStyleHistoryLabel = '',
 }) => {
     const resolvedHostBase = hostBase || appBase;
     const resolvedAudienceBase = audienceBase || appBase;
@@ -314,7 +330,8 @@ const HostTopChrome = ({
     );
     const experimentalRuntimeShellActive = quickRoomControls?.runtimeShellMode === 'social_game_night_experiment';
     const minimalRuntimeChrome = experimentalRuntimeShellActive && tab === 'stage';
-    const denseChrome = minimalRuntimeChrome || !!tabletTouchViewport || !!mediumViewport;
+    const adminWorkspaceChrome = tab === 'admin';
+    const denseChrome = minimalRuntimeChrome || adminWorkspaceChrome || !!tabletTouchViewport || !!mediumViewport;
     const compactTopQuickStrip = !!tabletTouchViewport && !runOfShowFocusMode;
     const quickMenuPanelClass = 'host-top-menu-panel absolute top-full mt-2 rounded-2xl border border-cyan-300/40 bg-zinc-950/98 backdrop-blur-md ring-1 ring-cyan-400/20 shadow-[0_24px_50px_rgba(0,0,0,0.68)] z-[320]';
     const quickMenuScrollClass = 'host-touch-scroll-panel overflow-y-auto custom-scrollbar overscroll-contain';
@@ -1007,6 +1024,55 @@ const HostTopChrome = ({
         await updateRoom({ popTriviaEnabled: next });
         closeAllTopMenus();
     };
+    const crowdModeSummary = getCrowdModeSummary({
+        chatShowOnTv,
+        chatTvMode,
+        showScoring: room?.showScoring !== false,
+        marqueeEnabled,
+        popTriviaEnabled,
+    });
+    const applyCrowdModePreset = async (presetId) => {
+        if (typeof onApplyCrowdModePreset === 'function') {
+            await onApplyCrowdModePreset(presetId, { surface: 'top_chrome' });
+            closeAllTopMenus();
+            return;
+        }
+        const patch = buildCrowdModePatch(presetId, {
+            chatShowOnTv,
+            chatTvMode,
+            showScoring: room?.showScoring !== false,
+            marqueeEnabled,
+            popTriviaEnabled,
+        });
+        setChatShowOnTv?.(patch.chatShowOnTv);
+        setChatTvMode?.(patch.chatTvMode);
+        setMarqueeEnabled?.(patch.marqueeEnabled);
+        setPopTriviaEnabled?.(patch.popTriviaEnabled);
+        await updateRoom(patch);
+        closeAllTopMenus();
+    };
+    const operatingStyleSummary = getOperatingStyleSummary({
+        autoPlayMedia: quickAutomationControls?.autoPlayMedia !== false,
+        readyCheckDurationSec: quickRoomControls?.readyCheckDurationSec,
+        queueSettings: {
+            limitMode: quickRoomControls?.queueLimitMode,
+            limitCount: quickRoomControls?.queueLimitCount,
+            rotation: quickRoomControls?.queueRotation,
+            firstTimeBoost: quickRoomControls?.queueFirstTimeBoost,
+        },
+    });
+    const applyOperatingStylePreset = async (presetId) => {
+        if (typeof onApplyOperatingStylePreset === 'function') {
+            await onApplyOperatingStylePreset(presetId, { surface: 'top_chrome' });
+            closeAllTopMenus();
+            return;
+        }
+        const patch = buildOperatingStylePatch(presetId);
+        await quickRoomControls?.onUpdateQueueSettings?.(patch.queueSettings);
+        await quickRoomControls?.onSetReadyCheckDuration?.(patch.readyCheckDurationSec);
+        await quickAutomationControls?.onToggleAutoPlayMedia?.(patch.autoPlayMedia);
+        closeAllTopMenus();
+    };
     const openOpsSection = React.useCallback((sectionId = 'ops.room_setup') => {
         closeAllTopMenus();
         if (typeof openAdminWorkspace === 'function') {
@@ -1017,27 +1083,27 @@ const HostTopChrome = ({
         setSettingsTab?.(sectionId === 'ops.automation' ? 'automations' : 'general');
     }, [closeAllTopMenus, openAdminWorkspace, setSettingsTab, setShowSettings]);
     return (
-    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
+    <div data-host-top-chrome="true" className={`bg-zinc-900 ${runOfShowFocusMode ? 'px-3.5 py-2' : minimalRuntimeChrome ? 'px-3 py-1.5' : adminWorkspaceChrome ? 'px-3 py-1.5' : denseChrome ? 'px-3 py-2' : 'px-4 py-2.5'} flex flex-col ${minimalRuntimeChrome ? 'gap-1' : adminWorkspaceChrome ? 'gap-1.5' : 'gap-2'} shadow-2xl shrink-0 relative isolate z-[160] overflow-visible border-b border-zinc-800`}>
         <div className={`flex flex-col ${minimalRuntimeChrome ? 'gap-1.5' : 'gap-2.5'} lg:flex-row lg:items-center lg:justify-between w-full`}>
             <div className="flex items-center gap-2 lg:gap-3">
                 <img
                     src={room?.logoUrl || logoFallback}
-                    className={`${minimalRuntimeChrome ? 'h-9 lg:h-10' : runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
+                    className={`${minimalRuntimeChrome ? 'h-9 lg:h-10' : adminWorkspaceChrome ? 'h-9 lg:h-11' : runOfShowFocusMode ? 'h-10 lg:h-11' : 'h-11 lg:h-14'} object-contain rounded-xl shadow-[0_12px_28px_rgba(0,0,0,0.4)] ring-1 ring-white/10 bg-black/40 p-0.5`}
                     alt="Beaurocks Karaoke"
                 />
-                <div data-host-room-code className={`${minimalRuntimeChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px] px-2 py-0.5' : 'text-[14px] sm:text-[16px] lg:text-[18px] px-2 py-0.5'} font-mono font-bold text-[#00C4D9] bg-black/40 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
+                <div data-host-room-code className={`${minimalRuntimeChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : adminWorkspaceChrome ? 'text-[12px] sm:text-[13px] lg:text-[14px] px-1.5 py-0.5' : denseChrome ? 'text-[13px] sm:text-[14px] lg:text-[16px] px-2 py-0.5' : 'text-[14px] sm:text-[16px] lg:text-[18px] px-2 py-0.5'} font-mono font-bold text-[#00C4D9] bg-black/40 rounded-lg border border-[#00C4D9]/30`}>{roomCode}</div>
                 {typeof onOpenHostDashboard === 'function' && (
                     <button
                         onClick={() => {
                             closeAllTopMenus();
                             onOpenHostDashboard();
                         }}
-                        className={`${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
+                        className={`${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome || adminWorkspaceChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
                         title="Back to room manager and room creation"
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-layer-group"></i>
-                        {!minimalRuntimeChrome ? <span className="hidden sm:inline">Room Manager</span> : null}
+                        {!minimalRuntimeChrome && !adminWorkspaceChrome ? <span className="hidden sm:inline">Room Manager</span> : null}
                     </button>
                 )}
                 <div className="relative" ref={launchMenuRef}>
@@ -1047,7 +1113,7 @@ const HostTopChrome = ({
                             closeAllTopMenus();
                             setShowLaunchMenu(next);
                         }}
-                        className={`${styles.btnStd} ${styles.btnSecondary} ${minimalRuntimeChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
+                        className={`${styles.btnStd} ${styles.btnSecondary} ${minimalRuntimeChrome || adminWorkspaceChrome ? 'px-2 text-[11px]' : 'px-2.5 text-xs'}`}
                         style={{ touchAction: 'manipulation' }}
                     >
                         <i className="fa-solid fa-rocket"></i>
@@ -1302,7 +1368,7 @@ const HostTopChrome = ({
                 </div>
             </div>
         </div>
-        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode || minimalRuntimeChrome ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : minimalRuntimeChrome ? 'px-2 py-1.5' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
+        <div data-host-quick-strip-wrap="true" className={`${runOfShowFocusMode || minimalRuntimeChrome ? 'hidden' : 'w-full'} overflow-visible rounded-2xl border border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-emerald-500/10 ${runOfShowFocusMode ? 'px-3 py-2' : minimalRuntimeChrome ? 'px-2 py-1.5' : adminWorkspaceChrome ? 'px-2.5 py-1.5' : denseChrome ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}>
                 <div className={`host-top-quick-strip flex min-w-0 ${minimalRuntimeChrome ? 'gap-1' : denseChrome ? 'gap-1.5' : 'gap-2'} custom-scrollbar ${compactTopQuickStrip ? 'flex-wrap items-stretch overflow-visible pb-0' : anyTopMenuOpen ? 'flex-nowrap items-center overflow-visible pb-1 pr-0.5' : 'flex-nowrap items-center overflow-x-auto pb-1 pr-0.5'}`}>
                 {!runOfShowFocusMode ? (
                     <div className={quickStripItemClass} ref={audioMenuRef}>
@@ -1600,6 +1666,57 @@ const HostTopChrome = ({
                                 <div className={quickMenuSectionHintClass}>
                                     The high-stress room rules live here now. Use the deeper setup workspace only when you need the full matrix.
                                 </div>
+                                <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-xs uppercase tracking-[0.22em] text-emerald-200">Operating style</div>
+                                            <div role="status" aria-live="polite" aria-atomic="true">
+                                                <div className="mt-1 text-sm font-semibold text-white">{operatingStyleSummary.label}</div>
+                                                <div className="mt-1 text-[11px] text-zinc-300">{operatingStyleSummary.description}</div>
+                                            </div>
+                                        </div>
+                                        <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-100">
+                                            {operatingStyleSummary.shortLabel}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        {OPERATING_STYLE_PRESETS.map((preset) => {
+                                            const selected = operatingStyleSummary.presetId === preset.id;
+                                            return (
+                                                <button
+                                                    key={preset.id}
+                                                    type="button"
+                                                    onClick={() => { void applyOperatingStylePreset(preset.id); }}
+                                                    aria-pressed={selected}
+                                                    aria-label={`Use ${preset.label} operating style`}
+                                                    className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[60px] justify-start text-left`}
+                                                >
+                                                    <span className="flex flex-col items-start">
+                                                        <span>{preset.shortLabel}</span>
+                                                        <span className="mt-1 text-[10px] text-zinc-400 normal-case tracking-normal">{preset.description}</span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                <div className="text-[11px] text-zinc-400">
+                                    Operating styles update queue limits, ready-check pacing, and auto stage playback together. Fine-tune the detailed room controls below only when you need a one-off exception.
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                    <div className="text-zinc-500">
+                                        {liveOperatingStyleHistoryLabel || 'Live changes affect tonight only.'}
+                                    </div>
+                                    {typeof onUndoOperatingStylePreset === 'function' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => { void onUndoOperatingStylePreset('operating_style', { surface: 'top_chrome' }); closeAllTopMenus(); }}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Undo last live style
+                                        </button>
+                                    ) : null}
+                                </div>
+                            </div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                         <label className="text-xs text-zinc-300">
@@ -2049,6 +2166,7 @@ const HostTopChrome = ({
                 <div className={quickStripItemClass} ref={overlaysMenuRef}>
                     <button
                         data-feature-id="deck-overlays-menu-toggle"
+                        aria-expanded={showOverlaysMenu}
                         onClick={() => {
                             const next = !showOverlaysMenu;
                             closeAllTopMenus();
@@ -2068,6 +2186,57 @@ const HostTopChrome = ({
                             <div className={quickMenuSectionTitleClass}>Overlays + Guides</div>
                             <div className={`${quickMenuSectionHintClass} mb-2`}>
                                 TV assist layers and quick audience prompts.
+                            </div>
+                            <div className={`${quickMenuCardClass} mb-3 space-y-3`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-xs uppercase tracking-[0.22em] text-cyan-200">Crowd mode</div>
+                                        <div role="status" aria-live="polite" aria-atomic="true">
+                                            <div className="mt-1 text-sm font-semibold text-white">{crowdModeSummary.label}</div>
+                                            <div className="mt-1 text-[11px] text-zinc-300">{crowdModeSummary.description}</div>
+                                        </div>
+                                    </div>
+                                    <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                        {crowdModeSummary.shortLabel}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    {CROWD_MODE_PRESETS.map((preset) => {
+                                        const selected = crowdModeSummary.presetId === preset.id;
+                                        return (
+                                            <button
+                                                key={preset.id}
+                                                type="button"
+                                                onClick={() => { void applyCrowdModePreset(preset.id); }}
+                                                aria-pressed={selected}
+                                                aria-label={`Use ${preset.label} crowd mode`}
+                                                className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[60px] justify-start text-left`}
+                                            >
+                                                <span className="flex flex-col items-start">
+                                                    <span>{preset.shortLabel}</span>
+                                                    <span className="mt-1 text-[10px] text-zinc-400 normal-case tracking-normal">{preset.description}</span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="text-[11px] text-zinc-400">
+                                    Crowd modes update Score HUD, TV chat, marquee, and trivia together. Use the individual controls below only when you need a one-off exception.
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                                    <div className="text-zinc-500">
+                                        {liveCrowdModeHistoryLabel || 'Live changes affect tonight only.'}
+                                    </div>
+                                    {typeof onUndoCrowdModePreset === 'function' ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => { void onUndoCrowdModePreset('crowd_mode', { surface: 'top_chrome' }); closeAllTopMenus(); }}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
+                                        >
+                                            Undo last live crowd mode
+                                        </button>
+                                    ) : null}
+                                </div>
                             </div>
                             <div className="grid grid-cols-1 gap-2">
                                 <button

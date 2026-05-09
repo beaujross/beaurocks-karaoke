@@ -1342,29 +1342,29 @@ const RunOfShowTakeoverOverlay = ({
                     ) : null}
                 </div>
                 <div className="relative flex min-h-0 flex-1 items-center">
-                    <div className="max-w-[1520px]">
+                    <div className="max-w-[1600px]">
                         <div className={`mb-7 inline-flex items-center gap-4 rounded-full border border-white/12 bg-black/24 px-6 py-3 text-[0.95rem] font-black uppercase tracking-[0.26em] text-white/72 backdrop-blur`}>
                             <span className="h-3 w-20 rounded-full" style={theme.lineStyle}></span>
                             <span>{detailModeLabel}</span>
                         </div>
                         <div
                             data-tv-takeover-headline
-                            className="bg-clip-text text-[clamp(7rem,16vw,18rem)] font-bebas leading-[0.82] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
+                            className="max-w-[1500px] bg-clip-text text-[clamp(6rem,13vw,15rem)] font-bebas leading-[0.84] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
                             style={theme.headlineStyle}
                         >
                             {headline}
                         </div>
                         {bodyCopy ? (
-                            <div data-tv-takeover-body className="mt-6 max-w-[1220px] text-[clamp(2rem,3.3vw,3.8rem)] font-semibold leading-[1.04] text-zinc-100">
+                            <div data-tv-takeover-body className="mt-6 max-w-[1320px] text-[clamp(2rem,3vw,3.4rem)] font-semibold leading-[1.04] text-zinc-100">
                                 {bodyCopy}
                             </div>
                         ) : null}
                         {options.length ? (
-                            <div className="mt-10 grid max-w-[1320px] gap-5 md:grid-cols-2">
+                            <div className="mt-10 grid max-w-[1500px] gap-5 md:grid-cols-2 xl:grid-cols-3">
                                 {options.map((option, index) => (
-                                    <div key={`${option}-${index}`} className="rounded-[1.9rem] border border-white/10 bg-black/24 px-7 py-6 shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
-                                        <div className="text-[0.95rem] uppercase tracking-[0.24em] text-white/52">Option {index + 1}</div>
-                                        <div className="mt-3 text-[clamp(2.2rem,3.5vw,4rem)] font-semibold leading-tight text-zinc-50">{option}</div>
+                                    <div key={`${option}-${index}`} className="rounded-[1.9rem] border border-white/10 bg-black/24 px-7 py-6 xl:px-8 xl:py-7 shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
+                                        <div className="text-[1rem] uppercase tracking-[0.24em] text-white/52">Option {index + 1}</div>
+                                        <div className="mt-3 text-[clamp(2.4rem,2.7vw,3.5rem)] font-semibold leading-tight text-zinc-50">{option}</div>
                                     </div>
                                 ))}
                             </div>
