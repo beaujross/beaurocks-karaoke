@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { getRunOfShowItemLabel } from '../../../lib/runOfShowDirector';
+import {
+    buildSelfServeModePresentation,
+    buildSelfServeTransitionMoment,
+} from '../../../lib/selfServeKaraoke';
 
 const buildQueueSongLabel = (song = {}) => {
     const singerName = String(song?.singerName || '').trim();
@@ -101,6 +105,8 @@ export default function HostLiveOpsPanel({
     current = null,
     nextQueueSong = null,
     nextQueueText = '',
+    nextQueueReasonLabel = '',
+    nextQueueReasonDetail = '',
     queueCount = 0,
     readyQueueCount = 0,
     assignedQueueCount = 0,
@@ -110,13 +116,33 @@ export default function HostLiveOpsPanel({
     runOfShowLiveItem = null,
     runOfShowFlightedItem = null,
     runOfShowOnDeckItem = null,
+    selfServeMode = null,
     onOpenRunOfShow,
     styles,
     showTitle = true,
     compact = false,
     inline = false,
 }) {
+    const [selfServeNowMs, setSelfServeNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!selfServeMode?.enabled) return undefined;
+        const timer = setInterval(() => setSelfServeNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [selfServeMode?.enabled]);
     const hasCurrentPerformance = !!current?.id;
+    const selfServePresentation = useMemo(
+        () => (selfServeMode?.enabled ? buildSelfServeModePresentation(selfServeMode) : null),
+        [selfServeMode]
+    );
+    const selfServeTransitionMoment = useMemo(
+        () => (selfServeMode?.enabled
+            ? buildSelfServeTransitionMoment(selfServeMode, {
+                songs: [nextQueueSong, current].filter(Boolean),
+                nowMs: selfServeNowMs,
+            })
+            : null),
+        [current, nextQueueSong, selfServeMode, selfServeNowMs]
+    );
     const currentMoment = runOfShowLiveItem?.id ? runOfShowLiveItem : null;
     const queuedMoment = runOfShowFlightedItem?.id
         ? runOfShowFlightedItem
@@ -125,6 +151,49 @@ export default function HostLiveOpsPanel({
             : null;
     const nextSingerLabel = String(nextQueueText || '').trim() || (nextQueueSong ? buildQueueSongLabel(nextQueueSong) : 'No singer ready');
     const plannedMomentCount = Number(!!runOfShowLiveItem?.id) + Number(!!runOfShowFlightedItem?.id) + Number(!!runOfShowOnDeckItem?.id);
+    const selfServeAccent = selfServePresentation?.toneKey === 'amber'
+        ? {
+            chip: 'border-amber-300/25 bg-amber-500/10 text-amber-100',
+            banner: 'border-amber-300/20 bg-[linear-gradient(145deg,rgba(63,35,10,0.58),rgba(10,12,22,0.92))] text-amber-50',
+            nextCard: 'border-amber-300/22 bg-amber-500/8',
+            nextMeta: 'border-amber-300/30 bg-amber-500/12 text-amber-100',
+        }
+        : {
+            chip: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+            banner: 'border-cyan-300/20 bg-[linear-gradient(145deg,rgba(10,44,62,0.58),rgba(10,12,22,0.92))] text-cyan-50',
+            nextCard: 'border-cyan-300/22 bg-cyan-500/8',
+            nextMeta: 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100',
+        };
+    const nextSingerCardLabel = selfServePresentation
+        ? (selfServeTransitionMoment?.badgeLabel || `${selfServePresentation.shortLabel} Next`)
+        : 'Next Singer';
+    const nextSingerCardDetail = selfServeTransitionMoment?.detail
+        || (nextQueueSong
+            ? (String(nextQueueReasonLabel || '').trim() || 'Queue-first move')
+            : (selfServePresentation?.detail || 'No singer ready'));
+    const nextSingerCardMeta = selfServePresentation
+        ? (selfServeTransitionMoment?.badgeLabel || selfServePresentation.badgeLabel)
+        : (nextQueueSong ? 'Ready' : 'Open');
+    const selfServeBanner = selfServePresentation ? (
+        <div className={`mb-2 rounded-2xl border px-3 py-2.5 ${selfServeAccent.banner}`}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/72">
+                        {selfServePresentation.launchLabel}
+                    </div>
+                    <div className="mt-1 text-sm font-black leading-tight text-white">
+                        {selfServeTransitionMoment?.title || selfServePresentation.hostSummary}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-snug text-white/72">
+                        {selfServeTransitionMoment?.detail || selfServePresentation.helper}
+                    </div>
+                </div>
+                <div className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${selfServeAccent.chip}`}>
+                    {selfServeTransitionMoment?.badgeLabel || selfServePresentation.badgeLabel}
+                </div>
+            </div>
+        </div>
+    ) : null;
     const inlineSummaryCards = (
         <div className="grid gap-2 sm:grid-cols-3">
             <SnapshotCard
@@ -151,17 +220,17 @@ export default function HostLiveOpsPanel({
                 compact
             />
             <SnapshotCard
-                label="Next Singer"
+                label={nextSingerCardLabel}
                 title={nextSingerLabel}
-                detail={nextQueueSong
-                    ? 'Queue-first move'
-                    : 'No singer ready'}
-                meta={nextQueueSong ? 'Ready' : 'Open'}
+                detail={nextSingerCardDetail}
+                meta={nextSingerCardMeta}
                 artworkUrl={buildQueueSongArtworkUrl(nextQueueSong)}
                 avatarEmoji={buildQueueSongEmoji(nextQueueSong)}
-                toneClass={nextQueueSong ? 'border-cyan-300/22 bg-cyan-500/8' : 'border-white/10 bg-black/20'}
-                metaToneClass={nextQueueSong
-                    ? 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
+                toneClass={nextQueueSong
+                    ? (selfServePresentation ? selfServeAccent.nextCard : 'border-cyan-300/22 bg-cyan-500/8')
+                    : 'border-white/10 bg-black/20'}
+                metaToneClass={nextQueueSong || selfServePresentation
+                    ? (selfServePresentation ? selfServeAccent.nextMeta : 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100')
                     : 'border-white/10 bg-black/20 text-zinc-200'}
                 compact
             />
@@ -194,6 +263,7 @@ export default function HostLiveOpsPanel({
             <section data-feature-id="host-live-ops-panel" className="min-w-0 flex-1 px-0 py-0">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.14em]">
                     <div className="flex flex-wrap items-center gap-1.5">
+                        {selfServePresentation ? <span className={`rounded-full border px-2 py-1 ${selfServeAccent.chip}`}>{selfServePresentation.shortLabel}</span> : null}
                         <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{queueCount} queued</span>
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">{readyQueueCount} ready</span>
                         {assignedQueueCount > 0 ? <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-1 text-violet-100">{assignedQueueCount} linked</span> : null}
@@ -209,6 +279,7 @@ export default function HostLiveOpsPanel({
                         </button>
                     ) : null}
                 </div>
+                {selfServeBanner}
                 {inlineSummaryCards}
             </section>
         );
@@ -226,6 +297,7 @@ export default function HostLiveOpsPanel({
                     </div>
                 ) : <div className="min-w-0 flex-1" />}
                 <div className="flex flex-wrap items-center gap-1.5 text-[10px] uppercase tracking-[0.14em]">
+                    {selfServePresentation ? <span className={`rounded-full border px-2 py-1 ${selfServeAccent.chip}`}>{selfServePresentation.shortLabel}</span> : null}
                     <span className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-zinc-200">{queueCount} queued</span>
                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-cyan-100">{readyQueueCount} ready</span>
                     {assignedQueueCount > 0 ? <span className="rounded-full border border-violet-300/25 bg-violet-500/10 px-2 py-1 text-violet-100">{assignedQueueCount} linked</span> : null}
@@ -242,16 +314,22 @@ export default function HostLiveOpsPanel({
                 </div>
             </div>
 
+            {selfServeBanner}
             <div className={`grid gap-2 ${compact ? 'mt-2 grid-cols-3' : 'mt-3 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]'}`}>
                 {inlineSummaryCards}
             </div>
 
             {!compact ? (
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
-                    <div className="text-[11px] text-zinc-400">
-                        {runOfShowEnabled
-                            ? `${plannedMomentCount} in horizon`
-                            : 'Queue-first'}
+                    <div className="space-y-1">
+                        <div className="text-[11px] text-zinc-400">
+                            {runOfShowEnabled
+                                ? `${plannedMomentCount} in horizon`
+                                : 'Queue-first'}
+                        </div>
+                        {nextQueueSong && nextQueueReasonDetail ? (
+                            <div className="text-[11px] text-zinc-500">{nextQueueReasonDetail}</div>
+                        ) : null}
                     </div>
                     {typeof onOpenRunOfShow === 'function' ? (
                         <button

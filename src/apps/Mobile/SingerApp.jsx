@@ -138,6 +138,12 @@ import {
     summarizeBracketSignup
 } from '../../lib/karaokeBracketSupport';
 import {
+    buildSelfServeDecisionPresentation,
+    buildSelfServeModePresentation,
+    buildSelfServeTransitionMoment,
+    isSelfServeAuctionWindowLive,
+} from '../../lib/selfServeKaraoke';
+import {
     AUDIENCE_SHELL_VARIANTS,
     deriveAudienceTakeoverKind,
     getAudienceTakeoverLabel,
@@ -1199,6 +1205,10 @@ const SingerApp = ({ roomCode, uid }) => {
         () => String(audienceReleaseWindow?.governanceMode || '').trim().toLowerCase(),
         [audienceReleaseWindow?.governanceMode]
     );
+    const audienceReleaseOrigin = useMemo(
+        () => String(audienceReleaseWindow?.origin || '').trim().toLowerCase(),
+        [audienceReleaseWindow?.origin]
+    );
     const audienceReleaseSubjectType = useMemo(
         () => String(audienceReleaseWindow?.subjectType || '').trim().toLowerCase(),
         [audienceReleaseWindow?.subjectType]
@@ -1206,6 +1216,18 @@ const SingerApp = ({ roomCode, uid }) => {
     const isAudienceCoHostDecision = audienceReleaseGovernanceMode === 'cohost_vote';
     const isAudienceSongFaceOffDecision = audienceReleaseSubjectType === 'queue_faceoff';
     const isAudienceSlotFillDecision = audienceReleaseSubjectType === 'slot_fill_choice';
+    const isSelfServeAudienceDecision = audienceReleaseOrigin.startsWith('self_serve_');
+    const isSelfServeOpenStageDecision = audienceReleaseOrigin === 'self_serve_open_stage_auto';
+    const isSelfServeSpotlightAuctionDecision = audienceReleaseOrigin === 'self_serve_spotlight_auction_auto';
+    const selfServeAudienceDecisionPresentation = useMemo(
+        () => (isSelfServeAudienceDecision
+            ? buildSelfServeDecisionPresentation(audienceReleaseWindow, {
+                timeLeftSec: audienceReleaseTimeLeftSec,
+                totalVotes: releaseWindowTally.totalVotes || 0,
+            })
+            : null),
+        [audienceReleaseTimeLeftSec, audienceReleaseWindow, isSelfServeAudienceDecision, releaseWindowTally.totalVotes]
+    );
     const audienceReleaseChoiceLabels = useMemo(() => {
         const slotSceneLabel = String(audienceReleaseWindow?.choiceLabels?.slot_scene || '').trim();
         const keepQueueMovingLabel = String(audienceReleaseWindow?.choiceLabels?.keep_queue_moving || '').trim();
@@ -1266,7 +1288,27 @@ const SingerApp = ({ roomCode, uid }) => {
                 selectedChoiceClass: 'border-amber-300/45 bg-amber-500/16 text-amber-50',
                 pillClass: 'border-amber-300/30 bg-amber-400/12 text-amber-100'
             }
-            : {
+            : isSelfServeSpotlightAuctionDecision
+                ? {
+                    cardClass: 'border-amber-300/28 bg-[linear-gradient(145deg,rgba(35,20,10,0.97),rgba(24,16,12,0.94))] shadow-[0_24px_70px_rgba(120,53,15,0.26)]',
+                    eyebrowClass: 'text-amber-200',
+                    helperClass: 'text-amber-100/82',
+                    badgeClass: 'border-amber-300/24 bg-amber-500/12 text-amber-50',
+                    choiceLabelClass: 'text-amber-200',
+                    selectedChoiceClass: 'border-amber-300/45 bg-amber-500/16 text-amber-50',
+                    pillClass: 'border-amber-300/30 bg-amber-400/12 text-amber-100'
+                }
+                : isSelfServeAudienceDecision
+                ? {
+                    cardClass: 'border-fuchsia-300/26 bg-[linear-gradient(145deg,rgba(11,10,20,0.97),rgba(20,16,34,0.94))] shadow-[0_24px_70px_rgba(82,26,109,0.28)]',
+                    eyebrowClass: 'text-fuchsia-200',
+                    helperClass: 'text-fuchsia-100/82',
+                    badgeClass: 'border-fuchsia-300/24 bg-fuchsia-500/12 text-fuchsia-50',
+                    choiceLabelClass: 'text-fuchsia-200',
+                    selectedChoiceClass: 'border-fuchsia-300/45 bg-fuchsia-500/16 text-fuchsia-50',
+                    pillClass: 'border-cyan-300/30 bg-cyan-400/12 text-cyan-100'
+                }
+                : {
                 cardClass: 'border-cyan-300/22 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(14,19,31,0.92))] shadow-[0_20px_60px_rgba(0,0,0,0.4)]',
                 eyebrowClass: 'text-cyan-200',
                 helperClass: 'text-cyan-100/80',
@@ -1275,7 +1317,7 @@ const SingerApp = ({ roomCode, uid }) => {
                 selectedChoiceClass: 'border-cyan-300/45 bg-cyan-500/14 text-cyan-50',
                 pillClass: 'border-cyan-300/30 bg-cyan-400/12 text-cyan-100'
             }
-    ), [isAudienceCoHostDecision]);
+    ), [isAudienceCoHostDecision, isSelfServeAudienceDecision, isSelfServeSpotlightAuctionDecision]);
     const myReleaseWindowVote = useMemo(
         () => String(audienceReleaseWindow?.votesByUid?.[activeUid] || '').trim().toLowerCase(),
         [activeUid, audienceReleaseWindow?.votesByUid]
@@ -3035,7 +3077,29 @@ const SingerApp = ({ roomCode, uid }) => {
     );
     const simpleEmailCaptureMode = audienceExperience.audienceAccessMode === AUDIENCE_ACCESS_MODES.emailCapture;
     const supporterAccessLabel = isCustomAudienceBrand ? 'Festival Supporter' : 'VIP';
-    const supportCtaLabel = roomSupportOffer?.label
+    const [selfServeNowMs, setSelfServeNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!room?.selfServeMode?.enabled) return undefined;
+        setSelfServeNowMs(Date.now());
+        const timer = setInterval(() => setSelfServeNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [room?.selfServeMode?.enabled]);
+    const selfServePresentation = useMemo(
+        () => (room?.selfServeMode?.enabled ? buildSelfServeModePresentation(room.selfServeMode) : null),
+        [room?.selfServeMode]
+    );
+    const selfServeTransitionMoment = useMemo(
+        () => (room?.selfServeMode?.enabled
+            ? buildSelfServeTransitionMoment(room.selfServeMode, {
+                songs: queueSongsView,
+                nowMs: selfServeNowMs,
+            })
+            : null),
+        [queueSongsView, room?.selfServeMode, selfServeNowMs]
+    );
+    const supportCtaLabel = (room?.selfServeMode?.enabled && String(room?.selfServeMode?.format || '').trim().toLowerCase() === 'spotlight_auction' && isSelfServeAuctionWindowLive(room?.selfServeMode))
+        ? (selfServePresentation?.supportCtaLabel || 'Bid For The Next Spotlight')
+        : roomSupportOffer?.label
         || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
     const roomSupportWidgetId = String(roomSupportOffer?.supportWidgetId || '').trim();
     const roomSupportHasEmbed = !!roomSupportOffer?.supportEmbedUrl || !!roomSupportWidgetId;
@@ -11794,7 +11858,9 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <div className={`text-[9px] uppercase tracking-[0.22em] ${audienceReleaseTone.eyebrowClass}`}>
-                                    {isAudienceSongFaceOffDecision
+                                    {selfServeAudienceDecisionPresentation
+                                        ? selfServeAudienceDecisionPresentation.eyebrow
+                                        : isAudienceSongFaceOffDecision
                                         ? (isAudienceCoHostDecision ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
                                         : isAudienceSlotFillDecision
                                             ? (isAudienceCoHostDecision ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
@@ -11811,7 +11877,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 <div className="mt-1.5 text-sm font-bold leading-tight text-white">
                                     {String(audienceReleaseWindow?.prompt || 'Should this scene slot in next?').trim()}
                                 </div>
-                                {isAudienceSongFaceOffDecision ? (
+                                {selfServeAudienceDecisionPresentation ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        {selfServeAudienceDecisionPresentation.helper}
+                                    </div>
+                                ) : isSelfServeOpenStageDecision ? (
+                                    <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
+                                        Vote now. The room locks the next spotlight automatically before this song ends.
+                                    </div>
+                                ) : isAudienceSongFaceOffDecision ? (
                                     <div className={`mt-1.5 text-[11px] ${audienceReleaseTone.helperClass}`}>
                                         Pick one. Host confirms the winner.
                                     </div>
@@ -11830,7 +11904,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 ) : null}
                             </div>
                             <div className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
-                                Vote Open
+                                {selfServeAudienceDecisionPresentation?.badgeLabel || 'Vote Open'}
                             </div>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -11842,8 +11916,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             ) : null}
                             <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.badgeClass}`}>
                                 <i className="fa-solid fa-check-to-slot"></i>
-                                {releaseWindowTally.totalVotes || 0} total
+                                {selfServeAudienceDecisionPresentation?.tallyLabel || `${releaseWindowTally.totalVotes || 0} total`}
                             </div>
+                            {isSelfServeAudienceDecision ? (
+                                <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${audienceReleaseTone.pillClass}`}>
+                                    <i className="fa-solid fa-bolt"></i>
+                                    BeauRocks Console
+                                </div>
+                            ) : null}
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
                             <button
@@ -11900,9 +11980,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                             </button>
                         </div>
                         <div className="mt-2 text-[11px] text-zinc-400">
-                            {releaseWindowTally.totalVotes > 0
-                                ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
-                                : 'One vote per joined user. Host confirms the winner after voting closes.'}
+                            {selfServeAudienceDecisionPresentation
+                                ? 'One joined guest, one live vote. The winning choice locks automatically when the timer ends.'
+                                : releaseWindowTally.totalVotes > 0
+                                    ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
+                                    : 'One vote per joined user. Host confirms the winner after voting closes.'}
                         </div>
                     </div>
                 </div>
@@ -13071,11 +13153,24 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                  <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-r from-cyan-500/12 via-[#0a1020] to-fuchsia-500/12 p-4 shadow-[0_0_20px_rgba(34,211,238,0.12)]">
                                      <div className="flex items-center justify-between gap-3">
                                          <div className="min-w-0">
-                                             <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">Stage Open</div>
-                                             <div className="mt-1 text-lg font-black text-white">Search and add the next song</div>
+                                             <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-200">
+                                                 {selfServeTransitionMoment?.badgeLabel || selfServePresentation?.badgeLabel || 'Stage Open'}
+                                             </div>
+                                             <div className="mt-1 text-lg font-black text-white">
+                                                 {selfServeTransitionMoment?.title
+                                                     ? selfServeTransitionMoment.title
+                                                     : selfServePresentation?.supportsAuction && selfServePresentation?.auctionLive
+                                                         ? 'Bid or add your song for the next spotlight'
+                                                         : 'Search and add the next song'}
+                                             </div>
                                              <div className="mt-1 text-sm text-zinc-300">{queueSongsView.length} in queue • {allUsers.length || 0} here</div>
                                          </div>
                                      </div>
+                                     {selfServeTransitionMoment?.detail || selfServePresentation?.detail ? (
+                                         <div className="mt-3 text-xs uppercase tracking-[0.16em] text-cyan-100/78">
+                                             {selfServeTransitionMoment?.detail || selfServePresentation?.detail}
+                                         </div>
+                                     ) : null}
                                      <div className="mt-4">
                                          <button
                                              type="button"
@@ -13084,9 +13179,21 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                              className="w-full rounded-[24px] border px-4 py-4 text-left text-cyan-50"
                                              style={streamlinedPrimaryActionStyle}
                                          >
-                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/85">Quick Start</div>
-                                             <div className="mt-1 text-base font-black text-white">Add Song</div>
-                                             <div className="mt-1 text-sm text-zinc-100/85">Open song search and add the next performer.</div>
+                                             <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/85">
+                                                 {selfServePresentation?.shortLabel || 'Quick Start'}
+                                             </div>
+                                             <div className="mt-1 text-base font-black text-white">
+                                                 {selfServeTransitionMoment?.badgeLabel
+                                                     ? 'Keep The Room Moving'
+                                                     : selfServePresentation?.supportsAuction && selfServePresentation?.auctionLive
+                                                         ? 'Join The Spotlight Queue'
+                                                         : 'Add Song'}
+                                             </div>
+                                             <div className="mt-1 text-sm text-zinc-100/85">
+                                                 {selfServeTransitionMoment?.badgeLabel
+                                                     ? 'The next moment is locked. Get your song ready for what comes after.'
+                                                     : selfServePresentation?.helper || 'Open song search and add the next performer.'}
+                                             </div>
                                          </button>
                                      </div>
                                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-zinc-400">

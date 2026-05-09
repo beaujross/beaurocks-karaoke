@@ -34,6 +34,7 @@ import {
   getDocs,
   auth,
   callFunction,
+  syncSelfServeAuctionState,
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
 import {
@@ -78,9 +79,20 @@ import {
 } from '../autoDjStateMachine';
 import { getAutoEndSchedule, getTrackDurationSecFromSearchResult } from '../hostPlaybackAutomation';
 import {
+  getRunOfShowReleaseWindowRemainingMs,
   getRunOfShowReleaseWindowTally,
   normalizeRunOfShowDirector,
 } from '../../../lib/runOfShowDirector';
+import { buildSelfServeQueueExplanation } from '../../../lib/selfServeQueueExplanation';
+import { getSelfServeAuctionState } from '../../../lib/selfServeAuction';
+import {
+  buildSelfServeModePresentation,
+  buildSelfServeQueueFaceOffWindow,
+  consumeSelfServeAuctionSlot,
+  getSelfServeAuctionWindow,
+  isSelfServeAuctionWindowLive,
+  SELF_SERVE_FORMATS,
+} from '../../../lib/selfServeKaraoke';
 import { BG_TRACK_OPTIONS } from '../../../lib/bgTrackOptions';
 import {
   HOST_AUDIO_LIBRARY_CATEGORY_OPTIONS,
@@ -849,6 +861,34 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const activeNonQueueDecisionWindow = activeReleaseWindow && !['queue_faceoff', 'slot_fill_choice'].includes(String(activeReleaseWindow?.subjectType || '').trim().toLowerCase())
         ? activeReleaseWindow
         : null;
+    const selfServeMode = room?.selfServeMode?.enabled ? room.selfServeMode : null;
+    const selfServeFormat = String(selfServeMode?.format || '').trim().toLowerCase();
+    const selfServeOpenStageEnabled = selfServeFormat === SELF_SERVE_FORMATS.openStage;
+    const selfServeSpotlightAuctionEnabled = selfServeFormat === SELF_SERVE_FORMATS.spotlightAuction;
+    const selfServePresentation = useMemo(
+        () => (selfServeMode ? buildSelfServeModePresentation(selfServeMode) : null),
+        [selfServeMode]
+    );
+    const selfServeAuctionWindow = useMemo(() => getSelfServeAuctionWindow(selfServeMode), [selfServeMode]);
+    const selfServeAuctionPriorityLive = useMemo(
+        () => isSelfServeAuctionWindowLive(selfServeMode),
+        [selfServeMode]
+    );
+    const activeSelfServeQueueFaceOffWindow = activeQueueFaceOffWindow?.origin === 'self_serve_open_stage_auto'
+        || activeQueueFaceOffWindow?.origin === 'self_serve_spotlight_auction_auto'
+        ? activeQueueFaceOffWindow
+        : null;
+    const [selfServeDecisionNowMs, setSelfServeDecisionNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!activeSelfServeQueueFaceOffWindow?.active) return undefined;
+        setSelfServeDecisionNowMs(Date.now());
+        const timer = setInterval(() => setSelfServeDecisionNowMs(Date.now()), 250);
+        return () => clearInterval(timer);
+    }, [activeSelfServeQueueFaceOffWindow?.active, activeSelfServeQueueFaceOffWindow?.closesAtMs, activeSelfServeQueueFaceOffWindow?.resolvedAtMs]);
+    const activeSelfServeQueueFaceOffRemainingMs = useMemo(
+        () => getRunOfShowReleaseWindowRemainingMs(activeSelfServeQueueFaceOffWindow || {}, selfServeDecisionNowMs),
+        [activeSelfServeQueueFaceOffWindow, selfServeDecisionNowMs]
+    );
     const isCoHostQueueFaceOff = String(activeQueueFaceOffWindow?.governanceMode || '').trim().toLowerCase() === 'cohost_vote';
     const queueFaceOffTone = isCoHostQueueFaceOff
         ? {
@@ -865,10 +905,37 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             choiceLabelClass: 'text-cyan-200',
             badgeClass: 'border-white/10 bg-black/30 text-zinc-100'
         };
-    const queueFaceOffCandidates = useMemo(
-        () => (Array.isArray(queue) ? queue.slice(0, 2) : []),
-        [queue]
+    const spotlightAuctionState = useMemo(
+        () => getSelfServeAuctionState(selfServeMode),
+        [selfServeMode]
     );
+    const spotlightAuctionLeaderboard = spotlightAuctionState.leaderboard;
+    const spotlightAuctionCandidateSongs = useMemo(
+        () => spotlightAuctionLeaderboard
+            .slice(0, 2)
+            .map((entry) => (songs || []).find((song) => song.id === entry.songId) || null)
+            .filter(Boolean),
+        [songs, spotlightAuctionLeaderboard]
+    );
+    const spotlightAuctionSyncSignature = useMemo(() => JSON.stringify({
+        roomCode,
+        currentId: String(current?.id || '').trim(),
+        paidPriorityEnabled: selfServeAuctionPriorityLive,
+        startedAtMs: Number(selfServeMode?.startedAtMs || 0) || 0,
+        auctionRemainingSlots: Number(selfServeAuctionWindow?.remainingSlots || 0) || 0,
+        auctionClosed: selfServeAuctionWindow?.closed === true,
+        queueIds: (Array.isArray(queue) ? queue : []).map((song) => ({
+            id: String(song?.id || '').trim(),
+            singerUid: String(song?.singerUid || '').trim(),
+            priorityScore: Number(song?.priorityScore || 0) || 0,
+        })),
+    }), [current?.id, queue, roomCode, selfServeAuctionPriorityLive, selfServeAuctionWindow?.closed, selfServeAuctionWindow?.remainingSlots, selfServeMode?.startedAtMs]);
+    const queueFaceOffCandidates = useMemo(() => {
+        if (selfServeAuctionPriorityLive && spotlightAuctionCandidateSongs.length >= 2) {
+            return spotlightAuctionCandidateSongs;
+        }
+        return Array.isArray(queue) ? queue.slice(0, 2) : [];
+    }, [queue, selfServeAuctionPriorityLive, spotlightAuctionCandidateSongs]);
     const slotFillCandidates = useMemo(
         () => (Array.isArray(queue) ? queue.slice(0, 2) : []),
         [queue]
@@ -911,7 +978,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         await updateRoom({ runOfShowDirector: nextDirector });
         return nextDirector;
     }, [room?.runOfShowDirector, runOfShowDirector, updateRoom]);
-    const openQueueFaceOffVote = useCallback(async (governanceMode = 'cohost_vote') => {
+    const openQueueFaceOffVote = useCallback(async (governanceMode = 'cohost_vote', options = {}) => {
         if (activeReleaseWindow?.active) {
             toast('Another live decision is already open. Close it before starting a song face-off.');
             return;
@@ -924,34 +991,52 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         const safeGovernanceMode = ['cohost_vote', 'crowd_vote'].includes(String(governanceMode || '').trim().toLowerCase())
             ? String(governanceMode || '').trim().toLowerCase()
             : 'cohost_vote';
+        const safeOptions = options && typeof options === 'object' ? options : {};
         const openedAtMs = nowMs();
+        const nextWindow = String(safeOptions.origin || '').startsWith('self_serve_')
+            ? buildSelfServeQueueFaceOffWindow({
+                firstSong,
+                secondSong,
+                openedAtMs,
+                durationSec: safeOptions.durationSec,
+            })
+            : {
+                active: true,
+                itemId: `queue_faceoff:${firstSong.id}:${secondSong.id}`,
+                itemTitle: 'Next Song Face-Off',
+                subjectType: 'queue_faceoff',
+                governanceMode: safeGovernanceMode,
+                releasePolicy: 'suggest_then_host_confirm',
+                prompt: safeGovernanceMode === 'cohost_vote'
+                    ? 'Co-hosts: which queued song should go next?'
+                    : 'Audience: which queued song should go next?',
+                openedAtMs,
+                closesAtMs: openedAtMs + ((Math.max(10, Number(safeOptions.durationSec || 20) || 20)) * 1000),
+                choiceLabels: {
+                    slot_scene: buildQueueFaceOffSongLabel(firstSong),
+                    keep_queue_moving: buildQueueFaceOffSongLabel(secondSong),
+                },
+                choiceDetails: {
+                    slot_scene: buildQueueFaceOffSongDetail(firstSong),
+                    keep_queue_moving: buildQueueFaceOffSongDetail(secondSong),
+                },
+                choiceSongIds: {
+                    slot_scene: firstSong.id,
+                    keep_queue_moving: secondSong.id,
+                },
+                votesByUid: {},
+                resultChoice: '',
+                resolvedAtMs: 0
+            };
         await persistQueueDecisionWindow({
-            active: true,
-            itemId: `queue_faceoff:${firstSong.id}:${secondSong.id}`,
-            itemTitle: 'Next Song Face-Off',
-            subjectType: 'queue_faceoff',
+            ...(nextWindow || {}),
             governanceMode: safeGovernanceMode,
-            releasePolicy: 'suggest_then_host_confirm',
-            prompt: safeGovernanceMode === 'cohost_vote'
-                ? 'Co-hosts: which queued song should go next?'
-                : 'Audience: which queued song should go next?',
-            openedAtMs,
-            closesAtMs: openedAtMs + (20 * 1000),
-            choiceLabels: {
-                slot_scene: buildQueueFaceOffSongLabel(firstSong),
-                keep_queue_moving: buildQueueFaceOffSongLabel(secondSong),
-            },
-            choiceDetails: {
-                slot_scene: buildQueueFaceOffSongDetail(firstSong),
-                keep_queue_moving: buildQueueFaceOffSongDetail(secondSong),
-            },
-            choiceSongIds: {
-                slot_scene: firstSong.id,
-                keep_queue_moving: secondSong.id,
-            },
-            votesByUid: {},
-            resultChoice: '',
-            resolvedAtMs: 0
+            ...(safeOptions.prompt ? { prompt: String(safeOptions.prompt).trim() } : {}),
+            ...(safeOptions.itemTitle ? { itemTitle: String(safeOptions.itemTitle).trim() } : {}),
+            ...(safeOptions.origin ? { origin: String(safeOptions.origin).trim() } : {}),
+            ...(safeOptions.selfServeFormat ? { selfServeFormat: String(safeOptions.selfServeFormat).trim() } : {}),
+            ...(safeOptions.releasePolicy ? { releasePolicy: String(safeOptions.releasePolicy).trim() } : {}),
+            ...(safeOptions.promptDetail ? { promptDetail: String(safeOptions.promptDetail).trim() } : {}),
         });
         toast(safeGovernanceMode === 'cohost_vote' ? 'Co-host song face-off is live.' : 'Audience song face-off is live.');
     }, [activeReleaseWindow?.active, persistQueueDecisionWindow, queueFaceOffCandidates, toast]);
@@ -2526,9 +2611,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }
     updateStatusRef.current = updateStatus;
 
-    const moveSingerNext = useCallback(async (songId = '') => {
+    const moveSingerNext = useCallback(async (songId = '', options = {}) => {
         const targetSongId = String(songId || '').trim();
         if (!targetSongId) return;
+        const forceWithinProtected = options?.forceWithinProtected === true;
         const targetSong = (songs || []).find((song) => song.id === targetSongId) || null;
         if (!targetSong) {
             toast('Singer not found in queue.');
@@ -2536,11 +2622,11 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         }
         const protectedReadyQueueCount = Math.max(0, Math.min(queue.length, current?.id ? 2 : 3));
         const targetIndex = (queue || []).findIndex((song) => song.id === targetSongId);
-        if (targetIndex >= 0 && targetIndex < protectedReadyQueueCount) {
+        if (!forceWithinProtected && targetIndex >= 0 && targetIndex < protectedReadyQueueCount) {
             toast('That singer is already in the protected live lineup.');
             return;
         }
-        if (protectedReadyQueueCount > 0) {
+        if (!forceWithinProtected && protectedReadyQueueCount > 0) {
             toast(current?.id
                 ? 'The next two performers are locked. Let the room advance before changing them.'
                 : 'The next three performers are locked. Let the room advance before changing them.');
@@ -2577,7 +2663,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             toast('Winning song is no longer available in the queue.');
             return;
         }
-        await moveSingerNext(queueFaceOffWinnerSongId);
+        await moveSingerNext(queueFaceOffWinnerSongId, {
+            forceWithinProtected: String(activeQueueFaceOffWindow?.origin || '').startsWith('self_serve_'),
+        });
         await closeQueueFaceOffVote(queueFaceOffWinnerChoice);
     }, [
         activeQueueFaceOffWindow,
@@ -2586,6 +2674,197 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         queueFaceOffWinnerChoice,
         queueFaceOffWinnerSongId,
         toast
+    ]);
+    const spotlightAuctionSyncSignatureRef = useRef('');
+    useEffect(() => {
+        if (!selfServeSpotlightAuctionEnabled || !selfServeMode?.enabled || !selfServeAuctionPriorityLive || !roomCode) return;
+        if (spotlightAuctionSyncSignatureRef.current === spotlightAuctionSyncSignature) return;
+        spotlightAuctionSyncSignatureRef.current = spotlightAuctionSyncSignature;
+        let cancelled = false;
+        const syncAuctionState = async () => {
+            await syncSelfServeAuctionState({ roomCode });
+        };
+        void syncAuctionState().catch((error) => {
+            hostLogger.warn('Spotlight Auction sync failed', error);
+            if (!cancelled) spotlightAuctionSyncSignatureRef.current = '';
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        roomCode,
+        selfServeAuctionPriorityLive,
+        selfServeMode?.enabled,
+        selfServeSpotlightAuctionEnabled,
+        spotlightAuctionSyncSignature,
+    ]);
+    const selfServeQueueFaceOffResolutionRef = useRef('');
+    useEffect(() => {
+        if (!selfServeOpenStageEnabled || !selfServeMode?.enabled) return;
+        if (!current?.id) return;
+        if (activeReleaseWindow?.active) return;
+        if (queueFaceOffCandidates.length < 2) return;
+        if (String(selfServeMode?.lastAutoFaceOffForCurrentId || '').trim() === String(current.id || '').trim()) return;
+        let cancelled = false;
+        const launchFaceOff = async () => {
+            await openQueueFaceOffVote('crowd_vote', {
+                origin: 'self_serve_open_stage_auto',
+                selfServeFormat: SELF_SERVE_FORMATS.openStage,
+                durationSec: 18,
+            });
+            if (cancelled) return;
+            await updateRoom({
+                selfServeMode: {
+                    ...(room?.selfServeMode || {}),
+                    phase: 'crowd_vote',
+                    lastAutoFaceOffForCurrentId: current.id,
+                }
+            });
+        };
+        void launchFaceOff().catch((error) => {
+            hostLogger.warn('Self-serve queue face-off failed to launch', error);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [
+        activeReleaseWindow?.active,
+        current?.id,
+        openQueueFaceOffVote,
+        queueFaceOffCandidates,
+        room?.selfServeMode,
+        selfServeMode?.enabled,
+        selfServeMode?.lastAutoFaceOffForCurrentId,
+        selfServeOpenStageEnabled,
+        updateRoom
+    ]);
+    useEffect(() => {
+        if (!selfServeSpotlightAuctionEnabled || !selfServeMode?.enabled || !selfServeAuctionPriorityLive) return;
+        if (!current?.id) return;
+        if (activeReleaseWindow?.active) return;
+        if (String(selfServeMode?.lastAutoFaceOffForCurrentId || '').trim() === String(current.id || '').trim()) return;
+        if (spotlightAuctionLeaderboard.length >= 2) {
+            let cancelled = false;
+            const launchAuctionFaceOff = async () => {
+                await openQueueFaceOffVote('crowd_vote', {
+                    origin: 'self_serve_spotlight_auction_auto',
+                    selfServeFormat: SELF_SERVE_FORMATS.spotlightAuction,
+                    itemTitle: 'BeauRocks Spotlight Auction',
+                    prompt: 'Top verified supporters choose the next showcase face-off.',
+                    promptDetail: 'Phones vote between the top backed singers.',
+                    durationSec: 18,
+                    releasePolicy: 'auto_flight_winner',
+                });
+                if (cancelled) return;
+                await updateRoom({
+                    selfServeMode: {
+                        ...(room?.selfServeMode || {}),
+                        phase: 'auction_vote',
+                        lastAutoFaceOffForCurrentId: current.id,
+                    }
+                });
+            };
+            void launchAuctionFaceOff().catch((error) => {
+                hostLogger.warn('Spotlight Auction face-off failed to launch', error);
+            });
+            return () => {
+                cancelled = true;
+            };
+        }
+        if (spotlightAuctionLeaderboard.length === 1) {
+            const leaderSongId = String(spotlightAuctionLeaderboard[0]?.songId || '').trim();
+            if (!leaderSongId) return undefined;
+            if (String(selfServeMode?.lastAutoPriorityWinnerForCurrentId || '').trim() === String(current.id || '').trim()) return undefined;
+            let cancelled = false;
+            const autoLockPriorityWinner = async () => {
+                const resolvedAtMs = nowMs();
+                await moveSingerNext(leaderSongId, { forceWithinProtected: true });
+                if (cancelled) return;
+                const nextSelfServeMode = consumeSelfServeAuctionSlot(room?.selfServeMode || {}, {
+                    songId: leaderSongId,
+                    nowMs: resolvedAtMs,
+                });
+                await updateRoom({
+                    selfServeMode: {
+                        ...nextSelfServeMode,
+                        lastAutoPriorityWinnerForCurrentId: current.id,
+                        lastCrowdWinnerSongId: leaderSongId,
+                        lastCrowdVoteResolvedAtMs: resolvedAtMs,
+                    }
+                });
+            };
+            void autoLockPriorityWinner().catch((error) => {
+                hostLogger.warn('Spotlight Auction priority lock failed', error);
+            });
+            return () => {
+                cancelled = true;
+            };
+        }
+        return undefined;
+    }, [
+        activeReleaseWindow?.active,
+        current?.id,
+        moveSingerNext,
+        openQueueFaceOffVote,
+        room?.selfServeMode,
+        selfServeAuctionPriorityLive,
+        selfServeMode?.enabled,
+        selfServeMode?.lastAutoFaceOffForCurrentId,
+        selfServeMode?.lastAutoPriorityWinnerForCurrentId,
+        selfServeSpotlightAuctionEnabled,
+        spotlightAuctionLeaderboard,
+        updateRoom
+    ]);
+    useEffect(() => {
+        if (!activeSelfServeQueueFaceOffWindow?.active) return;
+        if (activeSelfServeQueueFaceOffRemainingMs > 0) return;
+        if (selfServeQueueFaceOffResolutionRef.current === activeSelfServeQueueFaceOffWindow.itemId) return;
+        selfServeQueueFaceOffResolutionRef.current = activeSelfServeQueueFaceOffWindow.itemId;
+        const resolveFaceOff = async () => {
+            if (queueFaceOffWinnerChoice && queueFaceOffWinnerSongId) {
+                const resolvedAtMs = nowMs();
+                await applyQueueFaceOffWinner();
+                const nextSelfServeMode = selfServeSpotlightAuctionEnabled
+                    ? consumeSelfServeAuctionSlot(room?.selfServeMode || {}, {
+                        songId: queueFaceOffWinnerSongId,
+                        nowMs: resolvedAtMs,
+                    })
+                    : (room?.selfServeMode || {});
+                await updateRoom({
+                    selfServeMode: {
+                        ...nextSelfServeMode,
+                        phase: selfServeSpotlightAuctionEnabled ? nextSelfServeMode.phase || 'auction_locked' : 'winner_locked',
+                        lastCrowdWinnerSongId: queueFaceOffWinnerSongId,
+                        lastCrowdVoteResolvedAtMs: resolvedAtMs,
+                    }
+                });
+                return;
+            }
+            await closeQueueFaceOffVote();
+            await updateRoom({
+                selfServeMode: {
+                    ...(room?.selfServeMode || {}),
+                    phase: 'live',
+                    lastCrowdWinnerSongId: '',
+                    lastCrowdVoteResolvedAtMs: nowMs(),
+                }
+            });
+        };
+        void resolveFaceOff()
+            .catch((error) => {
+                hostLogger.warn('Self-serve queue face-off failed to resolve', error);
+                selfServeQueueFaceOffResolutionRef.current = '';
+            });
+    }, [
+        activeSelfServeQueueFaceOffRemainingMs,
+        activeSelfServeQueueFaceOffWindow,
+        applyQueueFaceOffWinner,
+        closeQueueFaceOffVote,
+        queueFaceOffWinnerChoice,
+        queueFaceOffWinnerSongId,
+        room?.selfServeMode,
+        selfServeSpotlightAuctionEnabled,
+        updateRoom
     ]);
 
     const holdSinger = useCallback(async (songId = '', reason = 'not_here') => {
@@ -3058,6 +3337,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     }
 
     const nextQueueSong = queue[0];
+    const nextQueueReason = useMemo(() => {
+        if (selfServeSpotlightAuctionEnabled && selfServeAuctionPriorityLive) {
+            const auctionLeader = spotlightAuctionLeaderboard.find((entry) => entry?.songId === nextQueueSong?.id) || null;
+            if (auctionLeader) {
+                return {
+                    shortLabel: 'Verified support lead',
+                    detail: spotlightAuctionState.summary || `${auctionLeader.singerName} is holding a verified $${(auctionLeader.amountCents / 100).toFixed(2)} priority bid inside Spotlight Auction.`,
+                };
+            }
+        }
+        return buildSelfServeQueueExplanation({
+            room,
+            songs,
+            queue,
+            nextQueueSong,
+        });
+    }, [nextQueueSong, queue, room, selfServeAuctionPriorityLive, selfServeSpotlightAuctionEnabled, songs, spotlightAuctionLeaderboard, spotlightAuctionState.summary]);
     const experimentalRuntimeModel = useMemo(() => buildHostRuntimeShellModel({
         room,
         current,
@@ -4268,6 +4564,10 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
                 onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
                 renderSummaryBarInline={false}
+                selfServeMode={selfServeMode}
+                selfServeAuctionLeaderboard={spotlightAuctionLeaderboard}
+                nextQueueReasonLabel={nextQueueReason.shortLabel}
+                nextQueueReasonDetail={nextQueueReason.detail}
             />
             {showQueueList ? (
                 activeQueueFaceOffWindow ? (
@@ -4532,14 +4832,22 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         <div className="rounded-2xl border border-fuchsia-300/18 bg-[linear-gradient(145deg,rgba(43,19,48,0.55),rgba(10,16,30,0.96))] p-3 shadow-[0_16px_36px_rgba(0,0,0,0.18)]">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">Co-Host Moment</div>
-                                <div className="mt-1 text-sm font-semibold text-white">Let trusted voters help pick the next song</div>
+                                <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">
+                                    {selfServeAuctionPriorityLive ? 'Spotlight Auction' : (selfServePresentation?.badgeLabel || 'Co-Host Moment')}
+                                </div>
+                                <div className="mt-1 text-sm font-semibold text-white">
+                                    {selfServeAuctionPriorityLive
+                                        ? (selfServePresentation?.hostSummary || 'Let verified supporters steer the opening showcase block')
+                                        : 'Let trusted voters help pick the next song'}
+                                </div>
                                 <div className="mt-1 text-xs text-zinc-400">
-                                    The vote compares the next two ready queue songs. Host confirmation is still required before the queue changes.
+                                    {selfServeAuctionPriorityLive
+                                        ? `The vote compares the top backed ready singers. ${selfServeAuctionWindow.remainingSlots} priority slot${selfServeAuctionWindow.remainingSlots === 1 ? '' : 's'} remain in the opening block.`
+                                        : 'The vote compares the next two ready queue songs. Host confirmation is still required before the queue changes.'}
                                 </div>
                             </div>
                             <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-100">
-                                Top 2 Ready Songs
+                                {selfServeAuctionPriorityLive ? 'Top 2 Verified Supporters' : 'Top 2 Ready Songs'}
                             </div>
                         </div>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -4556,10 +4864,23 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             )}
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">Candidate {index + 1}</div>
+                                            <div className="flex items-center gap-2">
+                                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-200">
+                                                    {selfServeAuctionPriorityLive ? 'Auction Leader' : `Candidate ${index + 1}`}
+                                                </div>
+                                                {selfServeAuctionPriorityLive ? (
+                                                    <span className="rounded-full border border-amber-300/25 bg-amber-500/12 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-amber-100">
+                                                        ${((spotlightAuctionLeaderboard[index]?.amountCents || 0) / 100).toFixed(2)}
+                                                    </span>
+                                                ) : null}
+                                            </div>
                                             <div className="mt-1 text-sm font-semibold text-white">{buildQueueFaceOffSongLabel(song)}</div>
                                             <div className="mt-1 text-xs text-zinc-400">{buildQueueFaceOffSongDetail(song)}</div>
-                                            <div className="truncate text-xs text-zinc-500">{String(song?.artist || song?.artistName || '').trim() || 'Ready queue pick'}</div>
+                                            <div className="truncate text-xs text-zinc-500">
+                                                {selfServeAuctionPriorityLive
+                                                    ? `${String(song?.artist || song?.artistName || '').trim() || 'Ready queue pick'} | verified support priority`
+                                                    : (String(song?.artist || song?.artistName || '').trim() || 'Ready queue pick')}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -4833,6 +5154,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         current={current}
                         nextQueueSong={nextQueueSong}
                         nextQueueText={queueSurface.stageSummary.nextQueueText}
+                        nextQueueReasonLabel={nextQueueReason.shortLabel}
+                        nextQueueReasonDetail={nextQueueReason.detail}
+                        selfServeMode={selfServeMode}
                         queueCount={queueSurface.stageSummary.queueCount}
                         readyQueueCount={queueSurface.counts.ready}
                         assignedQueueCount={queueSurface.counts.assigned}
@@ -5373,6 +5697,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         formatWaitTime={formatWaitTime}
                                         nextQueueSong={nextQueueSong}
                                         nextQueueText={queueSurface.stageSummary.nextQueueText}
+                                        nextQueueReasonDetail={nextQueueReason.detail}
+                                        selfServeMode={selfServeMode}
                                         roomCode={roomCode}
                                         currentSourcePlaying={currentSourcePlaying}
                                         currentUsesAppleBacking={currentUsesAppleBacking}

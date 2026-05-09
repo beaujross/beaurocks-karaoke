@@ -904,6 +904,12 @@ const castRunOfShowReleaseWindowVote = async (payload = {}) => {
   return data || null;
 };
 
+const syncSelfServeAuctionState = async (payload = {}) => {
+  await requireAppCheckToken("syncSelfServeAuctionState");
+  const data = await callFunction("syncSelfServeAuctionState", payload || {});
+  return data || null;
+};
+
 const manageRunOfShowTemplate = async (payload = {}) => {
   await requireAppCheckToken("manageRunOfShowTemplate");
   const data = await callFunction("manageRunOfShowTemplate", payload || {});
@@ -1231,6 +1237,7 @@ export {
   uploadHostSceneMedia,
   submitAudienceQueueSong,
   castRunOfShowReleaseWindowVote,
+  syncSelfServeAuctionState,
   castKaraokeBracketVote,
   manageKaraokeBracket,
   submitBracketRoundSong,

@@ -1,6 +1,11 @@
 import React from 'react';
 import { deleteDoc, doc, db } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
+import {
+    buildSelfServeModePresentation,
+    buildSelfServeTransitionMoment,
+    SELF_SERVE_FORMATS,
+} from '../../../lib/selfServeKaraoke';
 import QueueSongCard from './QueueSongCard';
 
 const QueueSectionToggle = ({ label, count, toneClass, open, onToggle }) => (
@@ -313,6 +318,10 @@ const QueueListPanel = ({
     protectedReadyQueueCount = 0,
     protectedReadyQueueTarget = 0,
     lineupHasCurrentPerformer = false,
+    selfServeMode = null,
+    selfServeAuctionLeaderboard = [],
+    nextQueueReasonLabel = '',
+    nextQueueReasonDetail = '',
 }) => {
     const [selectedSongId, setSelectedSongId] = React.useState('');
     const allSongs = React.useMemo(
@@ -323,6 +332,30 @@ const QueueListPanel = ({
         () => allSongs.find((song) => song.id === selectedSongId) || queue[0] || pending[0] || assigned[0] || held[0] || null,
         [allSongs, assigned, held, pending, queue, selectedSongId]
     );
+    const selfServePresentation = React.useMemo(
+        () => (selfServeMode?.enabled ? buildSelfServeModePresentation(selfServeMode) : null),
+        [selfServeMode]
+    );
+    const selfServeTransitionMoment = React.useMemo(
+        () => buildSelfServeTransitionMoment(selfServeMode, { songs: allSongs }),
+        [allSongs, selfServeMode]
+    );
+    const selfServeFormat = String(selfServePresentation?.formatId || '').trim().toLowerCase();
+    const spotlightAuctionLive = selfServePresentation?.stateKey === 'auction_live';
+    const spotlightAuctionComplete = selfServeFormat === SELF_SERVE_FORMATS.spotlightAuction && selfServePresentation?.stateKey === 'auction_complete';
+    const crowdLockedSongId = String(selfServeTransitionMoment?.songId || '').trim();
+    const auctionRankBySongId = React.useMemo(() => {
+        const nextMap = new Map();
+        (Array.isArray(selfServeAuctionLeaderboard) ? selfServeAuctionLeaderboard : []).forEach((entry, index) => {
+            const songId = String(entry?.songId || '').trim();
+            if (!songId) return;
+            nextMap.set(songId, {
+                rank: index + 1,
+                amountCents: Math.max(0, Number(entry?.amountCents || 0) || 0),
+            });
+        });
+        return nextMap;
+    }, [selfServeAuctionLeaderboard]);
 
     React.useEffect(() => {
         if (!selectedSong?.id && selectedSongId) {
@@ -333,6 +366,51 @@ const QueueListPanel = ({
             setSelectedSongId(selectedSong.id);
         }
     }, [selectedSong?.id, selectedSongId]);
+    const buildSelfServeRowState = React.useCallback((song, { lockedIndex = -1 } = {}) => {
+        if (!song?.id || !selfServeMode?.enabled) return null;
+        const songId = String(song.id || '').trim();
+        if (!songId) return null;
+        if (crowdLockedSongId && songId === crowdLockedSongId && selfServeTransitionMoment) {
+            return {
+                toneKey: selfServeTransitionMoment.toneKey || selfServePresentation?.toneKey || 'cyan',
+                badgeLabel: selfServeTransitionMoment.badgeLabel || 'Locked',
+                detail: selfServeTransitionMoment.detail || 'This next moment is locked and ready.',
+                icon: selfServeFormat === SELF_SERVE_FORMATS.spotlightAuction ? 'fa-bolt' : 'fa-stars',
+            };
+        }
+        if (spotlightAuctionLive) {
+            const auctionRank = auctionRankBySongId.get(songId);
+            if (auctionRank) {
+                return {
+                    toneKey: 'amber',
+                    badgeLabel: auctionRank.rank === 1 ? 'Auction Lead' : `Priority #${auctionRank.rank}`,
+                    detail: auctionRank.rank === 1
+                        ? `${(auctionRank.amountCents / 100).toFixed(2)} in verified support is leading the opening block.`
+                        : `${(auctionRank.amountCents / 100).toFixed(2)} in verified support keeps this singer in the opening block race.`,
+                    icon: auctionRank.rank === 1 ? 'fa-trophy' : 'fa-arrow-trend-up',
+                };
+            }
+        }
+        if (lockedIndex === 0 && nextQueueReasonLabel) {
+            return {
+                toneKey: selfServePresentation?.toneKey || 'cyan',
+                badgeLabel: nextQueueReasonLabel,
+                detail: nextQueueReasonDetail || 'This singer is currently holding the next safe slot.',
+                icon: selfServeFormat === SELF_SERVE_FORMATS.spotlightAuction ? 'fa-circle-play' : 'fa-microphone-lines',
+            };
+        }
+        return null;
+    }, [
+        auctionRankBySongId,
+        crowdLockedSongId,
+        nextQueueReasonDetail,
+        nextQueueReasonLabel,
+        selfServeFormat,
+        selfServeMode?.enabled,
+        selfServePresentation?.toneKey,
+        selfServeTransitionMoment,
+        spotlightAuctionLive,
+    ]);
     if (!showQueueList) return null;
     const safeProtectedReadyQueueCount = Math.max(0, Math.min(queue.length, Number(protectedReadyQueueCount || 0)));
     const lockedReadyQueue = queue.slice(0, safeProtectedReadyQueueCount);
@@ -340,6 +418,25 @@ const QueueListPanel = ({
     const lockedLineupCount = Number(lineupHasCurrentPerformer ? 1 : 0) + safeProtectedReadyQueueCount;
     const lockedLineupTarget = Number(lineupHasCurrentPerformer ? 1 : 0) + Math.max(safeProtectedReadyQueueCount, Number(protectedReadyQueueTarget || 0));
     const lockedLineupComplete = lockedLineupTarget > 0 && lockedLineupCount >= lockedLineupTarget;
+    const lockedQueueSectionLabel = spotlightAuctionLive
+        ? 'Opening Showcase Block'
+        : spotlightAuctionComplete
+            ? 'Fair Queue On Deck'
+            : selfServeFormat === SELF_SERVE_FORMATS.openStage
+                ? (lockedLineupComplete ? 'Open Stage On Deck' : 'Build Open Stage Deck')
+                : (lockedLineupComplete ? 'Locked Next Performers' : 'Build The Next Performers');
+    const benchSectionLabel = spotlightAuctionLive
+        ? 'Fair Queue Bench'
+        : selfServeFormat === SELF_SERVE_FORMATS.openStage
+            ? 'Open Stage Bench'
+            : 'Build The Bench';
+    const benchSectionDetail = spotlightAuctionLive
+        ? 'These ready singers stay warm behind the sponsored opening block and take over when fair queue resumes.'
+        : spotlightAuctionComplete
+            ? 'The sponsored block is done. These ready singers now carry the fair queue.'
+            : selfServeFormat === SELF_SERVE_FORMATS.openStage
+                ? 'These ready singers stay in fair rotation behind the protected deck.'
+                : 'Keep these vetted and ready, but do not disturb the protected lineup above.';
 
     return (
         <>
@@ -370,9 +467,9 @@ const QueueListPanel = ({
                     </div>
                 ) : null}
                 <QueueSectionToggle
-                    label={lockedLineupComplete ? 'Locked Next Performers' : 'Build The Next Performers'}
+                    label={lockedQueueSectionLabel}
                     count={lockedReadyQueue.length}
-                    toneClass="text-cyan-200"
+                    toneClass={spotlightAuctionLive ? 'text-amber-200' : 'text-cyan-200'}
                     open={readyQueueOpen}
                     onToggle={onToggleReadyQueue}
                 />
@@ -417,18 +514,19 @@ const QueueListPanel = ({
                         lineupSlotLabel={lineupHasCurrentPerformer
                             ? (i === 0 ? 'Next' : 'Then')
                             : (i === 0 ? 'Now' : i === 1 ? 'Next' : 'Then')}
+                        selfServeState={buildSelfServeRowState(s, { lockedIndex: i })}
                     />
                 )) : null}
                 {readyQueueOpen && laterReadyQueue.length > 0 ? (
                     <div className="mt-3 border-t border-white/10 pt-3">
                         <div className="mb-2 flex items-center justify-between gap-2">
-                            <div className="text-xs font-bold uppercase tracking-[0.16em] text-zinc-300">Build The Bench</div>
+                            <div className={`text-xs font-bold uppercase tracking-[0.16em] ${spotlightAuctionLive ? 'text-amber-200' : 'text-zinc-300'}`}>{benchSectionLabel}</div>
                             <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
                                 {laterReadyQueue.length}
                             </span>
                         </div>
                         <div className="mb-2 text-[11px] text-zinc-400">
-                            Keep these vetted and ready, but do not disturb the protected lineup above.
+                            {benchSectionDetail}
                         </div>
                         {laterReadyQueue.map((s, i) => (
                             <QueueSongCard
@@ -467,6 +565,7 @@ const QueueListPanel = ({
                                 onAssignQueueSongToNextOpenRunOfShowSlot={onAssignQueueSongToNextOpenRunOfShowSlot}
                                 onApprovePending={onApprovePending}
                                 onDeletePending={onDeletePending}
+                                selfServeState={buildSelfServeRowState(s)}
                             />
                         ))}
                     </div>

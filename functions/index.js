@@ -1273,6 +1273,10 @@ const ROOM_JOIN_GRANTS_COLLECTION = "room_join_grants";
 const ROOM_PROMO_REDEMPTIONS_COLLECTION = "room_promo_redemptions";
 const EVENT_ATTENDEE_ENTITLEMENTS_COLLECTION = "event_attendee_entitlements";
 const SUPPORT_PURCHASE_EVENTS_COLLECTION = "support_purchase_events";
+const STRIPE_CHECKOUTS_COLLECTION = "stripe_checkouts";
+const SELF_SERVE_SPOTLIGHT_AUCTION_FORMAT = "spotlight_auction";
+const SELF_SERVE_AUCTION_SUPPORTED_PROVIDERS = new Set(["stripe", "givebutter", "givebutter_support"]);
+const SELF_SERVE_AUCTION_SUPPORTED_REWARD_SCOPES = new Set(["buyer", "buyer_and_room"]);
 const MONEYBAGS_BADGE_LABEL = "Moneybags";
 const AUDIENCE_ACCESS_MODES = Object.freeze({
   account: "account",
@@ -1292,6 +1296,230 @@ const SUPPORT_CELEBRATION_STYLES = Object.freeze({
   standard: "standard",
   moneybagsBurst: "moneybags_burst",
 });
+const getTimestampMs = (value) => {
+  if (!value) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.seconds === "number") return value.seconds * 1000;
+  return 0;
+};
+const normalizeSelfServeAuctionRewardScope = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return SELF_SERVE_AUCTION_SUPPORTED_REWARD_SCOPES.has(token) ? token : "buyer";
+};
+const sanitizeSelfServeAuctionText = (value = "", fallback = "", max = 180) => {
+  const normalized = String(value || "").trim().replace(/\s+/g, " ").slice(0, Math.max(0, Number(max || 0) || 0));
+  return normalized || fallback;
+};
+const normalizeSelfServeAuctionLeaderboardEntry = (entry = {}, queueIndex = 0) => ({
+  uid: normalizeUidToken(entry.uid || ""),
+  singerName: sanitizeSelfServeAuctionText(entry.singerName || "Guest", "Guest", 120),
+  songId: sanitizeSelfServeAuctionText(entry.songId || "", "", 240),
+  songTitle: sanitizeSelfServeAuctionText(entry.songTitle || "Song", "Song", 180),
+  amountCents: clampNumber(entry.amountCents || entry.totalAmountCents || 0, 0, 100000000, 0),
+  eventCount: clampNumber(entry.eventCount || 0, 0, 9999, 0),
+  qualifiedAtMs: clampNumber(entry.qualifiedAtMs || 0, 0, 4102444800000, 0),
+  lastPurchaseAtMs: clampNumber(entry.lastPurchaseAtMs || 0, 0, 4102444800000, 0),
+  queueIndex: clampNumber(queueIndex, 0, 999, 0),
+  sourceProvider: normalizeDirectoryToken(entry.sourceProvider || "", 40),
+});
+const normalizeSelfServeAuctionProjection = (projection = {}, { paidPriorityEnabled = true, syncedAtMs = nowMs() } = {}) => {
+  const source = isPlainObject(projection) ? projection : {};
+  const leaderboard = Array.isArray(source.leaderboard)
+    ? source.leaderboard
+      .map((entry, index) => normalizeSelfServeAuctionLeaderboardEntry(entry, index))
+      .filter((entry) => entry.uid && entry.songId)
+      .slice(0, 8)
+    : [];
+  return {
+    active: paidPriorityEnabled,
+    syncedAtMs: clampNumber(source.syncedAtMs || syncedAtMs, 0, 4102444800000, syncedAtMs),
+    totalQualifiedSupporters: clampNumber(source.totalQualifiedSupporters || leaderboard.length, 0, 999, leaderboard.length),
+    leaderboard,
+    summary: sanitizeSelfServeAuctionText(source.summary || "", "", 180),
+  };
+};
+const buildServerSelfServeAuctionProjection = ({
+  roomCode = "",
+  roomData = {},
+  queueSongs = [],
+  stripeDocs = [],
+  supportDocs = [],
+  nowValue = nowMs(),
+} = {}) => {
+  const selfServeMode = isPlainObject(roomData?.selfServeMode) ? roomData.selfServeMode : {};
+  const format = normalizeDirectoryToken(selfServeMode?.format || "", 80);
+  const paidPriorityEnabled = selfServeMode?.paidPriorityEnabled !== false;
+  if (format !== SELF_SERVE_SPOTLIGHT_AUCTION_FORMAT) {
+    return normalizeSelfServeAuctionProjection({
+      active: false,
+      syncedAtMs: nowValue,
+      totalQualifiedSupporters: 0,
+      leaderboard: [],
+      summary: "",
+    }, { paidPriorityEnabled: false, syncedAtMs: nowValue });
+  }
+  const startedAtMs = clampNumber(selfServeMode?.startedAtMs || 0, 0, 4102444800000, 0);
+  if (!paidPriorityEnabled) {
+    return normalizeSelfServeAuctionProjection({
+      active: false,
+      syncedAtMs: nowValue,
+      totalQualifiedSupporters: 0,
+      leaderboard: [],
+      summary: "Paid priority is disabled.",
+    }, { paidPriorityEnabled: false, syncedAtMs: nowValue });
+  }
+
+  const readyQueue = (Array.isArray(queueSongs) ? queueSongs : [])
+    .filter((song) => normalizeRoomCode(song?.roomCode || roomCode) === normalizeRoomCode(roomCode)
+      && normalizeUidToken(song?.singerUid || "")
+      && String(song?.status || "").trim().toLowerCase() === "requested")
+    .sort((left, right) => clampNumber(left?.priorityScore || 0, 0, 4102444800000, 0) - clampNumber(right?.priorityScore || 0, 0, 4102444800000, 0));
+  const firstReadySongByUid = new Map();
+  readyQueue.forEach((song, index) => {
+    const uid = normalizeUidToken(song?.singerUid || "");
+    if (!uid || firstReadySongByUid.has(uid)) return;
+    firstReadySongByUid.set(uid, {
+      songId: sanitizeSelfServeAuctionText(song?.id || "", "", 240),
+      songTitle: sanitizeSelfServeAuctionText(song?.songTitle || song?.title || "Song", "Song", 180),
+      singerName: sanitizeSelfServeAuctionText(song?.singerName || "Guest", "Guest", 120),
+      queueIndex: index,
+    });
+  });
+  const bidderMap = new Map();
+  const accumulateBid = ({
+    uid = "",
+    amountCents = 0,
+    eventMs = 0,
+    sourceProvider = "",
+  } = {}) => {
+    const safeUid = normalizeUidToken(uid);
+    const safeAmountCents = clampNumber(amountCents, 0, 100000000, 0);
+    const safeEventMs = clampNumber(eventMs, 0, 4102444800000, 0);
+    const safeProvider = normalizeDirectoryToken(sourceProvider || "", 40);
+    if (!safeUid || !safeAmountCents || !safeEventMs || safeEventMs < startedAtMs) return;
+    if (!SELF_SERVE_AUCTION_SUPPORTED_PROVIDERS.has(safeProvider)) return;
+    const existing = bidderMap.get(safeUid) || {
+      uid: safeUid,
+      amountCents: 0,
+      eventCount: 0,
+      qualifiedAtMs: 0,
+      lastPurchaseAtMs: 0,
+      sourceProvider: safeProvider,
+    };
+    existing.amountCents += safeAmountCents;
+    existing.eventCount += 1;
+    existing.qualifiedAtMs = existing.qualifiedAtMs > 0 ? Math.min(existing.qualifiedAtMs, safeEventMs) : safeEventMs;
+    existing.lastPurchaseAtMs = Math.max(existing.lastPurchaseAtMs, safeEventMs);
+    if (!existing.sourceProvider) existing.sourceProvider = safeProvider;
+    bidderMap.set(safeUid, existing);
+  };
+
+  (Array.isArray(stripeDocs) ? stripeDocs : []).forEach((docSnap) => {
+    const data = typeof docSnap?.data === "function" ? (docSnap.data() || {}) : (docSnap || {});
+    if (normalizeRoomCode(data?.roomCode || "") !== normalizeRoomCode(roomCode)) return;
+    if (normalizeDirectoryToken(data?.checkoutStatus || "", 40) !== "completed") return;
+    const rewardScope = normalizeSelfServeAuctionRewardScope(data?.rewardScope || "buyer");
+    if (!SELF_SERVE_AUCTION_SUPPORTED_REWARD_SCOPES.has(rewardScope)) return;
+    accumulateBid({
+      uid: data?.buyerUid || "",
+      amountCents: data?.amountCents || 0,
+      eventMs: getTimestampMs(data?.fulfilledAt || data?.createdAt),
+      sourceProvider: "stripe",
+    });
+  });
+  (Array.isArray(supportDocs) ? supportDocs : []).forEach((docSnap) => {
+    const data = typeof docSnap?.data === "function" ? (docSnap.data() || {}) : (docSnap || {});
+    if (normalizeRoomCode(data?.roomCode || "") !== normalizeRoomCode(roomCode)) return;
+    const rewardScope = normalizeSelfServeAuctionRewardScope(data?.rewardScope || "buyer");
+    if (!SELF_SERVE_AUCTION_SUPPORTED_REWARD_SCOPES.has(rewardScope)) return;
+    accumulateBid({
+      uid: data?.matchedUid || "",
+      amountCents: data?.amountCents || 0,
+      eventMs: getTimestampMs(data?.createdAt || data?.updatedAt),
+      sourceProvider: data?.sourceProvider || "givebutter_support",
+    });
+  });
+
+  const leaderboard = [...bidderMap.values()]
+    .map((bidder) => {
+      const queueEntry = firstReadySongByUid.get(bidder.uid);
+      if (!queueEntry?.songId) return null;
+      return normalizeSelfServeAuctionLeaderboardEntry({
+        ...bidder,
+        singerName: queueEntry.singerName,
+        songId: queueEntry.songId,
+        songTitle: queueEntry.songTitle,
+      }, queueEntry.queueIndex);
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (right.amountCents !== left.amountCents) return right.amountCents - left.amountCents;
+      if (left.qualifiedAtMs !== right.qualifiedAtMs) return left.qualifiedAtMs - right.qualifiedAtMs;
+      return left.queueIndex - right.queueIndex;
+    })
+    .slice(0, 8);
+
+  return normalizeSelfServeAuctionProjection({
+    active: true,
+    syncedAtMs: nowValue,
+    totalQualifiedSupporters: leaderboard.length,
+    leaderboard,
+    summary: leaderboard.length
+      ? `${leaderboard[0].singerName} leads with $${(leaderboard[0].amountCents / 100).toFixed(2)}`
+      : "No verified supporters in the auction yet.",
+  }, { paidPriorityEnabled, syncedAtMs: nowValue });
+};
+const syncSelfServeAuctionStateServer = async ({
+  rootRef = getRootRef(),
+  roomCode = "",
+  roomData = null,
+  nowValue = nowMs(),
+} = {}) => {
+  const safeRoomCode = normalizeRoomCode(roomCode || "");
+  if (!safeRoomCode) return null;
+  const roomRef = rootRef.collection("rooms").doc(safeRoomCode);
+  const resolvedRoomData = roomData && typeof roomData === "object"
+    ? roomData
+    : ((await roomRef.get()).data() || {});
+  const selfServeMode = isPlainObject(resolvedRoomData?.selfServeMode) ? resolvedRoomData.selfServeMode : {};
+  if (selfServeMode?.enabled !== true || normalizeDirectoryToken(selfServeMode?.format || "", 80) !== SELF_SERVE_SPOTLIGHT_AUCTION_FORMAT) {
+    await roomRef.set({
+      selfServeMode: {
+        auctionState: null,
+      },
+    }, { merge: true });
+    return null;
+  }
+  const [queueSnap, stripeSnap, supportSnap] = await Promise.all([
+    rootRef.collection("karaoke_songs")
+      .where("roomCode", "==", safeRoomCode)
+      .where("status", "==", "requested")
+      .get(),
+    rootRef.collection(STRIPE_CHECKOUTS_COLLECTION)
+      .where("roomCode", "==", safeRoomCode)
+      .limit(200)
+      .get(),
+    admin.firestore().collection(SUPPORT_PURCHASE_EVENTS_COLLECTION)
+      .where("roomCode", "==", safeRoomCode)
+      .limit(200)
+      .get(),
+  ]);
+  const auctionState = buildServerSelfServeAuctionProjection({
+    roomCode: safeRoomCode,
+    roomData: resolvedRoomData,
+    queueSongs: queueSnap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) })),
+    stripeDocs: stripeSnap.docs,
+    supportDocs: supportSnap.docs,
+    nowValue,
+  });
+  await roomRef.set({
+    selfServeMode: {
+      auctionState,
+    },
+  }, { merge: true });
+  return auctionState;
+};
 const buildDefaultRoomEventCredits = () => ({
   enabled: false,
   presetId: "custom_event_credits",
@@ -15028,6 +15256,11 @@ exports.joinRoomAudience = onCall({ cors: true }, async (request) => {
           updatedAt: serverNow,
         }, { merge: true }),
       ]);
+      await syncSelfServeAuctionStateServer({
+        rootRef,
+        roomCode,
+        roomData,
+      });
     }
   }
 
@@ -18401,6 +18634,31 @@ exports.updateRoomAsHost = onCall({ cors: true }, async (request) => {
   };
 });
 
+exports.syncSelfServeAuctionState = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "sync_self_serve_auction_state", { perMinute: 60, perHour: 360 });
+  enforceAppCheckIfEnabled(request, "sync_self_serve_auction_state");
+  const callerUid = requireAuth(request);
+  const roomCode = normalizeRoomCode(request.data?.roomCode || "");
+  ensureString(roomCode, "roomCode");
+  const rootRef = getRootRef();
+  const { roomData } = await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can sync Spotlight Auction state.",
+  });
+  const auctionState = await syncSelfServeAuctionStateServer({
+    rootRef,
+    roomCode,
+    roomData,
+  });
+  return {
+    ok: true,
+    roomCode,
+    auctionState: auctionState || null,
+  };
+});
+
 exports.runDemoDirectorAction = onCall({ cors: true }, async (request) => {
   const rootRef = getRootRef();
   const callerUid = String(request.auth?.uid || "");
@@ -21527,6 +21785,10 @@ exports.stripeWebhook = onRequest(
         icon: "$",
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
       });
+      await syncSelfServeAuctionStateServer({
+        rootRef,
+        roomCode,
+      });
     }
 
     if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
@@ -21984,6 +22246,12 @@ exports.givebutterWebhook = onRequest(
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      if (roomCode) {
+        await syncSelfServeAuctionStateServer({
+          rootRef: getRootRef(),
+          roomCode,
+        });
+      }
       res.json({
         received: true,
         supportPurchase: true,

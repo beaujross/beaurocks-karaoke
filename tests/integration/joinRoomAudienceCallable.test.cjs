@@ -20,6 +20,7 @@ const db = admin.firestore();
 const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
 const roomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`);
 const secondRoomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${SECOND_UID}`);
+const auctionSongRef = db.doc(`${ROOT}/karaoke_songs/self_serve_song_1`);
 const userRef = db.doc(`users/${USER_UID}`);
 const secondUserRef = db.doc(`users/${SECOND_UID}`);
 const eventConfigRef = db.doc(`room_event_credit_configs/${ROOM_CODE}`);
@@ -40,7 +41,7 @@ const requestFor = (uid, data = {}) => ({
 });
 
 async function resetState() {
-  const docs = [roomUserRef, secondRoomUserRef, roomRef, userRef, secondUserRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
+  const docs = [roomUserRef, secondRoomUserRef, roomRef, auctionSongRef, userRef, secondUserRef, eventConfigRef, grantRef, entitlementRef, entitlementGrantRef, supportPurchaseRef, contactRef];
   for (const ref of docs) {
     try {
       await ref.delete();
@@ -332,6 +333,53 @@ async function run() {
       const supportSnap = await supportPurchaseRef.get();
       assert.equal(String(supportSnap.get("matchedUid")), USER_UID);
       assert.equal(String(supportSnap.get("matchedRoomCode")), ROOM_CODE);
+    }],
+
+    ["audience join syncs spotlight auction state after matching a prior support purchase", async () => {
+      await roomRef.set({
+        selfServeMode: {
+          enabled: true,
+          format: "spotlight_auction",
+          paidPriorityEnabled: true,
+          startedAtMs: 1700000000000,
+        },
+      }, { merge: true });
+      await auctionSongRef.set({
+        roomCode: ROOM_CODE,
+        singerUid: USER_UID,
+        singerName: "Supporter Guest",
+        songTitle: "Since U Been Gone",
+        status: "requested",
+        priorityScore: 5,
+      }, { merge: true });
+      await supportPurchaseRef.set({
+        sourceProvider: "givebutter",
+        roomCode: ROOM_CODE,
+        normalizedEmail: "auction@example.com",
+        attendeeName: "Supporter Guest",
+        rewardScope: "buyer",
+        amountCents: 2500,
+        createdAt: admin.firestore.Timestamp.fromMillis(1700000005000),
+      }, { merge: true });
+
+      await joinRoomAudience.run(requestFor(USER_UID, {
+        roomCode: ROOM_CODE,
+        name: "Supporter Guest",
+        avatar: "🎤",
+        __token: { email: "auction@example.com" },
+      }));
+
+      const supportSnap = await supportPurchaseRef.get();
+      assert.equal(String(supportSnap.get("matchedUid")), USER_UID);
+
+      const roomSnap = await roomRef.get();
+      const auctionState = roomSnap.data()?.selfServeMode?.auctionState || {};
+      assert.equal(Array.isArray(auctionState.leaderboard), true);
+      assert.equal(auctionState.leaderboard.length, 1);
+      assert.equal(String(auctionState.leaderboard[0].uid), USER_UID);
+      assert.equal(String(auctionState.leaderboard[0].songId), "self_serve_song_1");
+      assert.equal(Number(auctionState.leaderboard[0].amountCents), 2500);
+      assert.equal(String(auctionState.summary || ""), "Supporter Guest leads with $25.00");
     }],
 
     ["timed lobby credits grant on interval and respect per-guest cap", async () => {

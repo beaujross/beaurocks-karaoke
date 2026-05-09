@@ -3,6 +3,7 @@ import UnifiedGameLauncher from '../../components/UnifiedGameLauncher';
 import { GAMES_META } from '../../lib/gameRegistry';
 import HostChatPanel from './components/HostChatPanel';
 import HostTopChrome from './components/HostTopChrome';
+import SelfServeModeLauncher from './components/SelfServeModeLauncher';
 import { buildQaHostFixture } from './qaHostFixtures';
 import MissionSetupShell from './components/setup/MissionSetupShell';
 import MissionSetupHeader from './components/setup/MissionSetupHeader';
@@ -18405,6 +18406,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 {tab === 'games' && (
                     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
                         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                            <div className="mb-4">
+                                <SelfServeModeLauncher
+                                    room={room}
+                                    roomCode={roomCode}
+                                    updateRoom={updateRoom}
+                                    toast={toast}
+                                />
+                            </div>
                             <UnifiedGameLauncher
                                 room={room}
                                 roomCode={roomCode}

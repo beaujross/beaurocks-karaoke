@@ -73,6 +73,7 @@ function isVipSongForUsers(song, roomUsers = []) {
     return !!match?.isVip || (match?.vipLevel || 0) > 0;
 }
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
+import { getSelfServeAuctionState } from '../../lib/selfServeAuction';
 import {
     getVolleyOrbTvInstructionCopy,
     getVolleyOrbUltimate,
@@ -103,6 +104,13 @@ import {
     normalizeAudienceBrandTheme,
     withAudienceBrandAlpha
 } from '../../lib/audienceBrandTheme';
+import {
+    buildSelfServeDecisionPresentation,
+    buildSelfServeModePresentation,
+    buildSelfServeTransitionMoment,
+    buildSelfServeRulesCard,
+    isSelfServeAuctionWindowLive,
+} from '../../lib/selfServeKaraoke';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -266,6 +274,15 @@ const RunOfShowReleaseWindowOverlay = ({
     const isCoHostVote = governanceMode === 'cohost_vote';
     const isSongFaceOff = subjectType === 'queue_faceoff';
     const isSlotFill = subjectType === 'slot_fill_choice';
+    const releaseOrigin = String(releaseWindow?.origin || '').trim().toLowerCase();
+    const isSelfServeOpenStageVote = releaseOrigin === 'self_serve_open_stage_auto';
+    const isSelfServeSpotlightAuctionVote = releaseOrigin === 'self_serve_spotlight_auction_auto';
+    const selfServeDecisionPresentation = (isSelfServeOpenStageVote || isSelfServeSpotlightAuctionVote)
+        ? buildSelfServeDecisionPresentation(releaseWindow, {
+            timeLeftSec,
+            totalVotes: tally.totalVotes || 0,
+        })
+        : null;
     let voteHost = 'app.beaurocks.app';
     try {
         voteHost = new URL(getSurfaceBaseHref('app')).host || voteHost;
@@ -349,7 +366,9 @@ const RunOfShowReleaseWindowOverlay = ({
                 <div className="flex items-start justify-between gap-8">
                     <div className="max-w-[70vw]">
                         <div className="text-sm font-black uppercase tracking-[0.34em] text-cyan-100/78">
-                            {isSongFaceOff
+                            {selfServeDecisionPresentation
+                                ? selfServeDecisionPresentation.eyebrow
+                                : isSongFaceOff
                                 ? (isCoHostVote ? 'Co-Host Song Face-Off' : 'Audience Song Face-Off')
                                 : isSlotFill
                                     ? (isCoHostVote ? 'Co-Host Slot Fill' : 'Audience Slot Fill')
@@ -359,13 +378,15 @@ const RunOfShowReleaseWindowOverlay = ({
                             {String(releaseWindow?.prompt || 'What should happen next?').trim()}
                         </div>
                         <div className="mt-4 text-[clamp(1rem,1.8vw,1.45rem)] text-zinc-200/86">
-                            {isCoHostVote
+                            {selfServeDecisionPresentation
+                                ? `${selfServeDecisionPresentation.helper} Vote now at ${voteHost} with room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`
+                                : isCoHostVote
                                 ? 'Promoted co-hosts vote now. The host confirms the winning choice after the timer ends.'
                                 : `Vote on your phone at ${voteHost} using room code ${String(roomCode || '').trim().toUpperCase() || 'ROOM'}.`}
                         </div>
                         <div className="mt-5 inline-flex items-center gap-3 rounded-full border border-white/12 bg-white/6 px-5 py-2 text-sm font-black uppercase tracking-[0.26em] text-white/90 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
                             <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-                            Crowd energy is live
+                            {selfServeDecisionPresentation ? selfServeDecisionPresentation.liveLabel : 'Crowd energy is live'}
                         </div>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-3">
@@ -383,7 +404,7 @@ const RunOfShowReleaseWindowOverlay = ({
                 </div>
                 <div className="mt-8 flex items-center justify-center">
                     <div className="rounded-full border border-white/10 bg-white/[0.05] px-6 py-2 text-base font-black uppercase tracking-[0.34em] text-zinc-200 shadow-[0_20px_40px_rgba(0,0,0,0.24)]">
-                        Pick the next spotlight
+                        {selfServeDecisionPresentation ? selfServeDecisionPresentation.decisionLabel : 'Pick the next moment'}
                     </div>
                 </div>
                 <div className="mt-8 grid flex-1 grid-cols-[minmax(0,1fr)_160px_minmax(0,1fr)] gap-8">
@@ -394,6 +415,67 @@ const RunOfShowReleaseWindowOverlay = ({
                         </div>
                     </div>
                     {renderChoiceCard(secondaryChoice)}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SelfServeTransitionOverlay = ({
+    transitionMoment = null,
+}) => {
+    if (!transitionMoment) return null;
+    const amberTone = transitionMoment.toneKey === 'amber';
+    return (
+        <div className="public-tv fixed inset-0 z-[193] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.14),transparent_34%),radial-gradient(circle_at_bottom,rgba(244,114,182,0.16),transparent_30%),linear-gradient(180deg,rgba(3,7,18,0.82),rgba(2,6,23,0.94))] text-white">
+            <div className={`absolute inset-0 ${amberTone ? 'bg-[radial-gradient(circle_at_50%_20%,rgba(251,191,36,0.18),transparent_32%)]' : 'bg-[radial-gradient(circle_at_50%_20%,rgba(34,211,238,0.16),transparent_32%)]'}`} />
+            <div className="absolute inset-0 opacity-[0.12]" style={{
+                backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
+                backgroundSize: '34px 34px'
+            }}></div>
+            <div className="relative z-10 flex h-full items-center justify-center px-10 py-10">
+                <div className={`grid w-full max-w-[1280px] items-center gap-8 rounded-[2.4rem] border px-8 py-8 shadow-[0_28px_90px_rgba(0,0,0,0.4)] backdrop-blur-xl lg:grid-cols-[360px_minmax(0,1fr)] ${
+                    amberTone
+                        ? 'border-amber-300/24 bg-[linear-gradient(145deg,rgba(58,33,9,0.72),rgba(8,10,18,0.92))]'
+                        : 'border-cyan-300/24 bg-[linear-gradient(145deg,rgba(8,38,56,0.72),rgba(8,10,18,0.92))]'
+                }`}>
+                    <div className="flex justify-center">
+                        <div className="h-[280px] w-[280px] overflow-hidden rounded-[2rem] border border-white/12 bg-white/6 shadow-[0_24px_60px_rgba(0,0,0,0.34)]">
+                            {transitionMoment.artworkUrl ? (
+                                <img src={transitionMoment.artworkUrl} alt={transitionMoment.songTitle || transitionMoment.title} className="h-full w-full object-cover" />
+                            ) : (
+                                <div className="flex h-full w-full items-center justify-center text-8xl text-white/28">
+                                    <i className="fa-solid fa-microphone-lines"></i>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="min-w-0">
+                        <div className={`inline-flex items-center gap-3 rounded-full border px-5 py-2 text-sm font-black uppercase tracking-[0.28em] ${
+                            amberTone
+                                ? 'border-amber-300/28 bg-amber-500/12 text-amber-100'
+                                : 'border-cyan-300/28 bg-cyan-500/12 text-cyan-100'
+                        }`}>
+                            <span className={`inline-flex h-2.5 w-2.5 rounded-full ${amberTone ? 'bg-amber-200 shadow-[0_0_18px_rgba(253,224,71,0.9)]' : 'bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.9)]'}`} />
+                            {transitionMoment.badgeLabel}
+                        </div>
+                        <div className="mt-5 text-[clamp(3.2rem,6vw,6rem)] font-bebas leading-[0.9] tracking-[0.02em] text-white">
+                            {transitionMoment.title}
+                        </div>
+                        {transitionMoment.songTitle ? (
+                            <div className="mt-4 text-[clamp(2rem,3.5vw,3.8rem)] font-black leading-tight text-white">
+                                {transitionMoment.songTitle}
+                            </div>
+                        ) : null}
+                        {transitionMoment.singerName ? (
+                            <div className={`mt-3 text-[1rem] font-black uppercase tracking-[0.24em] ${amberTone ? 'text-amber-100/88' : 'text-cyan-100/88'}`}>
+                                {transitionMoment.singerName}
+                            </div>
+                        ) : null}
+                        <div className="mt-5 max-w-[42rem] text-[1.15rem] leading-relaxed text-zinc-200/88">
+                            {transitionMoment.detail}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1425,6 +1507,207 @@ const LocalQrImage = ({ value, size = 220, className = '', alt = 'QR' }) => {
     }
 
     return <img src={src} alt={alt} className={className} />;
+};
+
+const SelfServeAttractOverlay = ({
+    room = null,
+    roomCode = '',
+    joinUrl = '',
+    roomUsers = [],
+    allQueue = [],
+    nextUp = [],
+}) => {
+    const mode = room?.selfServeMode && typeof room.selfServeMode === 'object' ? room.selfServeMode : null;
+    const [transitionNowMs, setTransitionNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!mode?.enabled) return undefined;
+        setTransitionNowMs(Date.now());
+        const timer = setInterval(() => setTransitionNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [mode?.enabled]);
+    const rulesCard = buildSelfServeRulesCard(mode?.format || '');
+    const modePresentation = useMemo(
+        () => buildSelfServeModePresentation(mode),
+        [mode]
+    );
+    const transitionMoment = useMemo(
+        () => buildSelfServeTransitionMoment(mode, {
+            songs: allQueue,
+            nowMs: transitionNowMs,
+        }),
+        [allQueue, mode, transitionNowMs]
+    );
+    const roomCount = Array.isArray(roomUsers) ? roomUsers.length : 0;
+    const queueCount = Array.isArray(allQueue) ? allQueue.length : 0;
+    const previewList = Array.isArray(nextUp) ? nextUp.slice(0, 3) : [];
+    const paidPriorityLive = !!rulesCard.supportsPaidPriority && isSelfServeAuctionWindowLive(mode);
+    const auctionState = useMemo(
+        () => getSelfServeAuctionState(mode),
+        [mode]
+    );
+    const auctionLeaders = useMemo(
+        () => auctionState.leaderboard.slice(0, 3),
+        [auctionState]
+    );
+    const auctionSummary = String(auctionState.summary || '').trim();
+    const formatChipClass = paidPriorityLive
+        ? 'border-amber-300/35 bg-amber-500/15 text-amber-100'
+        : 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100';
+
+    return (
+        <div className="public-tv fixed inset-0 z-[188] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.20),transparent_28%),radial-gradient(circle_at_82%_18%,rgba(251,191,36,0.18),transparent_22%),radial-gradient(circle_at_bottom,rgba(236,72,153,0.18),transparent_28%),linear-gradient(180deg,rgba(5,8,15,0.98),rgba(5,7,12,1))] text-white">
+            <div className="absolute -left-[10vw] top-[-8vh] h-[38vw] w-[38vw] rounded-full bg-cyan-400/18 blur-3xl" />
+            <div className="absolute right-[-10vw] top-[14vh] h-[34vw] w-[34vw] rounded-full bg-fuchsia-400/14 blur-3xl" />
+            <div className="absolute bottom-[-10vh] left-[28vw] h-[30vw] w-[30vw] rounded-full bg-amber-300/14 blur-3xl" />
+            <div className="absolute inset-0 opacity-[0.12]" style={{
+                backgroundImage: 'linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)',
+                backgroundSize: '34px 34px'
+            }}></div>
+            <div className="relative z-10 flex h-full flex-col justify-between px-8 py-8 md:px-12 md:py-10 2xl:px-16 2xl:py-12">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className={`rounded-full border px-5 py-3 text-[0.9rem] font-black uppercase tracking-[0.28em] ${formatChipClass}`}>
+                            {rulesCard.launchLabel}
+                        </div>
+                        <div className="rounded-full border border-white/12 bg-black/24 px-5 py-3 text-[0.9rem] font-black uppercase tracking-[0.24em] text-white/78">
+                            Room {String(roomCode || '').trim().toUpperCase() || 'ROOM'}
+                        </div>
+                    </div>
+                    <div className="rounded-full border border-white/12 bg-black/24 px-5 py-3 text-[0.9rem] font-black uppercase tracking-[0.24em] text-white/80">
+                        {modePresentation.badgeLabel}
+                    </div>
+                </div>
+
+                <div className="grid flex-1 items-center gap-8 py-6 lg:grid-cols-[minmax(0,1.2fr)_420px] 2xl:grid-cols-[minmax(0,1.15fr)_500px]">
+                    <div className="min-w-0">
+                        <div className="text-[0.95rem] font-black uppercase tracking-[0.34em] text-cyan-100/78">Self-Serve Night</div>
+                        <div className="mt-4 text-[clamp(4.4rem,10vw,9rem)] font-bebas leading-[0.84] text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-white to-fuchsia-200">
+                            {modePresentation.heroLabel}
+                        </div>
+                        <div className="mt-4 max-w-[980px] text-[clamp(1.4rem,2.2vw,2.5rem)] font-semibold leading-[1.06] text-zinc-100">
+                            {rulesCard.tagline}
+                        </div>
+                        <div className="mt-4 max-w-[980px] text-[1.05rem] uppercase tracking-[0.2em] text-white/62">
+                            {modePresentation.detail}
+                        </div>
+                        {transitionMoment ? (
+                            <div className={`mt-6 inline-flex max-w-[980px] flex-col rounded-[1.8rem] border px-5 py-4 shadow-[0_22px_54px_rgba(0,0,0,0.28)] ${
+                                transitionMoment.toneKey === 'amber'
+                                    ? 'border-amber-300/24 bg-[linear-gradient(145deg,rgba(64,34,10,0.48),rgba(8,10,18,0.88))]'
+                                    : 'border-cyan-300/24 bg-[linear-gradient(145deg,rgba(10,42,64,0.42),rgba(8,10,18,0.88))]'
+                            }`}>
+                                <div className={`text-[0.78rem] font-black uppercase tracking-[0.28em] ${
+                                    transitionMoment.toneKey === 'amber' ? 'text-amber-100' : 'text-cyan-100'
+                                }`}>
+                                    {transitionMoment.badgeLabel}
+                                </div>
+                                <div className="mt-2 text-[1.9rem] font-black leading-tight text-white">
+                                    {transitionMoment.title}
+                                </div>
+                                <div className="mt-2 text-[1rem] text-zinc-200/86">
+                                    {transitionMoment.detail}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        <div className="mt-8 grid gap-4 md:grid-cols-3">
+                            {rulesCard.rulesSummary.map((item, index) => (
+                                <div key={`${item}-${index}`} className="rounded-[1.7rem] border border-white/10 bg-black/24 px-5 py-5 shadow-[0_18px_45px_rgba(0,0,0,0.22)]">
+                                    <div className="text-[0.82rem] uppercase tracking-[0.28em] text-white/52">Rule {index + 1}</div>
+                                    <div className="mt-3 text-[1.45rem] font-semibold leading-tight text-zinc-50">{item}</div>
+                                </div>
+                            ))}
+                        </div>
+                        {paidPriorityLive && auctionLeaders.length ? (
+                            <div className="mt-6 rounded-[1.8rem] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(54,31,10,0.42),rgba(8,10,18,0.84))] p-5 shadow-[0_22px_52px_rgba(0,0,0,0.26)]">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-[0.78rem] font-black uppercase tracking-[0.28em] text-amber-200">Verified Auction Leaders</div>
+                                        <div className="mt-2 text-[1.2rem] font-semibold text-white">
+                                            {auctionSummary || modePresentation.detail}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-full border border-amber-300/22 bg-black/28 px-4 py-2 text-[0.76rem] font-black uppercase tracking-[0.2em] text-amber-100">
+                                        Priority live
+                                    </div>
+                                </div>
+                                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                                    {auctionLeaders.map((entry, index) => (
+                                        <div key={`${entry.songId || index}`} className="rounded-[1.5rem] border border-white/10 bg-black/24 px-4 py-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="text-[0.76rem] uppercase tracking-[0.24em] text-amber-100">Leader {index + 1}</div>
+                                                <div className="rounded-full border border-amber-300/22 bg-amber-500/12 px-3 py-1 text-[0.76rem] font-black uppercase tracking-[0.14em] text-amber-100">
+                                                    ${((entry.amountCents || 0) / 100).toFixed(2)}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 text-[1.4rem] font-semibold leading-tight text-white">{entry.singerName}</div>
+                                            <div className="mt-1 text-[0.95rem] text-zinc-300">{String(entry.songTitle || 'Ready song').trim() || 'Ready song'}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        <div className="mt-6 grid gap-4 md:grid-cols-3">
+                            <div className="rounded-[1.7rem] border border-cyan-300/18 bg-cyan-500/10 px-5 py-5">
+                                <div className="text-[0.82rem] uppercase tracking-[0.24em] text-cyan-100/70">Joined Guests</div>
+                                <div className="mt-3 text-6xl font-black leading-none text-white">{roomCount}</div>
+                            </div>
+                            <div className="rounded-[1.7rem] border border-fuchsia-300/18 bg-fuchsia-500/10 px-5 py-5">
+                                <div className="text-[0.82rem] uppercase tracking-[0.24em] text-fuchsia-100/70">Queued Songs</div>
+                                <div className="mt-3 text-6xl font-black leading-none text-white">{queueCount}</div>
+                            </div>
+                            <div className="rounded-[1.7rem] border border-amber-300/18 bg-amber-500/10 px-5 py-5">
+                                <div className="text-[0.82rem] uppercase tracking-[0.24em] text-amber-100/70">Room Flow</div>
+                                <div className="mt-3 text-[1.8rem] font-black leading-tight text-white">
+                                    {modePresentation.roomFlowLabel}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="rounded-[2.2rem] border border-white/12 bg-black/28 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur">
+                        <div className="flex justify-center">
+                            <div className="rounded-[2rem] border-[3px] border-white/85 bg-white p-3 shadow-[0_0_34px_rgba(255,255,255,0.16)]">
+                                <LocalQrImage value={joinUrl} size={280} alt="Join QR" className="h-[240px] w-[240px] md:h-[280px] md:w-[280px]" />
+                            </div>
+                        </div>
+                        <div className="mt-5 text-center">
+                            <div className="text-[0.88rem] font-black uppercase tracking-[0.26em] text-cyan-100/78">Scan to join this room</div>
+                            <div className="mt-2 text-6xl font-bebas tracking-[0.16em] text-white">{String(roomCode || '').trim().toUpperCase() || 'ROOM'}</div>
+                            <div className="mt-2 text-[1rem] uppercase tracking-[0.18em] text-zinc-200/76">
+                                {modePresentation.joinPrompt}
+                            </div>
+                        </div>
+
+                        <div className="mt-6 rounded-[1.7rem] border border-white/10 bg-black/26 px-5 py-5">
+                            <div className="text-[0.82rem] uppercase tracking-[0.22em] text-white/55">Up next</div>
+                            <div className="mt-3 space-y-3">
+                                {previewList.length === 0 ? (
+                                    <div className="text-[1.2rem] font-semibold text-zinc-100/78">No singers locked yet. Scan in to open the night.</div>
+                                ) : previewList.map((song, index) => (
+                                    <div key={song?.id || `${song?.songTitle || 'song'}_${index}`} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                                        <div className="text-[0.8rem] uppercase tracking-[0.22em] text-white/44">{index === 0 ? 'On deck' : `Queue ${index + 1}`}</div>
+                                        <div className="mt-1 text-[1.3rem] font-black leading-tight text-white">{song?.songTitle || 'Untitled song'}</div>
+                                        <div className="mt-1 text-[0.95rem] uppercase tracking-[0.16em] text-cyan-100/76">{song?.singerName || 'Guest singer'}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-end justify-between gap-4 rounded-[2rem] border border-white/10 bg-black/18 px-6 py-5 backdrop-blur">
+                    <div className="max-w-[70%] text-[1.1rem] font-semibold text-white/74">
+                        {rulesCard.fallbackSummary}
+                    </div>
+                    <div className="text-right text-[0.95rem] font-black uppercase tracking-[0.22em] text-white/68">
+                        {paidPriorityLive ? 'Verified donors lead the opening block' : 'Fair queue, crowd energy, premium stage flow'}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const AnimatedPoints = ({ value }) => {
@@ -5963,6 +6246,8 @@ const PublicTV = ({ roomCode }) => {
         ? (Number(roundWinnersMoment.expiresAtMs || 0) > 0 && Number(roundWinnersMoment.expiresAtMs || 0) <= nowMs())
         : true;
     const activeGameCartridgeMode = !!(room?.activeMode && !['karaoke','applause','selfie_cam','selfie_challenge','applause_countdown','applause_result','doodle_oke'].includes(room.activeMode));
+    const selfServeMode = room?.selfServeMode && room.selfServeMode.enabled ? room.selfServeMode : null;
+    const selfServeRulesCard = selfServeMode ? buildSelfServeRulesCard(selfServeMode.format || '') : null;
     const activeAnnouncement = !applauseOverlayVisible && room?.announcement?.active && !activeGameCartridgeMode
         ? (room.announcement || {})
         : null;
@@ -5978,6 +6263,33 @@ const PublicTV = ({ roomCode }) => {
         && ['crowd_signal', 'crowd_vote', 'cohost_vote'].includes(String(activeReleaseWindow?.governanceMode || '').trim().toLowerCase())
         && isRunOfShowReleaseWindowVotingOpen(activeReleaseWindow, takeoverNowMs)
     );
+    const selfServeIdleAttractVisible = !!(
+        selfServeMode
+        && room?.activeMode === 'karaoke'
+        && !current
+        && !activeAnnouncement
+        && !tvReleaseWindowVisible
+        && !activeGameCartridgeMode
+        && !room?.howToPlay?.active
+        && !room?.readyCheck?.active
+        && !recap
+    );
+    const selfServeTransitionMoment = selfServeMode
+        ? buildSelfServeTransitionMoment(selfServeMode, {
+            songs: allQueue,
+            nowMs: takeoverNowMs,
+        })
+        : null;
+    const selfServeTransitionOverlayVisible = !!(
+        selfServeTransitionMoment
+        && !tvReleaseWindowVisible
+        && !activeAnnouncement
+        && !activeGameCartridgeMode
+        && !room?.howToPlay?.active
+        && !room?.readyCheck?.active
+        && !chatTvFullscreenActive
+        && !recap
+    );
     const purchaseCelebrationBlocked = Boolean(
         (!applauseOverlayVisible && tvPreviewOverlay && !tvPreviewExpired)
         || (!applauseOverlayVisible && roundWinnersMoment && !roundWinnersMomentExpired)
@@ -5987,6 +6299,7 @@ const PublicTV = ({ roomCode }) => {
         || (!!activeAnnouncement && !activeAnnouncementIsExpiredMediaScene)
         || (!applauseOverlayVisible && chatTvFullscreenActive)
         || (!applauseOverlayVisible && tvReleaseWindowVisible)
+        || (!applauseOverlayVisible && selfServeTransitionOverlayVisible)
         || (room?.activeMode === 'doodle_oke' && room?.doodleOke)
         || activeGameCartridgeMode
         || (!applauseOverlayVisible && recap)
@@ -6151,6 +6464,23 @@ const PublicTV = ({ roomCode }) => {
         if (!activeAnnouncementIsExpiredMediaScene) {
             return withPurchaseCelebrationOverlay(<RunOfShowTakeoverOverlay overlay={activeAnnouncement} roomCode={roomCode} logoUrl={room?.logoUrl || ASSETS.logo} brandTheme={tvAudienceBrandTheme} zClass="z-[195]" nowValue={takeoverNowMs} />);
         }
+    }
+    if (!applauseOverlayVisible && selfServeTransitionOverlayVisible) {
+        return withPurchaseCelebrationOverlay(
+            <SelfServeTransitionOverlay transitionMoment={selfServeTransitionMoment} />
+        );
+    }
+    if (!applauseOverlayVisible && selfServeIdleAttractVisible) {
+        return withPurchaseCelebrationOverlay(
+            <SelfServeAttractOverlay
+                room={room}
+                roomCode={roomCode}
+                joinUrl={joinUrl}
+                roomUsers={roomUsers}
+                allQueue={allQueue}
+                nextUp={nextUp}
+            />
+        );
     }
     if (!applauseOverlayVisible && chatTvFullscreenActive) {
         return withPurchaseCelebrationOverlay(
@@ -6845,6 +7175,14 @@ const PublicTV = ({ roomCode }) => {
     const visualizerActive = (started || applauseModeActive || applauseStep !== 'idle') && visualizerEnabled;
     const renderJoinOverlayCard = ({ floating = false } = {}) => {
         if (!showJoinOverlay) return null;
+        const selfServePaidPriorityLive = !!selfServeRulesCard?.supportsPaidPriority && isSelfServeAuctionWindowLive(selfServeMode);
+        const selfServePresentation = selfServeRulesCard ? buildSelfServeModePresentation(selfServeMode) : null;
+        const selfServeTransitionMoment = selfServeRulesCard
+            ? buildSelfServeTransitionMoment(selfServeMode, {
+                songs,
+                nowMs: Date.now(),
+            })
+            : null;
         const shellClass = floating
             ? (isVeryShortViewport
                 ? 'absolute right-3 top-3 z-[160]'
@@ -6866,18 +7204,32 @@ const PublicTV = ({ roomCode }) => {
                     <div className={floating ? 'flex items-center justify-center' : 'flex items-start justify-between gap-3'}>
                         {!floating ? (
                             <div className="min-w-0 flex-1 text-left">
+                                {selfServeRulesCard ? (
+                                    <div className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.18em] ${selfServePaidPriorityLive ? 'border-amber-300/35 bg-amber-500/15 text-amber-100' : 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'}`}>
+                                        <span>{selfServeRulesCard.shortLabel}</span>
+                                        <span className="text-white/50">|</span>
+                                        <span>{selfServeTransitionMoment?.badgeLabel || selfServePresentation?.badgeLabel || 'Stage Open'}</span>
+                                    </div>
+                                ) : null}
                                 <div className={`${isTinyHostPreviewMode ? 'text-[10px] tracking-[0.24em]' : lobbyCompactHudMode ? 'text-sm md:text-base tracking-[0.18em]' : 'text-base md:text-lg tracking-[0.2em]'} font-black text-cyan-100 uppercase`}>
-                                    Join
+                                    {selfServeRulesCard ? 'Join From Your Phone' : 'Join'}
                                 </div>
                                 <div className={`${isTinyHostPreviewMode ? 'mt-1 text-lg tracking-[0.18em]' : lobbyCompactHudMode ? 'mt-1 text-2xl md:text-3xl tracking-[0.12em]' : 'mt-1 text-3xl md:text-4xl tracking-[0.14em]'} font-bebas text-white`}>
                                     {roomCode}
                                 </div>
                                 <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : 'mt-1.5 text-[11px] md:text-xs'} uppercase font-semibold tracking-[0.14em] text-zinc-100/85`}>
-                                    {showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL'}
+                                    {selfServeRulesCard
+                                        ? (selfServePresentation?.joinPrompt || 'Scan to join, sing, and vote')
+                                        : (showTinyJoinHint ? 'Scan QR to join' : 'Scan or type this URL')}
                                 </div>
                                 <div className={`${isTinyHostPreviewMode ? 'mt-1 text-[9px]' : lobbyCompactHudMode ? 'mt-1 text-xs md:text-sm' : 'mt-1.5 text-sm md:text-base'} font-black tracking-[0.03em] leading-tight text-cyan-100 break-all`}>
                                     {showVerboseJoinUrl ? joinUrlDisplay : `${joinUrlBaseDisplay}${joinUrlQueryDisplay}`}
                                 </div>
+                                {selfServeRulesCard && !isTinyHostPreviewMode ? (
+                                    <div className="mt-2 text-[10px] md:text-[11px] uppercase tracking-[0.14em] text-white/60">
+                                        {selfServeTransitionMoment?.detail || selfServePresentation?.detail || selfServeRulesCard.rulesSummary[0]}
+                                    </div>
+                                ) : null}
                             </div>
                         ) : null}
                         <div className={qrFrameClass}>
@@ -6958,6 +7310,21 @@ const PublicTV = ({ roomCode }) => {
                     >
                         <i className="fa-solid fa-xmark"></i>
                     </button>
+                </div>
+            )}
+            {!isExperienceActive && selfServeRulesCard && !selfServeIdleAttractVisible && (
+                <div className={`absolute top-3 right-3 md:top-5 md:right-5 2xl:top-8 2xl:right-8 z-[214] flex items-center gap-2 rounded-full border px-3 py-1.5 md:px-4 md:py-2 shadow-[0_0_30px_rgba(0,0,0,0.26)] backdrop-blur ${
+                    selfServeRulesCard.supportsPaidPriority && isSelfServeAuctionWindowLive(selfServeMode)
+                        ? 'border-amber-300/35 bg-amber-500/18 text-amber-100'
+                        : 'border-cyan-300/35 bg-cyan-500/18 text-cyan-100'
+                }`}>
+                    <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.18em]">
+                        {selfServeRulesCard.shortLabel}
+                    </span>
+                    <span className="text-white/45">|</span>
+                    <span className="text-[10px] md:text-xs font-black uppercase tracking-[0.18em]">
+                        {buildSelfServeTransitionMoment(selfServeMode, { songs, nowMs: Date.now() })?.badgeLabel || buildSelfServeModePresentation(selfServeMode).badgeLabel}
+                    </span>
                 </div>
             )}
             {showBingoRngOverlay && (

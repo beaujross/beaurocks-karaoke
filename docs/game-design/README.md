@@ -13,6 +13,8 @@ This folder is the source of truth for:
 - `GUARDRAILS.md`: global principles and decision rules
 - `MODE_PROFILES.md`: mode-by-mode design + social behavior targets
 - `SOCIAL_MECHANICS_PROFILES.md`: cross-mode systems (voting, spotlight, queue rules, etc.)
+- `SELF_SERVICE_KARAOKE_CONSOLE_SPEC.md`: standalone self-service karaoke framework, presets, policy system, monetization, and premium console UX direction
+- `SELF_SERVICE_KARAOKE_V1_EXECUTION_BRIEF.md`: narrowed launch scope, host-facing format lineup, and concrete v1 build order
 - `MODE_PROFILE_TEMPLATE.md`: template for adding/refining a mode
 - `SOCIAL_MECHANIC_TEMPLATE.md`: template for adding/refining a social mechanic
 - `INTERVIEW_YES_NO.md`: yes/no interview questions and answer log

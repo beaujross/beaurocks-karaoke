@@ -36,7 +36,8 @@ const QueueSongCard = ({
     onApprovePending,
     onDeletePending,
     lockedInLineup = false,
-    lineupSlotLabel = ''
+    lineupSlotLabel = '',
+    selfServeState = null,
 }) => {
     const [selectedSlotId, setSelectedSlotId] = React.useState('');
     const queueBacking = normalizeBackingChoice({
@@ -114,6 +115,35 @@ const QueueSongCard = ({
         && !needsTrackReview
         && !isPendingApproval
         && (((typeof onAssignQueueSongToRunOfShowItem === 'function') && runOfShowAssignableSlots.length) || canFastAssignToOpenSlot);
+    const selfServeTone = React.useMemo(() => {
+        const toneKey = String(selfServeState?.toneKey || '').trim().toLowerCase();
+        if (toneKey === 'amber') {
+            return {
+                panelClass: 'border-amber-300/24 bg-amber-500/[0.06] shadow-[0_0_0_1px_rgba(251,191,36,0.08)]',
+                badgeClass: ' border-amber-300/35 text-amber-100 bg-amber-500/10',
+                detailClass: 'text-amber-100/85',
+            };
+        }
+        if (toneKey === 'emerald') {
+            return {
+                panelClass: 'border-emerald-300/24 bg-emerald-500/[0.06] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]',
+                badgeClass: ' border-emerald-300/35 text-emerald-100 bg-emerald-500/10',
+                detailClass: 'text-emerald-100/85',
+            };
+        }
+        if (toneKey === 'fuchsia') {
+            return {
+                panelClass: 'border-fuchsia-300/24 bg-fuchsia-500/[0.06] shadow-[0_0_0_1px_rgba(232,121,249,0.08)]',
+                badgeClass: ' border-fuchsia-300/35 text-fuchsia-100 bg-fuchsia-500/10',
+                detailClass: 'text-fuchsia-100/85',
+            };
+        }
+        return {
+            panelClass: 'border-cyan-300/24 bg-cyan-500/[0.06] shadow-[0_0_0_1px_rgba(34,211,238,0.08)]',
+            badgeClass: ' border-cyan-300/35 text-cyan-100 bg-cyan-500/10',
+            detailClass: 'text-cyan-100/85',
+        };
+    }, [selfServeState?.toneKey]);
     const actionRailContainerClass = compactViewport
         ? 'w-full'
         : selected
@@ -146,7 +176,17 @@ const QueueSongCard = ({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             onTouchCancel={handleTouchEnd}
-            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${lockedInLineup ? 'border-emerald-300/28 bg-emerald-500/[0.06]' : selected ? 'border-cyan-300/40 bg-cyan-500/[0.08]' : dragOverId === song.id ? 'border-[#00C4D9]' : 'border-white/5'}`}
+            className={`bg-zinc-900/50 ${compactViewport ? 'p-1.5 rounded-lg' : 'p-1.5 rounded-xl'} border ${
+                lockedInLineup
+                    ? 'border-emerald-300/28 bg-emerald-500/[0.06]'
+                    : selected
+                        ? 'border-cyan-300/40 bg-cyan-500/[0.08]'
+                        : dragOverId === song.id
+                            ? 'border-[#00C4D9]'
+                            : selfServeState
+                                ? selfServeTone.panelClass
+                                : 'border-white/5'
+            }`}
         >
             <div className={`flex ${compactViewport ? 'flex-col gap-2' : 'items-start justify-between gap-2'}`}>
                 <button
@@ -175,6 +215,12 @@ const QueueSongCard = ({
                         <div className={`font-bold text-white truncate ${compactViewport ? 'text-[13px] leading-tight' : 'text-[13px] leading-tight'}`}>{song.songTitle}</div>
                         <div className={`text-zinc-400 truncate ${compactViewport ? 'text-[11px] leading-tight' : 'text-[11px] leading-tight'}`}>{song.singerName}</div>
                         <div className={`mt-1 flex flex-wrap gap-1 text-[10px] uppercase ${compactViewport ? 'tracking-[0.12em]' : 'tracking-[0.14em]'}`}>
+                            {selfServeState?.badgeLabel ? (
+                                <span className={`${statusPill}${selfServeTone.badgeClass}`}>
+                                    <i className={`fa-solid ${selfServeState?.icon || 'fa-sparkles'} mr-1`}></i>
+                                    {selfServeState.badgeLabel}
+                                </span>
+                            ) : null}
                             {queueUsesAppleBacking ? (
                                 <span className={statusPill}><i className="fa-brands fa-apple mr-1"></i>Apple</span>
                             ) : queueMediaUrl ? (
@@ -227,6 +273,11 @@ const QueueSongCard = ({
                                 </span>
                             ) : null}
                         </div>
+                        {selfServeState?.detail ? (
+                            <div className={`mt-1 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'} ${selfServeTone.detailClass}`}>
+                                {selfServeState.detail}
+                            </div>
+                        ) : null}
                         {showSupportText ? (
                             <div className={`mt-1 text-zinc-500 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
                                 {isAssignedToRunOfShow

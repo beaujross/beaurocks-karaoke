@@ -1,4 +1,8 @@
 const assert = require("node:assert/strict");
+const {
+  deleteCollection,
+  installIoGuards,
+} = require("./harness.cjs");
 
 process.env.GIVEBUTTER_WEBHOOK_SECRET = process.env.GIVEBUTTER_WEBHOOK_SECRET || "test_secret";
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "demo-bross";
@@ -21,9 +25,12 @@ if (!process.env.FIRESTORE_EMULATOR_HOST) {
   throw new Error("FIRESTORE_EMULATOR_HOST is required for webhook integration tests.");
 }
 
+installIoGuards();
+
 const db = admin.firestore();
 const roomRef = db.doc(`${ROOT}/rooms/${ROOM_CODE}`);
 const roomUserRef = db.doc(`${ROOT}/room_users/${ROOM_CODE}_${USER_UID}`);
+const auctionSongRef = db.doc(`${ROOT}/karaoke_songs/auction_song_gb`);
 const userRef = db.doc(`users/${USER_UID}`);
 const eventConfigRef = db.doc(`room_event_credit_configs/${ROOM_CODE}`);
 const supportPurchaseRef = db.doc(`support_purchase_events/${SUPPORT_EVENT_REF_ID}`);
@@ -40,28 +47,20 @@ const requestFor = (uid, data = {}) => ({
   },
 });
 
-async function deleteCollection(pathSegments = []) {
-  const ref = db.collection(pathSegments.join("/"));
-  const snap = await ref.limit(500).get();
-  if (snap.empty) return;
-  const batch = db.batch();
-  snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
-  await batch.commit();
-}
-
 async function resetState({
   supportEnabled = true,
   seedBuyerRoomUser = true,
   seedUserPointsBalance = 25,
 } = {}) {
-  await deleteCollection(["support_purchase_events"]);
-  await deleteCollection(["event_attendee_entitlements"]);
-  await deleteCollection(["room_event_credit_grants"]);
-  await deleteCollection(["room_event_credit_configs"]);
-  await deleteCollection(["users"]);
-  await deleteCollection(["activities"]);
-  await deleteCollection(["artifacts", APP_ID, "public", "data", "rooms"]);
-  await deleteCollection(["artifacts", APP_ID, "public", "data", "room_users"]);
+  await deleteCollection(db, ["support_purchase_events"]);
+  await deleteCollection(db, ["event_attendee_entitlements"]);
+  await deleteCollection(db, ["room_event_credit_grants"]);
+  await deleteCollection(db, ["room_event_credit_configs"]);
+  await deleteCollection(db, ["users"]);
+  await deleteCollection(db, ["activities"]);
+  await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "rooms"]);
+  await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "room_users"]);
+  await deleteCollection(db, ["artifacts", APP_ID, "public", "data", "karaoke_songs"]);
 
   await roomRef.set({
     hostUid: "host-uid",
@@ -145,6 +144,22 @@ function createResponseCapture() {
     },
   };
   return response;
+}
+
+async function withMutedExpectedSignatureError(run) {
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    const joined = args.map((value) => String(value || "")).join(" ");
+    if (joined.includes("Givebutter webhook signature failed")) {
+      return;
+    }
+    originalConsoleError(...args);
+  };
+  try {
+    return await run();
+  } finally {
+    console.error = originalConsoleError;
+  }
 }
 
 async function invokeGivebutterWebhook(payload, headers = {}) {
@@ -252,6 +267,39 @@ async function run() {
       assert.equal(Number(userSnap.get("pointsBalance")), 3025);
     }],
 
+    ["refreshes spotlight auction projection when a matched donor already has a ready song", async () => {
+      await roomRef.set({
+        selfServeMode: {
+          enabled: true,
+          format: "spotlight_auction",
+          paidPriorityEnabled: true,
+          startedAtMs: 1700000000000,
+        },
+      }, { merge: true });
+      await auctionSongRef.set({
+        roomCode: ROOM_CODE,
+        singerUid: USER_UID,
+        singerName: "Donor Example",
+        songTitle: "Mr. Brightside",
+        status: "requested",
+        priorityScore: 1,
+      }, { merge: true });
+
+      const response = await invokeGivebutterWebhook(payload, {
+        signature: "test_secret",
+      });
+
+      assert.equal(response.statusCode, 200);
+      const roomSnap = await roomRef.get();
+      const auctionState = roomSnap.data()?.selfServeMode?.auctionState || {};
+      assert.equal(Array.isArray(auctionState.leaderboard), true);
+      assert.equal(auctionState.leaderboard.length, 1);
+      assert.equal(String(auctionState.leaderboard[0].uid), USER_UID);
+      assert.equal(String(auctionState.leaderboard[0].songId), "auction_song_gb");
+      assert.equal(Number(auctionState.leaderboard[0].amountCents), 1000);
+      assert.equal(String(auctionState.summary || ""), "Donor Example leads with $10.00");
+    }],
+
     ["writes ticket entitlement and joinRoomAudience claims it by email", async () => {
       await resetState({
         supportEnabled: false,
@@ -319,9 +367,9 @@ async function run() {
     }],
 
     ["rejects bad Givebutter signature without writing reward records", async () => {
-      const response = await invokeGivebutterWebhook(payload, {
+      const response = await withMutedExpectedSignatureError(() => invokeGivebutterWebhook(payload, {
         signature: "wrong_secret",
-      });
+      }));
 
       assert.equal(response.statusCode, 400);
       assert.equal(response.body, "Webhook Error");

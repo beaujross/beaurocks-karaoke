@@ -1,5 +1,10 @@
 import React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isAudienceSelectedUnverifiedResolution } from '../../../lib/requestModes';
+import {
+    buildSelfServeModePresentation,
+    buildSelfServeTransitionMoment,
+} from '../../../lib/selfServeKaraoke';
 
 const StageNowPlayingPanel = ({
     room,
@@ -13,6 +18,7 @@ const StageNowPlayingPanel = ({
     formatWaitTime,
     nextQueueSong,
     nextQueueText = '',
+    nextQueueReasonDetail = '',
     roomCode,
     currentSourcePlaying,
     currentUsesAppleBacking,
@@ -47,6 +53,26 @@ const StageNowPlayingPanel = ({
     const currentHasYoutubeBacking = /youtu\.?be|youtube\.com/i.test(currentBackingUrl);
     const currentAudienceSelectedUnverified = isAudienceSelectedUnverifiedResolution(current?.resolutionStatus);
     const currentBackingDecisionBusy = currentAudienceSelectedUnverified && String(backingDecisionBusyKey || '').startsWith(`${current?.id}:`);
+    const [selfServeNowMs, setSelfServeNowMs] = useState(() => Date.now());
+    useEffect(() => {
+        if (!room?.selfServeMode?.enabled) return undefined;
+        const timer = setInterval(() => setSelfServeNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [room?.selfServeMode?.enabled]);
+    const selfServeMode = room?.selfServeMode?.enabled ? room.selfServeMode : null;
+    const selfServePresentation = useMemo(
+        () => (selfServeMode ? buildSelfServeModePresentation(selfServeMode) : null),
+        [selfServeMode]
+    );
+    const selfServeTransitionMoment = useMemo(
+        () => (selfServeMode
+            ? buildSelfServeTransitionMoment(selfServeMode, {
+                songs: [nextQueueSong, current].filter(Boolean),
+                nowMs: selfServeNowMs,
+            })
+            : null),
+        [current, nextQueueSong, selfServeMode, selfServeNowMs]
+    );
     const actionButtonBaseClass = 'min-h-[54px] rounded-lg border px-2 py-2 text-white transition disabled:cursor-not-allowed disabled:opacity-45';
     const playbackButtonClass = `${actionButtonBaseClass} border-sky-300/22 bg-sky-500/10 hover:border-sky-200/45 hover:bg-sky-500/16`;
     const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
@@ -110,6 +136,15 @@ const StageNowPlayingPanel = ({
                     <div className="flex items-center gap-2">
                         {room?.activeMode === 'applause' && (<div className="text-[#00C4D9] animate-pulse font-bold text-xs">{emoji.mic} APPLAUSE!</div>)}
                         {room?.bouncerMode && (<div className="text-red-400 font-bold text-xs">{emoji.lock} LOCKED</div>)}
+                        {selfServePresentation ? (
+                            <div className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${
+                                selfServePresentation.toneKey === 'amber'
+                                    ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
+                                    : 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100'
+                            }`}>
+                                {selfServePresentation.shortLabel} | {selfServeTransitionMoment?.badgeLabel || selfServePresentation.badgeLabel}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
                 {autoDj && (
@@ -223,14 +258,51 @@ const StageNowPlayingPanel = ({
                         </div>
                     ) : null}
                 </div>
-                <div className="bg-rose-950/16 border border-rose-300/16 rounded-lg p-2 mb-2">
+                <div className={`rounded-lg p-2 mb-2 ${
+                    selfServePresentation
+                        ? selfServePresentation.toneKey === 'amber'
+                            ? 'border border-amber-300/18 bg-amber-950/12'
+                            : 'border border-cyan-300/18 bg-cyan-950/12'
+                        : 'bg-rose-950/16 border border-rose-300/16'
+                }`}>
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-[11px] uppercase tracking-[0.22em] text-rose-200">Performance Flow</div>
+                        <div className={`text-[11px] uppercase tracking-[0.22em] ${
+                            selfServePresentation
+                                ? selfServePresentation.toneKey === 'amber'
+                                    ? 'text-amber-200'
+                                    : 'text-cyan-200'
+                                : 'text-rose-200'
+                        }`}>
+                            {selfServeTransitionMoment?.badgeLabel || (selfServePresentation ? `${selfServePresentation.shortLabel} Flow` : 'Performance Flow')}
+                        </div>
                         <div className="min-w-0 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
                             <span className="text-zinc-400">Up Next:</span>{' '}
                             <span className="truncate text-zinc-200">{nextQueueText || (nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued')}</span>
                         </div>
                     </div>
+                    {selfServeTransitionMoment?.title ? (
+                        <div className={`mb-2 rounded-lg border px-2.5 py-2 ${
+                            selfServeTransitionMoment.toneKey === 'amber'
+                                ? 'border-amber-300/22 bg-amber-500/10 text-amber-50'
+                                : 'border-cyan-300/22 bg-cyan-500/10 text-cyan-50'
+                        }`}>
+                            <div className="text-[10px] font-black uppercase tracking-[0.18em]">
+                                {selfServeTransitionMoment.title}
+                            </div>
+                            <div className="mt-1 text-[11px] text-white/88">
+                                {selfServeTransitionMoment.detail}
+                            </div>
+                        </div>
+                    ) : null}
+                    {nextQueueReasonDetail ? (
+                        <div className={`mb-2 rounded-lg border px-2.5 py-2 text-[11px] ${
+                            selfServePresentation?.toneKey === 'amber'
+                                ? 'border-amber-300/18 bg-amber-500/8 text-amber-100/88'
+                                : 'border-cyan-300/18 bg-cyan-500/8 text-cyan-100/88'
+                        }`}>
+                            {nextQueueReasonDetail}
+                        </div>
+                    ) : null}
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                         <button
                             onClick={() => {

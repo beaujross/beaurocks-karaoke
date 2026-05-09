@@ -20,6 +20,52 @@ Cross-cutting systems such as voting, Tight 15, spotlight, combo/multiplier, que
 - Risks:
   - Queue friction, unclear media/lyrics state.
 
+## BeauRocks Open Stage (`self_serve_open_stage`) - Draft
+
+- Intent: let a room run a fair self-serve karaoke night with minimal operator input.
+- Intended social behavior:
+  - Guests join quickly and understand the rules immediately.
+  - Singers rotate fairly.
+  - The audience still feels involved through bounded song or pacing votes.
+- Current assumptions:
+  - The host chooses a branded format, not raw policy knobs.
+  - The room can always fall back safely when participation is low.
+  - A host can return to normal karaoke if needed.
+- Risks:
+  - Hosts may confuse it with standard karaoke if the launch summary is unclear.
+  - Too many crowd prompts can make the room feel slow instead of social.
+
+## BeauRocks Spotlight Auction (`self_serve_spotlight_auction`) - Draft
+
+- Intent: turn early or featured slots into a premium fundraiser mechanic without making the whole night feel pay-to-win.
+- Intended social behavior:
+  - Donors feel recognized.
+  - The room sees a clear, exciting auction moment.
+  - Fundraising feels communal, not extractive.
+- Current assumptions:
+  - Auction ordering is bounded to a named window such as the opening block.
+  - All paid priority is based on verified payment state.
+  - Payment and queue outcomes are visible enough to resolve disputes quickly.
+- Risks:
+  - Hosts may misunderstand when the room returns to normal fairness.
+  - Donors may expect immediate stage priority if the rules are not explicit.
+  - Support burden will spike if verification or slot assignment is ambiguous.
+
+## BeauRocks Showcase (`self_serve_showcase`) - Draft
+
+- Intent: deliver a prestige self-serve performance format with clear competitive integrity.
+- Intended social behavior:
+  - Performers treat the round seriously.
+  - Audience participation adds energy without undermining legitimacy.
+  - Results feel credible and worth sharing.
+- Current assumptions:
+  - Money does not affect advancement or winners.
+  - The format uses structured rounds rather than free-form queueing.
+  - Judges or audience scoring rules are declared up front.
+- Risks:
+  - Hosts may launch it expecting casual karaoke behavior.
+  - Too much scoring complexity can intimidate casual rooms.
+
 ## Applause Meter (`applause_countdown`, `applause`, `applause_result`) - TBD
 
 - Intent: create a short energy spike after performance.
