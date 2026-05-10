@@ -1,5 +1,4 @@
 import React from 'react';
-import ModerationInboxChip from './ModerationInboxChip';
 import { CROWD_OBJECTIVE_MODES, getCrowdObjectiveModeFromLightMode } from '../../../lib/crowdObjectiveModes';
 import {
     CROWD_MODE_PRESETS,
@@ -140,7 +139,8 @@ const HostTopChrome = ({
     moderationPendingCount = 0,
     moderationSeverity = 'idle',
     moderationNeedsAttention = false,
-    onOpenModerationInbox,
+    queueAttentionCount = 0,
+    queueAttentionNeedsHost = false,
     onOpenCatalogueHelper,
     quickAutomationControls = null,
     quickRoomControls = null,
@@ -363,6 +363,16 @@ const HostTopChrome = ({
         () => quickRoomControls?.requestModeOptions?.find((option) => option.id === quickRoomControls?.requestMode)?.shortLabel || 'Host picks track',
         [quickRoomControls]
     );
+    const normalizedQueueAttentionCount = Math.max(0, Number(queueAttentionCount || 0));
+    const normalizedQueueAttentionNeedsHost = !!queueAttentionNeedsHost
+        || !!moderationNeedsAttention
+        || Number(moderationPendingCount || 0) > 0
+        || moderationSeverity === 'stale'
+        || moderationSeverity === 'critical';
+    const queueAttentionVisible = normalizedQueueAttentionCount > 0 && tab !== 'stage';
+    const queueAttentionBadgeClass = normalizedQueueAttentionNeedsHost
+        ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
+        : 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100';
     const anyTopMenuOpen = audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
@@ -1200,18 +1210,18 @@ const HostTopChrome = ({
                     )}
                 </div>
                 {showTimeClockEnabled && !minimalRuntimeChrome && (
-                    <div className={`ml-1 flex ${denseChrome ? 'min-w-[146px]' : 'min-w-[168px]'} items-center gap-2 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-3 py-1.5`}>
-                        <div className={`inline-flex items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 ${runOfShowFocusMode ? 'h-9 w-9' : 'h-9 w-9'}`}>
+                    <div className={`ml-1 flex ${denseChrome ? 'min-w-[136px]' : 'min-w-[152px]'} items-center gap-1.5 rounded-2xl border border-cyan-300/20 bg-black/35 shadow-[0_12px_28px_rgba(0,0,0,0.24)] px-2.5 py-1`}>
+                        <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100">
                             <i className="fa-solid fa-clock"></i>
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 whitespace-nowrap">
-                                <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/80">Show Time</div>
+                                <div className="text-[9px] font-black uppercase tracking-[0.22em] text-cyan-200/80">Show Time</div>
                                 <div className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-300">
                                     {showTimeModeLabel}
                                 </div>
                             </div>
-                            <div className={`${runOfShowFocusMode ? 'mt-0 text-lg' : 'mt-0.5 text-lg'} truncate whitespace-nowrap font-black leading-none text-white tabular-nums`}>
+                            <div className={`${runOfShowFocusMode ? 'mt-0 text-base' : 'mt-0.5 text-base'} truncate whitespace-nowrap font-black leading-none text-white tabular-nums`}>
                                 {showTimePrimaryLabel}
                             </div>
                         </div>
@@ -1222,42 +1232,36 @@ const HostTopChrome = ({
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <div data-host-live-mode={room.activeMode} className="bg-red-600 px-2.5 py-0.5 rounded text-xs lg:text-sm font-bold animate-pulse">LIVE: {room.activeMode.toUpperCase()}</div>
                 )}
-                <ModerationInboxChip
-                    pendingCount={moderationPendingCount}
-                    severity={moderationSeverity}
-                    needsAttention={moderationNeedsAttention}
-                    onClick={onOpenModerationInbox}
-                    className="xl:hidden"
-                />
-                <div data-host-top-tabs="primary" className="relative z-10 hidden shrink-0 xl:flex items-center gap-2">
-                    <ModerationInboxChip
-                        pendingCount={moderationPendingCount}
-                        severity={moderationSeverity}
-                        needsAttention={moderationNeedsAttention}
-                        onClick={onOpenModerationInbox}
-                    />
-                    {[
-                        { key: 'stage', label: 'Queue' },
-                        { key: 'run_of_show', label: 'Show' },
-                        { key: 'games', label: 'Games' },
-                        { key: 'lobby', label: 'Audience' }
-                    ].map(t => (
-                        <button
-                            key={t.key}
-                            type="button"
-                            data-host-tab={t.key}
-                            onClick={() => {
-                                if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
-                                    openAdminWorkspace('ops.room_setup');
-                                    return;
-                                }
-                                setTab(t.key);
-                            }}
-                            className={`${minimalRuntimeChrome ? 'px-2 py-1 text-[11px]' : denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} relative z-10 shrink-0 font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
+                <div className="hidden xl:flex items-center gap-2">
+                    <div data-host-top-tabs="primary" className="relative z-10 shrink-0 flex items-center gap-2">
+                        {[
+                            { key: 'stage', label: 'Queue' },
+                            { key: 'run_of_show', label: 'Show' },
+                            { key: 'games', label: 'Games' },
+                            { key: 'lobby', label: 'Audience' }
+                        ].map(t => (
+                            <button
+                                key={t.key}
+                                type="button"
+                                data-host-tab={t.key}
+                                onClick={() => {
+                                    if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
+                                        openAdminWorkspace('ops.room_setup');
+                                        return;
+                                    }
+                                    setTab(t.key);
+                                }}
+                                className={`${minimalRuntimeChrome ? 'h-8 px-2 text-[11px]' : denseChrome ? 'h-9 px-2.5 text-[12px]' : 'h-9 px-2.5 text-sm'} relative z-10 inline-flex shrink-0 items-center font-black uppercase tracking-[0.2em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                            >
+                                <span>{t.label}</span>
+                                {t.key === 'stage' && queueAttentionVisible ? (
+                                    <span className={`ml-2 inline-flex min-w-[20px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-black tracking-normal ${queueAttentionBadgeClass}`}>
+                                        {normalizedQueueAttentionCount}
+                                    </span>
+                                ) : null}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 {!minimalRuntimeChrome ? (
                     <div className="flex items-center gap-1.5">
@@ -1300,6 +1304,8 @@ const HostTopChrome = ({
                     </div>
                 ) : null}
                 <button
+                    type="button"
+                    data-host-tab="admin"
                     onClick={() => {
                         if (typeof openAdminWorkspace === 'function') {
                             openAdminWorkspace('ops.room_setup');
@@ -1363,7 +1369,12 @@ const HostTopChrome = ({
                                         t.key === 'stage' && typeof onOpenHostDashboard !== 'function' ? 'rounded-t-xl' : ''
                                     } ${t.key === 'admin' ? 'rounded-b-xl' : ''}`}
                                 >
-                                    {t.label}
+                                    <span>{t.label}</span>
+                                    {t.key === 'stage' && queueAttentionVisible ? (
+                                        <span className={`ml-2 inline-flex min-w-[20px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-black tracking-normal ${queueAttentionBadgeClass}`}>
+                                            {normalizedQueueAttentionCount}
+                                        </span>
+                                    ) : null}
                                 </button>
                             ))}
                         </div>
@@ -1692,11 +1703,11 @@ const HostTopChrome = ({
                                                     onClick={() => { void applyOperatingStylePreset(preset.id); }}
                                                     aria-pressed={selected}
                                                     aria-label={`Use ${preset.label} operating style`}
-                                                    className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[60px] justify-start text-left`}
+                                                    className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[74px] min-w-0 items-start justify-start whitespace-normal px-3 py-2.5 text-left normal-case tracking-[0.03em]`}
                                                 >
-                                                    <span className="flex flex-col items-start">
-                                                        <span>{preset.shortLabel}</span>
-                                                        <span className="mt-1 text-[10px] text-zinc-400 normal-case tracking-normal">{preset.description}</span>
+                                                    <span className="flex min-w-0 flex-col items-start text-left">
+                                                        <span className="text-sm font-semibold leading-tight">{preset.shortLabel}</span>
+                                                        <span className="mt-1 text-[10px] leading-4 text-zinc-400 normal-case tracking-normal whitespace-normal break-words">{preset.description}</span>
                                                     </span>
                                                 </button>
                                             );
@@ -2213,11 +2224,11 @@ const HostTopChrome = ({
                                                 onClick={() => { void applyCrowdModePreset(preset.id); }}
                                                 aria-pressed={selected}
                                                 aria-label={`Use ${preset.label} crowd mode`}
-                                                className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[60px] justify-start text-left`}
+                                                className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[74px] min-w-0 items-start justify-start whitespace-normal px-3 py-2.5 text-left normal-case tracking-[0.03em]`}
                                             >
-                                                <span className="flex flex-col items-start">
-                                                    <span>{preset.shortLabel}</span>
-                                                    <span className="mt-1 text-[10px] text-zinc-400 normal-case tracking-normal">{preset.description}</span>
+                                                <span className="flex min-w-0 flex-col items-start text-left">
+                                                    <span className="text-sm font-semibold leading-tight">{preset.shortLabel}</span>
+                                                    <span className="mt-1 text-[10px] leading-4 text-zinc-400 normal-case tracking-normal whitespace-normal break-words">{preset.description}</span>
                                                 </span>
                                             </button>
                                         );

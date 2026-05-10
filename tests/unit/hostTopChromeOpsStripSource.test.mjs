@@ -26,3 +26,26 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.match(hostAppSource, /getYouTubeQuotaBlockedUntilMs/);
   assert.match(hostAppSource, /hostOpsStatus\?\.summary/);
 });
+
+test('host top chrome keeps room preset cards wrapped and the show-time chip compact', () => {
+  assert.match(
+    source,
+    /min-h-\[74px\] min-w-0 items-start justify-start whitespace-normal px-3 py-2\.5 text-left normal-case tracking-\[0\.03em\]/,
+    'HostTopChrome preset cards should override the one-line host button shell so long descriptions stay inside the tile',
+  );
+  assert.match(
+    source,
+    /whitespace-normal break-words/,
+    'HostTopChrome preset descriptions should wrap instead of bleeding outside the button bounds',
+  );
+  assert.match(
+    source,
+    /min-w-\[136px\]' : 'min-w-\[152px\][\s\S]*gap-1\.5[\s\S]*px-2\.5 py-1/,
+    'HostTopChrome show-time chip should stay more compact so it matches the surrounding nav density',
+  );
+  assert.match(
+    source,
+    /denseChrome \? 'h-9 px-2\.5 text-\[12px\]' : 'h-9 px-2\.5 text-sm'[\s\S]*inline-flex shrink-0 items-center/,
+    'HostTopChrome primary nav tabs should use a consistent compact height including the active Show tab',
+  );
+});
