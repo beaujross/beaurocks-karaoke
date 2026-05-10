@@ -36,6 +36,24 @@ const AUDIENCE_SHELL_OPTIONS = [
     { id: 'classic', label: 'Standard Audience App' },
     { id: 'streamlined', label: 'Streamlined Audience App' },
 ];
+const ROOM_SETUP_TABS = Object.freeze([
+    {
+        id: 'manage',
+        label: 'Existing Rooms',
+        icon: 'fa-rectangle-history-circle-plus',
+        helper: 'Browse, reopen, and clean up rooms.',
+        activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
+        badgeToneClass: 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100',
+    },
+    {
+        id: 'create',
+        label: 'Create Room',
+        icon: 'fa-sparkles',
+        helper: 'Start a fresh room with a preset.',
+        activeToneClass: 'border-fuchsia-300/30 bg-[linear-gradient(180deg,rgba(43,16,39,0.98),rgba(23,10,24,0.98))] text-fuchsia-100 shadow-[0_-10px_30px_rgba(217,70,239,0.14)]',
+        badgeToneClass: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100',
+    },
+]);
 
 const HostRoomLaunchPadBrowser = ({
     STYLES,
@@ -229,14 +247,14 @@ const HostRoomLaunchPadBrowser = ({
     const selectedRoomSchedule = selectedRoom ? formatRoomSchedule(selectedRoom) : '';
     const manageModeActive = roomSetupMode === 'manage';
     const createModeActive = roomSetupMode === 'create';
-    const eventFocusCode = String(eventFocusRoom?.code || '').trim().toUpperCase();
-    const eventFocusPinned = pinnedRoomCodeSet?.has?.(eventFocusCode);
-    const eventFocusSelected = !!eventFocusCode && String(selectedRoom?.code || '').trim().toUpperCase() === eventFocusCode;
-    const eventFocusSchedule = eventFocusRoom
-        ? (formatRoomSchedule(eventFocusRoom) || formatRecentRoomTime(eventFocusRoom.updatedAtMs || eventFocusRoom.createdAtMs))
-        : '';
-    const eventFocusBusy = roomManagerBusyCode === eventFocusCode;
-    const eventFocusCanManage = !!eventFocusCode && !joiningRoom && !eventFocusBusy;
+    const existingRoomCount = roomBrowserBuckets.find((bucket) => bucket.id === 'all')?.rooms.length || 0;
+    const getRoomSetupTabButtonClass = (active = false, activeToneClass = '') => (
+        `inline-flex min-h-[46px] items-center gap-2 rounded-t-[18px] border px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.16em] transition ${
+            active
+                ? `${activeToneClass} border-b-transparent`
+                : 'border-transparent bg-white/[0.03] text-zinc-300 hover:border-white/10 hover:bg-white/[0.05] hover:text-white'
+        }`
+    );
 
     return (
     <div className="relative z-10 w-full max-w-[1600px]">
@@ -280,331 +298,257 @@ const HostRoomLaunchPadBrowser = ({
                         </div>
                     ))}
                     <div className="ml-auto text-sm text-cyan-100/66">
-                        Use <span className="font-semibold text-white">Existing room</span> to reopen by code or manage older rooms.
+                        Use <span className="font-semibold text-white">Existing Rooms</span> to reopen by code or manage older rooms.
                     </div>
                 </div>
             </div>
-
-            {eventFocusRoom ? (
-                <section className="mt-4 rounded-[1.5rem] border border-amber-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.16),transparent_34%),linear-gradient(145deg,rgba(35,23,11,0.88),rgba(16,19,34,0.94))] p-4 shadow-[0_18px_52px_rgba(0,0,0,0.28)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.24em] text-amber-100/72">Event Focus</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2">
-                                <div className="text-2xl font-black text-white">{eventFocusRoom.roomName || eventFocusCode}</div>
-                                <span className="rounded-full border border-amber-300/35 bg-amber-500/12 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-amber-100">
-                                    AAHF
-                                </span>
-                                {eventFocusPinned ? (
-                                    <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
-                                        Pinned
-                                    </span>
-                                ) : null}
-                            </div>
-                            <div className="mt-1 text-sm text-amber-50/74">
-                                {eventFocusCode}
-                                {eventFocusSchedule ? ` | ${eventFocusSchedule}` : ''}
-                            </div>
-                            <div className="mt-2 max-w-4xl text-sm text-amber-50/80">
-                                Keep AAHF one click away while you prep the festival night, jump into the show plan, and clear test data before doors.
-                            </div>
+            <div className="mt-4 space-y-4">
+                <section className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22">
+                    <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3">
+                        <div className="px-1">
+                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Workspace</div>
+                            <div className="mt-1 text-lg font-black text-white">Choose one lane</div>
+                            <div className="mt-1 text-sm text-cyan-100/68">Existing rooms stay in one browser workspace. New room setup stays separate so this screen does not turn into one long stacked flow.</div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                            {!eventFocusSelected ? (
-                                <button
-                                    type="button"
-                                    onClick={() => handleSelectRoom(eventFocusCode)}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
-                                >
-                                    Select Room
-                                </button>
-                            ) : null}
-                            <button
-                                type="button"
-                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'queue.live_run')}
-                                disabled={!eventFocusCanManage}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Open Host Panel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'show.timeline')}
-                                disabled={!eventFocusCanManage}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Show Plan
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => openExistingRoomWorkspace(eventFocusCode, 'ops.room_setup')}
-                                disabled={!eventFocusCanManage}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Room Settings
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => togglePinnedRoom?.(eventFocusCode)}
-                                className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${eventFocusPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
-                            >
-                                {eventFocusPinned ? 'Pinned' : 'Pin Room'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => runLandingRoomCleanup?.(eventFocusCode)}
-                                disabled={!eventFocusCanManage}
-                                className={`rounded-full border border-rose-300/28 bg-rose-500/10 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-rose-100 ${!eventFocusCanManage ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                {eventFocusBusy && roomManagerBusyAction === 'cleanup' ? 'Resetting' : 'Reset Room'}
-                            </button>
+                        <div className="mt-3 flex flex-wrap items-end gap-1.5 border-b border-white/10 px-1 pt-1" role="tablist" aria-label="Room setup workspace">
+                            {ROOM_SETUP_TABS.map((tab) => {
+                                const active = roomSetupMode === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={active}
+                                        onClick={() => setRoomSetupMode(tab.id)}
+                                        className={getRoomSetupTabButtonClass(active, tab.activeToneClass)}
+                                    >
+                                        <i className={`fa-solid ${tab.icon} text-[10px]`}></i>
+                                        <span>{tab.label}</span>
+                                        {tab.id === 'manage' && recentHostRoomsLoading ? (
+                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${tab.badgeToneClass}`}>
+                                                Syncing
+                                            </span>
+                                        ) : null}
+                                        {tab.id === 'manage' && !recentHostRoomsLoading ? (
+                                            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${tab.badgeToneClass}`}>
+                                                {existingRoomCount}
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="mt-3 grid gap-2 px-1 text-sm sm:grid-cols-2">
+                            <div className={`rounded-xl border px-3 py-3 transition ${manageModeActive ? 'border-cyan-300/18 bg-cyan-500/8 text-cyan-100/82' : 'border-white/10 bg-white/[0.03] text-cyan-100/60'}`}>
+                                <div>{ROOM_SETUP_TABS[0].helper}</div>
+                            </div>
+                            <div className={`rounded-xl border px-3 py-3 transition ${createModeActive ? 'border-fuchsia-300/18 bg-fuchsia-500/8 text-fuchsia-100/84' : 'border-white/10 bg-white/[0.03] text-cyan-100/60'}`}>
+                                <div>{ROOM_SETUP_TABS[1].helper}</div>
+                            </div>
                         </div>
                     </div>
                 </section>
-            ) : null}
 
-            <div className="mt-4 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-                <aside className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3 xl:row-span-2">
-                    <div className="px-2">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Folders</div>
-                        <div className="mt-1 text-lg font-black text-white">Room browser</div>
-                        <div className="mt-1 text-sm text-cyan-100/68">Ready and upcoming rooms stay separate. Closed and archived rooms live together under Past.</div>
-                    </div>
-                    <div className="mt-3 space-y-1.5">
-                        {roomBrowserBuckets.map((bucket) => {
-                            const selected = activeRoomBucket?.id === bucket.id;
-                            return (
-                                <button
-                                    key={bucket.id}
-                                    type="button"
-                                    onClick={() => setRoomBrowserFilter(bucket.id)}
-                                    data-room-browser-bucket={bucket.id}
-                                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition ${selected
-                                        ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
-                                        : 'border-transparent bg-white/[0.03] text-cyan-100/76 hover:border-white/10 hover:bg-white/[0.05]'}`}
-                                >
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-semibold">{bucket.label}</div>
-                                        <div className="mt-0.5 text-xs text-cyan-100/52">{bucket.detail}</div>
-                                    </div>
-                                    <span className={`ml-3 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-black/20 text-cyan-100/58'}`}>
-                                        {bucket.rooms.length}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </aside>
-
-                <section ref={roomBrowserResultsRef} className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-2 xl:row-start-1">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-                        <div>
-                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{activeRoomBucket?.label || 'Rooms'}</div>
-                            <div className="mt-1 text-xl font-black text-white">
-                                {recentHostRoomsLoading ? 'Syncing rooms...' : `${roomBrowserResults.length} room${roomBrowserResults.length === 1 ? '' : 's'}`}
+                {manageModeActive ? (
+                    <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+                        <aside className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3 xl:row-span-2">
+                            <div className="px-2">
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Folders</div>
+                                <div className="mt-1 text-lg font-black text-white">Existing rooms</div>
+                                <div className="mt-1 text-sm text-cyan-100/68">Ready and upcoming rooms stay separate. Closed and archived rooms live together under Past.</div>
                             </div>
-                        </div>
-                        <div className="flex min-w-full flex-col gap-2 sm:min-w-[320px] sm:flex-row">
-                            <input
-                                value={roomBrowserSearch}
-                                onChange={(e) => setRoomBrowserSearch(e.target.value)}
-                                placeholder="Search by room name, code, preset, or status"
-                                className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
-                            />
-                            {roomBrowserSearch ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setRoomBrowserSearch('')}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
-                                >
-                                    Clear
-                                </button>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_120px_180px_minmax(170px,1fr)] gap-3 border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
-                        <div>Room</div>
-                        <div>Status</div>
-                        <div>Visibility</div>
-                        <div>When</div>
-                        <div className="text-right">Actions</div>
-                    </div>
-
-                    <div className="max-h-[calc(100vh-280px)] overflow-y-auto">
-                        {recentHostRoomsLoading ? (
-                            <div className="px-4 py-12 text-center text-sm text-cyan-100/72">
-                                Syncing your room browser...
+                            <div className="mt-3 space-y-1.5">
+                                {roomBrowserBuckets.map((bucket) => {
+                                    const selected = activeRoomBucket?.id === bucket.id;
+                                    return (
+                                        <button
+                                            key={bucket.id}
+                                            type="button"
+                                            onClick={() => setRoomBrowserFilter(bucket.id)}
+                                            data-room-browser-bucket={bucket.id}
+                                            className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition ${selected
+                                                ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
+                                                : 'border-transparent bg-white/[0.03] text-cyan-100/76 hover:border-white/10 hover:bg-white/[0.05]'}`}
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="text-sm font-semibold">{bucket.label}</div>
+                                                <div className="mt-0.5 text-xs text-cyan-100/52">{bucket.detail}</div>
+                                            </div>
+                                            <span className={`ml-3 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] ${selected ? 'border-cyan-300/30 bg-cyan-500/10 text-cyan-100' : 'border-white/10 bg-black/20 text-cyan-100/58'}`}>
+                                                {bucket.rooms.length}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
                             </div>
-                        ) : roomBrowserResults.length > 0 ? roomBrowserResults.map((roomItem) => {
-                            const lifecycle = getRoomLifecycle(roomItem);
-                            const visibility = getRoomVisibilityMeta(roomItem);
-                            const roomSchedule = formatRoomSchedule(roomItem) || formatRecentRoomTime(roomItem.updatedAtMs || roomItem.createdAtMs) || 'No recent activity';
-                            const selected = selectedRoom?.code === roomItem.code;
-                            const roomBusy = roomManagerBusyCode === roomItem.code;
-                            const roomPinned = pinnedRoomCodeSet?.has?.(String(roomItem.code || '').trim().toUpperCase());
-                            return (
-                                <div
-                                    key={roomItem.code}
-                                    onClick={() => handleSelectRoom(roomItem.code)}
-                                    className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(0,1.5fr)_120px_120px_180px_minmax(170px,1fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
-                                >
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-2">
-                                            <div className="truncate text-sm font-semibold text-white">{roomItem.roomName || roomItem.code}</div>
-                                            {roomPinned ? (
-                                                <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
-                                                    Pinned
-                                                </span>
-                                            ) : null}
-                                            {isAahfRoom(roomItem) ? (
-                                                <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
-                                                    AAHF
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                        <div className="mt-1 truncate text-xs text-cyan-100/58">
-                                            {roomItem.code}
-                                            {roomItem.currentTemplateName ? ` | ${roomItem.currentTemplateName}` : ''}
-                                        </div>
+                        </aside>
+
+                        <section ref={roomBrowserResultsRef} className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/22 xl:col-start-2 xl:row-start-1">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">{activeRoomBucket?.label || 'Rooms'}</div>
+                                    <div className="mt-1 text-xl font-black text-white">
+                                        {recentHostRoomsLoading ? 'Syncing rooms...' : `${roomBrowserResults.length} room${roomBrowserResults.length === 1 ? '' : 's'}`}
                                     </div>
-                                    <div className="md:self-center">
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${lifecycle.chipClass}`}>
-                                            {lifecycle.label}
-                                        </span>
-                                    </div>
-                                    <div className="md:self-center">
-                                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${visibility.chipClass}`}>
-                                            {visibility.label}
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-cyan-100/68 md:self-center">{roomSchedule}</div>
-                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                </div>
+                                <div className="flex min-w-full flex-col gap-2 sm:min-w-[320px] sm:flex-row">
+                                    <input
+                                        value={roomBrowserSearch}
+                                        onChange={(e) => setRoomBrowserSearch(e.target.value)}
+                                        placeholder="Search by room name, code, preset, or status"
+                                        className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-300/45"
+                                    />
+                                    {roomBrowserSearch ? (
                                         <button
                                             type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                openExistingRoomWorkspace(roomItem.code, 'queue.live_run');
-                                            }}
-                                            disabled={joiningRoom}
-                                            className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            onClick={() => setRoomBrowserSearch('')}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em]`}
                                         >
-                                            Open
+                                            Clear
                                         </button>
+                                    ) : null}
+                                </div>
+                            </div>
+
+                            <div className="hidden grid-cols-[minmax(0,1.5fr)_120px_120px_180px_minmax(170px,1fr)] gap-3 border-b border-white/10 px-4 py-2 text-[10px] uppercase tracking-[0.18em] text-cyan-100/48 md:grid">
+                                <div>Room</div>
+                                <div>Status</div>
+                                <div>Visibility</div>
+                                <div>When</div>
+                                <div className="text-right">Actions</div>
+                            </div>
+
+                            <div className="max-h-[calc(100vh-280px)] overflow-y-auto">
+                                {recentHostRoomsLoading ? (
+                                    <div className="px-4 py-12 text-center text-sm text-cyan-100/72">
+                                        Syncing your room browser...
+                                    </div>
+                                ) : roomBrowserResults.length > 0 ? roomBrowserResults.map((roomItem) => {
+                                    const lifecycle = getRoomLifecycle(roomItem);
+                                    const visibility = getRoomVisibilityMeta(roomItem);
+                                    const roomSchedule = formatRoomSchedule(roomItem) || formatRecentRoomTime(roomItem.updatedAtMs || roomItem.createdAtMs) || 'No recent activity';
+                                    const selected = selectedRoom?.code === roomItem.code;
+                                    const roomBusy = roomManagerBusyCode === roomItem.code;
+                                    const roomPinned = pinnedRoomCodeSet?.has?.(String(roomItem.code || '').trim().toUpperCase());
+                                    return (
+                                        <div
+                                            key={roomItem.code}
+                                            onClick={() => handleSelectRoom(roomItem.code)}
+                                            className={`grid cursor-pointer gap-3 border-b border-white/6 px-4 py-3 transition md:grid-cols-[minmax(0,1.5fr)_120px_120px_180px_minmax(170px,1fr)] ${selected ? 'bg-cyan-500/10' : 'hover:bg-white/[0.04]'}`}
+                                        >
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="truncate text-sm font-semibold text-white">{roomItem.roomName || roomItem.code}</div>
+                                                    {roomPinned ? (
+                                                        <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-amber-100">
+                                                            Pinned
+                                                        </span>
+                                                    ) : null}
+                                                    {isAahfRoom(roomItem) ? (
+                                                        <span className="rounded-full border border-fuchsia-300/30 bg-fuchsia-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100">
+                                                            AAHF
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="mt-1 truncate text-xs text-cyan-100/58">
+                                                    {roomItem.code}
+                                                    {roomItem.currentTemplateName ? ` | ${roomItem.currentTemplateName}` : ''}
+                                                </div>
+                                            </div>
+                                            <div className="md:self-center">
+                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${lifecycle.chipClass}`}>
+                                                    {lifecycle.label}
+                                                </span>
+                                            </div>
+                                            <div className="md:self-center">
+                                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] ${visibility.chipClass}`}>
+                                                    {visibility.label}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-cyan-100/68 md:self-center">{roomSchedule}</div>
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        openExistingRoomWorkspace(roomItem.code, 'queue.live_run');
+                                                    }}
+                                                    disabled={joiningRoom}
+                                                    className={`${STYLES.btnStd} ${selected ? STYLES.btnHighlight : STYLES.btnSecondary} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                >
+                                                    Open
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        togglePinnedRoom?.(roomItem.code);
+                                                    }}
+                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${roomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                >
+                                                    {roomPinned ? 'Pinned' : 'Pin'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setRoomArchivedState?.(roomItem.code, !roomItem.archived);
+                                                    }}
+                                                    disabled={joiningRoom || roomBusy}
+                                                    className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${(joiningRoom || roomBusy) ? 'cursor-not-allowed opacity-60' : ''} ${roomItem.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                                >
+                                                    {roomItem.archived ? 'Restore' : 'Archive'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                }) : (
+                                    <div className="px-4 py-12 text-center text-sm text-cyan-100/68">
+                                        No rooms match this filter yet. Use Create Room or switch folders.
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        <aside className="self-start xl:col-start-2 xl:row-start-2 xl:sticky xl:top-4">
+                            <div className={`rounded-[1.4rem] border p-4 transition ${manageModeActive ? 'border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(12,21,34,0.92))] shadow-[0_20px_48px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-black/22'}`}>
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Selected room</div>
+                                        <div className="mt-1 text-xl font-black text-white">Existing Room Controls</div>
+                                    </div>
+                                </div>
+                                <div className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</div>
+                                    <div className="mt-1 text-sm text-cyan-100/72">Use this when you already know the room code and want the live host panel immediately.</div>
+                                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                        <input
+                                            value={roomCodeInput}
+                                            onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && hasLaunchRoomCode) {
+                                                    openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run');
+                                                }
+                                            }}
+                                            placeholder="Open by room code"
+                                            className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
+                                        />
                                         <button
                                             type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                togglePinnedRoom?.(roomItem.code);
-                                            }}
-                                            className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${roomPinned ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
+                                            onClick={() => openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run')}
+                                            disabled={!hasLaunchRoomCode || joiningRoom}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
                                         >
-                                            {roomPinned ? 'Pinned' : 'Pin'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setRoomArchivedState?.(roomItem.code, !roomItem.archived);
-                                            }}
-                                            disabled={joiningRoom || roomBusy}
-                                            className={`rounded-full border px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] ${(joiningRoom || roomBusy) ? 'cursor-not-allowed opacity-60' : ''} ${roomItem.archived ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-white/5 text-cyan-100/76'}`}
-                                        >
-                                            {roomItem.archived ? 'Restore' : 'Archive'}
+                                            Open Room
                                         </button>
                                     </div>
                                 </div>
-                            );
-                        }) : (
-                            <div className="px-4 py-12 text-center text-sm text-cyan-100/68">
-                                No rooms match this filter yet. Use Create New Room or switch folders.
-                            </div>
-                        )}
-                    </div>
-                </section>
-
-                <aside className="space-y-4 self-start xl:col-start-2 xl:row-start-2 xl:sticky xl:top-4">
-                    <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3">
-                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Workspace</div>
-                        <div className="mt-3 inline-flex w-full rounded-xl border border-white/10 bg-black/25 p-1">
-                            <button
-                                type="button"
-                                onClick={() => setRoomSetupMode('manage')}
-                                className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${manageModeActive ? 'bg-white text-black' : 'text-cyan-100/72'}`}
-                            >
-                                Manage Selected Room
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setRoomSetupMode('create')}
-                                className={`flex-1 rounded-lg px-3 py-2 text-[11px] uppercase tracking-[0.16em] transition ${createModeActive ? 'bg-gradient-to-r from-[#00C4D9] to-[#EC4899] text-black' : 'text-cyan-100/72'}`}
-                            >
-                                Create Room
-                            </button>
-                        </div>
-                        <div className="mt-3 text-sm text-cyan-100/66">
-                            Keep one workspace open at a time so the browser stays visible and this screen does not turn into a long stacked form.
-                        </div>
-                    </div>
-                    <div className={`rounded-[1.4rem] border p-4 transition ${manageModeActive ? 'border-cyan-300/22 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(12,21,34,0.92))] shadow-[0_20px_48px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-black/22'}`}>
                         <div className="flex items-start justify-between gap-3">
                             <div>
-                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Existing room</div>
-                                <div className="mt-1 text-xl font-black text-white">Manage Selected Room</div>
-                            </div>
-                            {!manageModeActive ? (
-                                <button
-                                    type="button"
-                                    onClick={() => setRoomSetupMode('manage')}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1.5 text-[10px] uppercase tracking-[0.16em]`}
-                                >
-                                    Open
-                                </button>
-                            ) : null}
-                        </div>
-                        {manageModeActive ? (
-                            <>
-                        <div className="mt-3 rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Open by room code</div>
-                            <div className="mt-1 text-sm text-cyan-100/72">Use this when you already know the room code and want the live host panel immediately.</div>
-                            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                                <input
-                                    value={roomCodeInput}
-                                    onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && hasLaunchRoomCode) {
-                                            openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run');
-                                        }
-                                    }}
-                                    placeholder="Open by room code"
-                                    className="min-w-0 flex-1 rounded-xl border border-cyan-400/20 bg-black/30 px-3 py-2.5 text-sm uppercase tracking-[0.18em] text-white outline-none transition focus:border-cyan-300/45"
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => openExistingRoomWorkspace(launchRoomCodeCandidate, 'queue.live_run')}
-                                    disabled={!hasLaunchRoomCode || joiningRoom}
-                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${!hasLaunchRoomCode || joiningRoom ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
-                                    Open Room
-                                </button>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Current selection</div>
+                                <div className="mt-1 text-xl font-black text-white">Selected Room Details</div>
                             </div>
                         </div>
-                        </>
-                        ) : (
-                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Current selection</div>
-                                {selectedRoom ? (
-                                    <>
-                                        <div className="mt-1 text-base font-semibold text-white">{selectedRoom.roomName || selectedRoom.code}</div>
-                                        <div className="mt-1 text-sm text-cyan-100/68">{selectedRoomAction?.label || 'Open Host Panel'} when you reopen this workspace.</div>
-                                    </>
-                                ) : (
-                                    <div className="mt-1 text-sm text-cyan-100/68">Select a room from the browser, then open this workspace when you need deeper controls.</div>
-                                )}
-                            </div>
-                        )}
-                        {manageModeActive ? (
-                            <>
                         {selectedRoom ? (
                             <>
                                 <div className="mt-1 text-xl font-black text-white">{selectedRoom.roomName || selectedRoom.code}</div>
@@ -771,15 +715,15 @@ const HostRoomLaunchPadBrowser = ({
                         ) : (
                             <div className="mt-3 text-sm text-cyan-100/68">Select a room from the browser below to open it, archive it, restore it, or clean it up.</div>
                         )}
-                        </>
-                        ) : null}
+                            </div>
+                        </aside>
                     </div>
-
+                ) : null}
                     <div id="launchpad-create-room" className={`rounded-[1.4rem] border p-4 transition ${createModeActive ? 'border-cyan-300/20 bg-[linear-gradient(145deg,rgba(10,18,28,0.94),rgba(24,11,31,0.9))] shadow-[0_20px_48px_rgba(0,0,0,0.24)]' : 'border-white/10 bg-black/22'}`}>
                         <div className="flex items-center justify-between gap-3">
                             <div>
                                 <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Primary action</div>
-                                <div className="mt-1 text-xl font-black text-white">Create New Room</div>
+                                <div className="mt-1 text-xl font-black text-white">Create Room</div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className={`rounded-full border px-3 py-1 text-[10px] uppercase tracking-[0.16em] ${launchDisabled ? 'border-amber-300/30 bg-amber-500/10 text-amber-100' : 'border-emerald-300/30 bg-emerald-500/10 text-emerald-100'}`}>
@@ -797,6 +741,12 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
                         </div>
                         <div className="mt-2 text-sm text-cyan-100/68">Pick the night preset here, then open the host panel with the room already preconfigured.</div>
+
+                        {!createModeActive ? (
+                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-cyan-100/72">
+                                Switch to <span className="font-semibold text-white">Create Room</span> when you want a blank launch flow without the existing-room browser on screen.
+                            </div>
+                        ) : null}
 
                         {!createModeActive ? (
                             <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-cyan-100/72">
@@ -1251,7 +1201,6 @@ const HostRoomLaunchPadBrowser = ({
                         </div>
                         ) : null}
                     </div>
-                </aside>
             </div>
 
             <div className="mt-4 space-y-3">

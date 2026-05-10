@@ -1229,7 +1229,7 @@ const HostTopChrome = ({
                     onClick={onOpenModerationInbox}
                     className="xl:hidden"
                 />
-                <div className="hidden xl:flex items-center gap-2">
+                <div data-host-top-tabs="primary" className="relative z-10 hidden shrink-0 xl:flex items-center gap-2">
                     <ModerationInboxChip
                         pendingCount={moderationPendingCount}
                         severity={moderationSeverity}
@@ -1244,6 +1244,7 @@ const HostTopChrome = ({
                     ].map(t => (
                         <button
                             key={t.key}
+                            type="button"
                             data-host-tab={t.key}
                             onClick={() => {
                                 if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
@@ -1252,7 +1253,7 @@ const HostTopChrome = ({
                                 }
                                 setTab(t.key);
                             }}
-                            className={`${minimalRuntimeChrome ? 'px-2 py-1 text-[11px]' : denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
+                            className={`${minimalRuntimeChrome ? 'px-2 py-1 text-[11px]' : denseChrome ? 'px-2.5 py-1.5 text-[12px]' : 'px-3 py-1.5 text-sm'} relative z-10 shrink-0 font-black uppercase tracking-[0.22em] rounded-xl border-b-2 transition-all ${tab === t.key ? 'text-[#00C4D9] border-[#00C4D9] bg-black/40' : 'text-zinc-400 border-transparent bg-zinc-900/40 hover:text-white'}`}
                         >
                             {t.label}
                         </button>
@@ -1332,6 +1333,7 @@ const HostTopChrome = ({
                                         closeAllTopMenus();
                                         onOpenHostDashboard();
                                     }}
+                                    type="button"
                                     className="w-full text-left px-4 py-2 text-sm font-bold uppercase tracking-widest text-zinc-300 hover:bg-zinc-900 rounded-t-xl"
                                 >
                                     Room Manager
@@ -1346,6 +1348,7 @@ const HostTopChrome = ({
                             ].map(t => (
                                 <button
                                     key={t.key}
+                                    type="button"
                                     data-host-tab={t.key}
                                     onClick={() => {
                                         if (t.key === 'admin' && typeof openAdminWorkspace === 'function') {
