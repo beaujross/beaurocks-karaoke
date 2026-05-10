@@ -3283,6 +3283,260 @@ const valueToMillis = (value) => {
 
 const orgsCollection = () => admin.firestore().collection(ORGS_COLLECTION);
 
+const HOST_SETTINGS_DEFAULTS_SAVE_TARGETS = new Set([
+  "host_default",
+  "workspace_template",
+]);
+const HOST_SETTINGS_SHARED_TEMPLATES_CAPABILITY = "workspace.shared_templates";
+const HOST_SETTINGS_AUDIT_COLLECTION = "settings_audit";
+
+const HOST_SETTINGS_DEFAULTS_BUNDLE_KEYS = new Set([
+  "crowd_mode",
+  "operating_style",
+]);
+
+const HOST_SETTINGS_DEFAULTS_SOURCE_TYPES = new Set([
+  "preset",
+  "workspace_template",
+  "host_default",
+  "room_override",
+  "runtime_override",
+  "migration_adapter",
+]);
+
+const normalizeHostSettingsDefaultsSaveTarget = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return HOST_SETTINGS_DEFAULTS_SAVE_TARGETS.has(token) ? token : "";
+};
+
+const normalizeHostSettingsDefaultsBundleKey = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return HOST_SETTINGS_DEFAULTS_BUNDLE_KEYS.has(token) ? token : "";
+};
+
+const normalizeHostSettingsDefaultsSourceType = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return HOST_SETTINGS_DEFAULTS_SOURCE_TYPES.has(token) ? token : "room_override";
+};
+
+const getHostSettingsCapabilityLabel = (capability = "") => {
+  const safeCapability = String(capability || "").trim().toLowerCase();
+  if (safeCapability === HOST_SETTINGS_SHARED_TEMPLATES_CAPABILITY) return "Shared Workspace Templates";
+  return safeCapability || "Feature";
+};
+
+const hasHostSettingsCapability = (entitlements = null, capability = "") => {
+  const safeCapability = String(capability || "").trim().toLowerCase();
+  if (!safeCapability) return true;
+  const capabilities = normalizeCapabilities(entitlements?.capabilities || {});
+  return capabilities[safeCapability] === true;
+};
+
+const buildHostSettingsDefaultsAccessState = ({
+  target = "",
+  entitlements = null,
+} = {}) => {
+  const safeTarget = normalizeHostSettingsDefaultsSaveTarget(target);
+  if (safeTarget === "workspace_template") {
+    const canSave = hasHostSettingsCapability(entitlements, HOST_SETTINGS_SHARED_TEMPLATES_CAPABILITY);
+    const capabilityLabel = getHostSettingsCapabilityLabel(HOST_SETTINGS_SHARED_TEMPLATES_CAPABILITY);
+    return {
+      target: safeTarget,
+      requiredCapability: HOST_SETTINGS_SHARED_TEMPLATES_CAPABILITY,
+      requiredCapabilityLabel: capabilityLabel,
+      canRead: true,
+      canSave,
+      downgradeState: canSave ? "active" : "read_only_after_downgrade",
+      message: canSave
+        ? ""
+        : `Workspace template is read-only on this plan. ${capabilityLabel} is required to save changes.`,
+    };
+  }
+  return {
+    target: safeTarget,
+    requiredCapability: "",
+    requiredCapabilityLabel: "",
+    canRead: true,
+    canSave: true,
+    downgradeState: "active",
+    message: "",
+  };
+};
+
+const normalizeHostSettingsDefaultsChatTvMode = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return token === "fullscreen" ? "fullscreen" : "auto";
+};
+
+const normalizeHostSettingsDefaultsQueueLimitMode = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "per_night" || token === "per_hour" || token === "soft") return token;
+  return "none";
+};
+
+const normalizeHostSettingsDefaultsQueueRotation = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  return token === "first_come" ? "first_come" : "round_robin";
+};
+
+const normalizeHostSettingsDefaultsCrowdModeSettings = (input = {}) => ({
+  chatShowOnTv: input?.chatShowOnTv === true,
+  chatTvMode: normalizeHostSettingsDefaultsChatTvMode(input?.chatTvMode || ""),
+  showScoring: input?.showScoring !== false,
+  marqueeEnabled: input?.marqueeEnabled === true,
+  popTriviaEnabled: input?.popTriviaEnabled === true,
+});
+
+const normalizeHostSettingsDefaultsOperatingStyleSettings = (input = {}) => ({
+  autoPlayMedia: input?.autoPlayMedia === true,
+  readyCheckDurationSec: clampNumber(input?.readyCheckDurationSec, 3, 30, 10),
+  queueSettings: {
+    limitMode: normalizeHostSettingsDefaultsQueueLimitMode(input?.queueSettings?.limitMode || ""),
+    limitCount: clampNumber(input?.queueSettings?.limitCount, 0, 12, 0),
+    rotation: normalizeHostSettingsDefaultsQueueRotation(input?.queueSettings?.rotation || ""),
+    firstTimeBoost: input?.queueSettings?.firstTimeBoost !== false,
+  },
+});
+
+const normalizeHostSettingsDefaultsBundleSettings = (bundleKey = "", input = {}) => {
+  const safeBundleKey = normalizeHostSettingsDefaultsBundleKey(bundleKey);
+  if (safeBundleKey === "crowd_mode") return normalizeHostSettingsDefaultsCrowdModeSettings(input);
+  if (safeBundleKey === "operating_style") return normalizeHostSettingsDefaultsOperatingStyleSettings(input);
+  return {};
+};
+
+const normalizeHostSettingsDefaultsProvenance = (input = {}) => ({
+  sourceType: normalizeHostSettingsDefaultsSourceType(input?.sourceType || ""),
+  sourceId: normalizeRunOfShowText(input?.sourceId || "", 180),
+  savedTo: normalizeHostSettingsDefaultsSaveTarget(input?.savedTo || ""),
+  actorUid: normalizeUidToken(input?.actorUid || ""),
+  actorRole: normalizeRunOfShowText(input?.actorRole || "", 80).toLowerCase(),
+  lastChangedAtMs: Math.max(0, Number(input?.lastChangedAtMs || 0) || 0),
+});
+
+const getHostSettingsDefaultsDocRef = ({ db, target = "", uid = "", orgId = "" }) => {
+  const safeTarget = normalizeHostSettingsDefaultsSaveTarget(target);
+  if (safeTarget === "host_default") {
+    return db.collection("users").doc(normalizeUidToken(uid));
+  }
+  if (safeTarget === "workspace_template") {
+    return orgsCollection().doc(orgId).collection("settings").doc("defaults");
+  }
+  return null;
+};
+
+const collectHostSettingsAuditChangedKeys = (value = {}, prefix = "") => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return prefix ? [prefix] : [];
+  }
+  return Object.entries(value).flatMap(([key, nested]) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      return collectHostSettingsAuditChangedKeys(nested, nextPrefix);
+    }
+    return [nextPrefix];
+  });
+};
+
+const buildHostSettingsAuditEntryId = ({
+  target = "",
+  bundleKey = "",
+  uid = "",
+  nowMs: entryNowMs = Date.now(),
+} = {}) => [
+  normalizeHostSettingsDefaultsSaveTarget(target),
+  normalizeHostSettingsDefaultsBundleKey(bundleKey),
+  normalizeUidToken(uid || ""),
+  Math.max(0, Number(entryNowMs || 0) || 0),
+].filter(Boolean).join("_").slice(0, 220);
+
+const getHostSettingsAuditDocRef = ({ db, orgId = "", entryId = "" }) => {
+  const safeOrgId = String(orgId || "").trim();
+  const safeEntryId = String(entryId || "").trim();
+  if (!safeOrgId || !safeEntryId) return null;
+  return orgsCollection().doc(safeOrgId).collection(HOST_SETTINGS_AUDIT_COLLECTION).doc(safeEntryId);
+};
+
+const buildHostSettingsAuditEntry = ({
+  target = "",
+  bundleKey = "",
+  actorUid = "",
+  actorRole = "",
+  workspaceRole = "",
+  roomCode = "",
+  orgId = "",
+  sourceType = "",
+  sourceId = "",
+  settings = {},
+  nowMs: entryNowMs = Date.now(),
+} = {}) => {
+  const safeTarget = normalizeHostSettingsDefaultsSaveTarget(target);
+  const changedKeys = collectHostSettingsAuditChangedKeys(settings);
+  return {
+    id: buildHostSettingsAuditEntryId({
+      target: safeTarget,
+      bundleKey,
+      uid: actorUid,
+      nowMs: entryNowMs,
+    }),
+    action: "bundle_saved",
+    target: safeTarget,
+    bundleKey: normalizeHostSettingsDefaultsBundleKey(bundleKey),
+    actorUid: normalizeUidToken(actorUid || ""),
+    actorRole: normalizeRunOfShowText(actorRole || "", 80).toLowerCase(),
+    workspaceRole: normalizeRunOfShowText(workspaceRole || "", 80).toLowerCase(),
+    roomCode: normalizeRoomCode(roomCode || ""),
+    orgId: String(orgId || "").trim(),
+    sourceType: normalizeHostSettingsDefaultsSourceType(sourceType || ""),
+    sourceId: normalizeRunOfShowText(sourceId || "", 180),
+    changedKeys,
+    changedKeyCount: changedKeys.length,
+    visibility: safeTarget === "workspace_template" ? "workspace_visible" : "host_private",
+    changedAtMs: Math.max(0, Number(entryNowMs || 0) || 0),
+  };
+};
+
+const canViewHostSettingsAuditEntry = ({
+  entry = {},
+  actorUid = "",
+  workspaceRole = "",
+} = {}) => {
+  const safeActorUid = normalizeUidToken(actorUid || "");
+  const safeWorkspaceRole = normalizeRunOfShowText(workspaceRole || "", 80).toLowerCase();
+  const visibility = normalizeRunOfShowText(entry?.visibility || "", 40).toLowerCase();
+  if (visibility === "workspace_visible") return true;
+  if (safeWorkspaceRole === "owner" || safeWorkspaceRole === "admin") return true;
+  return normalizeUidToken(entry?.actorUid || "") === safeActorUid;
+};
+
+const readHostSettingsDefaultsResponse = ({ target = "", data = {}, accessState = null } = {}) => {
+  const safeTarget = normalizeHostSettingsDefaultsSaveTarget(target);
+  const bundleSource = data?.hostSettingsDefaults?.bundles && typeof data.hostSettingsDefaults.bundles === "object"
+    ? data.hostSettingsDefaults.bundles
+    : data?.bundles && typeof data.bundles === "object"
+      ? data.bundles
+      : {};
+  const bundles = {};
+  Object.keys(bundleSource).forEach((key) => {
+    const safeKey = normalizeHostSettingsDefaultsBundleKey(key);
+    if (!safeKey) return;
+    const entry = bundleSource[key] || {};
+    bundles[safeKey] = {
+      bundleKey: safeKey,
+      settings: normalizeHostSettingsDefaultsBundleSettings(safeKey, entry?.settings || {}),
+      provenance: normalizeHostSettingsDefaultsProvenance(entry?.provenance || {}),
+      updatedBy: normalizeUidToken(entry?.updatedBy || ""),
+      updatedAtMs: Math.max(0, Number(entry?.updatedAtMs || 0) || 0),
+    };
+  });
+  return {
+    ok: true,
+    target: safeTarget,
+    bundles,
+    accessState: accessState && typeof accessState === "object" ? { ...accessState } : null,
+  };
+};
+
 const getUsagePeriodKey = (date = new Date()) => {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -6053,6 +6307,7 @@ const resolveUserEntitlements = async (uid) => {
         "api.youtube_data": true,
         "api.apple_music": true,
         "billing.invoice_drafts": true,
+        "workspace.shared_templates": true,
         "workspace.onboarding": true,
       }),
     };
@@ -6087,6 +6342,7 @@ const resolveUserEntitlements = async (uid) => {
     capabilities["api.youtube_data"] = true;
     capabilities["api.apple_music"] = true;
     capabilities["billing.invoice_drafts"] = true;
+    capabilities["workspace.shared_templates"] = true;
     capabilities["workspace.onboarding"] = true;
   }
   return {
@@ -17373,6 +17629,163 @@ exports.listHostWorkspaceOperators = onCall({ cors: true }, async (request) => {
     })
     .slice(0, limit);
   return { ok: true, orgId, items };
+});
+
+exports.manageHostSettingsDefaults = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "manage_host_settings_defaults", { perMinute: 40, perHour: 320 });
+  enforceAppCheckIfEnabled(request, "manage_host_settings_defaults");
+  const { uid, entitlements } = await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Managing saved host settings requires active host workspace access.",
+  });
+  const action = normalizeRunOfShowText(request.data?.action || "", 40).toLowerCase();
+  const target = normalizeHostSettingsDefaultsSaveTarget(request.data?.target || "");
+  const bundleKey = normalizeHostSettingsDefaultsBundleKey(request.data?.bundleKey || "");
+  if (!action || !target) {
+    throw new HttpsError("invalid-argument", "action and target are required.");
+  }
+  if (target === "workspace_template" && !["owner", "admin"].includes(String(entitlements?.role || "").toLowerCase())) {
+    throw new HttpsError("permission-denied", "Only organization owners/admins can save workspace templates.");
+  }
+  const orgId = String(entitlements?.orgId || "").trim();
+  if (target === "workspace_template" && !orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const accessState = buildHostSettingsDefaultsAccessState({ target, entitlements });
+
+  const db = admin.firestore();
+  const docRef = getHostSettingsDefaultsDocRef({ db, target, uid, orgId });
+  if (!docRef) {
+    throw new HttpsError("invalid-argument", "Unsupported host settings save target.");
+  }
+
+  if (action === "get") {
+    const snap = await docRef.get();
+    const data = snap.exists ? (snap.data() || {}) : {};
+    return readHostSettingsDefaultsResponse({ target, data, accessState });
+  }
+
+  if (action === "save") {
+    if (!bundleKey) {
+      throw new HttpsError("invalid-argument", "bundleKey is required.");
+    }
+    if (!accessState.canSave) {
+      throw new HttpsError("permission-denied", accessState.message || "This save target is not available on the current plan.");
+    }
+    const settings = normalizeHostSettingsDefaultsBundleSettings(bundleKey, request.data?.settings || {});
+    const provenance = normalizeHostSettingsDefaultsProvenance({
+      ...(request.data?.provenance || {}),
+      savedTo: target,
+      actorUid: uid,
+    });
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const updatedAtMs = Date.now();
+    const bundlePayload = {
+      bundleKey,
+      settings,
+      provenance: {
+        ...provenance,
+        savedTo: target,
+        actorUid: uid,
+      },
+      updatedBy: uid,
+      updatedAt: now,
+      updatedAtMs,
+    };
+    if (target === "host_default") {
+      await docRef.set({
+        hostSettingsDefaults: {
+          bundles: {
+            [bundleKey]: bundlePayload,
+          },
+          updatedBy: uid,
+          updatedAt: now,
+          updatedAtMs,
+        },
+      }, { merge: true });
+    } else {
+      await docRef.set({
+        orgId,
+        bundles: {
+          [bundleKey]: bundlePayload,
+        },
+        updatedBy: uid,
+        updatedAt: now,
+        updatedAtMs,
+      }, { merge: true });
+    }
+    const auditEntry = buildHostSettingsAuditEntry({
+      target,
+      bundleKey,
+      actorUid: uid,
+      actorRole: "host",
+      workspaceRole: entitlements?.role || "",
+      roomCode: provenance?.sourceId || request.data?.roomCode || "",
+      orgId,
+      sourceType: provenance?.sourceType || "",
+      sourceId: provenance?.sourceId || "",
+      settings,
+      nowMs: updatedAtMs,
+    });
+    const auditRef = getHostSettingsAuditDocRef({ db, orgId, entryId: auditEntry.id });
+    if (auditRef) {
+      await auditRef.set({
+        ...auditEntry,
+        updatedAt: now,
+      }, { merge: true });
+    }
+    return {
+      ok: true,
+      action,
+      target,
+      bundleKey,
+      accessState,
+      auditEntryId: auditEntry.id,
+      bundle: {
+        bundleKey,
+        settings,
+        provenance: {
+          ...provenance,
+          savedTo: target,
+          actorUid: uid,
+        },
+        updatedBy: uid,
+        updatedAtMs,
+      },
+    };
+  }
+
+  throw new HttpsError("invalid-argument", `Unsupported host settings defaults action: ${action}`);
+});
+
+exports.listHostSettingsAuditEntries = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "list_host_settings_audit_entries", { perMinute: 30, perHour: 240 });
+  enforceAppCheckIfEnabled(request, "list_host_settings_audit_entries");
+  const { uid, entitlements } = await requireHostWorkspaceAccess(request, {
+    deniedMessage: "Viewing host settings history requires active host workspace access.",
+  });
+  const orgId = String(entitlements?.orgId || "").trim();
+  if (!orgId) {
+    throw new HttpsError("failed-precondition", "Organization is not initialized.");
+  }
+  const requestedLimit = clampNumber(request.data?.limit, 1, 50, 20);
+  const snap = await orgsCollection()
+    .doc(orgId)
+    .collection(HOST_SETTINGS_AUDIT_COLLECTION)
+    .orderBy("changedAtMs", "desc")
+    .limit(requestedLimit)
+    .get();
+  const items = snap.docs
+    .map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() || {}) }))
+    .filter((entry) => canViewHostSettingsAuditEntry({
+      entry,
+      actorUid: uid,
+      workspaceRole: entitlements?.role || "",
+    }));
+  return {
+    ok: true,
+    orgId,
+    items,
+  };
 });
 
 exports.getMyUsageSummary = onCall({ cors: true }, async (request) => {

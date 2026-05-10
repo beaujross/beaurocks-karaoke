@@ -3,6 +3,7 @@ const BASE_CAPABILITIES = Object.freeze({
   "api.youtube_data": false,
   "api.apple_music": false,
   "billing.invoice_drafts": false,
+  "workspace.shared_templates": false,
   "workspace.onboarding": true,
 });
 
@@ -34,6 +35,7 @@ const PLAN_DEFINITIONS = Object.freeze({
       "api.youtube_data": true,
       "api.apple_music": true,
       "billing.invoice_drafts": true,
+      "workspace.shared_templates": true,
       "workspace.onboarding": true,
     },
   },
@@ -48,6 +50,7 @@ const PLAN_DEFINITIONS = Object.freeze({
       "api.youtube_data": true,
       "api.apple_music": true,
       "billing.invoice_drafts": true,
+      "workspace.shared_templates": true,
       "workspace.onboarding": true,
     },
   },

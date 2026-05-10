@@ -384,6 +384,7 @@ const RUN_OF_SHOW_AUTOMATION_RETRY_MS = 4000;
 const RUN_OF_SHOW_AUTOMATION_RATE_LIMIT_RETRY_MS = 15000;
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
+const HOST_SETTINGS_DEFAULTS_DEPLOYMENT_WARNING = "Saved host settings are unavailable because the backend callable `manageHostSettingsDefaults` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
 const HOST_UPDATE_SERVER_TIMESTAMP = 'serverTimestamp';
 const AAHF_SCENE_LIBRARY_SEED_ASSETS = Object.freeze([
@@ -737,6 +738,21 @@ const isHostUpdateCallableUnavailableError = (error) => {
     if (code.includes('not-found') || code.includes('unimplemented')) return true;
     return (
         message.includes('updateroomashost')
+        && (
+            message.includes('does not exist')
+            || message.includes('not found')
+            || message.includes('not deployed')
+            || message.includes('no function')
+        )
+    );
+};
+
+const isManageHostSettingsDefaultsCallableUnavailableError = (error) => {
+    const code = String(error?.code || '').toLowerCase();
+    const message = String(error?.message || '').toLowerCase();
+    if (code.includes('not-found') || code.includes('unimplemented')) return true;
+    return (
+        message.includes('managehostsettingsdefaults')
         && (
             message.includes('does not exist')
             || message.includes('not found')
@@ -5140,7 +5156,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [supportDropTargetUid, setSupportDropTargetUid] = useState('');
     const [supportDropAnonymous, setSupportDropAnonymous] = useState(false);
     const [hostUpdateDeploymentWarning, setHostUpdateDeploymentWarning] = useState('');
+    const [hostSettingsDefaultsDeploymentWarning, setHostSettingsDefaultsDeploymentWarning] = useState('');
     const hostUpdateWarningToastedRef = useRef(false);
+    const hostSettingsDefaultsWarningToastedRef = useRef(false);
+    const hostSettingsDefaultsLoadBlockedRef = useRef(false);
     const [orgContext, setOrgContext] = useState({
         orgId: '',
         role: 'owner',
@@ -5238,6 +5257,31 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             >
                 Dismiss
             </button>
+        </div>
+    ) : null;
+    const hostSettingsDefaultsDeploymentBanner = hostSettingsDefaultsDeploymentWarning ? (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-100 flex items-start justify-between gap-3">
+            <div>
+                <span className="font-bold uppercase tracking-[0.15em] text-amber-200 text-[11px] mr-2">Saved Host Settings</span>
+                <span>{hostSettingsDefaultsDeploymentWarning}</span>
+            </div>
+            <button
+                type="button"
+                onClick={() => {
+                    setHostSettingsDefaultsDeploymentWarning('');
+                    hostSettingsDefaultsWarningToastedRef.current = false;
+                }}
+                className="text-amber-200/90 hover:text-white text-xs uppercase tracking-widest"
+                title="Dismiss warning"
+            >
+                Dismiss
+            </button>
+        </div>
+    ) : null;
+    const hostDeploymentBanners = hostUpdateDeploymentBanner || hostSettingsDefaultsDeploymentBanner ? (
+        <div className="space-y-2">
+            {hostUpdateDeploymentBanner}
+            {hostSettingsDefaultsDeploymentBanner}
         </div>
     ) : null;
     const hostViewerUid = auth.currentUser?.uid || uid || '';
@@ -8268,6 +8312,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         toast(hostUpdateDeploymentWarning);
         hostUpdateWarningToastedRef.current = true;
     }, [hostUpdateDeploymentWarning, toast]);
+    useEffect(() => {
+        if (!hostSettingsDefaultsDeploymentWarning || !toast || hostSettingsDefaultsWarningToastedRef.current) return;
+        toast(hostSettingsDefaultsDeploymentWarning);
+        hostSettingsDefaultsWarningToastedRef.current = true;
+    }, [hostSettingsDefaultsDeploymentWarning, toast]);
     useEffect(() => {
         if (!moderationInbox.meta?.needsAttention) return;
         const pending = Number(moderationInbox.counts?.totalPending || 0);
@@ -16887,7 +16936,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 setLandingLaunchMode={setLandingLaunchMode}
                 entryError={entryError}
                 retryLastHostAction={retryLastHostAction}
-                hostUpdateDeploymentBanner={hostUpdateDeploymentBanner}
+                hostUpdateDeploymentBanner={hostDeploymentBanners}
                 recentHostRoomsLoading={recentHostRoomsLoading}
                 recentHostRooms={recentHostRooms}
                 recentRoomSnapshot={recentRoomSnapshot}
@@ -17359,10 +17408,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : hostPermissionLevel === 'member'
                 ? HOST_SETTINGS_WORKSPACE_ROLES.member
                 : HOST_SETTINGS_WORKSPACE_ROLES.none;
-    const availableHostSettingsSaveTargets = getAvailableHostSettingsSaveTargets({
+    const availableHostSettingsSaveTargets = useMemo(() => getAvailableHostSettingsSaveTargets({
         runtimeRole: hostSettingsRuntimeRole,
         workspaceRole: hostSettingsWorkspaceRole,
-    });
+    }), [hostSettingsRuntimeRole, hostSettingsWorkspaceRole]);
     const savedHostDefaultBundles = savedHostSettingsBundles.hostDefault?.bundles || {};
     const savedWorkspaceTemplateBundles = savedHostSettingsBundles.workspaceTemplate?.bundles || {};
     const hostSettingsModeProfileId = room?.selfServeMode?.enabled
@@ -17372,7 +17421,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             : getHostRuntimeShellMode(room) === HOST_RUNTIME_SHELL_MODES.socialGameNightExperiment
                 ? 'social_game_night'
                 : 'standard';
-    const readableHostSettingsTargets = [HOST_SETTINGS_SAVE_TARGETS.hostDefault, HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate].filter((target) => {
+    const readableHostSettingsTargets = useMemo(() => [HOST_SETTINGS_SAVE_TARGETS.hostDefault, HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate].filter((target) => {
         if (!modeAllowsHostSettingsSaveTarget({ modeId: hostSettingsModeProfileId, target })) return false;
         if (!availableHostSettingsSaveTargets.includes(target)) {
             return target === HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate;
@@ -17381,8 +17430,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             target,
             capabilities,
         }).canRead;
-    });
-    const modeAwareHostSettingsSaveTargets = availableHostSettingsSaveTargets.filter((target) => {
+    }), [availableHostSettingsSaveTargets, capabilities, hostSettingsModeProfileId]);
+    const modeAwareHostSettingsSaveTargets = useMemo(() => availableHostSettingsSaveTargets.filter((target) => {
         if (!modeAllowsHostSettingsSaveTarget({
             modeId: hostSettingsModeProfileId,
             target,
@@ -17391,8 +17440,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             target,
             capabilities,
         }).canSave;
-    });
-    const hostSettingsSaveScopeLabels = modeAwareHostSettingsSaveTargets.map((target) => getHostSettingsSaveTargetLabel(target));
+    }), [availableHostSettingsSaveTargets, capabilities, hostSettingsModeProfileId]);
+    const hostSettingsSaveScopeLabels = useMemo(
+        () => modeAwareHostSettingsSaveTargets.map((target) => getHostSettingsSaveTargetLabel(target)),
+        [modeAwareHostSettingsSaveTargets]
+    );
     const getCurrentCrowdModeState = () => ({
         chatShowOnTv: !!chatShowOnTv,
         chatTvMode: chatTvMode || 'auto',
@@ -17493,24 +17545,44 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         return entry;
     };
-    const loadSavedHostSettingsTarget = async (target = HOST_SETTINGS_SAVE_TARGETS.hostDefault) => {
+    const loadSavedHostSettingsTarget = useCallback(async (target = HOST_SETTINGS_SAVE_TARGETS.hostDefault) => {
         if (target !== HOST_SETTINGS_SAVE_TARGETS.hostDefault && target !== HOST_SETTINGS_SAVE_TARGETS.workspaceTemplate) return null;
-        const result = await manageHostSettingsDefaults({
-            action: 'get',
-            target,
-        });
-        setSavedHostSettingsBundles((previous) => ({
-            ...previous,
-            [target === HOST_SETTINGS_SAVE_TARGETS.hostDefault ? 'hostDefault' : 'workspaceTemplate']: {
-                bundles: result?.bundles || {},
-                loaded: true,
-                accessState: result?.accessState || null,
-            },
-        }));
-        return result || null;
-    };
-    const refreshSavedHostSettingsBundles = async () => {
-        if (!hostAuthSessionReady) return;
+        const stateKey = target === HOST_SETTINGS_SAVE_TARGETS.hostDefault ? 'hostDefault' : 'workspaceTemplate';
+        try {
+            const result = await manageHostSettingsDefaults({
+                action: 'get',
+                target,
+            });
+            hostSettingsDefaultsLoadBlockedRef.current = false;
+            setHostSettingsDefaultsDeploymentWarning('');
+            hostSettingsDefaultsWarningToastedRef.current = false;
+            setSavedHostSettingsBundles((previous) => ({
+                ...previous,
+                [stateKey]: {
+                    bundles: result?.bundles || {},
+                    loaded: true,
+                    accessState: result?.accessState || null,
+                },
+            }));
+            return result || null;
+        } catch (error) {
+            if (isManageHostSettingsDefaultsCallableUnavailableError(error)) {
+                hostSettingsDefaultsLoadBlockedRef.current = true;
+                setHostSettingsDefaultsDeploymentWarning(HOST_SETTINGS_DEFAULTS_DEPLOYMENT_WARNING);
+                setSavedHostSettingsBundles((previous) => ({
+                    ...previous,
+                    [stateKey]: {
+                        ...(previous[stateKey] || {}),
+                        loaded: true,
+                    },
+                }));
+                return null;
+            }
+            throw error;
+        }
+    }, []);
+    const refreshSavedHostSettingsBundles = useCallback(async () => {
+        if (!hostAuthSessionReady || hostSettingsDefaultsLoadBlockedRef.current) return;
         setSavedHostSettingsBundles((previous) => ({ ...previous, loading: true }));
         try {
             const nonTonightTargets = readableHostSettingsTargets.filter((target) => target !== HOST_SETTINGS_SAVE_TARGETS.tonight);
@@ -17522,7 +17594,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } finally {
             setSavedHostSettingsBundles((previous) => ({ ...previous, loading: false }));
         }
-    };
+    }, [hostAuthSessionReady, loadSavedHostSettingsTarget, readableHostSettingsTargets]);
     useEffect(() => {
         if (!hostAuthSessionReady) return;
         refreshSavedHostSettingsBundles();
@@ -17607,6 +17679,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 writePlan,
             });
         } catch (error) {
+            if (isManageHostSettingsDefaultsCallableUnavailableError(error)) {
+                hostSettingsDefaultsLoadBlockedRef.current = true;
+                setHostSettingsDefaultsDeploymentWarning(HOST_SETTINGS_DEFAULTS_DEPLOYMENT_WARNING);
+            }
             toast(error?.message || `Could not save to ${getHostSettingsSaveTargetLabel(safeTarget).toLowerCase()}.`);
             trackHostSettingsTelemetry({
                 eventName: HOST_SETTINGS_TELEMETRY_EVENTS.saveDenied,
@@ -18502,9 +18578,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     if (isChatPopout) {
         return (
             <div className="min-h-screen bg-zinc-950 text-white font-saira p-4 md:p-6">
-                {hostUpdateDeploymentBanner && (
+                {hostDeploymentBanners && (
                     <div className="max-w-5xl mx-auto mb-3">
-                        {hostUpdateDeploymentBanner}
+                        {hostDeploymentBanners}
                     </div>
                 )}
                 <div className={`${STYLES.panel} p-4 md:p-6 max-w-5xl mx-auto`}>
@@ -18612,9 +18688,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 sm:px-5 md:px-6">
                     <div className="mx-auto flex min-h-full w-full max-w-7xl flex-col">
-                        {hostUpdateDeploymentBanner ? (
+                        {hostDeploymentBanners ? (
                             <div className="mb-4">
-                                {hostUpdateDeploymentBanner}
+                                {hostDeploymentBanners}
                             </div>
                         ) : null}
                         {browsePanel}
@@ -18633,9 +18709,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-prototype-shell="night_pilot"
                 className="host-app min-h-screen bg-[#05070c] text-white font-saira"
             >
-                {hostUpdateDeploymentBanner ? (
+                {hostDeploymentBanners ? (
                     <div className="px-4 pt-4">
-                        {hostUpdateDeploymentBanner}
+                        {hostDeploymentBanners}
                     </div>
                 ) : null}
                 <div className="min-h-screen">
@@ -18853,9 +18929,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     liveCrowdModeHistoryLabel={liveCrowdModeHistoryEntry?.label ? `Last live crowd mode: ${liveCrowdModeHistoryEntry.label}` : 'Live changes affect tonight only.'}
                     liveOperatingStyleHistoryLabel={liveOperatingStyleHistoryEntry?.label ? `Last live operating style: ${liveOperatingStyleHistoryEntry.label}` : 'Live changes affect tonight only.'}
                 />
-            {hostUpdateDeploymentBanner && (
+            {hostDeploymentBanners && (
                 <div className="px-3 sm:px-4 md:px-5 lg:px-6 pt-3">
-                    {hostUpdateDeploymentBanner}
+                    {hostDeploymentBanners}
                 </div>
             )}
 

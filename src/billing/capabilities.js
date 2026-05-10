@@ -3,6 +3,7 @@ export const CAPABILITY_KEYS = Object.freeze({
   API_YOUTUBE_DATA: 'api.youtube_data',
   API_APPLE_MUSIC: 'api.apple_music',
   BILLING_INVOICE_DRAFTS: 'billing.invoice_drafts',
+  WORKSPACE_SHARED_TEMPLATES: 'workspace.shared_templates',
   WORKSPACE_ONBOARDING: 'workspace.onboarding',
 });
 
@@ -11,6 +12,7 @@ export const CAPABILITY_LABELS = Object.freeze({
   [CAPABILITY_KEYS.API_YOUTUBE_DATA]: 'YouTube Data Access',
   [CAPABILITY_KEYS.API_APPLE_MUSIC]: 'Apple Music API Access',
   [CAPABILITY_KEYS.BILLING_INVOICE_DRAFTS]: 'Invoice Draft Tools',
+  [CAPABILITY_KEYS.WORKSPACE_SHARED_TEMPLATES]: 'Shared Workspace Templates',
   [CAPABILITY_KEYS.WORKSPACE_ONBOARDING]: 'Workspace Onboarding',
 });
 

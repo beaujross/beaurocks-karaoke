@@ -916,6 +916,18 @@ const manageRunOfShowTemplate = async (payload = {}) => {
   return data || null;
 };
 
+const manageHostSettingsDefaults = async (payload = {}) => {
+  await requireAppCheckToken("manageHostSettingsDefaults");
+  const data = await callFunction("manageHostSettingsDefaults", payload || {});
+  return data || null;
+};
+
+const listHostSettingsAuditEntries = async (payload = {}) => {
+  await requireAppCheckToken("listHostSettingsAuditEntries");
+  const data = await callFunction("listHostSettingsAuditEntries", payload || {});
+  return data || null;
+};
+
 const resolveQueueSongLyrics = async (payload = {}) => {
   await requireAppCheckToken("resolveQueueSongLyrics");
   const data = await callFunction("resolveQueueSongLyrics", payload || {});
@@ -1263,11 +1275,13 @@ export {
   getMyUsageInvoiceDraft,
   saveMyUsageInvoiceDraft,
   listMyUsageInvoices,
+  listHostSettingsAuditEntries,
   assertRoomHostAccess,
   publishPublicRoomRecap,
   removeHostRoomDiscoveryListing,
   provisionHostRoom,
   updateRoomAsHost,
+  manageHostSettingsDefaults,
   submitRunOfShowSlotSong,
   reviewRunOfShowSlotSubmission,
   executeRunOfShowAction,
