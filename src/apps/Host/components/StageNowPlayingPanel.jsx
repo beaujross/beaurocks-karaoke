@@ -76,7 +76,7 @@ const StageNowPlayingPanel = ({
     const actionButtonBaseClass = 'min-h-[54px] rounded-lg border px-2 py-2 text-white transition disabled:cursor-not-allowed disabled:opacity-45';
     const playbackButtonClass = `${actionButtonBaseClass} border-sky-300/22 bg-sky-500/10 hover:border-sky-200/45 hover:bg-sky-500/16`;
     const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
-    const stageActionHeading = 'Stage Actions';
+    const stageActionHeading = 'Stage Options';
     const trackCheckHeading = lastTrackCheckItem?.pendingNow ? 'Track Check' : 'Last Track Check';
     const trackCheckSupportCopy = lastTrackCheckItem?.pendingNow
         ? 'Decide now or let it fall into Inbox for later.'
@@ -289,7 +289,7 @@ const StageNowPlayingPanel = ({
                         ) : null}
                         <div className="mt-3 rounded-lg border border-sky-300/16 bg-sky-950/18 p-2.5">
                             <div className="mb-2 flex items-center justify-between gap-2">
-                                <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">Backing Playback</div>
+                                <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">Transport</div>
                             </div>
                             <div className="mb-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300">
                                 <span className="font-semibold text-white">{currentSourceLabel || 'Backing Track'}</span>

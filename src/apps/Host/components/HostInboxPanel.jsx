@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import groupChatMessages from '../../../lib/chatGrouping';
 import { resolveRoomUserUid } from '../../../lib/gameLaunchSupport';
 
@@ -56,6 +56,43 @@ const ItemBadge = ({ source = 'Audience' }) => (
     </span>
 );
 
+const InboxMediaPreview = ({ item = null, onClose = null }) => {
+    if (!item?.image) return null;
+    const imageFitClass = item?.imageFit === 'contain' ? 'object-contain bg-zinc-950' : 'object-cover';
+    return (
+        <div className="fixed inset-0 z-[92]">
+            <button
+                type="button"
+                onClick={onClose}
+                className="absolute inset-0 bg-black/75 backdrop-blur-[2px]"
+                aria-label="Close inbox preview"
+            />
+            <div className="absolute inset-0 flex items-center justify-center p-4">
+                <div className="relative w-full max-w-3xl rounded-[28px] border border-white/12 bg-zinc-950/96 p-4 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 text-zinc-300 hover:text-white"
+                        aria-label="Close preview"
+                    >
+                        <i className="fa-solid fa-xmark"></i>
+                    </button>
+                    <div className="pr-10">
+                        <div className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-500">{item.context || item.source || 'Preview'}</div>
+                        <div className="mt-1 text-lg font-black text-white">{item.title || 'Submission preview'}</div>
+                        {item.body ? (
+                            <div className="mt-1 text-sm text-zinc-300">{item.body}</div>
+                        ) : null}
+                    </div>
+                    <div className="mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-black/30">
+                        <img src={item.image} alt={item.title || 'Submission preview'} className={`max-h-[72vh] w-full ${imageFitClass}`} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const InboxItemCard = ({
     item,
     styles,
@@ -66,15 +103,29 @@ const InboxItemCard = ({
     setDmDraft,
     sendHostDmMessage,
     usersByUid,
+    onPreviewItem,
 }) => {
     const canReply = item.type === 'dm' && item.senderUid;
     const replyTargetLabel = canReply ? (usersByUid[item.senderUid] || item.title || 'Guest') : '';
     const replySelected = canReply && dmTargetUid === item.senderUid;
     const busyAction = item.moderationBusyAction || '';
+    const hasPreviewImage = !!item.image;
+    const imageFitClass = item?.imageFit === 'contain' ? 'object-contain bg-zinc-950' : 'object-cover';
+    const isRoundPreview = item.moderationType === 'selfie' || item.moderationType === 'crowd_selfie';
 
     return (
         <div className={`rounded-2xl border px-3 py-3 ${cardToneBySource[item.source] || cardToneBySource.Audience}`}>
             <div className="flex items-start justify-between gap-3">
+                {hasPreviewImage ? (
+                    <button
+                        type="button"
+                        onClick={() => onPreviewItem?.(item)}
+                        className={`group relative h-16 w-16 shrink-0 overflow-hidden border border-white/10 ${isRoundPreview ? 'rounded-full' : 'rounded-2xl'}`}
+                        aria-label={`Preview ${item.title || 'submission'}`}
+                    >
+                        <img src={item.image} alt={item.title || 'Submission'} className={`h-full w-full transition-transform group-hover:scale-[1.03] ${imageFitClass}`} />
+                    </button>
+                ) : null}
                 <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <ItemBadge source={item.source} />
@@ -95,6 +146,15 @@ const InboxItemCard = ({
 
             {item.type === 'moderation' ? (
                 <div className="mt-2 flex flex-wrap gap-2">
+                    {hasPreviewImage ? (
+                        <button
+                            type="button"
+                            onClick={() => onPreviewItem?.(item)}
+                            className={`${styles?.btnStd || ''} ${styles?.btnNeutral || ''} text-[10px] px-3 py-1.5`}
+                        >
+                            View
+                        </button>
+                    ) : null}
                     {item.moderationType === 'doodle' ? (
                         <button
                             type="button"
@@ -259,6 +319,7 @@ const InboxBucket = ({
     setDmDraft,
     sendHostDmMessage,
     usersByUid,
+    onPreviewItem,
 }) => (
     <div className="rounded-[24px] border border-white/10 bg-black/20 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -284,6 +345,7 @@ const InboxBucket = ({
                         setDmDraft={setDmDraft}
                         sendHostDmMessage={sendHostDmMessage}
                         usersByUid={usersByUid}
+                        onPreviewItem={onPreviewItem}
                     />
                 ))}
             </div>
@@ -322,6 +384,7 @@ export default function HostInboxPanel({
     styles,
     emoji,
 }) {
+    const [previewItem, setPreviewItem] = useState(null);
     const usersByUid = useMemo(() => {
         const next = {};
         (Array.isArray(users) ? users : []).forEach((entry) => {
@@ -352,6 +415,8 @@ export default function HostInboxPanel({
                 context: moderationTypeLabel(item.type),
                 ageLabel: formatAgeLabel(item.timestamp),
                 moderationType: item.type,
+                image: item.image || '',
+                imageFit: item.type === 'doodle' ? 'contain' : 'cover',
                 moderationBusyAction,
                 onApprove: item.type === 'doodle'
                     ? () => moderationActions?.approveDoodleUid?.(item.submission?.uid)
@@ -426,6 +491,7 @@ export default function HostInboxPanel({
 
     return (
         <div data-feature-id="host-inbox-panel">
+            <InboxMediaPreview item={previewItem} onClose={() => setPreviewItem(null)} />
             <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                     <div className="text-[10px] uppercase tracking-[0.24em] text-cyan-300">Host Inbox</div>
@@ -501,6 +567,7 @@ export default function HostInboxPanel({
                     setDmDraft={setDmDraft}
                     sendHostDmMessage={sendHostDmMessage}
                     usersByUid={usersByUid}
+                    onPreviewItem={setPreviewItem}
                 />
                 <InboxBucket
                     label="Everything Else"
@@ -517,6 +584,7 @@ export default function HostInboxPanel({
                     setDmDraft={setDmDraft}
                     sendHostDmMessage={sendHostDmMessage}
                     usersByUid={usersByUid}
+                    onPreviewItem={setPreviewItem}
                 />
             </div>
         </div>

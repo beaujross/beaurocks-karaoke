@@ -261,6 +261,9 @@ export default function HostLiveOpsPanel({
     if (compact && inline) {
         return (
             <section data-feature-id="host-live-ops-panel" className="min-w-0 flex-1 px-0 py-0">
+                {showTitle ? (
+                    <div className="mb-2 text-[10px] uppercase tracking-[0.25em] text-cyan-300">Live Snapshot</div>
+                ) : null}
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[10px] uppercase tracking-[0.14em]">
                     <div className="flex flex-wrap items-center gap-1.5">
                         {selfServePresentation ? <span className={`rounded-full border px-2 py-1 ${selfServeAccent.chip}`}>{selfServePresentation.shortLabel}</span> : null}

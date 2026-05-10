@@ -13,7 +13,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
 
   assert.match(
     source,
-    /Current Performance[\s\S]*Now Performing[\s\S]*Track note[\s\S]*Backing Playback/,
+    /Current Performance[\s\S]*Now Performing[\s\S]*Track note[\s\S]*Transport/,
     "Backing-track note actions should live inside the current-performance grouping, above playback controls",
   );
   assert.match(
@@ -23,7 +23,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /const stageActionHeading = 'Stage Actions';[\s\S]*Track note[\s\S]*Backing Playback[\s\S]*Pop Out[\s\S]*\{stageActionHeading\}[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
+    /const stageActionHeading = 'Stage Options';[\s\S]*Track note[\s\S]*Transport[\s\S]*Pop Out[\s\S]*\{stageActionHeading\}[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
     "Backing playback controls should now live inside the Now Performing block before the stage-action transport row",
   );
   assert.match(
@@ -55,11 +55,6 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     source,
     /Keep the backing under control without touching the live performer flow\.|End the song, capture the room beat, and stage the next protected performer\./,
     "The stage rail should not spend vertical space on helper copy under the playback and performance headers",
-  );
-  assert.doesNotMatch(
-    source,
-    /Transport|Stage Options|Performance Controls/,
-    "The old mixed transport and stage-options labels should be replaced by clearer playback and performance groupings",
   );
   assert.doesNotMatch(
     source,

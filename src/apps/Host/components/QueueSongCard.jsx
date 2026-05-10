@@ -494,7 +494,7 @@ const QueueSongCard = ({
                                 onClick={() => onAssignQueueSongToRunOfShowItem(song.id, selectedSlotId)}
                                 className={`${styles.btnStd} ${styles.btnNeutral} min-h-[34px] px-3 py-1.5 text-[10px] disabled:opacity-45`}
                             >
-                                {song?.runOfShowItemId ? 'Reassign Slot' : 'Assign Slot'}
+                                {song?.runOfShowItemId ? 'Reassign Selected Slot' : 'Assign Selected Slot'}
                             </button>
                         </div>
                     ) : null}
