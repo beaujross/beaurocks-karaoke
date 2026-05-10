@@ -440,6 +440,16 @@ test("SingerApp shows visible in-flight feedback while adding songs to the queue
     /Sending Request\.\.\./,
     "SingerApp manual request submit button should acknowledge the tap while waiting on the network",
   );
+  assert.doesNotMatch(
+    source,
+    /Request sent/,
+    "SingerApp should not keep rendering a separate request-sent banner above the songs workspace",
+  );
+  assert.match(
+    source,
+    /getAudienceRequestStateDetailClass\(latestMyRequestStateMeta\.tone\)/,
+    "SingerApp should render request-state detail inline inside My Requests instead of a detached confirmation banner",
+  );
 });
 
 test("SingerApp shows pending feedback for slower audience game submissions and votes", () => {

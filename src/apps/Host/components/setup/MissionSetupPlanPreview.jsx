@@ -17,7 +17,7 @@ const MissionSetupPlanPreview = ({
             <div className="text-sm text-zinc-200 mt-2"><span className="text-zinc-500">Archetype:</span> {missionPresetLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Constraint:</span> {flowRuleLabel}</div>
             <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Host Style:</span> {assistLabel}</div>
-            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Spotlight:</span> {spotlightLabel}</div>
+            <div className="text-sm text-zinc-200 mt-1"><span className="text-zinc-500">Format:</span> {spotlightLabel}</div>
             {overrideCount > 0 && (
                 <div className="text-xs text-amber-200 mt-2">
                     {overrideCount} advanced override{overrideCount === 1 ? '' : 's'} active

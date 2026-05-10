@@ -61,7 +61,9 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-reset-layout"/);
   assert.match(hostQueueTabSource, /data-feature-id="queue-workspace-top-chrome"/);
-  assert.match(hostQueueTabSource, /<QueueSummaryBar/);
+  assert.doesNotMatch(hostQueueTabSource, /<QueueSummaryBar/);
+  assert.doesNotMatch(hostQueueTabSource, /order-2 min-h-0/);
+  assert.doesNotMatch(hostQueueTabSource, /order-1 min-h-0/);
   assert.doesNotMatch(hostQueueTabSource, /querySelector\('\[data-feature-id="queue-live-controls"\]'\)/);
   assert.doesNotMatch(hostQueueTabSource, /data-feature-id="queue-live-controls"/);
   assert.doesNotMatch(hostQueueTabSource, /renderQuickAccessInline=\{!!queueQuickControls\}/);

@@ -71,7 +71,7 @@ test('room browser keeps results adjacent to folders, supports pinning, and does
   assert.doesNotMatch(roomManagerSource, /\.slice\(0, 8\)/);
 });
 
-test('AAHF rooms get a dedicated event-focus shortcut in the launchpad', () => {
+test('AAHF rooms still drive the default launchpad focus without a dedicated browser spotlight card', () => {
   const browserSource = readFileSync(launchPadBrowserPath, 'utf8');
   const launchPadSource = readFileSync(launchPadPath, 'utf8');
 
@@ -80,25 +80,25 @@ test('AAHF rooms get a dedicated event-focus shortcut in the launchpad', () => {
   assert.match(launchPadSource, /const defaultRoomBrowserFilter = findBucketForRoomCode\(featuredRoom\?\.code, roomBrowserBuckets\) \|\| 'ready';/);
   assert.match(launchPadSource, /const \[selectedRoomCode, setSelectedRoomCode\] = useState\(\(\) => String\(featuredRoom\?\.code \|\| ''\)\.trim\(\)\.toUpperCase\(\)\);/);
   assert.match(launchPadSource, /setRoomBrowserFilter\(targetBucketId\);/);
-  assert.match(browserSource, /Event Focus/);
-  assert.match(browserSource, /Keep AAHF one click away while you prep the festival night, jump into the show plan, and clear test data before doors\./);
-  assert.match(browserSource, />\s*Open Host Panel\s*</);
-  assert.match(browserSource, />\s*Show Plan\s*</);
+  assert.doesNotMatch(browserSource, /Event Focus/);
+  assert.match(browserSource, /Selected Room Details/);
   assert.match(browserSource, />\s*Room Settings\s*</);
   assert.match(browserSource, />\s*Reset Room\s*</);
-  assert.match(browserSource, /\{eventFocusPinned \? 'Pinned' : 'Pin Room'\}/);
 });
 
 test('room setup rail keeps one workspace open at a time so the browser stays primary', () => {
   const browserSource = readFileSync(launchPadBrowserPath, 'utf8');
 
   assert.match(browserSource, /const \[roomSetupMode, setRoomSetupMode\] = useState\('manage'\);/);
-  assert.match(browserSource, /Manage Selected Room/);
+  assert.match(browserSource, /Existing Rooms/);
   assert.match(browserSource, /Create Room/);
   assert.match(browserSource, /createModeActive = roomSetupMode === 'create'/);
   assert.match(browserSource, /manageModeActive = roomSetupMode === 'manage'/);
+  assert.match(browserSource, /existingRoomCount = roomBrowserBuckets\.find\(\(bucket\) => bucket\.id === 'all'\)\?\.rooms\.length \|\| 0/);
+  assert.match(browserSource, /\{manageModeActive \? \(/);
   assert.match(browserSource, /xl:sticky xl:top-4/);
-  assert.match(browserSource, /Keep one workspace open at a time so the browser stays visible/);
+  assert.match(browserSource, /Choose one lane/);
   assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('create'\)\}/);
-  assert.match(browserSource, /onClick=\{\(\) => setRoomSetupMode\('manage'\)\}/);
+  assert.match(browserSource, /ROOM_SETUP_TABS = Object\.freeze\(\[/);
+  assert.match(browserSource, /id: 'manage'/);
 });

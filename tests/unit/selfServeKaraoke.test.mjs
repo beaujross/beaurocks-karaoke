@@ -25,16 +25,17 @@ describe('selfServeKaraoke', () => {
         expect(normalizeSelfServeFormat('not-real')).toBe(SELF_SERVE_FORMATS.openStage);
     });
 
-    test('normalizes friendly spotlight auction labels', () => {
+    test('normalizes legacy spotlight auction labels and new support surge aliases', () => {
         expect(normalizeSelfServeFormat('spotlight-auction')).toBe(SELF_SERVE_FORMATS.spotlightAuction);
         expect(normalizeSelfServeFormat('spotlight auction')).toBe(SELF_SERVE_FORMATS.spotlightAuction);
+        expect(normalizeSelfServeFormat('support surge')).toBe(SELF_SERVE_FORMATS.spotlightAuction);
     });
 
     test('returns launch options in the expected host-facing order', () => {
         expect(getSelfServeLaunchOptions().map((entry) => entry.id)).toEqual(SELF_SERVE_V1_FORMAT_ORDER);
         expect(getSelfServeLaunchOptions().map((entry) => entry.launchLabel)).toEqual([
             'BeauRocks Open Stage',
-            'BeauRocks Spotlight Auction',
+            'BeauRocks Support Surge',
         ]);
         expect(getSelfServeLaunchOptions({ includeAdvanced: true }).map((entry) => entry.id)).toEqual(SELF_SERVE_PRIMARY_FORMAT_ORDER);
     });
@@ -61,7 +62,7 @@ describe('selfServeKaraoke', () => {
         });
     });
 
-    test('spotlight auction exposes paid-priority and dispute-relevant controls', () => {
+    test('support surge exposes paid-priority and dispute-relevant controls', () => {
         const definition = getSelfServeFormatDefinition(SELF_SERVE_FORMATS.spotlightAuction);
         const card = buildSelfServeRulesCard(SELF_SERVE_FORMATS.spotlightAuction);
 
@@ -81,8 +82,8 @@ describe('selfServeKaraoke', () => {
             enabled: true,
             format: SELF_SERVE_FORMATS.spotlightAuction,
             internalPreset: 'fundraiser_auction',
-            launchLabel: 'BeauRocks Spotlight Auction',
-            shortLabel: 'Spotlight Auction',
+            launchLabel: 'BeauRocks Support Surge',
+            shortLabel: 'Support Surge',
             phase: 'live',
             preview: false,
             canReturnToNormal: true,
@@ -103,7 +104,7 @@ describe('selfServeKaraoke', () => {
         });
     });
 
-    test('builds concise room-state presentation copy for open stage and spotlight auction', () => {
+    test('builds concise room-state presentation copy for open stage and support surge', () => {
         expect(buildSelfServeModePresentation(buildSelfServeModeState(SELF_SERVE_FORMATS.openStage))).toMatchObject({
             stateKey: 'stage_open',
             badgeLabel: 'Stage Open',
@@ -118,10 +119,10 @@ describe('selfServeKaraoke', () => {
             },
         }))).toMatchObject({
             stateKey: 'auction_live',
-            badgeLabel: 'Auction Live',
+            badgeLabel: 'Surge Live',
             heroLabel: 'Bid, Join, Sing.',
             helper: '4 of 10 priority slots still available.',
-            supportCtaLabel: 'Bid For The Next Spotlight',
+            supportCtaLabel: 'Bid For The Next Showcase Slot',
         });
     });
 
@@ -211,7 +212,7 @@ describe('selfServeKaraoke', () => {
         expect(auctionMoment).toMatchObject({
             badgeLabel: 'Showcase Locked',
             title: 'Next showcase locked',
-            detail: 'Toxic just won the next spotlight.',
+            detail: 'Toxic just won the next showcase slot.',
             songTitle: 'Toxic',
         });
     });
@@ -234,7 +235,7 @@ describe('selfServeKaraoke', () => {
             timeLeftSec: 8,
             totalVotes: 4,
         })).toMatchObject({
-            eyebrow: 'BeauRocks Spotlight Auction',
+            eyebrow: 'BeauRocks Support Surge',
             badgeLabel: 'Showcase Vote',
             decisionLabel: 'Pick the next showcase',
         });

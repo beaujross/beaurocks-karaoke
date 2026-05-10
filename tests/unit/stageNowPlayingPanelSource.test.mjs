@@ -13,18 +13,18 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
 
   assert.match(
     source,
-    /Now Performing[\s\S]*Track note[\s\S]*Playback Track/,
-    "Backing-track note actions should live with the now-performing song, above playback controls",
+    /Current Performance[\s\S]*Now Performing[\s\S]*Track note[\s\S]*Backing Playback/,
+    "Backing-track note actions should live inside the current-performance grouping, above playback controls",
   );
   assert.match(
     source,
-    /Last Track Check[\s\S]*Use Again[\s\S]*Bad Track[\s\S]*Inbox[\s\S]*Skip/s,
+    /(Last )?Track Check[\s\S]*Use Again[\s\S]*Bad Track[\s\S]*Inbox[\s\S]*Skip/s,
     "The last-track review card should allow deferring into inbox or skipping entirely",
   );
   assert.match(
     source,
-    /Track note[\s\S]*Performance Flow[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue[\s\S]*Playback Track[\s\S]*Pop Out/,
-    "Performance actions should stay tied to the now-performing card, while playback transport remains a distinct control group below",
+    /const stageActionHeading = 'Stage Actions';[\s\S]*Track note[\s\S]*Backing Playback[\s\S]*Pop Out[\s\S]*\{stageActionHeading\}[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
+    "Backing playback controls should now live inside the Now Performing block before the stage-action transport row",
   );
   assert.match(
     source,
@@ -45,6 +45,11 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     source,
     /showStageDetails|Audience sync|TV Display Mode|Lyrics View|Auto Lyrics|setCustomBonus|addBonusToCurrent/,
     "The left stage rail should not unfurl a secondary More drawer with duplicate room and TV controls",
+  );
+  assert.doesNotMatch(
+    source,
+    /Last Applause/,
+    "The left stage rail should not spend space on historical applause telemetry",
   );
   assert.doesNotMatch(
     source,

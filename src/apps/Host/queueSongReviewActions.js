@@ -37,6 +37,8 @@ const getHostLibraryRef = (roomCode = '') => doc(
     String(roomCode || '').trim()
 );
 const nowMs = () => Date.now();
+const HOST_REVIEW_RETURN_LABEL = 'Needs your update';
+const HOST_REVIEW_RETURN_DETAIL = 'The host sent this back so you can swap the backing track or ask for help.';
 
 const buildQueueSongYouTubePlaybackPatch = (candidate = null) => {
     const candidateSource = String(candidate?.source || '').trim().toLowerCase();
@@ -432,7 +434,11 @@ export const returnAudienceSelectedBackingToReview = async ({ songId = '' } = {}
     updateDoc(getQueueSongRef(songId), {
         resolutionStatus: RESOLUTION_STATUSES.reviewRequired,
         resolutionLayer: 'manual_review',
-        reviewRequestedAt: serverTimestamp()
+        reviewRequestedAt: serverTimestamp(),
+        audienceStatusTag: HOST_REVIEW_RETURN_LABEL,
+        audienceStatusDetail: HOST_REVIEW_RETURN_DETAIL,
+        audienceStatusTone: 'attention',
+        audienceStatusUpdatedAt: serverTimestamp(),
     })
 );
 
@@ -447,6 +453,10 @@ export const resolveAudienceSelectedBackingChoice = async ({ songLike = null } =
             saveFavorite: true
         }),
         reviewResolvedAt: serverTimestamp(),
+        audienceStatusTag: '',
+        audienceStatusDetail: '',
+        audienceStatusTone: '',
+        audienceStatusUpdatedAt: serverTimestamp(),
     });
 };
 

@@ -509,9 +509,25 @@ test('HostQueueTab protects the live lineup and exposes quick between-song inser
 
   assert.match(markup, /Locked Next Performers/);
   assert.match(markup, /Build The Bench/);
-  assert.match(markup, /Lock the lineup|Lineup protected/);
+  assert.doesNotMatch(markup, /Lock the lineup|Lineup protected|Queue needs attention/);
   assert.doesNotMatch(markup, /Trivia Next/);
   assert.doesNotMatch(markup, /Winner Next/);
   assert.doesNotMatch(markup, /Vote Next/);
   assert.match(markup, /fa-lock/);
+});
+
+test('HostQueueTab keeps the stage rail ahead of the queue workspace in compact layouts', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    compactViewport: true,
+    layoutMode: 'mobile',
+  });
+
+  const stageIndex = markup.indexOf('data-feature-id="panel-now-playing"');
+  const queueIndex = markup.indexOf('data-feature-id="queue-surface-tab-queue"');
+
+  assert.notStrictEqual(stageIndex, -1, 'Stage panel should still render in compact layouts');
+  assert.notStrictEqual(queueIndex, -1, 'Queue workspace tabs should still render in compact layouts');
+  assert.ok(stageIndex < queueIndex, 'Compact layouts should keep the stage rail ahead of the queue workspace');
 });

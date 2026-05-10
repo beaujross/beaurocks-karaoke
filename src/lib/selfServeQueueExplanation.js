@@ -60,24 +60,24 @@ export const buildSelfServeQueueExplanation = ({
         if (selfServeMode?.paidPriorityEnabled === false && auctionWindow.closed) {
             return {
                 shortLabel: 'Auction complete',
-                detail: 'The Spotlight Auction opening block is finished, so the room has returned to fair rotation.',
+                detail: 'The Support Surge opening block is finished, so the room has returned to fair rotation.',
             };
         }
         if (selfServeMode?.paidPriorityEnabled === false) {
             return {
                 shortLabel: 'Paid priority off',
-                detail: 'Spotlight Auction is live with paid priority disabled, so fair rotation is keeping the room moving.',
+                detail: 'Support Surge is live with paid priority disabled, so fair rotation is keeping the room moving.',
             };
         }
         if (isSelfServeAuctionWindowLive(selfServeMode)) {
             return {
                 shortLabel: 'Auction live',
-                detail: `Spotlight Auction is running for the opening ${auctionWindow.slotCount} slots, and any unmatched moments fall back to fair rotation.`,
+                detail: `Support Surge is running for the opening ${auctionWindow.slotCount} slots, and any unmatched moments fall back to fair rotation.`,
             };
         }
         return {
             shortLabel: 'Fallback rotation',
-            detail: 'No verified priority block is active yet, so Spotlight Auction is using fair rotation to keep the room moving.',
+            detail: 'No verified priority block is active yet, so Support Surge is using fair rotation to keep the room moving.',
         };
     }
 

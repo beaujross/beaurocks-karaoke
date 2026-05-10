@@ -5,6 +5,7 @@ import { test } from 'vitest';
 const primaryPicksPath = 'src/apps/Host/components/setup/MissionSetupPrimaryPicks.jsx';
 const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx';
 const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
+const selfServeLauncherPath = 'src/apps/Host/components/SelfServeModeLauncher.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
@@ -192,6 +193,36 @@ test('host panel presents readiness and one launch action before deeper setup', 
     hostAppSource,
     /openAdminWorkspace\('ops\.room_setup'\)/,
     'Night setup should route full-admin handoff through the workspace navigation helper',
+  );
+});
+
+test('room formats live in Night Setup instead of the Games tab', () => {
+  const selfServeLauncherSource = readFileSync(selfServeLauncherPath, 'utf8');
+
+  assert.match(
+    hostAppSource,
+    /const roomFormatLauncher = roomCode \? \(/,
+    'Night setup should build a reusable room-format launcher surface',
+  );
+  assert.match(
+    hostAppSource,
+    /<SelfServeModeLauncher[\s\S]*context="setup"/,
+    'Night setup should mount the room-format launcher in setup context',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /{tab === 'games' && \([\s\S]*<SelfServeModeLauncher/s,
+    'Games tab should stop rendering the room-format launcher',
+  );
+  assert.match(
+    hostAppSource,
+    /Optional Format Layer/,
+    'Classic night setup should expose room formats as an optional layer instead of a required step',
+  );
+  assert.match(
+    selfServeLauncherSource,
+    /Room Formats/,
+    'The launcher should frame these as room formats when opened from setup',
   );
 });
 

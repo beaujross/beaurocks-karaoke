@@ -246,6 +246,43 @@ async function run() {
       assert.equal(snap.get("unknownBackingPolicy"), "auto_queue_unverified");
     }],
 
+    ["self-serve mode updates are accepted for room-format launches", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        selfServeMode: {
+          enabled: true,
+          format: "spotlight_auction",
+          shortLabel: "Support Surge",
+          paidPriorityEnabled: true,
+          auctionWindow: {
+            slotCount: 6,
+            remainingSlots: 6,
+          },
+          restoreState: {
+            requestMode: "canonical_open",
+            allowSingerTrackSelect: false,
+            audienceBackingMode: "canonical_only",
+            unknownBackingPolicy: "require_review",
+            bouncerMode: false,
+            queueSettings: {
+              limitMode: "none",
+              limitCount: 0,
+              rotation: "round_robin",
+              firstTimeBoost: true,
+            },
+          },
+        },
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(new Set(result.updatedKeys), new Set(["selfServeMode"]));
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("selfServeMode.enabled"), true);
+      assert.equal(snap.get("selfServeMode.format"), "spotlight_auction");
+      assert.equal(snap.get("selfServeMode.shortLabel"), "Support Surge");
+      assert.equal(snap.get("selfServeMode.auctionWindow.slotCount"), 6);
+    }],
+
     ["request mode save overrides stale audience backing mode", async () => {
       await roomRef.set({
         requestMode: "playable_only",

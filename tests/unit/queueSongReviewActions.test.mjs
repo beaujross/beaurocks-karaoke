@@ -318,6 +318,9 @@ describe('queueSongReviewActions', () => {
         resolutionStatus: 'resolved',
         resolutionLayer: 'host_favorite',
         status: 'requested',
+        audienceStatusTag: '',
+        audienceStatusDetail: '',
+        audienceStatusTone: '',
       })
     );
   });
@@ -346,6 +349,9 @@ describe('queueSongReviewActions', () => {
         resolutionStatus: 'review_required',
         resolutionLayer: 'manual_review',
         reviewRequestedAt: 'SERVER_TIMESTAMP',
+        audienceStatusTag: 'Needs your update',
+        audienceStatusDetail: 'The host sent this back so you can swap the backing track or ask for help.',
+        audienceStatusTone: 'attention',
       })
     );
   });

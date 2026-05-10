@@ -4,7 +4,7 @@ import SoundboardControls from './SoundboardControls';
 import HostInboxPanel from './HostInboxPanel';
 import HostNightPilotPrototype from './HostNightPilotPrototype';
 import HostStageConsoleExperimental from './HostStageConsoleExperimental';
-import QueueListPanel, { QueueSummaryBar } from './QueueListPanel';
+import QueueListPanel from './QueueListPanel';
 import HostLiveOpsPanel from './HostLiveOpsPanel';
 import StageNowPlayingPanel from './StageNowPlayingPanel';
 import RunOfShowQueueHud from './RunOfShowQueueHud';
@@ -2685,7 +2685,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             await syncSelfServeAuctionState({ roomCode });
         };
         void syncAuctionState().catch((error) => {
-            hostLogger.warn('Spotlight Auction sync failed', error);
+            hostLogger.warn('Support Surge sync failed', error);
             if (!cancelled) spotlightAuctionSyncSignatureRef.current = '';
         });
         return () => {
@@ -2749,7 +2749,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 await openQueueFaceOffVote('crowd_vote', {
                     origin: 'self_serve_spotlight_auction_auto',
                     selfServeFormat: SELF_SERVE_FORMATS.spotlightAuction,
-                    itemTitle: 'BeauRocks Spotlight Auction',
+                    itemTitle: 'BeauRocks Support Surge',
                     prompt: 'Top verified supporters choose the next showcase face-off.',
                     promptDetail: 'Phones vote between the top backed singers.',
                     durationSec: 18,
@@ -2765,7 +2765,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 });
             };
             void launchAuctionFaceOff().catch((error) => {
-                hostLogger.warn('Spotlight Auction face-off failed to launch', error);
+                hostLogger.warn('Support Surge face-off failed to launch', error);
             });
             return () => {
                 cancelled = true;
@@ -2794,7 +2794,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 });
             };
             void autoLockPriorityWinner().catch((error) => {
-                hostLogger.warn('Spotlight Auction priority lock failed', error);
+                hostLogger.warn('Support Surge priority lock failed', error);
             });
             return () => {
                 cancelled = true;
@@ -3343,7 +3343,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             if (auctionLeader) {
                 return {
                     shortLabel: 'Verified support lead',
-                    detail: spotlightAuctionState.summary || `${auctionLeader.singerName} is holding a verified $${(auctionLeader.amountCents / 100).toFixed(2)} priority bid inside Spotlight Auction.`,
+                    detail: spotlightAuctionState.summary || `${auctionLeader.singerName} is holding a verified $${(auctionLeader.amountCents / 100).toFixed(2)} priority bid inside Support Surge.`,
                 };
             }
         }
@@ -3605,7 +3605,17 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             onDismiss: () => void handlePostPerformanceBackingPromptAction(trackCheck, 'skip'),
         }))
     ), [deferredTrackChecks, handlePostPerformanceBackingPromptAction, postPerformanceBackingPromptBusy]);
-    const visibleLastTrackCheck = null;
+    const visibleLastTrackCheck = useMemo(() => {
+        if (postPerformanceBackingPrompt) {
+            return {
+                ...postPerformanceBackingPrompt,
+                pendingNow: true,
+            };
+        }
+        return Array.isArray(deferredTrackChecks) && deferredTrackChecks.length > 0
+            ? deferredTrackChecks[0]
+            : null;
+    }, [deferredTrackChecks, postPerformanceBackingPrompt]);
     const queueWorkspaceToneMap = {
         queue: {
             activeToneClass: 'border-cyan-300/30 bg-[linear-gradient(180deg,rgba(13,35,46,0.98),rgba(8,18,28,0.98))] text-cyan-100 shadow-[0_-10px_30px_rgba(6,182,212,0.14)]',
@@ -4833,7 +4843,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="text-[10px] uppercase tracking-[0.24em] text-fuchsia-200">
-                                    {selfServeAuctionPriorityLive ? 'Spotlight Auction' : (selfServePresentation?.badgeLabel || 'Co-Host Moment')}
+                                    {selfServeAuctionPriorityLive ? 'Support Surge' : (selfServePresentation?.badgeLabel || 'Co-Host Moment')}
                                 </div>
                                 <div className="mt-1 text-sm font-semibold text-white">
                                     {selfServeAuctionPriorityLive
@@ -5127,53 +5137,28 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         : desktopQueueSurfaceTab === 'queue';
     const queueWorkspaceHeader = showQueueWorkspaceHeader ? (
         <div data-feature-id="queue-workspace-top-chrome" className={`border-b border-white/10 px-3 py-3 ${activeQueueWorkspaceTone.headerClass}`}>
-            <div className="flex flex-wrap items-start gap-2.5">
-                <div className="min-w-[16rem] flex-[1_1_18rem]">
-                    <QueueSummaryBar
-                        showQueueSummaryBar={showQueueSummaryBar}
-                        onToggleQueueSummaryBar={() => setShowQueueSummaryBar((value) => !value)}
-                        reviewRequiredCount={reviewQueueItems.length}
-                        pending={pending}
-                        queue={queue}
-                        assigned={assigned}
-                        held={held}
-                        queueSurfaceCounts={queueSurface.counts}
-                        runOfShowOpenSlots={runOfShowOpenSlots}
-                        onFillRunOfShowOpenSlotsFromQueue={onFillRunOfShowOpenSlotsFromQueue}
-                        onAddQuickRunOfShowMoment={onAddQuickRunOfShowMoment}
-                        protectedReadyQueueCount={Math.max(0, Math.min(queue.length, current?.id ? 2 : 3))}
-                        protectedReadyQueueTarget={current?.id ? 2 : 3}
-                        lineupHasCurrentPerformer={!!current?.id}
-                        styles={STYLES}
-                        compactViewport={compactViewport || queueSurface.isCompactQueueSurface}
-                        embedded
-                    />
-                </div>
-                <div className="min-w-[20rem] flex-[2_1_34rem]">
-                    <HostLiveOpsPanel
-                        current={current}
-                        nextQueueSong={nextQueueSong}
-                        nextQueueText={queueSurface.stageSummary.nextQueueText}
-                        nextQueueReasonLabel={nextQueueReason.shortLabel}
-                        nextQueueReasonDetail={nextQueueReason.detail}
-                        selfServeMode={selfServeMode}
-                        queueCount={queueSurface.stageSummary.queueCount}
-                        readyQueueCount={queueSurface.counts.ready}
-                        assignedQueueCount={queueSurface.counts.assigned}
-                        needsAttentionCount={queueSurface.counts.needsAttention}
-                        currentSourcePlaying={currentSourcePlaying}
-                        runOfShowEnabled={runOfShowEnabled}
-                        runOfShowLiveItem={runOfShowLiveItem}
-                        runOfShowFlightedItem={runOfShowStagedItem}
-                        runOfShowOnDeckItem={runOfShowNextItem}
-                        onOpenRunOfShow={onOpenRunOfShow}
-                        styles={STYLES}
-                        showTitle={false}
-                        compact
-                        inline
-                    />
-                </div>
-            </div>
+            <HostLiveOpsPanel
+                current={current}
+                nextQueueSong={nextQueueSong}
+                nextQueueText={queueSurface.stageSummary.nextQueueText}
+                nextQueueReasonLabel={nextQueueReason.shortLabel}
+                nextQueueReasonDetail={nextQueueReason.detail}
+                selfServeMode={selfServeMode}
+                queueCount={queueSurface.stageSummary.queueCount}
+                readyQueueCount={queueSurface.counts.ready}
+                assignedQueueCount={queueSurface.counts.assigned}
+                needsAttentionCount={queueSurface.counts.needsAttention}
+                currentSourcePlaying={currentSourcePlaying}
+                runOfShowEnabled={runOfShowEnabled}
+                runOfShowLiveItem={runOfShowLiveItem}
+                runOfShowFlightedItem={runOfShowStagedItem}
+                runOfShowOnDeckItem={runOfShowNextItem}
+                onOpenRunOfShow={onOpenRunOfShow}
+                styles={STYLES}
+                showTitle={false}
+                compact
+                inline
+            />
         </div>
     ) : null;
     const desktopQueueSurfacePanel = !queueSurface.isCompactQueueSurface ? (
@@ -5288,7 +5273,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         </div>
     ) : null;
     const compactQueueSurfacePanel = queueSurface.isCompactQueueSurface ? (
-        <div className={`flex-1 ${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} flex flex-col overflow-hidden min-w-0 order-1 min-h-0`}>
+        <div className={`flex-1 ${STYLES.panel} ${activeQueueWorkspaceTone.shellClass} flex flex-col overflow-hidden min-w-0 min-h-0`}>
             {compactQueueSurfaceControls}
             {queueWorkspaceHeader}
             {queueSurface.activeCompactTab === 'inbox' ? (
@@ -5482,7 +5467,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 </div>
             )}
             {pendingEarlyEndDecision && (
-                <div className="fixed bottom-4 right-4 z-[195] w-[min(92vw,24rem)]">
+                <div className="fixed right-4 top-24 z-[195] w-[min(92vw,24rem)]">
                     <div className="rounded-2xl border border-amber-300/30 bg-gradient-to-br from-[#1a1621]/95 via-[#171420]/95 to-[#141827]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
                         <div className="text-[10px] uppercase tracking-[0.28em] text-amber-300">Quick check</div>
                         <div className="mt-1 text-base font-semibold text-white">Was that a backing issue?</div>
@@ -5506,69 +5491,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-amber-300/40 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-100 hover:border-amber-200/60 ${pendingEarlyEndDecisionBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                             >
                                 Change Backing
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {postPerformanceBackingPrompt && !pendingEarlyEndDecision && (
-                <div className="fixed bottom-4 right-4 z-[190] w-[min(92vw,24rem)]">
-                    <div className="rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-[#12182a]/95 via-[#111827]/95 to-[#1a1025]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
-                        <div className="flex items-start gap-2.5">
-                            {postPerformanceBackingPrompt.albumArtUrl ? (
-                                <img
-                                    src={postPerformanceBackingPrompt.albumArtUrl}
-                                    alt="Backing art"
-                                    className="h-11 w-11 rounded-xl border border-white/10 object-cover"
-                                />
-                            ) : (
-                                <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-lg text-cyan-200">
-                                    <i className="fa-brands fa-youtube"></i>
-                                </div>
-                            )}
-                            <div className="min-w-0 flex-1">
-                                <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Backing check</div>
-                                <div className="mt-0.5 text-base font-semibold text-white truncate">{postPerformanceBackingPrompt.songTitle || 'Recent performance'}</div>
-                                <div className="text-[13px] text-zinc-300 truncate">{postPerformanceBackingPrompt.artist || 'YouTube track'}</div>
-                                <div className="mt-1.5 text-[13px] text-zinc-400">How was that backing?</div>
-                                <div className="mt-0.5 text-[10px] text-zinc-500">If you do nothing, we will save it to Inbox for later.</div>
-                            </div>
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'prefer')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                <i className="fa-solid fa-thumbs-up"></i>
-                                Good
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'avoid')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                <i className="fa-solid fa-thumbs-down"></i>
-                                Bad
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'later')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                <i className="fa-solid fa-inbox"></i>
-                                Later
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'dismiss')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} ml-auto px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                Dismiss
                             </button>
                         </div>
                     </div>
@@ -5661,15 +5583,15 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     isMobileLayout
                         ? 'flex flex-col gap-3'
                         : isTightLayout
-                            ? 'grid grid-cols-[minmax(228px,0.82fr)_minmax(0,1.2fr)] gap-3.5'
+                            ? 'grid grid-cols-[minmax(280px,0.72fr)_minmax(0,1.42fr)] gap-4'
                             : 'grid grid-cols-[minmax(260px,0.82fr)_minmax(780px,1.9fr)] gap-5'
                 } ${allowHostPanelPageScroll ? 'overflow-visible' : 'overflow-hidden'}`}>
                 {/* LEFT CONTROLS */}
                 <div className={`w-full flex flex-col ${
                     isMobileLayout
-                        ? (allowHostPanelPageScroll ? 'order-2 min-h-0' : 'order-2 min-h-0 max-h-[38vh] pr-1.5')
+                        ? (allowHostPanelPageScroll ? 'min-h-0' : 'min-h-0 max-h-[38vh] pr-1.5')
                         : isTightLayout
-                            ? 'order-2 min-h-0 pr-1'
+                            ? 'min-h-0 pr-1'
                             : 'min-h-0 pr-1'
                 }`}>
                     <div className={`${STYLES.panel} ${allowHostPanelPageScroll ? 'min-h-0 overflow-visible' : 'h-full min-h-0 overflow-hidden'} flex flex-col`}>

@@ -112,7 +112,7 @@ test('HostRoomLaunchPad prioritizes pinned ready rooms in the browser and select
   );
 });
 
-test('HostRoomLaunchPad gives AAHF a dedicated event-focus strip with live and reset actions', () => {
+test('HostRoomLaunchPad keeps AAHF in the existing-rooms workspace without a separate spotlight strip', () => {
   const markup = renderLaunchPad({
     recentHostRooms: [
       {
@@ -137,13 +137,13 @@ test('HostRoomLaunchPad gives AAHF a dedicated event-focus strip with live and r
     ],
   });
 
-  assert.match(markup, /Event Focus/);
   assert.match(markup, /AAHF Kick-Off/);
-  assert.match(markup, /Keep AAHF one click away while you prep the festival night/);
-  assert.match(markup, />Open Host Panel</);
-  assert.match(markup, />Show Plan</);
+  assert.match(markup, /Existing Rooms/);
+  assert.match(markup, /Selected Room Details/);
+  assert.match(markup, />Host Panel</);
   assert.match(markup, />Room Settings</);
-  assert.match(markup, />Reset Room</);
+  assert.match(markup, />Open</);
+  assert.doesNotMatch(markup, /Event Focus/);
 });
 
 test('HostRoomLaunchPad lands on AAHF even when another room is pinned locally', () => {
@@ -183,7 +183,7 @@ test('HostRoomLaunchPad lands on AAHF even when another room is pinned locally',
   assert.doesNotMatch(markup, /Pinned Priority Room/);
 });
 
-test('HostRoomLaunchPad keeps create flow collapsed while manage workspace is active by default', () => {
+test('HostRoomLaunchPad keeps create flow collapsed while existing rooms is active by default', () => {
   const markup = renderLaunchPad({
     recentHostRooms: [
       {
@@ -198,9 +198,10 @@ test('HostRoomLaunchPad keeps create flow collapsed while manage workspace is ac
     ],
   });
 
-  assert.match(markup, /Manage Selected Room/);
+  assert.match(markup, /Existing Rooms/);
   assert.match(markup, /Create Room/);
-  assert.match(markup, /Keep one workspace open at a time so the browser stays visible/);
+  assert.match(markup, /Choose one lane/);
+  assert.match(markup, /Existing Room Controls/);
   assert.match(markup, /Open Host Panel/);
   assert.match(markup, /Friday Main Room/);
   assert.match(markup, /Friday Karaoke/);

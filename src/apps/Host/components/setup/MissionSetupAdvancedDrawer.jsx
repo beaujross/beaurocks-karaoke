@@ -68,7 +68,7 @@ const MissionSetupAdvancedDrawer = ({
 
                 <div className="rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-sm font-bold text-white">Main room mode</div>
+                        <div className="text-sm font-bold text-white">Night format</div>
                         {canToggleSpotlightList && (
                             <button onClick={onToggleShowAllSpotlightModes} className={`${styles.btnStd} ${styles.btnNeutral} text-[10px]`}>
                                 {showAllSpotlightModes ? 'Show Short List' : 'Show All Modes'}

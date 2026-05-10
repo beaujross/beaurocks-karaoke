@@ -31,7 +31,7 @@ describe('selfServeQueueExplanation', () => {
         expect(explanation.detail).toContain('has not performed yet tonight');
     });
 
-    test('explains the live Spotlight Auction opening block before a verified leader is locked', () => {
+    test('explains the live Support Surge opening block before a verified leader is locked', () => {
         const explanation = buildSelfServeQueueExplanation({
             room: {
                 queueSettings: {
@@ -58,11 +58,11 @@ describe('selfServeQueueExplanation', () => {
 
         expect(explanation).toEqual({
             shortLabel: 'Auction live',
-            detail: 'Spotlight Auction is running for the opening 10 slots, and any unmatched moments fall back to fair rotation.',
+            detail: 'Support Surge is running for the opening 10 slots, and any unmatched moments fall back to fair rotation.',
         });
     });
 
-    test('explains when the Spotlight Auction opening block is complete', () => {
+    test('explains when the Support Surge opening block is complete', () => {
         const explanation = buildSelfServeQueueExplanation({
             room: {
                 selfServeMode: {
@@ -86,7 +86,7 @@ describe('selfServeQueueExplanation', () => {
 
         expect(explanation).toEqual({
             shortLabel: 'Auction complete',
-            detail: 'The Spotlight Auction opening block is finished, so the room has returned to fair rotation.',
+            detail: 'The Support Surge opening block is finished, so the room has returned to fair rotation.',
         });
     });
 

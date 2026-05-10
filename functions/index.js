@@ -2400,6 +2400,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "runOfShowRoles",
   "runOfShowTemplateMeta",
   "roundWinnersMoment",
+  "selfServeMode",
   "programMode",
   "tvPreviewOverlay",
   "selfieChallenge",
@@ -2619,6 +2620,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "runOfShowRoles",
   "runOfShowTemplateMeta",
   "roundWinnersMoment",
+  "selfServeMode",
   "tvPreviewOverlay",
   "selfieChallenge",
   "selfieMoment",
@@ -19058,7 +19060,7 @@ exports.syncSelfServeAuctionState = onCall({ cors: true }, async (request) => {
     rootRef,
     roomCode,
     callerUid,
-    deniedMessage: "Only room hosts can sync Spotlight Auction state.",
+    deniedMessage: "Only room hosts can sync Support Surge state.",
   });
   const auctionState = await syncSelfServeAuctionStateServer({
     rootRef,

@@ -26,6 +26,7 @@ const SelfServeModeLauncher = ({
     roomCode = '',
     updateRoom,
     toast,
+    context = 'default',
 }) => {
     const activeFormat = normalizeSelfServeFormat(room?.selfServeMode?.format || '');
     const [selectedFormat, setSelectedFormat] = useState(activeFormat || SELF_SERVE_FORMATS.openStage);
@@ -93,7 +94,7 @@ const SelfServeModeLauncher = ({
         if (!room?.selfServeMode?.enabled) return;
         if (room?.selfServeMode?.paidPriorityEnabled === false && activeAuctionWindow.closed) {
             if (typeof toast === 'function') {
-                toast('This Spotlight Auction block is already closed. Launch a new block to reopen paid priority.');
+                toast('This Support Surge block is already closed. Launch a new block to reopen paid priority.');
             }
             return;
         }
@@ -125,15 +126,18 @@ const SelfServeModeLauncher = ({
         () => (room?.selfServeMode?.enabled ? buildSelfServeModePresentation(room.selfServeMode) : null),
         [room?.selfServeMode]
     );
+    const setupContext = context === 'setup';
 
     return (
         <section className="rounded-[1.7rem] border border-cyan-300/18 bg-[linear-gradient(135deg,rgba(8,17,30,0.94),rgba(23,10,31,0.88))] p-5 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
             <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-100/68">Self-Serve Formats</div>
-                    <div className="mt-2 text-3xl font-black text-white">Launch a hostless BeauRocks night</div>
+                    <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-100/68">{setupContext ? 'Room Formats' : 'Self-Serve Formats'}</div>
+                    <div className="mt-2 text-3xl font-black text-white">{setupContext ? 'Optional room format' : 'Launch a hostless BeauRocks night'}</div>
                     <div className="mt-2 max-w-3xl text-sm text-cyan-100/72">
-                        Pick a branded format, preview the rules on TV, then activate it without turning the room into a second host console.
+                        {setupContext
+                            ? 'Use this only when the room should switch into Open Stage or a fundraiser-led showcase block. It stays outside the core room-creation choices.'
+                            : 'Pick a branded format, preview the rules on TV, then activate it without turning the room into a second host console.'}
                     </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -239,7 +243,7 @@ const SelfServeModeLauncher = ({
                                 </div>
                                 {activeCard?.supportsAuction ? (
                                     <div className="mt-2 text-xs uppercase tracking-[0.16em] text-amber-100/82">
-                                        {activePresentation?.badgeLabel || 'Spotlight Auction'}
+                                        {activePresentation?.badgeLabel || 'Support Surge'}
                                         {activeAuctionLive
                                             ? ` | ${activeAuctionWindow.remainingSlots} of ${activeAuctionWindow.slotCount} priority slots remaining`
                                             : activeAuctionWindow.closed

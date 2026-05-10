@@ -10,6 +10,12 @@ export const SELF_SERVE_FORMATS = Object.freeze({
     showcase: 'showcase',
 });
 
+const SELF_SERVE_FORMAT_ALIASES = Object.freeze({
+    support_surge: SELF_SERVE_FORMATS.spotlightAuction,
+    fundraiser_surge: SELF_SERVE_FORMATS.spotlightAuction,
+    donor_surge: SELF_SERVE_FORMATS.spotlightAuction,
+});
+
 const SELF_SERVE_FORMAT_VALUES = new Set(Object.values(SELF_SERVE_FORMATS));
 const DEFAULT_QUEUE_SETTINGS = Object.freeze({
     limitMode: 'none',
@@ -184,8 +190,8 @@ const FORMAT_DEFINITIONS = Object.freeze({
     [SELF_SERVE_FORMATS.spotlightAuction]: Object.freeze({
         id: SELF_SERVE_FORMATS.spotlightAuction,
         internalPreset: 'fundraiser_auction',
-        launchLabel: 'BeauRocks Spotlight Auction',
-        shortLabel: 'Spotlight Auction',
+        launchLabel: 'BeauRocks Support Surge',
+        shortLabel: 'Support Surge',
         tagline: 'Verified donations unlock a premium opening showcase block.',
         supportsPaidPriority: true,
         supportsAuction: true,
@@ -238,6 +244,7 @@ export const SELF_SERVE_V1_FORMAT_ORDER = Object.freeze([
 
 export const normalizeSelfServeFormat = (value = '') => {
     const token = String(value || '').trim().toLowerCase().replace(/[^a-z0-9_ -]/g, '').replace(/[\s-]+/g, '_');
+    if (SELF_SERVE_FORMAT_ALIASES[token]) return SELF_SERVE_FORMAT_ALIASES[token];
     return SELF_SERVE_FORMAT_VALUES.has(token) ? token : SELF_SERVE_FORMATS.openStage;
 };
 
@@ -295,14 +302,14 @@ export const buildSelfServeModePresentation = (selfServeMode = null, {
         return {
             ...baseState,
             stateKey: 'auction_live',
-            badgeLabel: 'Auction Live',
+            badgeLabel: 'Surge Live',
             heroLabel: 'Bid, Join, Sing.',
             detail: 'Verified supporters are steering the opening showcase block.',
             helper: `${remainingSlots} of ${slotCount} priority slots still available.`,
             joinPrompt: 'Scan to join, bid, and vote',
             roomFlowLabel: 'Opening showcase block',
             hostSummary: 'Verified bids are live for the opening showcase block.',
-            supportCtaLabel: 'Bid For The Next Spotlight',
+            supportCtaLabel: 'Bid For The Next Showcase Slot',
         };
     }
 
@@ -315,7 +322,7 @@ export const buildSelfServeModePresentation = (selfServeMode = null, {
             detail: entriesPaused
                 ? 'The sponsored block is complete and new singers are paused for the moment.'
                 : 'The sponsored block is complete. New singers now join the fair queue.',
-            helper: 'Spotlight bidding is finished for this block.',
+            helper: 'Support bidding is finished for this block.',
             joinPrompt: entriesPaused ? 'Scan to watch and vote' : 'Scan to join, sing, and vote',
             roomFlowLabel: entriesPaused ? 'Holding new singers' : 'Fair self-serve queue',
             hostSummary: entriesPaused
@@ -334,7 +341,7 @@ export const buildSelfServeModePresentation = (selfServeMode = null, {
             detail: entriesPaused
                 ? 'Paid priority is off and new singers are paused for the moment.'
                 : 'Paid priority is off. The room is currently running on fair queueing.',
-            helper: 'Spotlight bidding is currently off.',
+            helper: 'Support bidding is currently off.',
             joinPrompt: entriesPaused ? 'Scan to watch and vote' : 'Scan to join, sing, and vote',
             roomFlowLabel: entriesPaused ? 'Holding new singers' : 'Fair self-serve queue',
             hostSummary: entriesPaused
@@ -367,15 +374,15 @@ export const buildSelfServeModePresentation = (selfServeMode = null, {
         badgeLabel: 'Stage Open',
         heroLabel: 'Scan In. Step Up. Sing.',
         detail: supportsAuction
-            ? 'The room is ready for singers and supporters to shape the next spotlight.'
+            ? 'The room is ready for singers and supporters to shape the next showcase slot.'
             : 'The room is ready for singers and crowd-picked spotlight moments.',
         helper: supportsAuction
-            ? 'Verified supporters can still shape the next opening spotlight.'
+            ? 'Verified supporters can still shape the next opening showcase slot.'
             : 'The crowd can lock the next spotlight while the current song is live.',
         joinPrompt: supportsAuction ? 'Scan to join, sing, and vote' : 'Scan to join, sing, and vote',
         roomFlowLabel: 'Fair self-serve queue',
         hostSummary: supportsAuction
-            ? 'Spotlight Auction is live and ready for the next supporters.'
+            ? 'Support Surge is live and ready for the next supporters.'
             : 'Open Stage is live and ready for the next singer.',
         supportCtaLabel: supportsAuction ? 'Support This Room' : 'Support This Room',
     };
@@ -451,7 +458,7 @@ export const buildSelfServeTransitionMoment = (selfServeMode = null, {
                 badgeLabel: 'Showcase Locked',
                 title: 'Next showcase locked',
                 detail: winnerTitle
-                    ? `${winnerTitle} just won the next spotlight.`
+                    ? `${winnerTitle} just won the next showcase slot.`
                     : 'Verified supporters just locked the next showcase slot.',
                 songId: lastWinnerSongId,
                 songTitle: winnerTitle,
@@ -496,12 +503,12 @@ export const buildSelfServeDecisionPresentation = (releaseWindow = null, {
 
     if (origin === 'self_serve_spotlight_auction_auto') {
         return {
-            eyebrow: 'BeauRocks Spotlight Auction',
+            eyebrow: 'BeauRocks Support Surge',
             badgeLabel: 'Showcase Vote',
             helper: safeTimeLeftSec > 0
                 ? `Top supporters are choosing live. Winner locks when the clock hits zero in ${safeTimeLeftSec}s.`
                 : 'Top supporters are choosing live. Winner locks as soon as the vote closes.',
-            liveLabel: 'Priority spotlight vote',
+            liveLabel: 'Priority showcase vote',
             tallyLabel: `${safeTotalVotes} vote${safeTotalVotes === 1 ? '' : 's'} live`,
             decisionLabel: 'Pick the next showcase',
         };
