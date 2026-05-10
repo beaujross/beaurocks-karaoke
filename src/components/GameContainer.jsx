@@ -1,5 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { GAME_REGISTRY } from '../lib/gameRegistry';
+
+const TV_VOICE_MIC_READY_KEY = 'beaurocks_tv_voice_mic_ready';
 
 const GAME_RULES = {
     flappy_bird: {
@@ -117,6 +119,61 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
         return null;
     })();
     const normalizedMode = normalizeMode(activeMode);
+    const wantsLocalVoiceMic = view === 'tv'
+        && props.isPlayer
+        && ['flappy_bird', 'vocal_challenge', 'riding_scales'].includes(normalizedMode)
+        && ['ambient', 'crowd', 'local'].includes(props.inputSource);
+    const readTvVoiceMicReady = () => {
+        if (typeof window === 'undefined') return false;
+        try {
+            return window.sessionStorage?.getItem(TV_VOICE_MIC_READY_KEY) === '1';
+        } catch (_) {
+            return false;
+        }
+    };
+    const [tvVoiceMicReady, setTvVoiceMicReady] = useState(() => !wantsLocalVoiceMic || readTvVoiceMicReady());
+    const [tvVoiceMicPending, setTvVoiceMicPending] = useState(false);
+    const [tvVoiceMicError, setTvVoiceMicError] = useState('');
+
+    useEffect(() => {
+        setTvVoiceMicReady(!wantsLocalVoiceMic || readTvVoiceMicReady());
+        setTvVoiceMicPending(false);
+        setTvVoiceMicError('');
+    }, [wantsLocalVoiceMic, normalizedMode]);
+
+    const requestTvVoiceMic = useCallback(async () => {
+        if (!wantsLocalVoiceMic || tvVoiceMicPending) return;
+        if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+            setTvVoiceMicError('Mic unavailable on this browser');
+            return;
+        }
+        setTvVoiceMicPending(true);
+        setTvVoiceMicError('');
+        try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            const ctx = AudioCtx ? new AudioCtx() : null;
+            if (ctx?.state === 'suspended') {
+                await ctx.resume();
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach((track) => track.stop());
+            if (ctx && typeof ctx.close === 'function') {
+                await ctx.close().catch(() => {});
+            }
+            try {
+                window.sessionStorage?.setItem(TV_VOICE_MIC_READY_KEY, '1');
+            } catch (_) {
+                // Ignore storage failures and keep the session-local state only.
+            }
+            setTvVoiceMicReady(true);
+        } catch (error) {
+            setTvVoiceMicError('Enable mic on this TV to control the game');
+            console.warn('TV voice mic prime failed', error);
+        } finally {
+            setTvVoiceMicPending(false);
+        }
+    }, [tvVoiceMicPending, wantsLocalVoiceMic]);
+
     const bingoMode = props?.gameState?.bingoMode || props?.playerData?.bingoMode || 'karaoke';
     const rulesConfig = (() => {
         if (!normalizedMode) return null;
@@ -180,7 +237,35 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
                     </div>
                 </div>
             )}
-            <GameComponent activeMode={activeMode} view={view} {...props} />
+            {wantsLocalVoiceMic && !tvVoiceMicReady ? (
+                <div className="absolute inset-0 z-[220] flex items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.16),transparent_24%),linear-gradient(180deg,#030712_0%,#020617_50%,#000000_100%)] p-6 text-white">
+                    <div className="w-full max-w-2xl rounded-[2.5rem] border border-cyan-300/25 bg-black/70 p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+                        <div className="text-[11px] font-black uppercase tracking-[0.34em] text-cyan-200/80">TV Voice Control</div>
+                        <div className="mt-4 text-4xl font-black tracking-tight text-white">
+                            Enable room mic to start this voice game
+                        </div>
+                        <div className="mt-4 text-base leading-7 text-zinc-300">
+                            This TV controls the pitch lane and scoring in crowd mic mode. Tap once on the TV device to grant microphone access, then the game will launch.
+                        </div>
+                        <button
+                            type="button"
+                            onClick={requestTvVoiceMic}
+                            disabled={tvVoiceMicPending}
+                            className={`mt-6 inline-flex items-center justify-center gap-3 rounded-full border border-cyan-300/40 bg-cyan-400/18 px-6 py-3 text-sm font-black uppercase tracking-[0.22em] text-cyan-50 ${tvVoiceMicPending ? 'cursor-not-allowed opacity-70' : 'hover:bg-cyan-400/28'}`}
+                        >
+                            <i className={`fa-solid ${tvVoiceMicPending ? 'fa-spinner fa-spin' : 'fa-microphone-lines'}`}></i>
+                            {tvVoiceMicPending ? 'Enabling Mic...' : 'Enable Room Mic'}
+                        </button>
+                        {tvVoiceMicError ? (
+                            <div className="mt-4 text-sm text-amber-200">
+                                {tvVoiceMicError}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            ) : (
+                <GameComponent activeMode={activeMode} view={view} {...props} />
+            )}
         </div>
     );
 };

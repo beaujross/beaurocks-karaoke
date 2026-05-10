@@ -681,17 +681,9 @@ const UnifiedGameLauncher = ({
             }
         }
         if (gameId === 'flappy_bird') {
-            const playableUsers = sortedUsers.filter((entry) => !isHostCandidate(room, entry));
-            if (playableUsers.length === 1) {
-                return startFlappySoloForUser(playableUsers[0], { quick: true });
-            }
             return startFlappyAmbient({ quick: true });
         }
         if (gameId === 'vocal_challenge') {
-            const playableUsers = sortedUsers.filter((entry) => !isHostCandidate(room, entry));
-            if (playableUsers.length === 1) {
-                return startVocalTurnsForParticipants([resolveRoomUserUid(playableUsers[0])], { quick: true });
-            }
             return startVocalAmbient({ quick: true });
         }
         if (gameId === 'riding_scales') return startRidingScalesCrowd();
@@ -1685,9 +1677,6 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
     const isActive = room?.activeMode === game.id;
     const [showPicker, setShowPicker] = useState(false);
     const playerCount = participantConfig?.count || 0;
-    const playerLabel = participantConfig
-        ? (participantConfig.mode === 'selected' && playerCount ? `Players: ${playerCount}` : 'Players: All')
-        : 'Players: All';
     const visualMap = {
         doodle_oke: [
             { icon: 'fa-pen', label: 'Sketch' },
@@ -1799,6 +1788,42 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     <i className={`fa-solid ${game.needsVoice ? 'fa-microphone-lines' : 'fa-microphone-slash'} text-[10px]`}></i>
                     Voice {game.needsVoice ? 'Yes' : 'No'}
                 </span>
+                {participantConfig ? (
+                    <>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                participantConfig.setMode?.('all');
+                                participantConfig.setParticipants?.([]);
+                                setShowPicker(false);
+                            }}
+                            className={`rounded-lg border px-2 py-1 inline-flex items-center gap-1 transition-all ${participantConfig.mode === 'all' ? 'border-cyan-400/45 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/35 text-zinc-300 hover:border-zinc-500 hover:text-white'}`}
+                            style={touchButtonStyle}
+                        >
+                            <i className="fa-solid fa-users text-[10px]"></i>
+                            All
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                participantConfig.setMode?.('selected');
+                                setShowPicker((current) => (
+                                    participantConfig.mode === 'selected'
+                                        ? !current
+                                        : true
+                                ));
+                            }}
+                            className={`rounded-lg border px-2 py-1 inline-flex items-center gap-1 transition-all ${participantConfig.mode === 'selected' ? 'border-cyan-400/45 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/35 text-zinc-300 hover:border-zinc-500 hover:text-white'}`}
+                            style={touchButtonStyle}
+                        >
+                            <i className="fa-solid fa-user-check text-[10px]"></i>
+                            {participantConfig.mode === 'selected'
+                                ? (playerCount ? `${playerCount} selected` : 'Pick players')
+                                : 'Select'}
+                            <i className={`fa-solid fa-chevron-${showPicker && participantConfig.mode === 'selected' ? 'up' : 'down'} text-[9px]`}></i>
+                        </button>
+                    </>
+                ) : null}
             </div>
             {Array.isArray(infoBadges) && infoBadges.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 text-[9px] uppercase tracking-widest text-zinc-400 relative z-10">
@@ -1816,70 +1841,37 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     <span className="text-zinc-400 normal-case truncate">{smartDefaults}</span>
                 </div>
             )}
-            {participantConfig ? (
+            {participantConfig?.mode === 'selected' && showPicker ? (
                 <div className="relative z-10">
-                    <button
-                        type="button"
-                        onClick={() => setShowPicker(v => !v)}
-                        className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} w-full py-1.5 text-xs justify-between`}
-                        style={touchButtonStyle}
-                    >
-                        <span>{playerLabel}</span>
-                        <i className={`fa-solid fa-chevron-${showPicker ? 'up' : 'down'}`}></i>
-                    </button>
-                    {showPicker && (
-                        <div className="mt-2 bg-black/40 border border-white/10 rounded-xl p-2 space-y-2">
-                            <div className="flex gap-2">
-                                <button
-                                    type="button"
-                                    onClick={onSelectAll}
-                                    className={`${STYLES.btnStd} ${participantConfig.mode === 'all' ? STYLES.btnHighlight : STYLES.btnSecondary} flex-1 py-2 text-xs`}
-                                    style={touchButtonStyle}
-                                >
-                                    All
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={onSelectParticipants}
-                                    className={`${STYLES.btnStd} ${participantConfig.mode === 'selected' ? STYLES.btnHighlight : STYLES.btnSecondary} flex-1 py-2 text-xs`}
-                                    style={touchButtonStyle}
-                                >
-                                    Select
-                                </button>
-                            </div>
-                            {participantConfig.mode === 'selected' && (
-                                <>
-                                    <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto custom-scrollbar">
-                                        {users.map(u => {
-                                            const uid = resolveRoomUserUid(u);
-                                            if (!uid) return null;
-                                            const selectedIds = participantConfig?.participants || [];
-                                            const isSelected = selectedIds.includes(uid);
-                                            return (
-                                                <button
-                                                    type="button"
-                                                    key={u.id}
-                                                    onClick={() => toggleParticipant(uid)}
-                                                    className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${isSelected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}
-                                                    style={touchButtonStyle}
-                                                >
-                                                    <span className="text-lg">{u.avatar || 'O'}</span>
-                                                    <span className="text-zinc-200 truncate">{u.name || 'Singer'}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button type="button" onClick={() => participantConfig?.setParticipants?.(getResolvedRoomUserUids(users))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Select all</button>
-                                        <button type="button" onClick={() => participantConfig?.setParticipants?.([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Clear</button>
-                                    </div>
-                                </>
-                            )}
+                    <div className="bg-black/40 border border-white/10 rounded-xl p-2 space-y-2">
+                        <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto custom-scrollbar">
+                            {users.map(u => {
+                                const uid = resolveRoomUserUid(u);
+                                if (!uid) return null;
+                                const selectedIds = participantConfig?.participants || [];
+                                const isSelected = selectedIds.includes(uid);
+                                return (
+                                    <button
+                                        type="button"
+                                        key={u.id}
+                                        onClick={() => toggleParticipant(uid)}
+                                        className={`flex items-center gap-2 px-2 py-2 rounded-lg border text-left text-xs ${isSelected ? 'border-[#00C4D9] bg-[#00C4D9]/10' : 'border-zinc-700 bg-zinc-900/60'}`}
+                                        style={touchButtonStyle}
+                                    >
+                                        <span className="text-lg">{u.avatar || 'O'}</span>
+                                        <span className="text-zinc-200 truncate">{u.name || 'Singer'}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
-                    )}
+                        <div className="flex gap-2">
+                            <button type="button" onClick={() => participantConfig?.setParticipants?.(getResolvedRoomUserUids(users))} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Select all</button>
+                            <button type="button" onClick={() => participantConfig?.setParticipants?.([])} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-xs`} style={touchButtonStyle}>Clear</button>
+                        </div>
+                    </div>
                 </div>
             ) : (
-                <div className="h-6"></div>
+                <div className="h-2"></div>
             )}
             <div className="flex gap-2 relative z-10">
                 <button type="button" data-game-configure={game.id} onClick={() => onLaunch(game.id)} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-1.5 text-xs`} style={touchButtonStyle}>
