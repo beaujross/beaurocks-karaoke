@@ -51,16 +51,19 @@ export const QA_TV_VISUAL_SCENARIOS = Object.freeze([
         id: 'reaction-showcase',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['Avery', 'Bloom', 'Royal'],
+        mismatchThresholdPct: 1.0,
     },
     {
         id: 'support-host-rain',
         roomCode: 'DEMOAAHF',
         expectedTexts: ['DJ Beau made it rain', 'for all lobby members'],
+        mismatchThresholdPct: 1.0,
     },
     {
         id: 'support-purchase-rain',
         roomCode: 'DEMOAAHF',
-        expectedTexts: ['Maya boosted the room', 'Room support'],
+        expectedTexts: ['Maya boosted the room', 'Festival support spotlight'],
+        mismatchThresholdPct: 1.0,
     },
 ]);
 

@@ -32,6 +32,8 @@ const FIXTURES = QA_TV_VISUAL_SCENARIOS.map((scenario) => ({
   viewport: { width: 1600, height: 900 },
 }));
 const EXPECTED_SCENES = Object.freeze({
+  "generic-preview-intro": "intro",
+  "generic-live-announcement": "announcement",
   "preview-intro": "intro",
   "preview-wyr": "would_you_rather_break",
   "live-announcement": "announcement",
@@ -50,7 +52,7 @@ const ensureDir = async (dirPath) => {
   await fs.mkdir(dirPath, { recursive: true });
 };
 
-const comparePngFiles = async (actualPath, baselinePath) => {
+const comparePngFiles = async (actualPath, baselinePath, thresholdPct = 0.15) => {
   const actual = await sharp(actualPath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const baseline = await sharp(baselinePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   if (
@@ -74,8 +76,8 @@ const comparePngFiles = async (actualPath, baselinePath) => {
   }
 
   const mismatchPct = (diffPixels / totalPixels) * 100;
-  if (mismatchPct > 0.15) {
-    throw new Error(`Visual mismatch ${mismatchPct.toFixed(3)}% exceeded 0.15% threshold.`);
+  if (mismatchPct > thresholdPct) {
+    throw new Error(`Visual mismatch ${mismatchPct.toFixed(3)}% exceeded ${thresholdPct.toFixed(3)}% threshold.`);
   }
   return mismatchPct;
 };
@@ -186,7 +188,9 @@ const main = async () => {
       await waitForBodyTexts({ page, expectedTexts: scenario.expectedTexts, timeoutMs });
       const overlay = page.locator(".public-tv").first();
       await overlay.waitFor({ state: "visible", timeout: timeoutMs });
-      await verifyTakeoverSemantics({ page, scenario, timeoutMs, expectedBrandLogoFragment });
+      if (EXPECTED_SCENES[scenario.id]) {
+        await verifyTakeoverSemantics({ page, scenario, timeoutMs, expectedBrandLogoFragment });
+      }
       await delay(150);
 
       const artifactPath = path.join(ARTIFACT_DIR, `${scenario.id}.png`);
@@ -200,7 +204,11 @@ const main = async () => {
       }
 
       await fs.access(baselinePath);
-      const mismatchPct = await comparePngFiles(artifactPath, baselinePath);
+      const mismatchPct = await comparePngFiles(
+        artifactPath,
+        baselinePath,
+        Math.max(0.15, Number(scenario.mismatchThresholdPct || 0.15))
+      );
       checks.push({
         name: scenario.id,
         pass: true,

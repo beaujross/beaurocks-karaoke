@@ -45,7 +45,7 @@ const FIXTURES = Object.freeze([
     viewport: { width: 430, height: 932 },
     assertions: async (page, timeoutMs) => {
       await page.getByText("Continue with Email").first().waitFor({ state: "visible", timeout: timeoutMs });
-      await page.getByText("Support AAHF Festival").first().waitFor({ state: "visible", timeout: timeoutMs });
+      await page.getByText("Enter your email and we will send a secure sign-in link.").first().waitFor({ state: "visible", timeout: timeoutMs });
       await page.getByText("Send Email Link").first().waitFor({ state: "visible", timeout: timeoutMs });
     },
   },

@@ -337,8 +337,8 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
 
   assert.match(
     source,
-    /Choose your emoji and enter your name to jump into Songs\./,
-    "SingerApp join should keep the immediate next step clear without the extra step strip",
+    /Pick the emoji that feels most you\./,
+    "SingerApp join should keep the hero copy concise now that the detailed Songs guidance lives in the supporting onboarding text",
   );
   assert.doesNotMatch(
     source,
@@ -370,10 +370,10 @@ test("SingerApp gives streamlined join and first-song flows clearer onboarding c
     /Search for your first song/,
     "SingerApp streamlined browse should celebrate entry and guide first-time singers toward their first request",
   );
-  assert.match(
+  assert.doesNotMatch(
     source,
-    /3 Back to Party/,
-    "SingerApp streamlined browse should teach the full search, queue, and return-to-party loop",
+    /1 Search|2 Queue It|3 Back to Party|Watch Queue/,
+    "SingerApp streamlined browse should drop the old step strip and redundant queue button now that Songs nav already exposes Queue",
   );
   assert.match(
     source,
@@ -635,6 +635,36 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
     source,
     /const audienceSearchInputClass = isStreamlinedAudienceShell\s*\?\s*'flex-1 min-w-0 bg-transparent text-base font-semibold text-zinc-950 placeholder:text-zinc-600/,
     "SingerApp streamlined request fields should use dark input text and visible placeholder text",
+  );
+});
+
+test("SingerApp browse overlays use the same viewport sheet isolation as other mobile sheets", () => {
+  const source = readFileSync(singerAppPath, "utf8");
+
+  assert.match(
+    source,
+    /const browseOverlayOpen = !!activeBrowseList \|\| showTop100 \|\| showYtIndex;/,
+    "SingerApp should track browse overlays as a shared mobile sheet state",
+  );
+  assert.match(
+    source,
+    /\!\(catalogSearchOpen \|\| manualRequestComposerOpen \|\| browseOverlayOpen\)/,
+    "SingerApp should freeze body scroll while a browse overlay is open",
+  );
+  assert.match(
+    source,
+    /\{activeBrowseList && renderAudienceViewportSheet\(/,
+    "SingerApp should portal custom browse-list overlays out of the stage shell stack",
+  );
+  assert.match(
+    source,
+    /\{showTop100 && renderAudienceViewportSheet\(/,
+    "SingerApp should portal the Top 100 overlay out of the stage shell stack",
+  );
+  assert.match(
+    source,
+    /\{showYtIndex && renderAudienceViewportSheet\(/,
+    "SingerApp should portal the room-library overlay out of the stage shell stack",
   );
 });
 
