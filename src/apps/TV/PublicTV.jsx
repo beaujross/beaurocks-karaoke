@@ -111,6 +111,13 @@ import {
     buildSelfServeRulesCard,
     isSelfServeAuctionWindowLive,
 } from '../../lib/selfServeKaraoke';
+import {
+    SPOTLIGHT_KINDS,
+    buildAudienceSpotlightPrompt,
+    getAudienceSpotlightModeMeta,
+    inferSpotlightKind,
+    normalizeAudienceSpotlightMode,
+} from '../../lib/audienceSpotlight';
 
 const DEFAULT_POP_TRIVIA_REVEAL_HOLD_SEC = 14;
 const DEFAULT_POP_TRIVIA_CORRECT_POINTS = 40;
@@ -5348,6 +5355,12 @@ const PublicTV = ({ roomCode }) => {
     const spotlightUser = room?.spotlightUser?.id
         ? roomUsers.find((u) => resolveRoomUserUid(u) === room.spotlightUser.id)
         : null;
+    const spotlightKind = inferSpotlightKind(room?.spotlightUser || null);
+    const audienceSpotlightMode = normalizeAudienceSpotlightMode(room?.spotlightUser?.mode);
+    const audienceSpotlightPrompt = spotlightKind === SPOTLIGHT_KINDS.audience
+        ? buildAudienceSpotlightPrompt(audienceSpotlightMode, room?.spotlightUser?.prompt?.index)
+        : null;
+    const audienceSpotlightModeMeta = getAudienceSpotlightModeMeta(audienceSpotlightMode);
     const spotlightTopTight15 = extractTopTight15({
         spotlightPayload: room?.spotlightUser || null,
         roomUser: spotlightUser || null
@@ -8210,24 +8223,41 @@ const PublicTV = ({ roomCode }) => {
 
                          {(spotlightUser || room?.spotlightUser?.id) && (
                             <div className="p-3 md:p-5 rounded-2xl md:rounded-3xl bg-black/70 border border-yellow-400/30 shadow-[0_0_25px_rgba(234,179,8,0.2)] text-center">
-                                <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-yellow-300">Spotlight</div>
+                                <div className="text-xs md:text-sm uppercase tracking-[0.24em] md:tracking-[0.3em] text-yellow-300">
+                                    {spotlightKind === SPOTLIGHT_KINDS.tight15 ? 'Tight 15 Showcase' : 'Audience Spotlight'}
+                                </div>
                                 <div className="text-3xl md:text-5xl mt-2">{room?.spotlightUser?.avatar || spotlightUser?.avatar || EMOJI.star}</div>
                                 <div className="text-xl md:text-3xl font-bold text-white mt-2 truncate">{room?.spotlightUser?.name || spotlightUser?.name || 'Guest'}</div>
                                 {room?.spotlightUser?.msg && (
                                     <div className="text-sm md:text-base text-yellow-200 mt-1">{room.spotlightUser.msg}</div>
                                 )}
-                                {showExtendedSpotlightMeta && room?.spotlightUser?.challengeSong?.songTitle && (
+                                {spotlightKind === SPOTLIGHT_KINDS.audience && audienceSpotlightPrompt && (
+                                    <div className="mt-3 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-cyan-200">
+                                                {audienceSpotlightPrompt.title}
+                                            </div>
+                                            <div className="rounded-full border border-cyan-300/30 bg-black/20 px-2 py-0.5 text-[10px] md:text-xs font-black uppercase tracking-[0.14em] text-cyan-50">
+                                                {audienceSpotlightModeMeta.label}
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 text-sm md:text-base text-cyan-50">
+                                            {audienceSpotlightPrompt.body}
+                                        </div>
+                                    </div>
+                                )}
+                                {showExtendedSpotlightMeta && spotlightKind === SPOTLIGHT_KINDS.tight15 && room?.spotlightUser?.challengeSong?.songTitle && (
                                     <div className="mt-2 text-left bg-cyan-500/10 border border-cyan-300/30 rounded-xl px-3 py-2">
-                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-cyan-200 mb-1">Challenge Pick</div>
+                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-cyan-200 mb-1">Showcase Pick</div>
                                         <div className="text-sm md:text-base text-cyan-50 truncate">
                                             {room.spotlightUser.challengeSong.songTitle}
                                             {room?.spotlightUser?.challengeSong?.artist ? ` - ${room.spotlightUser.challengeSong.artist}` : ''}
                                         </div>
                                     </div>
                                 )}
-                                {showExtendedSpotlightMeta && (
+                                {showExtendedSpotlightMeta && spotlightKind === SPOTLIGHT_KINDS.tight15 && (
                                     <div className="mt-3 text-left bg-yellow-500/10 border border-yellow-400/20 rounded-xl px-3 py-2">
-                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-yellow-200 mb-2">Top Tight 15</div>
+                                        <div className="text-xs md:text-sm uppercase tracking-[0.24em] text-yellow-200 mb-2">Saved Tight 15</div>
                                         {spotlightTopTight15.length ? (
                                             <div className="space-y-1">
                                                 {spotlightTopTight15.map((entry, idx) => (

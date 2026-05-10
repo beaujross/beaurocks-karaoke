@@ -90,6 +90,15 @@ import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
+import {
+    AUDIENCE_SPOTLIGHT_MODE_OPTIONS,
+    SPOTLIGHT_KINDS,
+    buildAudienceSpotlightPrompt,
+    getAudienceSpotlightMessage,
+    getAudienceSpotlightModeMeta,
+    inferSpotlightKind,
+    normalizeAudienceSpotlightMode,
+} from '../../lib/audienceSpotlight';
 import { computeOpenSlotAssignments, isOpenRunOfShowPerformanceSlot } from './lib/openSlotSuggestions';
 import { prepareRunOfShowQueueAssignment } from './lib/runOfShowQueueAssignment';
 import { buildCurrentRoomRunOfShowDraft } from './lib/currentRoomRunOfShowDraft';
@@ -2700,7 +2709,10 @@ const IncomingModerationQueuePanel = ({
 const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaunchUrl = '' }) => {
     const toast = useToast() || console.log;
     const [doodleSubmissions, setDoodleSubmissions] = useState([]);
+    const [doodleVotes, setDoodleVotes] = useState([]);
     const [selfieSubmissions, setSelfieSubmissions] = useState([]);
+    const [selfieVotes, setSelfieVotes] = useState([]);
+    const [submissionPreview, setSubmissionPreview] = useState(null);
     const [busy, setBusy] = useState(false);
     const [qaNowMs, setQaNowMs] = useState(Date.now());
     const interactionTimerRef = useRef(null);
@@ -2754,6 +2766,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     useEffect(() => {
         if (activeMode !== 'doodle_oke' || !roomCode || !doodlePromptId) {
             setDoodleSubmissions([]);
+            setDoodleVotes([]);
             return;
         }
         const q = query(
@@ -2767,10 +2780,25 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             setDoodleSubmissions(docs);
         });
     }, [activeMode, roomCode, doodlePromptId]);
+    useEffect(() => {
+        if (activeMode !== 'doodle_oke' || !roomCode || !doodlePromptId) {
+            setDoodleVotes([]);
+            return;
+        }
+        const q = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'doodle_votes'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', doodlePromptId)
+        );
+        return onSnapshot(q, (snap) => {
+            setDoodleVotes(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+        });
+    }, [activeMode, roomCode, doodlePromptId]);
 
     useEffect(() => {
         if (activeMode !== 'selfie_challenge' || !roomCode || !selfiePromptId) {
             setSelfieSubmissions([]);
+            setSelfieVotes([]);
             return;
         }
         const q = query(
@@ -2782,6 +2810,20 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             const docs = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
             docs.sort((a, b) => toMs(b.timestamp) - toMs(a.timestamp));
             setSelfieSubmissions(docs);
+        });
+    }, [activeMode, roomCode, selfiePromptId]);
+    useEffect(() => {
+        if (activeMode !== 'selfie_challenge' || !roomCode || !selfiePromptId) {
+            setSelfieVotes([]);
+            return;
+        }
+        const q = query(
+            collection(db, 'artifacts', APP_ID, 'public', 'data', 'selfie_votes'),
+            where('roomCode', '==', roomCode),
+            where('promptId', '==', selfiePromptId)
+        );
+        return onSnapshot(q, (snap) => {
+            setSelfieVotes(snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
         });
     }, [activeMode, roomCode, selfiePromptId]);
 
@@ -2797,12 +2839,44 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
     const doodlePendingCount = doodleRequireReview
         ? doodleSubmissions.filter((submission) => !submission.approved).length
         : 0;
+    const doodleVisibleSubmissions = doodleRequireReview
+        ? doodleSubmissions.filter((submission) => submission.approved)
+        : doodleSubmissions;
+    const doodleVoteCounts = doodleVotes.reduce((acc, vote) => {
+        const targetUid = String(vote?.targetUid || '').trim();
+        if (!targetUid) return acc;
+        acc[targetUid] = (acc[targetUid] || 0) + 1;
+        return acc;
+    }, {});
+    const doodleLeadingSubmission = [...doodleVisibleSubmissions].sort((left, right) => (
+        (doodleVoteCounts[String(right?.uid || '').trim()] || 0) - (doodleVoteCounts[String(left?.uid || '').trim()] || 0)
+    ))[0] || null;
     const selfieApprovedCount = selfie?.requireApproval
         ? selfieSubmissions.filter((submission) => submission.approved).length
         : selfieSubmissions.length;
     const selfiePendingCount = selfie?.requireApproval
         ? Math.max(0, selfieSubmissions.length - selfieApprovedCount)
         : 0;
+    const selfieVisibleSubmissions = selfie?.requireApproval
+        ? selfieSubmissions.filter((submission) => submission.approved)
+        : selfieSubmissions;
+    const selfieVoteCounts = selfieVotes.reduce((acc, vote) => {
+        const targetUid = String(vote?.targetUid || '').trim();
+        if (!targetUid) return acc;
+        acc[targetUid] = (acc[targetUid] || 0) + 1;
+        return acc;
+    }, {});
+    const selfieLeadingSubmissions = [...selfieVisibleSubmissions]
+        .sort((left, right) => (
+            (selfieVoteCounts[String(right?.uid || '').trim()] || 0) - (selfieVoteCounts[String(left?.uid || '').trim()] || 0)
+        ));
+    const selfieLeadingSubmission = selfieLeadingSubmissions[0] || null;
+    const selfieTopVoteCount = selfieLeadingSubmission
+        ? (selfieVoteCounts[String(selfieLeadingSubmission?.uid || '').trim()] || 0)
+        : 0;
+    const selfieTieAtTop = selfieTopVoteCount > 0 && selfieLeadingSubmissions.filter((submission) => (
+        (selfieVoteCounts[String(submission?.uid || '').trim()] || 0) === selfieTopVoteCount
+    )).length > 1;
 
     const patchDoodle = async (patch = {}, message = '') => {
         if (!doodle) return;
@@ -2844,6 +2918,102 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
         } catch (err) {
             hostLogger.error('Host controlpad selfie patch failed', err);
             toast('Could not update Selfie settings');
+        } finally {
+            setBusy(false);
+        }
+    };
+    const openSubmissionPreview = (submission = {}, options = {}) => {
+        if (!submission) return;
+        setSubmissionPreview({
+            ...submission,
+            type: options.type || 'submission',
+            label: options.label || 'Submission Preview',
+            votes: Math.max(0, Number(options.votes || 0)),
+            fit: options.fit || 'cover'
+        });
+    };
+    const awardWinnerPoints = async (winnerUid, points = 150, label = 'winner') => {
+        const safeUid = String(winnerUid || '').trim();
+        const safePoints = Math.max(0, Number(points || 0) || 0);
+        if (!roomCode || !safeUid || !safePoints) return false;
+        await callFunction('awardRoomPoints', {
+            roomCode,
+            awards: [{ uid: safeUid, points: safePoints }]
+        });
+        await logHostInteraction(`awarded ${safePoints} pts to ${label}.`);
+        return true;
+    };
+    const finishSelfieChallenge = async (winnerSubmission = null) => {
+        if (!selfie) return;
+        const pool = selfieVisibleSubmissions;
+        if (!pool.length) {
+            toast('No approved selfies are available yet.');
+            return;
+        }
+        const selectedWinner = winnerSubmission || selfieLeadingSubmission;
+        if (!selectedWinner?.uid) {
+            toast('Pick a selfie winner first.');
+            return;
+        }
+        if (!winnerSubmission && selfieTieAtTop) {
+            toast('Top vote is tied. Pick a winner from a submission card.');
+            return;
+        }
+        const safeVotes = selfieVoteCounts[String(selectedWinner.uid || '').trim()] || 0;
+        const rewardPoints = Math.max(25, Number(selfie?.winnerPoints || 150) || 150);
+        const nextWinner = {
+            uid: selectedWinner.uid,
+            name: selectedWinner.userName || selectedWinner.name || 'Guest',
+            avatar: selectedWinner.avatar || '',
+            url: selectedWinner.url || '',
+            votes: safeVotes,
+            points: rewardPoints
+        };
+        setBusy(true);
+        try {
+            if (!selfie?.winnerAwardedAt || String(selfie?.winner?.uid || '').trim() !== nextWinner.uid) {
+                await awardWinnerPoints(nextWinner.uid, rewardPoints, nextWinner.name);
+            }
+            await updateRoom({
+                selfieChallenge: {
+                    ...selfie,
+                    status: 'ended',
+                    winner: nextWinner,
+                    winnerAwardedAt: nowMs(),
+                    winnerExpiresAt: nowMs() + 12000
+                }
+            });
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'activities'), {
+                roomCode,
+                user: 'SELFIE CHALLENGE',
+                text: `${nextWinner.name} won the selfie challenge (+${rewardPoints} pts).`,
+                icon: 'WIN',
+                timestamp: serverTimestamp()
+            });
+            toast(`${nextWinner.name} wins +${rewardPoints} pts`);
+        } catch (err) {
+            hostLogger.error('Host controlpad selfie winner resolution failed', err);
+            toast('Could not finish Selfie Challenge');
+        } finally {
+            setBusy(false);
+        }
+    };
+    const revealDoodleWinner = async () => {
+        if (!doodle) return;
+        setBusy(true);
+        try {
+            await updateRoom({
+                doodleOke: {
+                    ...doodle,
+                    status: 'reveal',
+                    guessEndsAt: nowMs() - 1,
+                    updatedAt: nowMs()
+                }
+            });
+            toast('Winner reveal sent to TV. The top doodle gets the round reward.');
+        } catch (err) {
+            hostLogger.error('Host controlpad doodle reveal failed', err);
+            toast('Could not reveal doodle winner');
         } finally {
             setBusy(false);
         }
@@ -3382,6 +3552,43 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
             : modeInteractionConfig.description;
 
     return (
+        <>
+        {submissionPreview?.url || submissionPreview?.image ? (
+            <div className="fixed inset-0 z-[120]">
+                <button
+                    type="button"
+                    onClick={() => setSubmissionPreview(null)}
+                    className="absolute inset-0 bg-black/80 backdrop-blur-[2px]"
+                    aria-label="Close submission preview"
+                />
+                <div className="absolute inset-0 flex items-center justify-center p-4">
+                    <div className="relative w-full max-w-4xl rounded-[28px] border border-white/12 bg-zinc-950/96 p-4 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+                        <button
+                            type="button"
+                            onClick={() => setSubmissionPreview(null)}
+                            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/35 text-zinc-300 hover:text-white"
+                            aria-label="Close preview"
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                        <div className="pr-10">
+                            <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">{submissionPreview.label || 'Submission Preview'}</div>
+                            <div className="mt-1 text-lg font-black text-white">{submissionPreview.userName || submissionPreview.name || 'Guest'}</div>
+                            <div className="mt-1 text-sm text-zinc-300">
+                                {submissionPreview.votes > 0 ? `${submissionPreview.votes} vote${submissionPreview.votes === 1 ? '' : 's'}` : 'No votes yet'}
+                            </div>
+                        </div>
+                        <div className="mt-4 overflow-hidden rounded-[24px] border border-white/10 bg-black/25">
+                            <img
+                                src={submissionPreview.url || submissionPreview.image}
+                                alt={submissionPreview.userName || submissionPreview.name || 'Submission'}
+                                className={`max-h-[72vh] w-full ${submissionPreview.fit === 'contain' ? 'object-contain bg-zinc-950' : 'object-cover'}`}
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        ) : null}
         <div className={`${STYLES.panel} mb-4 border border-[#00C4D9]/35 bg-gradient-to-r from-zinc-950/95 via-[#0f1828]/95 to-[#211025]/95`}>
             <div className="p-4 flex flex-col gap-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3413,6 +3620,40 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         </button>
                     </div>
                 </div>
+                {(isDoodle || isSelfie) && (
+                    <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                        {isDoodle && doodle?.status === 'voting' ? (
+                            <button
+                                type="button"
+                                onClick={revealDoodleWinner}
+                                disabled={busy || !doodleVisibleSubmissions.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !doodleVisibleSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                Reveal + Award Winner
+                            </button>
+                        ) : null}
+                        {isSelfie && selfie?.status === 'voting' ? (
+                            <button
+                                type="button"
+                                onClick={() => finishSelfieChallenge()}
+                                disabled={busy || !selfieVisibleSubmissions.length}
+                                className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !selfieVisibleSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                                End Vote + Award Leader
+                            </button>
+                        ) : null}
+                        {isSelfie && selfie?.status === 'ended' && selfie?.winner ? (
+                            <div className="inline-flex items-center rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                Winner: {selfie.winner.name || 'Guest'} {selfie.winner.points ? `+${selfie.winner.points} pts` : ''}
+                            </div>
+                        ) : null}
+                        {isDoodle && doodle?.status === 'reveal' ? (
+                            <div className="inline-flex items-center rounded-full border border-emerald-300/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-emerald-100">
+                                Reveal mode awards the top doodle on TV.
+                            </div>
+                        ) : null}
+                    </div>
+                )}
 
                 {isDoodle && (
                     <>
@@ -3459,23 +3700,52 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                         </div>
                         {doodleSubmissions.length > 0 && (
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                {doodleSubmissions.slice(0, 4).map((submission) => {
+                                {doodleSubmissions.slice(0, 8).map((submission) => {
                                     const isApproved = !!submission.approved;
+                                    const voteCount = doodleVoteCounts[String(submission?.uid || '').trim()] || 0;
+                                    const isLeader = doodleLeadingSubmission?.id === submission.id && doodle?.status === 'voting';
                                     return (
                                         <div key={submission.id} className="rounded-xl border border-zinc-700 bg-zinc-900/70 overflow-hidden">
-                                            <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-20 object-contain bg-zinc-950" />
+                                            <button
+                                                type="button"
+                                                onClick={() => openSubmissionPreview(submission, { type: 'doodle', label: 'Doodle-oke Submission', votes: voteCount, fit: 'contain' })}
+                                                className="block w-full"
+                                            >
+                                                <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-24 object-contain bg-zinc-950" />
+                                            </button>
                                             <div className="px-2 py-1.5 text-[11px] text-zinc-300">
-                                                <div className="truncate font-bold">{submission.name || 'Guest'}</div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="truncate font-bold">{submission.name || 'Guest'}</div>
+                                                    <div className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-black ${isLeader ? 'border-amber-300/25 bg-amber-500/10 text-amber-100' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                                        {voteCount}
+                                                    </div>
+                                                </div>
                                                 {doodleRequireReview ? (
-                                                    <button
-                                                        onClick={() => (isApproved ? hideDoodleUid(submission.uid) : approveDoodleUid(submission.uid))}
-                                                        disabled={busy}
-                                                        className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} mt-1 w-full text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                    >
-                                                        {isApproved ? 'Visible' : 'Approve'}
-                                                    </button>
+                                                    <div className="mt-1 flex gap-1.5">
+                                                        <button
+                                                            onClick={() => openSubmissionPreview(submission, { type: 'doodle', label: 'Doodle-oke Submission', votes: voteCount, fit: 'contain' })}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1 text-[10px] py-1`}
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <button
+                                                            onClick={() => (isApproved ? hideDoodleUid(submission.uid) : approveDoodleUid(submission.uid))}
+                                                            disabled={busy}
+                                                            className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1 text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            {isApproved ? 'Visible' : 'Approve'}
+                                                        </button>
+                                                    </div>
                                                 ) : (
-                                                    <div className="text-emerald-300 mt-1">Auto visible</div>
+                                                    <div className="mt-1 flex items-center justify-between gap-2">
+                                                        <button
+                                                            onClick={() => openSubmissionPreview(submission, { type: 'doodle', label: 'Doodle-oke Submission', votes: voteCount, fit: 'contain' })}
+                                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} text-[10px] py-1 px-2`}
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <div className="text-emerald-300">Auto visible</div>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
@@ -3487,42 +3757,122 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                 )}
 
                 {isSelfie && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                        <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Status</div>
-                            <div className="text-sm font-bold text-white mt-1">{selfie?.status || 'collecting'}</div>
-                        </div>
-                        <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Submitted</div>
-                            <div className="text-sm font-bold text-white mt-1">{selfieSubmissions.length}</div>
-                        </div>
-                        <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Visible</div>
-                            <div className="text-sm font-bold text-cyan-200 mt-1">{selfieApprovedCount}</div>
-                        </div>
-                        <div className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2">
-                            <div className="text-[10px] uppercase tracking-widest text-zinc-500">Pending</div>
-                            <div className="text-sm font-bold text-amber-200 mt-1">{selfiePendingCount}</div>
-                        </div>
-                        <div className="md:col-span-4 flex flex-wrap gap-2 mt-1">
-                            <button
-                                onClick={() => patchSelfie({ requireApproval: !selfie?.requireApproval }, selfie?.requireApproval ? 'Auto-show enabled' : 'Host approval enabled')}
-                                disabled={busy || !selfie}
-                                className={`${STYLES.btnStd} ${selfie?.requireApproval ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${(busy || !selfie) ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                                {selfie?.requireApproval ? 'Switch to Auto-show' : 'Require Host Approval'}
-                            </button>
-                            {selfie?.status === 'collecting' && (
+                    <>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Status</div>
+                                <div className="text-sm font-bold text-white mt-1">{selfie?.status || 'collecting'}</div>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Submitted</div>
+                                <div className="text-sm font-bold text-white mt-1">{selfieSubmissions.length}</div>
+                            </div>
+                            <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Visible</div>
+                                <div className="text-sm font-bold text-cyan-200 mt-1">{selfieApprovedCount}</div>
+                            </div>
+                            <div className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2">
+                                <div className="text-[10px] uppercase tracking-widest text-zinc-500">Pending</div>
+                                <div className="text-sm font-bold text-amber-200 mt-1">{selfiePendingCount}</div>
+                            </div>
+                            <div className="md:col-span-4 flex flex-wrap gap-2 mt-1">
                                 <button
-                                    onClick={() => patchSelfie({ status: 'voting' }, 'Voting started')}
+                                    onClick={() => patchSelfie({ requireApproval: !selfie?.requireApproval }, selfie?.requireApproval ? 'Auto-show enabled' : 'Host approval enabled')}
                                     disabled={busy || !selfie}
-                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !selfie) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    className={`${STYLES.btnStd} ${selfie?.requireApproval ? STYLES.btnSecondary : STYLES.btnHighlight} px-3 py-1 text-xs ${(busy || !selfie) ? 'opacity-60 cursor-not-allowed' : ''}`}
                                 >
-                                    Start Voting
+                                    {selfie?.requireApproval ? 'Switch to Auto-show' : 'Require Host Approval'}
                                 </button>
+                                {selfie?.status === 'collecting' && (
+                                    <button
+                                        onClick={() => patchSelfie({ status: 'voting' }, 'Voting started')}
+                                        disabled={busy || !selfieVisibleSubmissions.length}
+                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-1 text-xs ${(busy || !selfieVisibleSubmissions.length) ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                    >
+                                        Start Voting
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            {selfieSubmissions.length > 0 ? selfieSubmissions.slice(0, 8).map((submission) => {
+                                const voteCount = selfieVoteCounts[String(submission?.uid || '').trim()] || 0;
+                                const isApproved = !selfie?.requireApproval || !!submission.approved;
+                                const isLeader = selfieLeadingSubmission?.id === submission.id && selfie?.status === 'voting';
+                                return (
+                                    <div key={submission.id} className={`rounded-xl border overflow-hidden ${isLeader ? 'border-fuchsia-300/40 bg-fuchsia-500/8' : 'border-zinc-700 bg-zinc-900/70'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'cover' })}
+                                            className="block w-full"
+                                        >
+                                            <img src={submission.url} alt={submission.userName || 'Guest selfie'} className="h-28 w-full object-cover bg-zinc-950" />
+                                        </button>
+                                        <div className="px-2 py-2 text-[11px] text-zinc-300">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="truncate font-bold">{submission.userName || submission.name || 'Guest'}</div>
+                                                <div className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-black ${isLeader ? 'border-fuchsia-300/30 bg-fuchsia-500/12 text-fuchsia-100' : 'border-white/10 bg-black/20 text-zinc-400'}`}>
+                                                    {voteCount}
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'cover' })}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1 text-[10px] py-1`}
+                                                >
+                                                    View
+                                                </button>
+                                                {selfie?.requireApproval ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            if (!roomCode || !submission?.id || busy) return;
+                                                            setBusy(true);
+                                                            try {
+                                                                await callFunction('setSelfieSubmissionApproval', {
+                                                                    roomCode,
+                                                                    submissionId: submission.id,
+                                                                    approved: !submission.approved
+                                                                });
+                                                                setSelfieSubmissions((prev) => prev.map((entry) => (
+                                                                    entry.id === submission.id ? { ...entry, approved: !entry.approved } : entry
+                                                                )));
+                                                                toast(submission.approved ? 'Selfie hidden from voting' : 'Selfie approved for voting');
+                                                            } catch (err) {
+                                                                hostLogger.error('Host controlpad selfie approval failed', err);
+                                                                toast('Could not update selfie approval');
+                                                            } finally {
+                                                                setBusy(false);
+                                                            }
+                                                        }}
+                                                        disabled={busy}
+                                                        className={`${STYLES.btnStd} ${isApproved ? STYLES.btnHighlight : STYLES.btnNeutral} flex-1 text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        {isApproved ? 'Visible' : 'Approve'}
+                                                    </button>
+                                                ) : null}
+                                                {selfie?.status === 'voting' && isApproved ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => finishSelfieChallenge(submission)}
+                                                        disabled={busy}
+                                                        className={`${STYLES.btnStd} ${STYLES.btnInfo} w-full text-[10px] py-1 ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                                    >
+                                                        Make Winner
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            }) : (
+                                <div className="col-span-2 md:col-span-4 rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-zinc-500">
+                                    Waiting for selfie submissions.
+                                </div>
                             )}
                         </div>
-                    </div>
+                    </>
                 )}
 
                 {isQaMode && (
@@ -3579,6 +3929,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                 )}
             </div>
         </div>
+        </>
     );
 };
 
@@ -8552,6 +8903,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             latestById: nextLatestById,
         };
     }, [recentCoHostSignals, toast]);
+    const queueAttentionNeedsHostCount = recentCoHostSignals.length
+        + Math.max(0, Number(moderationQueueState.totalPending || 0))
+        + Math.max(0, Number(dmUnread || 0));
+    const queueAttentionCount = queueAttentionNeedsHostCount + Math.max(0, Number(chatUnread || 0));
+    const queueAttentionNeedsHost = queueAttentionNeedsHostCount > 0;
     const {
         smokeRunning,
         smokeResults,
@@ -12801,6 +13157,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadProgress(0);
         }
     }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, trackHostOperatorEvent, uid]);
+    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
+        return uploadRoomMediaAsset(file, {
+            ...(options || {}),
+            successToast: options?.successToast ?? false,
+        });
+    }, [uploadRoomMediaAsset]);
     const saveMediaAssetAsScenePreset = useCallback(async (item = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(item);
         if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
@@ -13302,6 +13664,15 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         await launchMediaSceneAsset(preset, { durationSec: preset?.durationSec || 20 });
     };
+    const addRoomUploadToTvLibrary = async (item = {}) => {
+        const preset = await saveMediaAssetAsScenePreset(item);
+        return preset || null;
+    };
+    const addRoomUploadToRunOfShow = async (item = {}) => {
+        const preset = await saveMediaAssetAsScenePreset(item);
+        if (!preset) return null;
+        return useScenePresetInRunOfShow(preset);
+    };
     const clearScenePreset = async () => {
         try {
             await syncTakeoverSoundtrackPayload(room?.announcement?.soundtrack || null, 'stop');
@@ -13795,6 +14166,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const providedTight15 = sanitizeTight15List(Array.isArray(options?.tight15List) ? options.tight15List : []);
         const challengeSong = normalizeTight15Entry(options?.challengeEntry || null);
         const roomUser = findRoomUserByUid(users, uid);
+        const spotlightKind = inferSpotlightKind({
+            kind: options?.kind || '',
+            challengeSong,
+            tight15: providedTight15
+        }) || SPOTLIGHT_KINDS.audience;
+        const spotlightMode = spotlightKind === SPOTLIGHT_KINDS.audience
+            ? normalizeAudienceSpotlightMode(options?.mode)
+            : '';
+        const prompt = spotlightKind === SPOTLIGHT_KINDS.audience
+            ? buildAudienceSpotlightPrompt(spotlightMode, options?.promptIndex)
+            : null;
         let spotlightTight15 = providedTight15.slice(0, 3);
         if (!spotlightTight15.length && roomUser) {
             try {
@@ -13807,12 +14189,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 hostLogger.debug('Could not load spotlight Tight 15', error);
             }
         }
+        const requestedMessage = String(options?.messageOverride || msg || '').trim();
+        const useAudienceDefaultMessage = spotlightKind === SPOTLIGHT_KINDS.audience
+            && ['SPOTLIGHT', 'VIP Spotlight!'].includes(requestedMessage);
+        const spotlightMessage = (useAudienceDefaultMessage ? '' : requestedMessage)
+            || (spotlightKind === SPOTLIGHT_KINDS.audience ? getAudienceSpotlightMessage(spotlightMode) : 'Spotlight');
         await updateRoom({
             spotlightUser: {
                 id: uid,
-                msg,
+                msg: spotlightMessage,
                 name: roomUser?.name || '',
                 avatar: roomUser?.avatar || '',
+                kind: spotlightKind,
+                mode: spotlightMode || null,
+                prompt,
+                interactive: spotlightKind === SPOTLIGHT_KINDS.audience,
+                sessionId: String(options?.sessionId || `${spotlightKind}_${uid}_${Date.now()}`),
                 tight15: spotlightTight15,
                 challengeSong: challengeSong || null
             }
@@ -14555,6 +14947,22 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         [users, selectedLobbyUserToken]
     );
     const selectedLobbyUserUid = selectedLobbyUser ? resolveRoomUserUid(selectedLobbyUser) : '';
+    const activeSpotlightPayload = room?.spotlightUser || null;
+    const activeSpotlightKind = inferSpotlightKind(activeSpotlightPayload);
+    const activeAudienceSpotlight = activeSpotlightKind === SPOTLIGHT_KINDS.audience ? activeSpotlightPayload : null;
+    const activeAudienceSpotlightUid = String(activeAudienceSpotlight?.id || '').trim();
+    const activeAudienceSpotlightUser = useMemo(
+        () => (activeAudienceSpotlightUid ? findRoomUserByUid(users, activeAudienceSpotlightUid) : null),
+        [activeAudienceSpotlightUid, users]
+    );
+    const activeAudienceSpotlightMode = normalizeAudienceSpotlightMode(activeAudienceSpotlight?.mode);
+    const activeAudienceSpotlightPrompt = useMemo(
+        () => (activeAudienceSpotlight
+            ? buildAudienceSpotlightPrompt(activeAudienceSpotlightMode, activeAudienceSpotlight?.prompt?.index)
+            : null),
+        [activeAudienceSpotlight, activeAudienceSpotlightMode]
+    );
+    const activeAudienceSpotlightModeMeta = getAudienceSpotlightModeMeta(activeAudienceSpotlightMode);
     const selectedLobbyUserIsSpotlight = !!(selectedLobbyUserUid && room?.spotlightUser?.id === selectedLobbyUserUid);
     const selectedLobbyUserIsCoHost = !!(selectedLobbyUserUid && (runOfShowRoles?.coHosts || []).includes(selectedLobbyUserUid));
     const selectedLobbyUserNeedsFirstSongAssist = String(selectedLobbyUser?.requestIntent || '').trim() === 'host_pick_tight15';
@@ -14589,6 +14997,53 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             toast('Could not update co-host access.');
         }
     }, [hostLogger, runOfShowRoles, updateRunOfShowRolesState]);
+    const setActiveAudienceSpotlightMode = useCallback(async (mode = AUDIENCE_SPOTLIGHT_MODE_OPTIONS[0]?.id) => {
+        if (!activeAudienceSpotlightUid) return;
+        const nextMode = normalizeAudienceSpotlightMode(mode);
+        const nextPrompt = buildAudienceSpotlightPrompt(nextMode, 0);
+        try {
+            await updateRoom({
+                spotlightUser: {
+                    ...activeAudienceSpotlight,
+                    kind: SPOTLIGHT_KINDS.audience,
+                    mode: nextMode,
+                    msg: getAudienceSpotlightMessage(nextMode),
+                    prompt: nextPrompt,
+                    interactive: true,
+                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`)
+                }
+            });
+            toast(`${activeAudienceSpotlightUser?.name || 'Audience spotlight'} switched to ${getAudienceSpotlightModeMeta(nextMode).label}.`);
+        } catch (error) {
+            hostLogger.error('Audience spotlight mode update failed', error);
+            toast('Could not update spotlight mode.');
+        }
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, activeAudienceSpotlightUser?.name, hostLogger, toast, updateRoom]);
+    const advanceAudienceSpotlightPrompt = useCallback(async () => {
+        if (!activeAudienceSpotlightUid) return;
+        const nextMode = normalizeAudienceSpotlightMode(activeAudienceSpotlight?.mode);
+        const nextPrompt = buildAudienceSpotlightPrompt(
+            nextMode,
+            Number(activeAudienceSpotlight?.prompt?.index || 0) + 1
+        );
+        try {
+            await updateRoom({
+                spotlightUser: {
+                    ...activeAudienceSpotlight,
+                    kind: SPOTLIGHT_KINDS.audience,
+                    mode: nextMode,
+                    msg: getAudienceSpotlightMessage(nextMode),
+                    prompt: nextPrompt,
+                    interactive: true,
+                    sessionId: String(activeAudienceSpotlight?.sessionId || `${SPOTLIGHT_KINDS.audience}_${activeAudienceSpotlightUid}_${Date.now()}`)
+                }
+            });
+            toast('Spotlight prompt updated.');
+        } catch (error) {
+            hostLogger.error('Audience spotlight prompt advance failed', error);
+            toast('Could not update spotlight prompt.');
+        }
+    }, [activeAudienceSpotlight, activeAudienceSpotlightUid, hostLogger, toast, updateRoom]);
 
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
@@ -15016,13 +15471,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             });
             await sendUserMessage(
                 singerUid,
-                `Tight 15 Challenge: ${pick.songTitle}`,
-                { tight15List: tight15.slice(0, 3), challengeEntry: pick }
+                `Tight 15 Showcase: ${pick.songTitle}`,
+                {
+                    kind: SPOTLIGHT_KINDS.tight15,
+                    tight15List: tight15.slice(0, 3),
+                    challengeEntry: pick
+                }
             );
-            toast(`Spotlight challenge launched for ${roomUser?.name || 'Singer'}.`);
+            toast(`Tight 15 showcase launched for ${roomUser?.name || 'Singer'}.`);
         } catch (error) {
             hostLogger.error('Launch Tight 15 spotlight challenge failed', error);
-            toast('Could not start spotlight challenge.');
+            toast('Could not start Tight 15 showcase.');
         } finally {
             setTight15QueueBusyUid('');
         }
@@ -18843,7 +19302,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     moderationPendingCount={moderationQueueState.totalPending}
                     moderationSeverity={moderationInbox.meta?.severity || 'idle'}
                     moderationNeedsAttention={!!moderationInbox.meta?.needsAttention}
-                    onOpenModerationInbox={focusHostInbox}
+                    queueAttentionCount={queueAttentionCount}
+                    queueAttentionNeedsHost={queueAttentionNeedsHost}
                     onOpenAppleMusicSettings={() => {
                         if (typeof openAdminWorkspace === 'function') {
                             openAdminWorkspace('media.playback');
@@ -19308,6 +19768,66 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             </div>
                                         </div>
                                     )}
+                                    {activeAudienceSpotlight && (
+                                        <div data-feature-id="audience-spotlight-control-panel" className="mt-3 rounded-2xl border border-yellow-300/30 bg-[linear-gradient(145deg,rgba(52,36,8,0.92),rgba(12,10,18,0.96))] px-4 py-4 shadow-[0_0_28px_rgba(234,179,8,0.14)]">
+                                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-yellow-200">Audience Spotlight Live</div>
+                                                    <div className="mt-1 text-lg font-black text-white">
+                                                        {activeAudienceSpotlightUser?.name || activeAudienceSpotlight?.name || 'Guest'}
+                                                    </div>
+                                                    <div className="mt-1 text-sm text-yellow-100/80">
+                                                        {activeAudienceSpotlight?.msg || getAudienceSpotlightMessage(activeAudienceSpotlightMode)}
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0 rounded-full border border-yellow-300/30 bg-yellow-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-yellow-100">
+                                                    {activeAudienceSpotlightModeMeta.label}
+                                                </div>
+                                            </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {AUDIENCE_SPOTLIGHT_MODE_OPTIONS.map((option) => {
+                                                    const isActive = activeAudienceSpotlightMode === option.id;
+                                                    return (
+                                                        <button
+                                                            key={option.id}
+                                                            type="button"
+                                                            onClick={() => setActiveAudienceSpotlightMode(option.id)}
+                                                            className={`${STYLES.btnStd} px-3 py-1.5 text-xs ${isActive ? 'border-yellow-200/60 bg-yellow-500/16 text-yellow-50' : 'border-white/12 bg-white/5 text-zinc-200'}`}
+                                                        >
+                                                            <i className={`${option.icon} mr-1`}></i>
+                                                            {option.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                                <button
+                                                    type="button"
+                                                    onClick={advanceAudienceSpotlightPrompt}
+                                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1.5 text-xs`}
+                                                >
+                                                    <i className="fa-solid fa-rotate-right mr-1"></i>
+                                                    Next Prompt
+                                                </button>
+                                            </div>
+                                            {activeAudienceSpotlightPrompt && (
+                                                <div className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-100">
+                                                            {activeAudienceSpotlightPrompt.title}
+                                                        </div>
+                                                        <div className="rounded-full border border-cyan-300/25 bg-black/20 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-50">
+                                                            {activeAudienceSpotlightPrompt.badge}
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-2 text-sm text-zinc-100">
+                                                        {activeAudienceSpotlightPrompt.body}
+                                                    </div>
+                                                    <div className="mt-2 text-[11px] text-zinc-400">
+                                                        The spotlighted guest gets a phone-side reaction tray even when the stage is empty.
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 ${mediumHostViewport ? 'gap-3' : 'gap-4'}`}>
                                     {users.map(u => {
@@ -19403,7 +19923,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                         disabled={queueBusy}
                                                         className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-xs ${queueBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
                                                     >
-                                                        SPOTLIGHT CHALLENGE
+                                                        T15 SHOWCASE
                                                     </button>
                                                     <button
                                                         onClick={() => openTight15ProfileCard(u)}
@@ -19911,69 +20431,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Unsaved Changes
                                             </span>
                                         )}
-                                        {tab === 'admin' && (
-                                            <div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">
-                                                <div data-feature-id="admin-host-panel-mode-toggle" className="flex items-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 p-1">
-                                                    <span className="px-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Host Panel</span>
-                                                    <button
-                                                        type="button"
-                                                        aria-pressed={!experimentalHostPanelActive}
-                                                        onClick={() => {
-                                                            if (experimentalHostPanelActive) {
-                                                                void toggleRuntimeShellModeQuick();
-                                                            }
-                                                        }}
-                                                        className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition ${
-                                                            !experimentalHostPanelActive
-                                                                ? 'border border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
-                                                                : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
-                                                        }`}
-                                                    >
-                                                        Classic
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        aria-pressed={experimentalHostPanelActive}
-                                                        onClick={() => {
-                                                            if (!experimentalHostPanelActive) {
-                                                                void toggleRuntimeShellModeQuick();
-                                                            }
-                                                        }}
-                                                        className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] transition ${
-                                                            experimentalHostPanelActive
-                                                                ? 'border border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100'
-                                                                : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
-                                                        }`}
-                                                    >
-                                                        Experimental
-                                                    </button>
-                                                </div>
-                                                <button
-                                                    onClick={openActiveRoomTv}
-                                                    className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-cyan-100 px-2.5 py-1 hover:bg-cyan-500/20"
-                                                >
-                                                    <i className="fa-solid fa-tv text-[11px]"></i> TV
-                                                </button>
-                                                <button
-                                                    onClick={() => setPublicTvPreviewVisible(prev => !prev)}
-                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-                                                        publicTvPreviewVisible ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100' : 'border-white/15 bg-zinc-900 text-zinc-300'
-                                                    }`}
-                                                >
-                                                    <i className="fa-solid fa-display text-[11px]"></i>
-                                                    TV Preview {publicTvPreviewVisible ? 'On' : 'Off'}
-                                                </button>
-                                                <button
-                                                    onClick={() => setAudiencePreviewVisible(prev => !prev)}
-                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
-                                                        audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
-                                                    }`}
-                                                >
-                                                    <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
-                                                    Audience {audiencePreviewVisible ? 'On' : 'Off'}
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                     {!inAdminWorkspace && (
                                         <>
@@ -20073,13 +20530,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                         </div>
-                        <div className="rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-4">
+                        <div data-feature-id="admin-audience-host-layout-card" className="rounded-2xl border border-cyan-500/25 bg-gradient-to-r from-cyan-500/10 via-zinc-950/70 to-fuchsia-500/10 p-4">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div className="max-w-2xl">
-                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Audience App Layout</div>
-                                    <div className="mt-1 text-lg font-semibold text-white">Turn on the streamlined audience app here.</div>
+                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Audience + Host Layout</div>
+                                    <div className="mt-1 text-lg font-semibold text-white">Keep the guest shell and the host panel layouts together here.</div>
                                     <div className="mt-1 text-sm text-zinc-300">
-                                        Classic keeps the full guest navigation. Streamlined trims the shell to the lighter two-tab flow with live-mode takeovers during the night.
+                                        Change the audience app flow and the host panel shell from one place, then use the preview toggles below to verify both surfaces.
                                     </div>
                                 </div>
                                 <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
@@ -20090,76 +20547,156 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     {audienceShellVariant === 'streamlined' ? 'Streamlined On' : 'Classic On'}
                                 </span>
                             </div>
-                            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                                {[
-                                    {
-                                        id: 'classic',
-                                        label: 'Classic',
-                                        note: 'Full navigation with the current guest destinations and familiar flow.'
-                                    },
-                                    {
-                                        id: 'streamlined',
-                                        label: 'Streamlined',
-                                        note: 'Party-first shell with fewer tabs, lighter clutter, and clearer live moments.'
-                                    }
-                                ].map((option) => (
-                                    <button
-                                        key={option.id}
-                                        type="button"
-                                        onClick={() => setAudienceShellVariant(option.id)}
-                                        className={`rounded-2xl border px-4 py-4 text-left transition-all ${
-                                            audienceShellVariant === option.id
-                                                ? 'border-cyan-300/45 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
-                                                : 'border-white/10 bg-black/20 hover:border-cyan-400/30'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="text-sm font-semibold text-white">{option.label}</div>
-                                            {audienceShellVariant === option.id ? (
-                                                <span className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
-                                                    Active
-                                                </span>
-                                            ) : null}
+                            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+                                <div className="rounded-2xl border border-cyan-300/20 bg-black/20 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div className="max-w-2xl">
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Audience App Layout</div>
+                                            <div className="mt-1 text-sm text-zinc-200">
+                                                Streamlined trims the guest app to the lighter two-tab shell. Classic keeps the full navigation set.
+                                            </div>
                                         </div>
-                                        <div className="mt-2 text-sm text-zinc-300">{option.note}</div>
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="mt-4 rounded-2xl border border-cyan-300/20 bg-black/20 p-4">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div className="max-w-2xl">
-                                        <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-200">Live Previews</div>
-                                        <div className="mt-1 text-sm text-zinc-200">
-                                            Audience and Public TV previews stay in the live Overlays menu so Admin does not own a second set of runtime visibility controls.
+                                        <div className="rounded-full border border-white/15 bg-black/25 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-200">
+                                            {audienceShellVariant === 'streamlined' ? 'Less guest clutter' : 'Full guest nav'}
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={focusOverlayLiveControls}
-                                        className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
-                                    >
-                                        <i className="fa-solid fa-display"></i>
-                                        Open Live Display Controls
-                                    </button>
-                                </div>
-                            </div>
-                            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3">
-                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Navigation</div>
-                                    <div className="mt-1 text-sm text-zinc-200">
-                                        {audienceShellVariant === 'streamlined' ? 'Party + Songs stay front and center.' : 'Guests keep the full multi-destination nav.'}
+                                    <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                                        {[
+                                            {
+                                                id: 'classic',
+                                                label: 'Classic',
+                                                note: 'Full navigation with the current guest destinations and familiar flow.'
+                                            },
+                                            {
+                                                id: 'streamlined',
+                                                label: 'Streamlined',
+                                                note: 'Party-first shell with fewer tabs, lighter clutter, and clearer live moments.'
+                                            }
+                                        ].map((option) => (
+                                            <button
+                                                key={option.id}
+                                                type="button"
+                                                onClick={() => setAudienceShellVariant(option.id)}
+                                                className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+                                                    audienceShellVariant === option.id
+                                                        ? 'border-cyan-300/45 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.12)]'
+                                                        : 'border-white/10 bg-black/20 hover:border-cyan-400/30'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="text-sm font-semibold text-white">{option.label}</div>
+                                                    {audienceShellVariant === option.id ? (
+                                                        <span className="rounded-full border border-cyan-300/30 bg-cyan-500/15 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-cyan-100">
+                                                            Active
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+                                                <div className="mt-2 text-sm text-zinc-300">{option.note}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-300">
+                                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                                            {audienceShellVariant === 'streamlined' ? 'Party + Songs stay front and center.' : 'Guests keep the full multi-destination nav.'}
+                                        </span>
+                                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                                            {audienceShellVariant === 'streamlined' ? 'Takeovers guide guests into the live room moment.' : 'Guests stay in the current shell without lighter takeovers.'}
+                                        </span>
+                                        <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1">
+                                            {audienceShellVariant === 'streamlined' ? 'Best when you want faster scanning.' : 'Best when regulars rely on the full app layout.'}
+                                        </span>
                                     </div>
                                 </div>
-                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Live Moments</div>
-                                    <div className="mt-1 text-sm text-zinc-200">
-                                        {audienceShellVariant === 'streamlined' ? 'Takeovers guide guests into the active room moment.' : 'Guests stay in the current shell without the lighter takeovers.'}
+                                <div className="rounded-2xl border border-fuchsia-300/20 bg-black/20 p-4">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div className="max-w-xl">
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-fuchsia-200">Host Panel Layout</div>
+                                            <div className="mt-1 text-sm text-zinc-200">
+                                                This controls the host workspace shell only, so you can keep the classic host panel or switch to the experimental layout.
+                                            </div>
+                                        </div>
+                                        <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                                            experimentalHostPanelActive
+                                                ? 'border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100'
+                                                : 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
+                                        }`}>
+                                            {experimentalHostPanelActive ? 'Experimental On' : 'Classic On'}
+                                        </span>
                                     </div>
-                                </div>
-                                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Best Fit</div>
-                                    <div className="mt-1 text-sm text-zinc-200">
-                                        {audienceShellVariant === 'streamlined' ? 'Use this when you want less guest clutter and faster scanning.' : 'Use this when your regulars rely on the full app layout.'}
+                                    <div data-feature-id="admin-host-panel-mode-toggle" className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-zinc-950/70 p-2">
+                                        <span className="px-2 text-[10px] font-black uppercase tracking-[0.18em] text-zinc-400">Host Panel</span>
+                                        <button
+                                            type="button"
+                                            aria-pressed={!experimentalHostPanelActive}
+                                            onClick={() => {
+                                                if (experimentalHostPanelActive) {
+                                                    void toggleRuntimeShellModeQuick();
+                                                }
+                                            }}
+                                            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition ${
+                                                !experimentalHostPanelActive
+                                                    ? 'border border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
+                                                    : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
+                                            }`}
+                                        >
+                                            Classic
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-pressed={experimentalHostPanelActive}
+                                            onClick={() => {
+                                                if (!experimentalHostPanelActive) {
+                                                    void toggleRuntimeShellModeQuick();
+                                                }
+                                            }}
+                                            className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.16em] transition ${
+                                                experimentalHostPanelActive
+                                                    ? 'border border-fuchsia-300/35 bg-fuchsia-500/12 text-fuchsia-100'
+                                                    : 'border border-transparent bg-transparent text-zinc-400 hover:text-white'
+                                            }`}
+                                        >
+                                            Experimental
+                                        </button>
+                                    </div>
+                                    <div className="mt-4 rounded-2xl border border-white/10 bg-zinc-950/55 p-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Preview Surfaces</div>
+                                            <button
+                                                type="button"
+                                                onClick={focusOverlayLiveControls}
+                                                className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
+                                            >
+                                                <i className="fa-solid fa-display"></i>
+                                                Open Live Display Controls
+                                            </button>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                            <button
+                                                onClick={openActiveRoomTv}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1.5 text-cyan-100 hover:bg-cyan-500/20"
+                                            >
+                                                <i className="fa-solid fa-tv text-[11px]"></i>
+                                                Open TV
+                                            </button>
+                                            <button
+                                                onClick={() => setPublicTvPreviewVisible(prev => !prev)}
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+                                                    publicTvPreviewVisible ? 'border-cyan-400/30 bg-cyan-500/10 text-cyan-100' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                }`}
+                                            >
+                                                <i className="fa-solid fa-display text-[11px]"></i>
+                                                TV Preview {publicTvPreviewVisible ? 'On' : 'Off'}
+                                            </button>
+                                            <button
+                                                onClick={() => setAudiencePreviewVisible(prev => !prev)}
+                                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+                                                    audiencePreviewVisible ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-white/15 bg-zinc-900 text-zinc-300'
+                                                }`}
+                                            >
+                                                <i className="fa-solid fa-mobile-screen-button text-[11px]"></i>
+                                                Audience Preview {audiencePreviewVisible ? 'On' : 'Off'}
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -22920,7 +23457,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     )
                                     .map(item => (
                                         <div key={item.id} className="flex items-center gap-2 text-xs">
-                                            <div className="flex-1 truncate text-cyan-100/85">
+                                            <div className="min-w-0 flex-1 truncate text-cyan-100/85">
                                                 {item.title}
                                                 <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item._local ? 'Offline backup' : 'Upload'}</span>
                                             </div>
@@ -22929,9 +23466,29 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     Remove Local
                                                 </button>
                                             ) : item._cloud ? (
-                                                <button onClick={() => deleteCloudUpload(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
-                                                    Delete
-                                                </button>
+                                                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                                                    {canUseRoomMediaAsScene(item) ? (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void addRoomUploadToTvLibrary(item)}
+                                                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-2 py-1 text-sm`}
+                                                            >
+                                                                TV Library
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void addRoomUploadToRunOfShow(item)}
+                                                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2 py-1 text-sm`}
+                                                            >
+                                                                Use In Run Of Show
+                                                            </button>
+                                                        </>
+                                                    ) : null}
+                                                    <button onClick={() => deleteCloudUpload(item)} className={`${STYLES.btnStd} ${STYLES.btnDanger} px-2 py-1 text-sm`}>
+                                                        Delete
+                                                    </button>
+                                                </div>
                                             ) : null}
                                         </div>
                                     ))}
@@ -23855,10 +24412,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 Queue
                                             </button>
                                             <button
-                                                onClick={() => sendUserMessage(tight15Profile.uid, `Tight 15 Pick: ${entry.songTitle}`, { tight15List: tight15Profile.tight15.slice(0, 3), challengeEntry: entry })}
+                                                onClick={() => sendUserMessage(tight15Profile.uid, `Tight 15 Showcase: ${entry.songTitle}`, {
+                                                    kind: SPOTLIGHT_KINDS.tight15,
+                                                    tight15List: tight15Profile.tight15.slice(0, 3),
+                                                    challengeEntry: entry
+                                                })}
                                                 className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-3 py-1 text-[10px]`}
                                             >
-                                                Spotlight
+                                                Showcase
                                             </button>
                                         </div>
                                     </div>

@@ -48,7 +48,18 @@ export const REACTION_EMOJI = Object.freeze({
     rocket: EMOJI.rocket,
     diamond: EMOJI.diamond,
     crown: EMOJI.crown,
-    money: EMOJI.cherryBlossom
+    money: EMOJI.cherryBlossom,
+    spotlight_wave: EMOJI.wave,
+    spotlight_heart: EMOJI.heart,
+    spotlight_fire: EMOJI.fire,
+    spotlight_mic: EMOJI.mic,
+    spotlight_question: EMOJI.question,
+    spotlight_truth: emoji(0x1F4AC),
+    spotlight_shrug: emoji(0x1F937),
+    spotlight_laugh: emoji(0x1F602),
+    spotlight_skull: EMOJI.skull,
+    spotlight_clap: EMOJI.clap,
+    spotlight_micdrop: emoji(0x1F3A4)
 });
 
 export const getReactionEmoji = (type = '', fallback = EMOJI.heart) => {

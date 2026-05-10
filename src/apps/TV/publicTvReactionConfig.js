@@ -7,7 +7,18 @@ export const TV_REACTION_LABELS = Object.freeze({
     diamond: 'Gem',
     money: 'Bloom',
     crown: 'Royal',
-    strum: 'Strum'
+    strum: 'Strum',
+    spotlight_wave: 'Wave',
+    spotlight_heart: 'Love',
+    spotlight_fire: 'Heat',
+    spotlight_mic: 'Mic Check',
+    spotlight_question: 'Question',
+    spotlight_truth: 'Story Time',
+    spotlight_shrug: 'Unsure',
+    spotlight_laugh: 'Laugh',
+    spotlight_skull: 'Cooked',
+    spotlight_clap: 'Good One',
+    spotlight_micdrop: 'Mic Drop'
 });
 
 export const getTvReactionLabel = (type = '') => {
@@ -29,7 +40,18 @@ export const getTvReactionThemeKey = (type = '') => ({
     drink: 'drink',
     fire: 'fire',
     heart: 'heart',
-    clap: 'clap'
+    clap: 'clap',
+    spotlight_fire: 'fire',
+    spotlight_heart: 'heart',
+    spotlight_clap: 'clap',
+    spotlight_wave: 'heart',
+    spotlight_question: 'diamond',
+    spotlight_truth: 'diamond',
+    spotlight_shrug: 'drink',
+    spotlight_laugh: 'rocket',
+    spotlight_skull: 'rocket',
+    spotlight_mic: 'crown',
+    spotlight_micdrop: 'crown'
 }[String(type || '').trim().toLowerCase()] || 'default');
 
 export const getTvReactionEmojiClass = (type = '') => ({
@@ -40,7 +62,18 @@ export const getTvReactionEmojiClass = (type = '') => ({
     drink: 'reaction-emoji-drink text-[clamp(2.5rem,8vw,6rem)]',
     fire: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
     heart: 'reaction-emoji-heart text-[clamp(2.5rem,8vw,6rem)]',
-    clap: 'reaction-emoji-clap text-[clamp(2.5rem,8vw,6rem)]'
+    clap: 'reaction-emoji-clap text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_fire: 'reaction-emoji-fire text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_heart: 'reaction-emoji-heart text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_clap: 'reaction-emoji-clap text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_wave: 'animate-float text-[clamp(2.25rem,7vw,5rem)]',
+    spotlight_question: 'animate-float text-[clamp(2.4rem,7.5vw,5.5rem)]',
+    spotlight_truth: 'animate-float text-[clamp(2.4rem,7.5vw,5.5rem)]',
+    spotlight_shrug: 'animate-float text-[clamp(2.4rem,7.5vw,5.5rem)]',
+    spotlight_laugh: 'animate-float text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_skull: 'animate-float text-[clamp(2.5rem,8vw,6rem)]',
+    spotlight_mic: 'animate-float text-[clamp(2.6rem,8vw,6rem)]',
+    spotlight_micdrop: 'animate-float text-[clamp(2.6rem,8vw,6rem)]'
 }[String(type || '').trim().toLowerCase()] || 'animate-float text-[clamp(2rem,6vw,4rem)]');
 
 const hashTvMotionSeed = (value = '') => {

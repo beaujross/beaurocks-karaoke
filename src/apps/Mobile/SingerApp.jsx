@@ -149,6 +149,15 @@ import {
     getAudienceTakeoverLabel,
     normalizeAudienceShellVariant
 } from './audienceShellVariant';
+import {
+    SPOTLIGHT_KINDS,
+    buildAudienceSpotlightPrompt,
+    getAudienceSpotlightMessage,
+    getAudienceSpotlightModeMeta,
+    getAudienceSpotlightReactions,
+    inferSpotlightKind,
+    normalizeAudienceSpotlightMode,
+} from '../../lib/audienceSpotlight';
 import { buildAudienceBrandThemePalette, normalizeAudienceBrandTheme, withAudienceBrandAlpha } from '../../lib/audienceBrandTheme';
 import {
     AUDIENCE_FEATURE_ACCESS_LEVELS,
@@ -1019,6 +1028,19 @@ const SingerApp = ({ roomCode, uid }) => {
     const [songs, setSongs] = useState(Array.isArray(initialAudienceDemoFixture?.songs) ? initialAudienceDemoFixture.songs : []);
     const [tab, setTab] = useState(initialAudienceDemoFixture?.tab || 'home');
     const currentSinger = useMemo(() => songs.find(s => s.status === 'performing'), [songs]);
+    const queueSongsView = useMemo(() => (
+        [...songs]
+            .filter(s => ['performing', 'requested', 'pending'].includes(s.status))
+            .sort((a, b) => {
+                const order = { performing: 0, requested: 1, pending: 2 };
+                const aOrder = order[a.status] ?? 9;
+                const bOrder = order[b.status] ?? 9;
+                if (aOrder !== bOrder) return aOrder - bOrder;
+                const aTime = a.timestamp?.seconds ? a.timestamp.seconds : 0;
+                const bTime = b.timestamp?.seconds ? b.timestamp.seconds : 0;
+                return aTime - bTime;
+            })
+    ), [songs]);
     const announcementTakeoverScene = useMemo(
         () => String(room?.announcement?.takeoverScene || room?.announcement?.type || '').trim().toLowerCase(),
         [room?.announcement?.takeoverScene, room?.announcement?.type]
@@ -1079,6 +1101,21 @@ const SingerApp = ({ roomCode, uid }) => {
     const audienceSearchIconClass = isStreamlinedAudienceShell
         ? 'fa-solid fa-magnifying-glass text-cyan-700'
         : 'fa-solid fa-magnifying-glass text-cyan-200/80';
+    const audienceSearchModeActiveClass = isStreamlinedAudienceShell
+        ? 'border-cyan-300/70 bg-cyan-100 text-cyan-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]'
+        : 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100';
+    const audienceSearchModeInactiveClass = isStreamlinedAudienceShell
+        ? 'border-cyan-200/65 bg-white text-zinc-700'
+        : 'border-white/10 bg-black/20 text-zinc-300';
+    const audienceSearchHelperTextClass = isStreamlinedAudienceShell
+        ? 'mt-2 text-xs uppercase tracking-[0.24em] text-zinc-500'
+        : 'mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400';
+    const audienceSearchLegalTextClass = isStreamlinedAudienceShell
+        ? 'mt-2 text-[11px] leading-5 text-zinc-600'
+        : 'mt-2 text-[11px] leading-5 text-zinc-400';
+    const audienceSearchLegalLinkClass = isStreamlinedAudienceShell
+        ? 'font-semibold text-cyan-800 underline underline-offset-4'
+        : 'text-cyan-200 underline underline-offset-4';
     const audienceFormInputClass = isStreamlinedAudienceShell
         ? 'w-full rounded-2xl border-2 border-cyan-200/70 bg-white p-4 text-base font-semibold text-zinc-950 placeholder:text-zinc-600 outline-none shadow-[0_14px_34px_rgba(34,211,238,0.16)] focus:border-pink-300 focus:ring-2 focus:ring-pink-300/35'
         : 'w-full bg-zinc-900/70 p-4 rounded-2xl border border-zinc-700 text-base text-white placeholder:text-zinc-500 outline-none';
@@ -1160,6 +1197,24 @@ const SingerApp = ({ roomCode, uid }) => {
         }),
         [authReadyUid, isQaAudienceFixture, uid]
     );
+    const spotlightPayload = room?.spotlightUser || null;
+    const spotlightKind = inferSpotlightKind(spotlightPayload);
+    const audienceSpotlightMode = normalizeAudienceSpotlightMode(spotlightPayload?.mode);
+    const audienceSpotlightModeMeta = getAudienceSpotlightModeMeta(audienceSpotlightMode);
+    const audienceSpotlightPrompt = useMemo(
+        () => (spotlightKind === SPOTLIGHT_KINDS.audience
+            ? buildAudienceSpotlightPrompt(audienceSpotlightMode, spotlightPayload?.prompt?.index)
+            : null),
+        [audienceSpotlightMode, spotlightKind, spotlightPayload?.prompt?.index]
+    );
+    const audienceSpotlightReactionOptions = useMemo(
+        () => getAudienceSpotlightReactions(audienceSpotlightMode),
+        [audienceSpotlightMode]
+    );
+    const spotlightAudienceUid = String(spotlightPayload?.id || '').trim();
+    const isAudienceSpotlightedGuest = spotlightKind === SPOTLIGHT_KINDS.audience
+        && !!spotlightAudienceUid
+        && spotlightAudienceUid === String(activeUid || '').trim();
     const runOfShowOperatorRole = useMemo(() => getRunOfShowOperatorRole({
         uid: activeUid || user?.uid || '',
         hostUid: room?.hostUid || '',
@@ -2447,28 +2502,45 @@ const SingerApp = ({ roomCode, uid }) => {
     const getAudienceRequestStateMeta = (request = {}) => {
         const normalizedResolutionStatus = String(request?.resolutionStatus || '').trim().toLowerCase();
         const normalizedStatus = String(request?.status || '').trim().toLowerCase();
+        const audienceStatusTag = String(request?.audienceStatusTag || '').trim();
+        const audienceStatusDetail = String(request?.audienceStatusDetail || '').trim();
+        const audienceStatusTone = String(request?.audienceStatusTone || '').trim().toLowerCase();
         if (requiresBackingHostReview(normalizedResolutionStatus) || normalizedStatus === 'pending') {
             return {
-                icon: 'fa-hourglass-half',
-                label: 'Host review',
-                detail: request?.playbackReady
-                    ? 'The host still needs to approve this backing before it can play.'
-                    : 'Your request is in. The host still needs to attach or approve the backing.'
+                icon: audienceStatusTone === 'attention' ? 'fa-rotate-left' : 'fa-hourglass-half',
+                label: audienceStatusTag || 'Host review',
+                detail: audienceStatusDetail || (
+                    request?.playbackReady
+                        ? 'The host still needs to approve this backing before it can play.'
+                        : 'Your request is in. The host still needs to attach or approve the backing.'
+                ),
+                tone: audienceStatusTone || 'review',
             };
         }
         if (isAudienceSelectedUnverifiedResolution(normalizedResolutionStatus)) {
             return {
                 icon: 'fa-circle-question',
                 label: 'Unverified backing',
-                detail: 'Your request is queued with an unverified backing. The host can rate it after the song.'
+                detail: 'Your request is queued with an unverified backing. The host can rate it after the song.',
+                tone: 'info',
             };
         }
         return {
             icon: 'fa-check-circle',
             label: 'Ready',
-            detail: request?.playbackReady ? '' : 'The host still needs to finalize playback for this request.'
+            detail: request?.playbackReady ? '' : 'The host still needs to finalize playback for this request.',
+            tone: 'ready',
         };
     };
+    const getAudienceRequestStateDetailClass = (tone = '') => (
+        tone === 'attention'
+            ? 'border-amber-300/28 bg-amber-500/12 text-amber-50'
+            : tone === 'ready'
+                ? 'border-emerald-300/25 bg-emerald-500/10 text-emerald-50'
+                : tone === 'info'
+                    ? 'border-cyan-300/24 bg-cyan-500/10 text-cyan-50'
+                    : 'border-cyan-300/22 bg-cyan-500/8 text-cyan-50'
+    );
     const top100Songs = useMemo(() => {
         const arts = Object.values(sampleArt);
         const decorated = decorateBrowseSongs(top100Seed, { playableOnly: playableOnlyRequestMode });
@@ -3098,7 +3170,7 @@ const SingerApp = ({ roomCode, uid }) => {
         [queueSongsView, room?.selfServeMode, selfServeNowMs]
     );
     const supportCtaLabel = (room?.selfServeMode?.enabled && String(room?.selfServeMode?.format || '').trim().toLowerCase() === 'spotlight_auction' && isSelfServeAuctionWindowLive(room?.selfServeMode))
-        ? (selfServePresentation?.supportCtaLabel || 'Bid For The Next Spotlight')
+        ? (selfServePresentation?.supportCtaLabel || 'Bid For The Next Showcase Slot')
         : roomSupportOffer?.label
         || (isCustomAudienceBrand ? `Support ${audienceBrandTitle}` : 'Support This Room');
     const roomSupportWidgetId = String(roomSupportOffer?.supportWidgetId || '').trim();
@@ -5815,8 +5887,10 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         return () => cancelAnimationFrame(raf);
     }, [manualRequestComposerOpen]);
 
+    const browseOverlayOpen = !!activeBrowseList || showTop100 || showYtIndex;
+
     useEffect(() => {
-        if (!(catalogSearchOpen || manualRequestComposerOpen)) return undefined;
+        if (!(catalogSearchOpen || manualRequestComposerOpen || browseOverlayOpen)) return undefined;
         if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
         const scrollY = window.scrollY || window.pageYOffset || 0;
         const { body, documentElement } = document;
@@ -5841,7 +5915,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             documentElement.style.overscrollBehavior = previousRootOverscroll;
             window.scrollTo(0, scrollY);
         };
-    }, [catalogSearchOpen, manualRequestComposerOpen]);
+    }, [browseOverlayOpen, catalogSearchOpen, manualRequestComposerOpen]);
 
     const renderAudienceViewportSheet = (node) => {
         if (typeof document === 'undefined') return node;
@@ -7058,6 +7132,42 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         } catch (error) {
             console.error(error);
             toast('Only the host can exit this mode.');
+        }
+    };
+    const sendAudienceSpotlightReaction = async (type = '') => {
+        const safeType = String(type || '').trim().toLowerCase();
+        if (!safeType || !roomCode || !user || !isAudienceSpotlightedGuest) return;
+        const now = Date.now();
+        const cooldownUntil = Number(reactionCooldownByType?.[safeType] || 0);
+        const spotlightCooldownMs = 900;
+        if (cooldownUntil > now) {
+            triggerCooldownFlash(safeType);
+            return;
+        }
+        setReactionCooldownByType((prev) => applyReactionCooldown(prev, safeType, now, spotlightCooldownMs));
+        markActive();
+        const id = Date.now();
+        setLocalReactions((prev) => [...prev, { id, type: safeType, left: Math.random() * 72 + 14 }]);
+        setTimeout(() => setLocalReactions((prev) => prev.filter((entry) => entry.id !== id)), 3200);
+        try {
+            await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'reactions'), {
+                roomCode,
+                type: safeType,
+                count: 1,
+                uid: activeUid,
+                userName: user.name,
+                avatar: user.avatar,
+                isVip: isVipAccount,
+                isFree: true,
+                spotlightSessionId: spotlightPayload?.sessionId || null,
+                spotlightKind,
+                spotlightMode: audienceSpotlightMode,
+                spotlightUserId: spotlightAudienceUid,
+                timestamp: serverTimestamp()
+            });
+        } catch (error) {
+            console.error(error);
+            toast('Could not send spotlight reaction.');
         }
     };
 
@@ -8402,7 +8512,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{isCustomAudienceBrand ? 'About this room' : 'About'}</div>
                         <div className="text-2xl font-black text-white">{isCustomAudienceBrand ? audienceBrandTitle : 'BEAUROCKS KARAOKE'}</div>
                         {poweredByBeauRocksLabel ? (
-                            <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-zinc-400">{poweredByBeauRocksLabel}</div>
+                            <div className="mt-1 text-[11px] tracking-[0.12em] text-zinc-400">{poweredByBeauRocksLabel}</div>
                         ) : null}
                     </div>
                 </div>
@@ -8610,13 +8720,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     />
                 </button>
                 {poweredByBeauRocksLabel ? (
-                    <div className="mb-2 rounded-full border border-white/12 bg-black/28 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.26em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
+                    <div className="mb-2 rounded-full border border-white/12 bg-black/28 px-3 py-1.5 text-[11px] font-black tracking-[0.12em] text-white/88 shadow-[0_10px_24px_rgba(0,0,0,0.18)]">
                         {poweredByBeauRocksLabel}
                     </div>
                 ) : null}
                 <div className="max-w-sm rounded-3xl border border-white/12 bg-black/24 px-4 py-3 text-center shadow-[0_14px_40px_rgba(0,0,0,0.18)]">
                     <div className="text-sm font-semibold leading-6 text-white/92">
-                        Choose your emoji and enter your name to jump into Songs.
+                        Pick the emoji that feels most you.
                     </div>
                 </div>
                 {/* FULL EMOJI GRID FOR LOGIN */}
@@ -9971,7 +10081,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">{accessBrandLabel}</div>
                     <div className="text-3xl font-bebas text-cyan-300">Your Performance History</div>
                     {poweredByBeauRocksLabel ? (
-                        <div className="mt-1 text-[11px] uppercase tracking-[0.22em] text-zinc-500">{poweredByBeauRocksLabel}</div>
+                        <div className="mt-1 text-[11px] tracking-[0.12em] text-zinc-500">{poweredByBeauRocksLabel}</div>
                     ) : null}
                 </div>
                 <button onClick={() => setShowAccount(false)} className="bg-zinc-800 px-4 py-2 rounded-full text-sm font-bold">Close</button>
@@ -11126,17 +11236,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             title: queueFirstTimeBoostView ? 'First-time singers boosted' : 'No first-time boost'
         }
     ];
-    const queueSongsView = [...songs]
-        .filter(s => ['performing', 'requested', 'pending'].includes(s.status))
-        .sort((a, b) => {
-            const order = { performing: 0, requested: 1, pending: 2 };
-            const aOrder = order[a.status] ?? 9;
-            const bOrder = order[b.status] ?? 9;
-            if (aOrder !== bOrder) return aOrder - bOrder;
-            const aTime = a.timestamp?.seconds ? a.timestamp.seconds : 0;
-            const bTime = b.timestamp?.seconds ? b.timestamp.seconds : 0;
-            return aTime - bTime;
-        });
     const myRequestSongs = [...songs]
         .filter((song) => songBelongsToAudienceUser(song, activeUid || uid, user?.name))
         .sort((a, b) => {
@@ -11985,6 +12084,47 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 : releaseWindowTally.totalVotes > 0
                                     ? `${audienceReleaseVoteCountLabel} locked so far. Host confirms the winner after voting closes.`
                                     : 'One vote per joined user. Host confirms the winner after voting closes.'}
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isAudienceSpotlightedGuest && (
+                <div
+                    className="pointer-events-none fixed inset-x-3 z-[95] md:inset-x-5"
+                    style={{ bottom: `calc(${mobileFloatingBottomInset} + 5.5rem)` }}
+                    data-feature-id="audience-spotlight-reaction-tray"
+                >
+                    <div className="pointer-events-auto mx-auto max-w-[26rem] rounded-[1.35rem] border border-yellow-300/24 bg-[linear-gradient(145deg,rgba(27,19,7,0.96),rgba(11,10,18,0.96))] px-3.5 py-3.5 shadow-[0_18px_48px_rgba(0,0,0,0.34)]">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="text-[9px] uppercase tracking-[0.22em] text-yellow-200">Audience Spotlight</div>
+                                <div className="mt-1 text-sm font-black leading-tight text-white">
+                                    {audienceSpotlightPrompt?.title || 'Crowd work live'}
+                                </div>
+                                <div className="mt-1 text-[11px] text-zinc-300">
+                                    {audienceSpotlightPrompt?.body || getAudienceSpotlightMessage(audienceSpotlightMode)}
+                                </div>
+                            </div>
+                            <div className="shrink-0 rounded-full border border-yellow-300/25 bg-yellow-500/14 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-yellow-100">
+                                {audienceSpotlightModeMeta.label}
+                            </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                            {audienceSpotlightReactionOptions.map((reaction) => (
+                                <button
+                                    key={reaction.type}
+                                    type="button"
+                                    onClick={() => sendAudienceSpotlightReaction(reaction.type)}
+                                    disabled={isReactionCoolingDown(reaction.type)}
+                                    className={`rounded-[1.05rem] border px-2 py-2 text-center transition-all ${reaction.accentClass} ${isReactionCoolingDown(reaction.type) ? 'opacity-60 cursor-not-allowed' : 'active:scale-95'}`}
+                                >
+                                    <div className="text-2xl leading-none">{getReactionEmoji(reaction.type, EMOJI.sparkle)}</div>
+                                    <div className="mt-1 text-[10px] font-black uppercase tracking-[0.14em]">{reaction.label}</div>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-2 text-[11px] text-zinc-400">
+                            These reactions go straight to Public TV even if nobody is singing.
                         </div>
                     </div>
                 </div>
@@ -13767,46 +13907,6 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                 </div>
                             </div>
                         )}
-                        {lastSongRequestFeedback && (() => {
-                            const requestStateMeta = getAudienceRequestStateMeta(lastSongRequestFeedback);
-                            return (
-                            <div className="mb-4 rounded-2xl border border-emerald-300/30 bg-gradient-to-br from-emerald-500/18 via-cyan-500/14 to-sky-500/16 p-4 shadow-[0_16px_40px_rgba(16,185,129,0.12)]">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 text-left">
-                                        <div className="text-[11px] uppercase tracking-[0.35em] text-emerald-100/80">Request sent</div>
-                                        <div className="mt-1 text-xl font-black text-white leading-tight">
-                                            {lastSongRequestFeedback.songTitle}
-                                        </div>
-                                        <div className="text-sm text-zinc-200 truncate">
-                                            {lastSongRequestFeedback.artist}
-                                        </div>
-                                        <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-50">
-                                            <i className={`fa-solid ${requestStateMeta.icon}`}></i>
-                                            {requestStateMeta.label}
-                                        </div>
-                                        {!!requestStateMeta.detail && (
-                                            <div className="mt-2 text-sm text-zinc-300">
-                                                {requestStateMeta.detail}
-                                            </div>
-                                        )}
-                                        {lastSongRequestFeedback.collabOpen && (
-                                            <div className="mt-2 text-xs uppercase tracking-[0.24em] text-pink-100/85">
-                                                Open to duet or group version
-                                            </div>
-                                        )}
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setLastSongRequestFeedback(null)}
-                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/25 text-zinc-200"
-                                        aria-label="Dismiss request confirmation"
-                                    >
-                                        <i className="fa-solid fa-xmark"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            );
-                        })()}
                         {catalogSearchOpen && ['requests', 'browse'].includes(songsTab) && renderAudienceViewportSheet(
                             <React.Fragment>
                                 <button
@@ -13860,8 +13960,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             onClick={() => setCatalogSearchMode(mode)}
                                                             className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${
                                                                 catalogSearchMode === mode
-                                                                    ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
-                                                                    : 'border-white/10 bg-black/20 text-zinc-300'
+                                                                    ? audienceSearchModeActiveClass
+                                                                    : audienceSearchModeInactiveClass
                                                             }`}
                                                         >
                                                             {label}
@@ -13879,7 +13979,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     placeholder={catalogSearchMode === 'youtube' ? 'Search YouTube karaoke...' : 'Search songs...'}
                                                 />
                                             </div>
-                                            <div className="mt-2 text-xs uppercase tracking-[0.24em] text-zinc-400">
+                                            <div className={audienceSearchHelperTextClass}>
                                                 {audienceYouTubeOnlySearch
                                                     ? 'This room is locked to YouTube karaoke search for guest requests.'
                                                     : catalogSearchMode === 'youtube'
@@ -13887,11 +13987,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     : 'Search by song and artist. Browse only shows picks that already have approved backing.'}
                                             </div>
                                             {catalogSearchMode === 'youtube' && (
-                                                <div className="mt-2 text-[11px] leading-5 text-zinc-400">
+                                                <div className={audienceSearchLegalTextClass}>
                                                     This application uses YouTube API Services. By using YouTube search, you also agree to the{' '}
-                                                    <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">YouTube Terms of Service</a>
+                                                    <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer" className={audienceSearchLegalLinkClass}>YouTube Terms of Service</a>
                                                     {' '}and acknowledge the{' '}
-                                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="text-cyan-200 underline underline-offset-4">Google Privacy Policy</a>.
+                                                    <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className={audienceSearchLegalLinkClass}>Google Privacy Policy</a>.
                                                 </div>
                                             )}
                                         </div>
@@ -14462,6 +14562,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                 )}
                                             </div>
                                         )}
+                                        {latestMyRequestStateMeta?.detail ? (
+                                            <div className={`mt-3 rounded-2xl border px-3 py-3 text-sm ${getAudienceRequestStateDetailClass(latestMyRequestStateMeta.tone)}`}>
+                                                {latestMyRequestStateMeta.detail}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 </div>
                                 )}
@@ -14481,51 +14586,27 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     <div className="mt-1 text-[1.5rem] font-black leading-tight text-white">
                                                         {hasActiveSongRequest ? 'Add another song or track the line' : 'Search for your first song'}
                                                     </div>
-                                                    <div className="mt-2 text-sm leading-6 text-zinc-300">
-                                                        {hasActiveSongRequest
-                                                            ? 'Search if you know it, or tap a category below to browse fast.'
-                                                            : 'Start with search if you know it, or tap a category below to browse fast. Once you add one, the queue and Party views take over.'}
-                                                    </div>
+                                            <div className="mt-2 text-sm leading-6 text-zinc-300">
+                                                {hasActiveSongRequest
+                                                    ? 'Search if you know it, or tap a category below to browse fast.'
+                                                    : 'Start with search if you know it, or tap a category below to browse fast. Once you add one, the queue and Party views take over.'}
+                                            </div>
                                                 </div>
                                                 <div className="shrink-0 rounded-2xl border border-white/10 bg-black/25 px-3 py-2 text-right">
                                                     <div className="text-[9px] uppercase tracking-[0.24em] text-zinc-400">Queue</div>
                                                     <div className="font-bebas text-2xl tracking-[0.18em] text-cyan-200">{queueSongsView.length || 0}</div>
                                                 </div>
                                             </div>
-                                            {!hasActiveSongRequest ? (
-                                                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                                    <div className="rounded-2xl border border-cyan-300/35 bg-cyan-500/12 px-3 py-2 text-white">
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">1 Search</div>
-                                                        <div className="mt-1 text-sm font-semibold">Find your song</div>
-                                                    </div>
-                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-200">
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">2 Queue It</div>
-                                                        <div className="mt-1 text-sm font-semibold">Send it straight in</div>
-                                                    </div>
-                                                    <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-zinc-200">
-                                                        <div className="text-[10px] font-black uppercase tracking-[0.22em]">3 Back to Party</div>
-                                                        <div className="mt-1 text-sm font-semibold">React while you wait</div>
-                                                    </div>
-                                                </div>
-                                            ) : null}
-                                            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            <div className="mt-4">
                                                 <button
                                                     type="button"
                                                     onClick={openAudienceCatalogSearch}
                                                     disabled={audienceSongLimitState.hardBlocked}
-                                                    className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)] ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-70' : ''}`}
+                                                    className={`inline-flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_16px_36px_rgba(0,0,0,0.2)] ${audienceSongLimitState.hardBlocked ? 'cursor-not-allowed opacity-70' : ''}`}
                                                     style={audienceBrandPalette.primaryPillStyle}
                                                 >
                                                     <i className="fa-solid fa-magnifying-glass"></i>
                                                     {audienceRequestCtaLabel}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setSongsTab('queue')}
-                                                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/12 bg-white/6 px-4 py-3 text-sm font-black uppercase tracking-[0.18em] text-zinc-100"
-                                                >
-                                                    <i className="fa-solid fa-list"></i>
-                                                    Watch Queue
                                                 </button>
                                             </div>
                                             <div className="mt-3 flex flex-wrap gap-2">
@@ -14576,6 +14657,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                         </div>
                                                     )}
                                                 </div>
+                                                {latestMyRequestStateMeta?.detail ? (
+                                                    <div className={`mt-3 rounded-2xl border px-3 py-3 text-sm ${getAudienceRequestStateDetailClass(latestMyRequestStateMeta.tone)}`}>
+                                                        {latestMyRequestStateMeta.detail}
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         ) : null}
                                     </div>
@@ -14720,8 +14806,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         <div className="text-base text-zinc-500 mt-3">Tap to open the full room library.</div>
                                     </div>
                                 )}
-                                {activeBrowseList && (
-                                    <div className="fixed inset-0 z-[85] bg-[#0b0b10] text-white flex flex-col min-h-0">
+                                {activeBrowseList && renderAudienceViewportSheet(
+                                    <div className="fixed inset-0 z-[110] bg-[#0b0b10] text-white flex flex-col min-h-0 overscroll-contain">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
                                             <button onClick={() => { setActiveBrowseList(null); setBrowseFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">{activeBrowseList.title}</div>
@@ -14799,8 +14885,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                     </div>
                                     <div className="text-base text-zinc-500 mt-3">Tap to open the full Top 100 list.</div>
                                 </div>
-                                {showTop100 && (
-                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col min-h-0">
+                                {showTop100 && renderAudienceViewportSheet(
+                                    <div className="fixed inset-0 z-[110] bg-[#0b0b10] text-white flex flex-col min-h-0 overscroll-contain">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
                                             <button onClick={() => { setShowTop100(false); setBrowseFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">Top 100 Karaoke</div>
@@ -14857,8 +14943,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                         </div>
                                     </div>
                                 )}
-                                {showYtIndex && (
-                                    <div className="fixed inset-0 z-[80] bg-[#0b0b10] text-white flex flex-col min-h-0">
+                                {showYtIndex && renderAudienceViewportSheet(
+                                    <div className="fixed inset-0 z-[110] bg-[#0b0b10] text-white flex flex-col min-h-0 overscroll-contain">
                                         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
                                             <button onClick={() => { setShowYtIndex(false); setYtIndexFilter(''); }} className="text-zinc-400 text-base">&larr; Back</button>
                                             <div className="text-xl font-bold">Room Library</div>
