@@ -843,17 +843,28 @@ const useQueueSongActions = ({
         });
     };
 
-    const saveEdit = async () => {
-        const durationNum = Number(editForm.duration);
+    const saveEdit = async ({
+        songId = editingSongId,
+        formOverrides = null,
+        closeEditor = true,
+        successToast = '',
+    } = {}) => {
+        const workingForm = {
+            ...(editForm || {}),
+            ...((formOverrides && typeof formOverrides === 'object') ? formOverrides : {}),
+        };
+        const targetSongId = String(songId || '').trim();
+        if (!targetSongId) return;
+        const durationNum = Number(workingForm.duration);
         const safeDuration = Number.isFinite(durationNum) && durationNum > 0 ? Math.round(durationNum) : 180;
-        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', editingSongId);
+        const songRef = doc(db, 'artifacts', APP_ID, 'public', 'data', 'karaoke_songs', targetSongId);
         const latestSnap = await getDoc(songRef).catch(() => null);
         const latestSong = latestSnap?.exists() ? (latestSnap.data() || {}) : {};
         const latestStatus = String(latestSong?.status || '').trim().toLowerCase();
         const wasReviewRequired = requiresBackingHostReview(latestSong?.resolutionStatus);
         const normalizedBacking = normalizeBackingChoice({
-            mediaUrl: editForm.url,
-            appleMusicId: editForm.appleMusicId
+            mediaUrl: workingForm.url,
+            appleMusicId: workingForm.appleMusicId
         });
         const normalizedUrl = normalizedBacking.mediaUrl;
         const normalizedAppleMusicId = normalizedBacking.appleMusicId;
@@ -866,17 +877,17 @@ const useQueueSongActions = ({
                     ? 'custom'
                     : '';
         const originalBacking = normalizeBackingChoice({
-            mediaUrl: editForm.originalUrl,
-            appleMusicId: editForm.originalAppleMusicId
+            mediaUrl: workingForm.originalUrl,
+            appleMusicId: workingForm.originalAppleMusicId
         });
         const playbackChanged = normalizedUrl !== originalBacking.mediaUrl
             || normalizedAppleMusicId !== originalBacking.appleMusicId;
-        const lyricsChanged = String(editForm.lyrics || '') !== String(editForm.originalLyrics || '');
+        const lyricsChanged = String(workingForm.lyrics || '') !== String(workingForm.originalLyrics || '');
         const updates = {
-            songTitle: editForm.title,
-            artist: editForm.artist,
-            singerName: editForm.singer,
-            albumArtUrl: editForm.art,
+            songTitle: workingForm.title,
+            artist: workingForm.artist,
+            singerName: workingForm.singer,
+            albumArtUrl: workingForm.art,
             duration: safeDuration,
             audioOnly: isAudioUrl(normalizedUrl),
             trackSource: trackSource || null
@@ -884,11 +895,11 @@ const useQueueSongActions = ({
         if (playbackChanged) {
             const nextYouTubePlaybackPatch = buildQueueSongYouTubePlaybackPatch({
                 mediaUrl: normalizedUrl,
-                embeddable: editForm.youtubeEmbeddable,
-                uploadStatus: editForm.youtubeUploadStatus,
-                privacyStatus: editForm.youtubePrivacyStatus,
-                playable: editForm.youtubePlaybackStatus === 'embeddable',
-                youtubePlaybackStatus: editForm.youtubePlaybackStatus
+                embeddable: workingForm.youtubeEmbeddable,
+                uploadStatus: workingForm.youtubeUploadStatus,
+                privacyStatus: workingForm.youtubePrivacyStatus,
+                playable: workingForm.youtubePlaybackStatus === 'embeddable',
+                youtubePlaybackStatus: workingForm.youtubePlaybackStatus
             });
             updates.mediaUrl = normalizedUrl;
             updates.appleMusicId = normalizedAppleMusicId;
@@ -903,7 +914,7 @@ const useQueueSongActions = ({
             }
         }
         if (lyricsChanged) {
-            const nextLyrics = String(editForm.lyrics || '');
+            const nextLyrics = String(workingForm.lyrics || '');
             updates.lyrics = nextLyrics;
             if (nextLyrics.trim()) {
                 updates.lyricsTimed = null;
@@ -941,25 +952,25 @@ const useQueueSongActions = ({
         }
         await updateDoc(songRef, updates);
 
-        const fallbackSongId = buildSongKey(editForm.title, editForm.artist || 'Unknown');
+        const fallbackSongId = buildSongKey(workingForm.title, workingForm.artist || 'Unknown');
         const canonicalMatch = await resolveCanonicalIdentitySafe({
             songId: latestSong?.songId || fallbackSongId,
-            title: editForm.title,
-            artist: editForm.artist || 'Unknown',
+            title: workingForm.title,
+            artist: workingForm.artist || 'Unknown',
             source: trackSource,
             mediaUrl: normalizedUrl,
             appleMusicId: normalizedAppleMusicId
         });
-        const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || editForm.title) : editForm.title;
-        const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || editForm.artist || 'Unknown') : (editForm.artist || 'Unknown');
+        const canonicalTitle = canonicalMatch?.found ? (canonicalMatch.title || workingForm.title) : workingForm.title;
+        const canonicalArtist = canonicalMatch?.found ? (canonicalMatch.artist || workingForm.artist || 'Unknown') : (workingForm.artist || 'Unknown');
         let resolvedSongId = canonicalMatch?.songId || latestSong?.songId || fallbackSongId;
         try {
             const songRecord = await ensureSong({
                 title: canonicalTitle,
                 artist: canonicalArtist,
-                artworkUrl: editForm.art || '',
+                artworkUrl: workingForm.art || '',
                 appleMusicId: normalizedAppleMusicId,
-                verifyMeta: editForm.art ? {} : false,
+                verifyMeta: workingForm.art ? {} : false,
                 verifiedBy: hostName || 'host'
             });
             resolvedSongId = songRecord?.songId || resolvedSongId;
@@ -1012,9 +1023,9 @@ const useQueueSongActions = ({
         if (youtubeId && typeof onUpsertYtIndexEntries === 'function') {
             await onUpsertYtIndexEntries([{
                 videoId: youtubeId,
-                trackName: canonicalTitle || editForm.title,
-                artistName: canonicalArtist || editForm.artist || 'YouTube',
-                artworkUrl100: editForm.art || '',
+                trackName: canonicalTitle || workingForm.title,
+                artistName: canonicalArtist || workingForm.artist || 'YouTube',
+                artworkUrl100: workingForm.art || '',
                 url: normalizedUrl,
                 playable: true,
                 sourceDetail: wasReviewRequired
@@ -1027,8 +1038,8 @@ const useQueueSongActions = ({
         if (wasReviewRequired && (normalizedUrl || normalizedAppleMusicId) && typeof onPersistTrustedCatalogChoice === 'function') {
             await onPersistTrustedCatalogChoice({
                 ...latestSong,
-                songTitle: canonicalTitle || editForm.title,
-                artist: canonicalArtist || editForm.artist || 'Unknown',
+                songTitle: canonicalTitle || workingForm.title,
+                artist: canonicalArtist || workingForm.artist || 'Unknown',
                 songId: resolvedSongId
             }, {
                 trackId: resolvedTrackId || '',
@@ -1042,8 +1053,10 @@ const useQueueSongActions = ({
             }, 'host_favorite');
         }
 
-        setEditingSongId(null);
-        toast(wasReviewRequired ? 'Backing attached and request resolved.' : 'Song Updated');
+        if (closeEditor) {
+            setEditingSongId(null);
+        }
+        toast(successToast || (wasReviewRequired ? 'Backing attached and request resolved.' : 'Song Updated'));
     };
 
     const generateLyrics = async () => {

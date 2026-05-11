@@ -18,7 +18,16 @@ test('youtubeSearch persists both empty and populated results for cross-session 
   const source = readFileSync(functionsIndexPath, 'utf8');
   assert.match(
     source,
-    /if \(!baseItems\.length\) \{[\s\S]*writeYoutubeSearchCache\(cacheKey, \[\]\);[\s\S]*await writePersistedYoutubeSearchCache\(cacheKey, \[\]\);[\s\S]*return \{ items: \[\] \};[\s\S]*writeYoutubeSearchCache\(cacheKey, items\);[\s\S]*await writePersistedYoutubeSearchCache\(cacheKey, items\);/,
+    /if \(!baseItems\.length\) \{[\s\S]*primeYoutubeSearchCaches\(\{[\s\S]*persistEmpty: true,[\s\S]*return \{ items: \[\] \};[\s\S]*primeYoutubeSearchCaches\(\{[\s\S]*items,[\s\S]*\}\);/,
     'youtubeSearch should persist both empty and successful result sets'
+  );
+});
+
+test('youtubeSearch reuses an intent-level cache before making a fresh live API call', () => {
+  const source = readFileSync(functionsIndexPath, 'utf8');
+  assert.match(
+    source,
+    /const intentKey = buildYouTubeSearchIntentKey\(query\);[\s\S]*const intentCacheKey = intentKey[\s\S]*const persistedCachedItems = await readPersistedYoutubeSearchCache\(cacheKey\);[\s\S]*if \(intentCacheKey\) \{[\s\S]*const persistedIntentCachedItems = await readPersistedYoutubeSearchCache\(intentCacheKey\);[\s\S]*return \{ items: persistedIntentCachedItems, cached: true \};[\s\S]*ensureYouTubeApiQuotaAvailable\(\);/,
+    'youtubeSearch should try the normalized intent cache before spending live YouTube quota'
   );
 });

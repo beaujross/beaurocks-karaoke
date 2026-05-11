@@ -57,6 +57,10 @@ test('searchYouTubeCatalog caches successful client searches', async () => {
   assert.equal(telemetry.liveCalls, 1);
   assert.equal(telemetry.clientCacheHits, 1);
   assert.equal(telemetry.cacheHitPct, 50);
+  assert.equal(telemetry.todayLiveCalls, 1);
+  assert.equal(telemetry.todayClientCacheHits, 1);
+  assert.equal(telemetry.todayEstimatedUnitsUsed, 101);
+  assert.equal(telemetry.todayEstimatedFreshSearchesLeft, 98);
 });
 
 test('searchYouTubeCatalog blocks repeated live calls after quota exhaustion', async () => {
@@ -135,4 +139,39 @@ test('searchYouTubeCatalog tracks durable server cache hits separately from live
   assert.equal(telemetry.recentSearches, 1);
   assert.equal(telemetry.serverCacheHits, 1);
   assert.equal(telemetry.liveCalls, 0);
+});
+
+test('searchYouTubeCatalog reuses client cache for semantically equivalent karaoke queries', async () => {
+  const callFunction = vi.fn(async () => ({
+    items: [{ id: 'same123', title: 'Valerie Karaoke', channelTitle: 'Channel', thumbnails: {} }],
+    cached: false,
+  }));
+  vi.doMock('../../src/lib/firebase.js', () => ({
+    callFunction,
+  }));
+
+  const {
+    getYouTubeSearchTelemetrySnapshot,
+    searchYouTubeCatalog,
+  } = await import('../../src/lib/youtubeSearchClient.js');
+
+  const first = await searchYouTubeCatalog({
+    query: 'Valerie Amy Winehouse karaoke',
+    usageSource: 'test_search',
+    usageSurface: 'host',
+  });
+  const second = await searchYouTubeCatalog({
+    query: 'Amy Winehouse - Valerie official karaoke',
+    usageSource: 'test_search',
+    usageSurface: 'host',
+  });
+
+  assert.equal(first.items[0]?.id, 'same123');
+  assert.equal(second.items[0]?.id, 'same123');
+  assert.equal(second.cacheLayer, 'client');
+  assert.equal(callFunction.mock.calls.length, 1);
+  const telemetry = getYouTubeSearchTelemetrySnapshot();
+  assert.equal(telemetry.recentSearches, 2);
+  assert.equal(telemetry.liveCalls, 1);
+  assert.equal(telemetry.clientCacheHits, 1);
 });

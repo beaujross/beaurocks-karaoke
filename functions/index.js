@@ -95,12 +95,32 @@ const SECURITY_ALERT_WINDOW_MS = 15 * 60 * 1000;
 const youtubeSearchCache = new Map();
 const YOUTUBE_SEARCH_CACHE_TTL_MS = 10 * 60 * 1000;
 const YOUTUBE_SEARCH_CACHE_MAX_KEYS = 400;
-const YOUTUBE_SEARCH_PERSISTED_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const YOUTUBE_SEARCH_PERSISTED_CACHE_TTL_MS = 72 * 60 * 60 * 1000;
 const YOUTUBE_SEARCH_PERSISTED_EMPTY_CACHE_TTL_MS = 30 * 60 * 1000;
 const YOUTUBE_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_API_QUOTA_BACKOFF_MS = 15 * 60 * 1000;
 let youtubeApiQuotaBlockedUntilMs = 0;
 const SUPER_ADMIN_EMAIL_DEFAULT = "hello@beauross.com,hello@beaurocks.app";
+const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
+  "karaoke",
+  "official",
+  "instrumental",
+  "backing",
+  "track",
+  "lyrics",
+  "lyric",
+  "video",
+  "version",
+  "audio",
+  "hq",
+  "hd",
+  "4k",
+  "remastered",
+  "remaster",
+  "feat",
+  "featuring",
+  "ft",
+]);
 
 const parseCsvEnvTokens = (value = "") =>
   String(value || "")
@@ -129,6 +149,23 @@ const SUPER_ADMIN_UID_CACHE = new Map();
 const SUPER_ADMIN_UID_CACHE_TTL_MS = 10 * 60 * 1000;
 
 const nowMs = () => Date.now();
+
+const normalizeYouTubeSearchQuery = (value = "") =>
+  String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const buildYouTubeSearchIntentKey = (value = "") => {
+  const uniqueTokens = [...new Set(
+    String(value || "")
+      .toLowerCase()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .split(" ")
+      .map((token) => token.trim())
+      .filter((token) => token && !YOUTUBE_SEARCH_INTENT_STOPWORDS.has(token))
+  )];
+  if (!uniqueTokens.length) return "";
+  return uniqueTokens.sort().join(" ");
+};
 
 const isSuperAdminUid = async (uid = "") => {
   const safeUid = normalizeUidToken(uid);
@@ -208,6 +245,26 @@ const readPersistedYoutubeSearchCache = async (cacheKey = "") => {
     console.warn("readPersistedYoutubeSearchCache failed", error?.message || error);
     return null;
   }
+};
+
+const primeYoutubeSearchCaches = async ({
+  exactCacheKey = "",
+  intentCacheKey = "",
+  items = [],
+  persistEmpty = false,
+} = {}) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const writeTargets = [exactCacheKey].filter(Boolean);
+  if (safeItems.length > 0 && intentCacheKey && intentCacheKey !== exactCacheKey) {
+    writeTargets.push(intentCacheKey);
+  }
+  writeTargets.forEach((targetKey) => writeYoutubeSearchCache(targetKey, safeItems));
+  const persistedTargets = persistEmpty
+    ? [exactCacheKey].filter(Boolean)
+    : writeTargets;
+  await Promise.all(
+    persistedTargets.map((targetKey) => writePersistedYoutubeSearchCache(targetKey, safeItems))
+  );
 };
 
 const writePersistedYoutubeSearchCache = async (cacheKey = "", items = []) => {
@@ -10813,8 +10870,12 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const maxResults = clampNumber(request.data?.maxResults || 10, 1, 10, 10);
   const playableOnly = request.data?.playableOnly !== false;
   const usageSource = resolveUsageSource(request.data?.usageContext?.source, "youtube_search");
-  const normalizedQuery = String(query || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const normalizedQuery = normalizeYouTubeSearchQuery(query);
   const cacheKey = `${normalizedQuery}|${maxResults}|${playableOnly ? "playable" : "all"}`;
+  const intentKey = buildYouTubeSearchIntentKey(query);
+  const intentCacheKey = intentKey && intentKey !== normalizedQuery
+    ? `${intentKey}|${maxResults}|${playableOnly ? "playable" : "all"}`
+    : "";
   const cachedItems = readYoutubeSearchCache(cacheKey);
   if (cachedItems !== null) {
     return { items: cachedItems, cached: true };
@@ -10822,6 +10883,18 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   const persistedCachedItems = await readPersistedYoutubeSearchCache(cacheKey);
   if (persistedCachedItems !== null) {
     return { items: persistedCachedItems, cached: true };
+  }
+  if (intentCacheKey) {
+    const intentCachedItems = readYoutubeSearchCache(intentCacheKey);
+    if (intentCachedItems !== null) {
+      writeYoutubeSearchCache(cacheKey, intentCachedItems);
+      return { items: intentCachedItems, cached: true };
+    }
+    const persistedIntentCachedItems = await readPersistedYoutubeSearchCache(intentCacheKey);
+    if (persistedIntentCachedItems !== null) {
+      writeYoutubeSearchCache(cacheKey, persistedIntentCachedItems);
+      return { items: persistedIntentCachedItems, cached: true };
+    }
   }
   ensureYouTubeApiQuotaAvailable();
   const apiKey = YOUTUBE_API_KEY.value();
@@ -10851,8 +10924,12 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
     thumbnails: item.snippet?.thumbnails || {},
   })).filter((item) => !!item.id);
   if (!baseItems.length) {
-    writeYoutubeSearchCache(cacheKey, []);
-    await writePersistedYoutubeSearchCache(cacheKey, []);
+    await primeYoutubeSearchCaches({
+      exactCacheKey: cacheKey,
+      intentCacheKey,
+      items: [],
+      persistEmpty: true,
+    });
     return { items: [] };
   }
 
@@ -10908,8 +10985,11 @@ exports.youtubeSearch = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
       };
     })
     .filter((item) => (playableOnly ? item.playable : true));
-  writeYoutubeSearchCache(cacheKey, items);
-  await writePersistedYoutubeSearchCache(cacheKey, items);
+  await primeYoutubeSearchCaches({
+    exactCacheKey: cacheKey,
+    intentCacheKey,
+    items,
+  });
   return { items, cached: false };
 });
 

@@ -2148,7 +2148,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         startEdit(song);
         if (options?.openSearch) {
             const searchQuery = `${song.songTitle || ''} ${song.artist || ''}`.trim();
-            setTimeout(() => openYtSearch('edit', searchQuery), 0);
+            setTimeout(() => openYtSearch('review_apply', searchQuery), 0);
         }
     }, [openYtSearch, startEdit]);
 
@@ -2162,7 +2162,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
           if (duration) setManual(prev => ({ ...prev, duration }));
       };
 
-      const selectYouTubeVideo = (video) => {
+      const selectYouTubeVideo = async (video) => {
           const embedStatus = embedCache[video.id] || getYouTubeEmbedCacheStatus(video);
           const playbackState = normalizeYouTubePlaybackState({
               ...video,
@@ -2176,18 +2176,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
           });
           const isFailed = playbackState.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable;
           const displayTitle = video.title.replace(' (Karaoke)', '').replace(' Karaoke', '');
+          const nextEditForm = {
+              ...editForm,
+              title: editForm.title || displayTitle || '',
+              artist: editForm.artist || video.channel || '',
+              url: video.url || editForm.url,
+              youtubeEmbeddable: playbackState.embeddable,
+              youtubeUploadStatus: playbackState.uploadStatus,
+              youtubePrivacyStatus: playbackState.privacyStatus,
+              youtubePlaybackStatus: playbackState.youtubePlaybackStatus
+          };
           
-          if (ytSearchTarget === 'edit') {
-              setEditForm(prev => ({
-                  ...prev,
-                  title: prev.title || displayTitle || '',
-                  artist: prev.artist || video.channel || '',
-                  url: video.url || prev.url,
-                  youtubeEmbeddable: playbackState.embeddable,
-                  youtubeUploadStatus: playbackState.uploadStatus,
-                  youtubePrivacyStatus: playbackState.privacyStatus,
-                  youtubePlaybackStatus: playbackState.youtubePlaybackStatus
-              }));
+          if (ytSearchTarget === 'edit' || ytSearchTarget === 'review_apply') {
+              setEditForm(nextEditForm);
               applyDurationToEdit(video.url || editForm.url);
           } else {
               setManual(prev => ({
@@ -2203,6 +2204,24 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                   youtubePlaybackStatus: playbackState.youtubePlaybackStatus
               }));
               applyDurationToManual(video.url);
+          }
+          if (ytSearchTarget === 'review_apply' && editingSongId) {
+              const resolvedDuration = await resolveDurationForUrl(video.url || editForm.url, false).catch(() => null);
+              await saveEdit({
+                  songId: editingSongId,
+                  formOverrides: {
+                      ...nextEditForm,
+                      duration: resolvedDuration || nextEditForm.duration || 180,
+                  },
+                  closeEditor: true,
+                  successToast: isFailed
+                      ? 'Backing attached and request resolved. This track will open in the external backing window.'
+                      : 'Backing attached and request resolved.',
+              });
+              setYtSearchOpen(false);
+              setYtSearchQ('');
+              setYtResults([]);
+              return;
           }
           setYtSearchOpen(false);
           setYtSearchQ('');

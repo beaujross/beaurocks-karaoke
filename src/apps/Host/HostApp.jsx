@@ -5968,9 +5968,47 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     ? `${recentCachePct}% cache hit across ${recentSearches} YouTube searches in the last ${youtubeSearchTelemetry?.windowLabel || '15m'}.`
                 : usageSummary?.loading
                     ? 'Usage status refreshing.'
-                    : 'Workspace ops look stable.',
+                : 'Workspace ops look stable.',
         };
     }, [aiGenerationTelemetry, aiUsageMeter, appleMusicAuthorized, appleSearchTelemetry, canUseAiTools, opsStripNowMs, usageSummary?.loading, youtubeSearchTelemetry, youtubeUsageMeter]);
+    const topChromeYouTubeBudget = useMemo(() => {
+        const youtubeQuotaBlockedUntilMs = Number(getYouTubeQuotaBlockedUntilMs() || 0);
+        const quotaPaused = youtubeQuotaBlockedUntilMs > opsStripNowMs;
+        const freshSearchesLeft = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedFreshSearchesLeft || 0));
+        const estimatedUnitsUsed = Math.max(0, Number(youtubeSearchTelemetry?.todayEstimatedUnitsUsed || 0));
+        const dailyQuotaUnits = Math.max(1, Number(youtubeSearchTelemetry?.dailyQuotaUnits || 10000));
+        const todayLiveCalls = Math.max(0, Number(youtubeSearchTelemetry?.todayLiveCalls || 0));
+        const todayCacheHitPct = Math.max(0, Number(youtubeSearchTelemetry?.todayCacheHitPct || 0));
+        const usageRatio = estimatedUnitsUsed / dailyQuotaUnits;
+        let state = 'Healthy';
+        let active = true;
+        let toneClass = 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100';
+        if (quotaPaused) {
+            state = 'Paused';
+            active = false;
+            toneClass = 'border-rose-400/35 bg-rose-500/10 text-rose-100';
+        } else if (freshSearchesLeft <= 10 || usageRatio >= 0.9) {
+            state = 'Guard';
+            toneClass = 'border-rose-400/35 bg-rose-500/10 text-rose-100';
+        } else if (freshSearchesLeft <= 30 || usageRatio >= 0.7) {
+            state = 'Watch';
+            toneClass = 'border-amber-400/35 bg-amber-500/10 text-amber-100';
+        }
+        const title = quotaPaused
+            ? `Live YouTube search is paused for about ${formatOpsCountdown(youtubeQuotaBlockedUntilMs, opsStripNowMs)}. Estimated fresh searches left today: ${freshSearchesLeft}.`
+            : `Estimated fresh YouTube searches left today: ${freshSearchesLeft}. ${todayLiveCalls} live misses so far today, about ${estimatedUnitsUsed.toLocaleString()} of ${dailyQuotaUnits.toLocaleString()} estimated quota units used. ${todayCacheHitPct}% cache hit today.`;
+        return {
+            label: 'YT Budget',
+            value: freshSearchesLeft,
+            detail: quotaPaused
+                ? 'cooldown'
+                : `${todayLiveCalls} live today`,
+            state,
+            active,
+            toneClass,
+            title,
+        };
+    }, [opsStripNowMs, youtubeSearchTelemetry]);
     const logoChoices = useMemo(() => {
         const merged = [...DEFAULT_LOGO_PRESETS];
         (logoLibrary || []).forEach((url, idx) => {
@@ -19514,6 +19552,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     stopStormSequence={stopStormSequence}
                     appleMusicConnected={appleMusicAuthorized}
                     aiToolsConnected={canUseAiTools}
+                    youtubeBudgetStatus={topChromeYouTubeBudget}
                     permissionLevel={hostPermissionLevel}
                     authSessionReady={hostAuthSessionReady}
                     onOpenCommandPalette={() => {

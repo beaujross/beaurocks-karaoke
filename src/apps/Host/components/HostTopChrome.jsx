@@ -31,6 +31,28 @@ const NavStatusLight = ({ label, iconClass, active = false, toneClass = '', titl
     );
 };
 
+const NavStatusMetric = ({
+    label,
+    iconClass,
+    value = '',
+    detail = '',
+    active = true,
+    toneClass = '',
+    title = '',
+}) => (
+    <div
+        data-feature-id="top-chrome-youtube-budget"
+        title={title}
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
+    >
+        <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
+        {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
+        <span className="hidden lg:inline text-zinc-100">{label}</span>
+        <span className="font-black text-white">{value}</span>
+        {!!detail ? <span className="hidden xl:inline text-zinc-100/80">{detail}</span> : null}
+    </div>
+);
+
 const getRunOfShowDurationSec = (item = {}) => Math.max(
     0,
     Math.round(Number(
@@ -124,6 +146,7 @@ const HostTopChrome = ({
     stopStormSequence,
     appleMusicConnected = false,
     aiToolsConnected = false,
+    youtubeBudgetStatus = null,
     permissionLevel = 'unknown',
     authSessionReady = false,
     sfxMuted = false,
@@ -1278,6 +1301,17 @@ const HostTopChrome = ({
                             toneClass={aiToolsConnected ? 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100' : 'border-amber-400/35 bg-amber-500/10 text-amber-100'}
                             title={aiToolsConnected ? 'AI tools enabled.' : 'AI tools locked.'}
                         />
+                        {youtubeBudgetStatus ? (
+                            <NavStatusMetric
+                                label={youtubeBudgetStatus.label || 'YT Budget'}
+                                iconClass="fa-brands fa-youtube"
+                                value={Number(youtubeBudgetStatus.value || 0).toLocaleString()}
+                                detail={youtubeBudgetStatus.detail || ''}
+                                active={youtubeBudgetStatus.active !== false}
+                                toneClass={youtubeBudgetStatus.toneClass || 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'}
+                                title={youtubeBudgetStatus.title || 'Estimated fresh YouTube searches left today.'}
+                            />
+                        ) : null}
                         <NavStatusLight
                             label={String(permissionLevel || 'unknown').toUpperCase()}
                             iconClass="fa-solid fa-user-shield"

@@ -41,4 +41,14 @@ test('track check review actions follow admin search source settings and prefer 
     /label: 'Apple Sing-Along'[\s\S]*className: prioritizeYouTubeReview \? STYLES\.btnSecondary : STYLES\.btnPrimary,/,
     'Track Check should demote Apple to a fallback when YouTube is preferred',
   );
+  assert.match(
+    source,
+    /openYtSearch\('review_apply', searchQuery\)/,
+    'Review-required queue items should open YouTube search in direct-apply mode instead of generic edit mode',
+  );
+  assert.match(
+    source,
+    /if \(ytSearchTarget === 'review_apply' && editingSongId\) \{[\s\S]*await saveEdit\(\{[\s\S]*successToast:/s,
+    'Selecting a YouTube backing for a review-required request should save the backing immediately without a second host save click',
+  );
 });

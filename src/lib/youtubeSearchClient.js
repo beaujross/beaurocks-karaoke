@@ -4,23 +4,76 @@ const YOUTUBE_SEARCH_CACHE_TTL_MS = 5 * 60 * 1000;
 const YOUTUBE_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
 const YOUTUBE_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const YOUTUBE_QUOTA_STORAGE_KEY = 'bross_youtube_quota_block_until_ms_v1';
+const YOUTUBE_DAILY_BUDGET_STORAGE_KEY = 'bross_youtube_daily_budget_v1';
+const YOUTUBE_DAILY_QUOTA_UNITS = 10000;
+const YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH = 101;
+const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
+    'karaoke',
+    'official',
+    'instrumental',
+    'backing',
+    'track',
+    'lyrics',
+    'lyric',
+    'video',
+    'version',
+    'audio',
+    'hq',
+    'hd',
+    '4k',
+    'remastered',
+    'remaster',
+    'feat',
+    'featuring',
+    'ft',
+]);
 const youtubeSearchCache = new Map();
 const youtubeSearchTelemetrySubscribers = new Set();
 const youtubeSearchTelemetryEvents = [];
 
 const nowMs = () => Date.now();
 
+const buildLocalDayKey = (value = nowMs()) => {
+    const date = new Date(Number(value || nowMs()));
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const normalizeSearchQuery = (value = '') => (
     String(value || '').trim().toLowerCase().replace(/\s+/g, ' ')
 );
 
-const buildSearchCacheKey = ({
+const buildSearchIntentKey = (value = '') => {
+    const uniqueTokens = [...new Set(
+        String(value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .split(' ')
+            .map((token) => token.trim())
+            .filter((token) => token && !YOUTUBE_SEARCH_INTENT_STOPWORDS.has(token))
+    )];
+    if (!uniqueTokens.length) return '';
+    return uniqueTokens.sort().join(' ');
+};
+
+const buildSearchCacheKeys = ({
     query = '',
     maxResults = 10,
     playableOnly = false,
-} = {}) => (
-    `${normalizeSearchQuery(query)}|${Math.max(1, Number(maxResults || 10) || 10)}|${playableOnly ? 'playable' : 'all'}`
-);
+} = {}) => {
+    const normalizedQuery = normalizeSearchQuery(query);
+    const exactKey = `${normalizedQuery}|${Math.max(1, Number(maxResults || 10) || 10)}|${playableOnly ? 'playable' : 'all'}`;
+    const intentKey = buildSearchIntentKey(query);
+    return {
+        exactKey,
+        intentKey: intentKey && intentKey !== normalizedQuery
+            ? `${intentKey}|${Math.max(1, Number(maxResults || 10) || 10)}|${playableOnly ? 'playable' : 'all'}`
+            : '',
+    };
+};
 
 const readYouTubeQuotaBlockedUntilMs = () => {
     if (typeof window === 'undefined') return 0;
@@ -35,6 +88,64 @@ const readYouTubeQuotaBlockedUntilMs = () => {
 
 let youtubeQuotaBlockedUntilMs = readYouTubeQuotaBlockedUntilMs();
 
+const readYouTubeDailyBudgetStats = () => {
+    const base = {
+        dayKey: buildLocalDayKey(),
+        liveCalls: 0,
+        clientCacheHits: 0,
+        serverCacheHits: 0,
+        quotaErrors: 0,
+        lastUpdatedAtMs: 0,
+    };
+    if (typeof window === 'undefined') return base;
+    try {
+        const raw = window.localStorage.getItem(YOUTUBE_DAILY_BUDGET_STORAGE_KEY);
+        if (!raw) return base;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return base;
+        const dayKey = String(parsed.dayKey || '').trim() || base.dayKey;
+        if (dayKey !== base.dayKey) return base;
+        return {
+            dayKey,
+            liveCalls: Math.max(0, Number(parsed.liveCalls || 0)),
+            clientCacheHits: Math.max(0, Number(parsed.clientCacheHits || 0)),
+            serverCacheHits: Math.max(0, Number(parsed.serverCacheHits || 0)),
+            quotaErrors: Math.max(0, Number(parsed.quotaErrors || 0)),
+            lastUpdatedAtMs: Math.max(0, Number(parsed.lastUpdatedAtMs || 0)),
+        };
+    } catch {
+        return base;
+    }
+};
+
+let youtubeDailyBudgetStats = readYouTubeDailyBudgetStats();
+
+const persistYouTubeDailyBudgetStats = () => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(
+            YOUTUBE_DAILY_BUDGET_STORAGE_KEY,
+            JSON.stringify(youtubeDailyBudgetStats)
+        );
+    } catch {
+        // Ignore localStorage failures.
+    }
+};
+
+const normalizeYouTubeDailyBudgetStats = () => {
+    const todayKey = buildLocalDayKey();
+    if (String(youtubeDailyBudgetStats?.dayKey || '') === todayKey) return;
+    youtubeDailyBudgetStats = {
+        dayKey: todayKey,
+        liveCalls: 0,
+        clientCacheHits: 0,
+        serverCacheHits: 0,
+        quotaErrors: 0,
+        lastUpdatedAtMs: 0,
+    };
+    persistYouTubeDailyBudgetStats();
+};
+
 const pruneYouTubeSearchTelemetryEvents = (now = nowMs()) => {
     const cutoffMs = Number(now || nowMs()) - YOUTUBE_TELEMETRY_WINDOW_MS;
     while (youtubeSearchTelemetryEvents.length > 0 && Number(youtubeSearchTelemetryEvents[0]?.atMs || 0) < cutoffMs) {
@@ -45,6 +156,7 @@ const pruneYouTubeSearchTelemetryEvents = (now = nowMs()) => {
 const buildYouTubeSearchTelemetrySnapshot = () => {
     const now = nowMs();
     pruneYouTubeSearchTelemetryEvents(now);
+    normalizeYouTubeDailyBudgetStats();
     const summary = {
         windowMs: YOUTUBE_TELEMETRY_WINDOW_MS,
         windowLabel: '15m',
@@ -60,6 +172,17 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         cacheSharePct: 0,
         cacheHitPct: 0,
         recentSearches: 0,
+        dailyQuotaUnits: YOUTUBE_DAILY_QUOTA_UNITS,
+        estimatedUnitsPerLiveSearch: YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH,
+        todayDayKey: youtubeDailyBudgetStats.dayKey,
+        todayLiveCalls: Math.max(0, Number(youtubeDailyBudgetStats.liveCalls || 0)),
+        todayClientCacheHits: Math.max(0, Number(youtubeDailyBudgetStats.clientCacheHits || 0)),
+        todayServerCacheHits: Math.max(0, Number(youtubeDailyBudgetStats.serverCacheHits || 0)),
+        todayQuotaErrors: Math.max(0, Number(youtubeDailyBudgetStats.quotaErrors || 0)),
+        todayEstimatedUnitsUsed: 0,
+        todayEstimatedUnitsRemaining: YOUTUBE_DAILY_QUOTA_UNITS,
+        todayEstimatedFreshSearchesLeft: Math.floor(YOUTUBE_DAILY_QUOTA_UNITS / YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH),
+        todayCacheHitPct: 0,
     };
     for (const event of youtubeSearchTelemetryEvents) {
         const kind = String(event?.kind || '').trim().toLowerCase();
@@ -81,6 +204,18 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         summary.cacheHitPct = summary.cacheSharePct;
         summary.liveSharePct = Math.round((summary.liveCalls / summary.totalSearches) * 100);
     }
+    summary.todayEstimatedUnitsUsed = summary.todayLiveCalls * YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH;
+    summary.todayEstimatedUnitsRemaining = Math.max(0, YOUTUBE_DAILY_QUOTA_UNITS - summary.todayEstimatedUnitsUsed);
+    summary.todayEstimatedFreshSearchesLeft = Math.max(
+        0,
+        Math.floor(summary.todayEstimatedUnitsRemaining / YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH)
+    );
+    const todayTotalSearches = summary.todayLiveCalls + summary.todayClientCacheHits + summary.todayServerCacheHits;
+    if (todayTotalSearches > 0) {
+        summary.todayCacheHitPct = Math.round(
+            ((summary.todayClientCacheHits + summary.todayServerCacheHits) / todayTotalSearches) * 100
+        );
+    }
     summary.quotaBlocked = Number(youtubeQuotaBlockedUntilMs || 0) > now;
     summary.quotaBlockedUntilMs = Number(youtubeQuotaBlockedUntilMs || 0);
     return summary;
@@ -100,10 +235,17 @@ const notifyYouTubeSearchTelemetrySubscribers = () => {
 const recordYouTubeSearchTelemetryEvent = (kind = '') => {
     const safeKind = String(kind || '').trim().toLowerCase();
     if (!safeKind) return;
+    normalizeYouTubeDailyBudgetStats();
     youtubeSearchTelemetryEvents.push({
         kind: safeKind,
         atMs: nowMs(),
     });
+    if (safeKind === 'live') youtubeDailyBudgetStats.liveCalls += 1;
+    if (safeKind === 'client_cache') youtubeDailyBudgetStats.clientCacheHits += 1;
+    if (safeKind === 'server_cache') youtubeDailyBudgetStats.serverCacheHits += 1;
+    if (safeKind === 'quota_error') youtubeDailyBudgetStats.quotaErrors += 1;
+    youtubeDailyBudgetStats.lastUpdatedAtMs = nowMs();
+    persistYouTubeDailyBudgetStats();
     notifyYouTubeSearchTelemetrySubscribers();
 };
 
@@ -226,11 +368,19 @@ export const searchYouTubeCatalog = async ({
             'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Use indexed tracks or paste a direct URL for now.'
         );
     }
-    const cacheKey = buildSearchCacheKey({ query: safeQuery, maxResults, playableOnly });
-    const cachedItems = readCachedYouTubeSearch(cacheKey);
+    const { exactKey, intentKey } = buildSearchCacheKeys({ query: safeQuery, maxResults, playableOnly });
+    const cachedItems = readCachedYouTubeSearch(exactKey);
     if (cachedItems !== null) {
         recordYouTubeSearchTelemetryEvent('client_cache');
         return { items: cachedItems, cached: true, cacheLayer: 'client' };
+    }
+    if (intentKey) {
+        const intentCachedItems = readCachedYouTubeSearch(intentKey);
+        if (intentCachedItems !== null) {
+            writeCachedYouTubeSearch(exactKey, intentCachedItems, cacheTtlMs);
+            recordYouTubeSearchTelemetryEvent('client_cache');
+            return { items: intentCachedItems, cached: true, cacheLayer: 'client' };
+        }
     }
     try {
         const data = await withTimeout(callFunction('youtubeSearch', {
@@ -244,7 +394,10 @@ export const searchYouTubeCatalog = async ({
             },
         }), timeoutMs);
         const items = Array.isArray(data?.items) ? data.items : [];
-        writeCachedYouTubeSearch(cacheKey, items, cacheTtlMs);
+        writeCachedYouTubeSearch(exactKey, items, cacheTtlMs);
+        if (items.length > 0 && intentKey) {
+            writeCachedYouTubeSearch(intentKey, items, cacheTtlMs);
+        }
         clearYouTubeQuotaBlocked();
         recordYouTubeSearchTelemetryEvent(data?.cached === true ? 'server_cache' : 'live');
         return {
