@@ -1740,6 +1740,32 @@ const HostTopChrome = ({
                                             </select>
                                             <span className="mt-1 block text-[10px] text-zinc-500">{requestModeShortLabel}</span>
                                         </label>
+                                        <div className="text-xs text-zinc-300">
+                                            <div>When guests pick a new track</div>
+                                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                                {(quickRoomControls.guestTrackPolicyOptions || []).map((option) => {
+                                                    const active = quickRoomControls.guestTrackPolicy === option.id;
+                                                    return (
+                                                        <button
+                                                            key={`room-guest-track-policy-${option.id}`}
+                                                            type="button"
+                                                            onClick={() => { void quickRoomControls.onSetGuestTrackPolicy?.(option.id); }}
+                                                            aria-pressed={active}
+                                                            className={`${styles.btnStd} ${active ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-center px-3 py-2 text-center text-[11px] normal-case tracking-[0.03em]`}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                            <span className="mt-2 block text-[10px] text-zinc-500">
+                                                {quickRoomControls.guestTrackPolicy === 'auto_queue_unverified'
+                                                    ? 'Guests can drop a new YouTube track straight into the queue.'
+                                                    : quickRoomControls.guestTrackPolicy === 'block_unknown'
+                                                        ? 'Guests only see tracks that are already known or approved for the room.'
+                                                        : 'New guest-picked tracks stop with you before they enter the queue.'}
+                                            </span>
+                                        </div>
                                         <label className="text-xs text-zinc-300">
                                             Queue cap
                                             <select

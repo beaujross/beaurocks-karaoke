@@ -53,6 +53,16 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
     /Stage Start[\s\S]*quickRoomControls\.autoPlayMedia !== false \? 'Auto' : 'Manual'/,
     'HostTopChrome room controls should expose the stage-start mode alongside queue governance controls',
   );
+  assert.match(
+    source,
+    /When guests pick a new track[\s\S]*quickRoomControls\.guestTrackPolicyOptions[\s\S]*quickRoomControls\.onSetGuestTrackPolicy/,
+    'HostTopChrome room controls should expose the full guest new-track policy toggle inside the room dropdown',
+  );
+  assert.match(
+    hostAppSource,
+    /QUICK_GUEST_TRACK_POLICY_OPTIONS = Object\.freeze\(\[[\s\S]*Send to me first[\s\S]*Let it into the queue[\s\S]*Known tracks only/,
+    'HostApp should define the three guest new-track policy labels that feed the room dropdown',
+  );
   assert.doesNotMatch(
     source,
     /key: 'autoPlay'[\s\S]*Auto Stage Playback[\s\S]*quickAutomationControls\.onToggleAutoPlayMedia/,
@@ -62,6 +72,11 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
     hostAppSource,
     /const quickRoomControls = \{[\s\S]*autoPlayMedia: !!autoPlayMedia,[\s\S]*onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,/,
     'HostApp should hand the room menu the live stage-start toggle state and handler',
+  );
+  assert.match(
+    hostAppSource,
+    /const quickRoomControls = \{[\s\S]*guestTrackPolicy: deriveQuickGuestTrackPolicy\({[\s\S]*guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,[\s\S]*onSetGuestTrackPolicy: setGuestTrackPolicyQuick,/,
+    'HostApp should hand the room menu the derived guest-track policy state and quick setter',
   );
   assert.match(
     source,

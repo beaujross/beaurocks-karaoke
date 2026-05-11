@@ -43,30 +43,25 @@ test('host end flow separates early backing corrections from normal applause fin
   );
 });
 
-test('backing review prompt stays below top chrome and uses stable later-dismiss actions', () => {
-  assert.match(
+test('backing review prompt stays in the stage rail and uses stable later-dismiss actions', () => {
+  assert.doesNotMatch(
     source,
     /fixed bottom-4 right-4 z-\[190\] w-\[min\(92vw,24rem\)\]/,
-    'Backing review prompt should mount in a bottom-safe position instead of clipping under top chrome.',
+    'Backing review prompt should not mount as a floating bottom-right widget that blocks host controls.',
   );
   assert.match(
     source,
-    /How was that backing\?/,
-    'Backing review copy should read like a quick host check instead of a generic track-check popup.',
-  );
-  assert.match(
-    source,
-    /handlePostPerformanceBackingPromptAction\(null, 'later'\)/,
+    /if \(normalizedAction === 'later' \|\| normalizedAction === 'defer'\) \{\s*deferTrackCheckToInbox\(activePrompt, \{ focusInbox: false \}\);/s,
     'Prompt should offer a non-jumping later path instead of forcing the host into Inbox immediately.',
   );
   assert.match(
     source,
-    /handlePostPerformanceBackingPromptAction\(null, 'dismiss'\)/,
+    /if \(normalizedAction === 'skip' \|\| normalizedAction === 'dismiss'\) \{\s*dismissTrackCheck\(activePrompt\);/s,
     'Prompt should expose a true dismiss action so handled items do not feel like they resurrect.',
   );
   assert.match(
     source,
     /showPostPerformanceBackingPrompt\(targetSong\);/,
-    'The prompt should appear as applause starts so hosts can review while the room is already in the end-of-song beat.',
+    'The stage rail prompt should appear as applause starts so hosts can review while the room is already in the end-of-song beat.',
   );
 });

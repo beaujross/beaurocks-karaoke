@@ -231,6 +231,11 @@ test("HostApp keeps Auto DJ queue advance independent from TV display mode chang
   );
   assert.match(
     source,
+    /const timer = setTimeout\(\(\) => \{\s*lastPartyAutoBreakTsRef\.current = lastPerformanceTs;/,
+    "Auto-party should only stamp a completed bridge after its timer actually fires, so rerenders cannot cancel the bridge and deadlock Auto DJ",
+  );
+  assert.match(
+    source,
     /isQueueEntryPlayable/,
     "Room-flow orchestration should still use backing-track readiness when choosing the next queue item",
   );
@@ -433,8 +438,9 @@ test("HostApp auto-routes the post-performance backing prompt into inbox if the 
   assert.match(source, /const showPostPerformanceBackingPrompt = useCallback\(\(trackCheck = null\) => \{\s*if \(!postPerformanceBackingPromptEnabled\) return;/s);
   assert.match(source, /if \(!postPerformanceBackingPromptEnabled \|\| !postPerformanceBackingPrompt \|\| postPerformanceBackingPromptBusy\) return \(\) => \{\};/);
   assert.match(source, /setTimeout\(\(\) => \{\s*if \(String\(postPerformanceBackingPrompt\?\.performanceKey \|\| ''\)\.trim\(\) !== activePerformanceKey\) return;\s*deferTrackCheckToInbox\(postPerformanceBackingPrompt\);/s);
-  assert.match(source, /If you do nothing, we will save it to Inbox for later\./);
-  assert.match(source, /handlePostPerformanceBackingPromptAction\(null, 'later'\)/);
+  assert.match(source, /const visibleLastTrackCheck = useMemo\(\(\) => \{\s*if \(postPerformanceBackingPrompt\) \{\s*return \{\s*\.\.\.postPerformanceBackingPrompt,\s*pendingNow: true,/s);
+  assert.match(source, /lastTrackCheckItem=\{visibleLastTrackCheck\}/);
+  assert.match(source, /if \(normalizedAction === 'later' \|\| normalizedAction === 'defer'\) \{\s*deferTrackCheckToInbox\(activePrompt, \{ focusInbox: false \}\);/s);
   assert.match(hostSource, /const togglePostPerformanceBackingPromptQuick = async \(\) => \{/);
   assert.match(hostSource, /import \{[\s\S]*buildHostUiPrefsPatch,[\s\S]*isPostPerformanceBackingPromptEnabled,[\s\S]*\} from '\.\/lib\/hostUiPrefs';/);
   assert.match(hostSource, /const next = !isPostPerformanceBackingPromptEnabled\(room\);/);

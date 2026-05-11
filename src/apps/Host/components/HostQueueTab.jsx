@@ -5495,57 +5495,6 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     </div>
                 </div>
             )}
-            {postPerformanceBackingPrompt && postPerformanceBackingPromptEnabled ? (
-                <div className="fixed bottom-4 right-4 z-[190] w-[min(92vw,24rem)]">
-                    <div className="rounded-2xl border border-cyan-300/28 bg-gradient-to-br from-[#111926]/95 via-[#0f1724]/95 to-[#151821]/95 p-3 shadow-[0_20px_56px_rgba(0,0,0,0.42)] backdrop-blur-sm">
-                        <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-300">Track Check</div>
-                        <div className="mt-1 text-base font-semibold text-white">How was that backing?</div>
-                        <div className="mt-1 text-[13px] text-zinc-200 truncate">
-                            {postPerformanceBackingPrompt.songTitle || 'Recent performance'}
-                        </div>
-                        <div className="text-[12px] text-zinc-500 truncate">
-                            {postPerformanceBackingPrompt.artist || 'YouTube backing'}
-                        </div>
-                        <div className="mt-2 text-[12px] leading-relaxed text-zinc-400">
-                            If you do nothing, we will save it to Inbox for later.
-                        </div>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(postPerformanceBackingPrompt, 'prefer')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnHighlight} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'cursor-not-allowed opacity-60' : ''}`}
-                            >
-                                Use Again
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(postPerformanceBackingPrompt, 'avoid')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnSecondary} border-rose-300/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] text-rose-100 hover:border-rose-200/60 ${postPerformanceBackingPromptBusy ? 'cursor-not-allowed opacity-60' : ''}`}
-                            >
-                                Bad Track
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'later')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'cursor-not-allowed opacity-60' : ''}`}
-                            >
-                                Later
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => void handlePostPerformanceBackingPromptAction(null, 'dismiss')}
-                                disabled={postPerformanceBackingPromptBusy}
-                                className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-2.5 py-1.5 text-[11px] ${postPerformanceBackingPromptBusy ? 'cursor-not-allowed opacity-60' : ''}`}
-                            >
-                                Dismiss
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
             {fullscreenPrototype ? (
                 <HostNightPilotPrototype
                     runtimeModel={experimentalRuntimeModel}

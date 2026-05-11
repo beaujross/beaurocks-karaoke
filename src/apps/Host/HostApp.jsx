@@ -392,6 +392,32 @@ const hostLogger = createLogger('HostApp');
 const RUN_OF_SHOW_AUTOMATION_RETRY_MS = 4000;
 const RUN_OF_SHOW_AUTOMATION_RATE_LIMIT_RETRY_MS = 15000;
 const HOST_UPDATE_DEPLOYMENT_WARNING = "Host control updates are unavailable because the backend callable `updateRoomAsHost` is not deployed. Deploy functions and reload Host.";
+const QUICK_GUEST_TRACK_POLICY_OPTIONS = Object.freeze([
+    { id: UNKNOWN_BACKING_POLICIES.requireReview, label: 'Send to me first' },
+    { id: UNKNOWN_BACKING_POLICIES.autoQueueUnverified, label: 'Let it into the queue' },
+    { id: UNKNOWN_BACKING_POLICIES.blockUnknown, label: 'Known tracks only' },
+]);
+
+const deriveQuickGuestTrackPolicy = ({
+    requestMode = '',
+    allowSingerTrackSelect = false,
+    unknownBackingPolicy = '',
+} = {}) => {
+    const normalizedRequestMode = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
+    if (normalizedRequestMode === REQUEST_MODES.playableOnly) {
+        return UNKNOWN_BACKING_POLICIES.blockUnknown;
+    }
+    if (normalizedRequestMode === REQUEST_MODES.guestBackingOptional) {
+        return deriveUnknownBackingPolicy({
+            unknownBackingPolicy,
+            requestMode: normalizedRequestMode,
+            allowSingerTrackSelect: true,
+        }) === UNKNOWN_BACKING_POLICIES.autoQueueUnverified
+            ? UNKNOWN_BACKING_POLICIES.autoQueueUnverified
+            : UNKNOWN_BACKING_POLICIES.requireReview;
+    }
+    return UNKNOWN_BACKING_POLICIES.requireReview;
+};
 const HOST_ROOM_PROVISION_DEPLOYMENT_WARNING = "Room provisioning is unavailable because the backend callable `provisionHostRoom` is not deployed. Deploy functions and reload Host.";
 const HOST_SETTINGS_DEFAULTS_DEPLOYMENT_WARNING = "Saved host settings are unavailable because the backend callable `manageHostSettingsDefaults` is not deployed. Deploy functions and reload Host.";
 const HOST_UPDATE_OP_FIELD = '__hostOp';
@@ -11972,8 +11998,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (!flow.autoPartyIntent.shouldStart || !flow.autoPartyIntent.moment) return;
         const recommendedMoment = flow.autoPartyIntent.moment;
 
-        lastPartyAutoBreakTsRef.current = lastPerformanceTs;
         const timer = setTimeout(() => {
+            lastPartyAutoBreakTsRef.current = lastPerformanceTs;
             const momentKey = `${recommendedMoment.type}_${lastPerformanceTs}`;
             startAutoCrowdMoment({
                 ...recommendedMoment,
@@ -18951,9 +18977,21 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const setRequestModeQuick = async (nextValue = '') => {
         const previous = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
+        const previousAllowSingerTrackSelect = previous === REQUEST_MODES.guestBackingOptional;
+        const previousUnknownBackingPolicy = deriveUnknownBackingPolicy({
+            unknownBackingPolicy,
+            requestMode: previous,
+            allowSingerTrackSelect: previousAllowSingerTrackSelect,
+        });
         const safeMode = normalizeRoomRequestMode(nextValue, nextValue === REQUEST_MODES.guestBackingOptional);
         const allowSingerTrackSelectNext = safeMode === REQUEST_MODES.guestBackingOptional;
+        const unknownBackingPolicyNext = deriveUnknownBackingPolicy({
+            requestMode: safeMode,
+            allowSingerTrackSelect: allowSingerTrackSelectNext,
+        });
         setRequestMode(safeMode);
+        setAllowSingerTrackSelect(allowSingerTrackSelectNext);
+        setUnknownBackingPolicy(unknownBackingPolicyNext);
         try {
             await updateRoom({
                 requestMode: safeMode,
@@ -18962,15 +19000,59 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     requestMode: safeMode,
                     allowSingerTrackSelect: allowSingerTrackSelectNext,
                 }),
-                unknownBackingPolicy: deriveUnknownBackingPolicy({
-                    requestMode: safeMode,
-                    allowSingerTrackSelect: allowSingerTrackSelectNext,
-                }),
+                unknownBackingPolicy: unknownBackingPolicyNext,
             });
         } catch (error) {
             console.error('Failed to update request mode from host chrome', error);
             setRequestMode(previous);
+            setAllowSingerTrackSelect(previousAllowSingerTrackSelect);
+            setUnknownBackingPolicy(previousUnknownBackingPolicy);
             toast('Could not update audience request mode.');
+        }
+    };
+
+    const setGuestTrackPolicyQuick = async (nextValue = '') => {
+        const safePolicy = QUICK_GUEST_TRACK_POLICY_OPTIONS.some((option) => option.id === nextValue)
+            ? nextValue
+            : UNKNOWN_BACKING_POLICIES.requireReview;
+        const previousRequestMode = normalizeRoomRequestMode(requestMode, allowSingerTrackSelect);
+        const previousAllowSingerTrackSelect = previousRequestMode === REQUEST_MODES.guestBackingOptional;
+        const previousUnknownBackingPolicy = deriveUnknownBackingPolicy({
+            unknownBackingPolicy,
+            requestMode: previousRequestMode,
+            allowSingerTrackSelect: previousAllowSingerTrackSelect,
+        });
+        const nextState = safePolicy === UNKNOWN_BACKING_POLICIES.autoQueueUnverified
+            ? {
+                requestMode: REQUEST_MODES.guestBackingOptional,
+                allowSingerTrackSelect: true,
+                audienceBackingMode: AUDIENCE_BACKING_MODES.canonicalPlusAudienceYoutube,
+                unknownBackingPolicy: UNKNOWN_BACKING_POLICIES.autoQueueUnverified,
+            }
+            : safePolicy === UNKNOWN_BACKING_POLICIES.blockUnknown
+                ? {
+                    requestMode: REQUEST_MODES.playableOnly,
+                    allowSingerTrackSelect: false,
+                    audienceBackingMode: AUDIENCE_BACKING_MODES.canonicalPlusApprovedBackings,
+                    unknownBackingPolicy: UNKNOWN_BACKING_POLICIES.blockUnknown,
+                }
+                : {
+                    requestMode: REQUEST_MODES.canonicalOpen,
+                    allowSingerTrackSelect: false,
+                    audienceBackingMode: AUDIENCE_BACKING_MODES.canonicalOnly,
+                    unknownBackingPolicy: UNKNOWN_BACKING_POLICIES.requireReview,
+                };
+        setRequestMode(nextState.requestMode);
+        setAllowSingerTrackSelect(nextState.allowSingerTrackSelect);
+        setUnknownBackingPolicy(nextState.unknownBackingPolicy);
+        try {
+            await updateRoom(nextState);
+        } catch (error) {
+            console.error('Failed to update guest track policy from host chrome', error);
+            setRequestMode(previousRequestMode);
+            setAllowSingerTrackSelect(previousAllowSingerTrackSelect);
+            setUnknownBackingPolicy(previousUnknownBackingPolicy);
+            toast('Could not update the guest track policy.');
         }
     };
 
@@ -19014,6 +19096,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         queueRotation,
         queueFirstTimeBoost: !!queueFirstTimeBoost,
         requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
+        guestTrackPolicy: deriveQuickGuestTrackPolicy({
+            requestMode,
+            allowSingerTrackSelect,
+            unknownBackingPolicy,
+        }),
+        guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
         queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
         queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
@@ -19024,6 +19112,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onToggleRuntimeShellMode: toggleRuntimeShellModeQuick,
         onUpdateQueueSettings: updateQueueSettingsQuick,
         onSetRequestMode: setRequestModeQuick,
+        onSetGuestTrackPolicy: setGuestTrackPolicyQuick,
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
         onTriggerReadyCheck: startReadyCheck,
     };

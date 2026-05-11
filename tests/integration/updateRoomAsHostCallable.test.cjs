@@ -342,6 +342,25 @@ async function run() {
       assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
     }],
 
+    ["host can update audience YouTube-only search mode", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceYoutubeOnlySearch: true,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(result.updatedKeys, ["audienceYoutubeOnlySearch"]);
+
+      let snap = await roomRef.get();
+      assert.equal(snap.get("audienceYoutubeOnlySearch"), true);
+
+      await updateRoomAsHost.run(requestFor(HOST_UID, {
+        audienceYoutubeOnlySearch: false,
+      }));
+
+      snap = await roomRef.get();
+      assert.equal(snap.get("audienceYoutubeOnlySearch"), false);
+    }],
+
     ["host can toggle post-performance backing prompts", async () => {
       const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
         hostUiPrefs: {

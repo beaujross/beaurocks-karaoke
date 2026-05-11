@@ -2275,6 +2275,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "audienceBrandTheme",
   "audienceFeatureAccess",
   "audienceJoinPolicy",
+  "audienceYoutubeOnlySearch",
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
@@ -2446,6 +2447,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
 ]);
 const HOST_ROOM_BOOLEAN_ROOT_KEYS = new Set([
   "allowSingerTrackSelect",
+  "audienceYoutubeOnlySearch",
   "autoBonusEnabled",
   "autoBgMusic",
   "autoEndOnTrackFinish",
