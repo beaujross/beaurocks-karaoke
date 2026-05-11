@@ -264,10 +264,20 @@ test('host setup keeps room uploads available while routing live media actions b
     /Save Offline Backup/,
     'Hosts should still be able to save an offline local backup on the host device',
   );
+  assert.match(
+    mediaSection,
+    /TV Library/,
+    'Admin media should still let hosts push eligible uploaded items into the TV library after upload',
+  );
+  assert.match(
+    mediaSection,
+    /Use In Run Of Show/,
+    'Admin media should still let hosts turn eligible uploaded items into a run-of-show asset after upload',
+  );
   assert.doesNotMatch(
     mediaSection,
-    /Upload \+ Queue|Save To TV Library|Use In Run Of Show/,
-    'Admin media should stop duplicating direct runtime actions inside the library manager',
+    /Upload \+ Queue|Save To TV Library/,
+    'Admin media should stop using the older direct-upload runtime action labels inside the library manager',
   );
 });
 

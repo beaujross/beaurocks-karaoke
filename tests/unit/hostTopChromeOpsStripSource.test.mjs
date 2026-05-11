@@ -48,4 +48,24 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
     /denseChrome \? 'h-9 px-2\.5 text-\[12px\]' : 'h-9 px-2\.5 text-sm'[\s\S]*inline-flex shrink-0 items-center/,
     'HostTopChrome primary nav tabs should use a consistent compact height including the active Show tab',
   );
+  assert.match(
+    source,
+    /Stage Start[\s\S]*quickRoomControls\.autoPlayMedia !== false \? 'Auto' : 'Manual'/,
+    'HostTopChrome room controls should expose the stage-start mode alongside queue governance controls',
+  );
+  assert.doesNotMatch(
+    source,
+    /key: 'autoPlay'[\s\S]*Auto Stage Playback[\s\S]*quickAutomationControls\.onToggleAutoPlayMedia/,
+    'HostTopChrome automation controls should stop owning the stage-start toggle once it moves into the room governance menu',
+  );
+  assert.match(
+    hostAppSource,
+    /const quickRoomControls = \{[\s\S]*autoPlayMedia: !!autoPlayMedia,[\s\S]*onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,/,
+    'HostApp should hand the room menu the live stage-start toggle state and handler',
+  );
+  assert.match(
+    source,
+    /const queueAttentionBadgeClass = normalizedQueueAttentionNeedsHost[\s\S]*border-pink-100\/70[\s\S]*rgba\(236,72,153,0\.96\)[\s\S]*border-pink-300\/35[\s\S]*text-pink-50/,
+    'HostTopChrome queue attention badge should use the branded pink badge treatment for both hot and soft states',
+  );
 });

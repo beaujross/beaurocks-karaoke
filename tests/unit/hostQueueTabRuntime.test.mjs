@@ -422,6 +422,26 @@ test('HostQueueTab mounts the inbox workspace without a host-room runtime crash'
   assert.match(markup, /Needs Host/);
 });
 
+test('HostQueueTab renders the inbox workspace badge with branded pink attention styling', async () => {
+  mockHostQueueTabDependencies();
+
+  const markup = await renderQueueTabMarkup({
+    chatUnread: 2,
+    dmUnread: 1,
+    coHostSignals: [
+      { id: 'cohost-1', hostLabel: 'Need a ruling' },
+    ],
+    moderationCounts: {
+      totalPending: 1,
+    },
+  });
+
+  assert.match(
+    markup,
+    /data-feature-id="queue-surface-tab-inbox-desktop"[\s\S]*border-pink-100\/70[\s\S]*rgba\(236,72,153,0\.96\)[\s\S]*>5</,
+  );
+});
+
 test('HostQueueTab keeps add-to-queue search controls visible inside the dedicated add workspace', async () => {
   mockHostQueueTabDependencies();
   mockDesktopQueueSurfaceTab('add');

@@ -7359,7 +7359,150 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 }
             }
         };
-        const pack = packs[safePackId];
+        const buildGameBreakPack = (modeId = '') => {
+            const game = GAMES_META.find((entry) => String(entry?.id || '').trim().toLowerCase() === modeId) || null;
+            if (!game && modeId !== 'applause_countdown') return null;
+            if (modeId === 'trivia_pop') {
+                return {
+                    type: 'trivia_break',
+                    label: game?.name || 'Trivia',
+                    overrides: {
+                        title: game?.name || 'Trivia',
+                        plannedDurationSec: 55,
+                        modeLaunchPlan: {
+                            modeKey: 'trivia_pop',
+                            launchConfig: {}
+                        },
+                        presentationPlan: {
+                            publicTvTakeoverEnabled: true,
+                            takeoverScene: 'trivia_break',
+                            headline: 'Quick room trivia',
+                            subhead: 'One fast question before the next singer.',
+                            accentTheme: 'violet'
+                        }
+                    }
+                };
+            }
+            if (modeId === 'wyr') {
+                return {
+                    type: 'would_you_rather_break',
+                    label: game?.name || 'Would You Rather',
+                    overrides: {
+                        title: game?.name || 'Would You Rather',
+                        plannedDurationSec: 65,
+                        modeLaunchPlan: {
+                            modeKey: 'wyr',
+                            launchConfig: {
+                                question: 'Would you rather sing solo or bring your whole row on stage?',
+                                optionsCsv: 'Solo, Bring the row'
+                            }
+                        },
+                        presentationPlan: {
+                            publicTvTakeoverEnabled: true,
+                            takeoverScene: 'would_you_rather_break',
+                            headline: 'Quick room vote',
+                            subhead: 'Phones vote once. TV shows the split.',
+                            accentTheme: 'emerald'
+                        }
+                    }
+                };
+            }
+
+            const launchConfig = (() => {
+                if (modeId === 'bingo') {
+                    return {
+                        boardTitle: game?.name || 'Bingo',
+                        bingoMode: 'karaoke',
+                        participantMode: 'all'
+                    };
+                }
+                if (modeId === 'team_pong') {
+                    return {
+                        question: game?.description || 'Left side vs right side rally.',
+                        participantMode: 'all',
+                        windowMs: 18000,
+                        rallyTimeoutMs: 3200,
+                        targetRally: 45
+                    };
+                }
+                if (modeId === 'doodle_oke') {
+                    return {
+                        question: 'Draw the karaoke moment',
+                        participantMode: 'all',
+                        durationSec: 45,
+                        guessSec: 12,
+                        requireReview: false
+                    };
+                }
+                if (modeId === 'selfie_challenge') {
+                    return {
+                        question: 'Best karaoke face',
+                        participantMode: 'all',
+                        requireApproval: true,
+                        autoStartVoting: true
+                    };
+                }
+                if (modeId === 'karaoke_bracket') {
+                    return {
+                        question: 'Sweet 16 bracket spotlight',
+                        participantMode: 'all'
+                    };
+                }
+                if (modeId === 'flappy_bird' || modeId === 'vocal_challenge') {
+                    return {
+                        question: game?.description || game?.name || 'Crowd mic run',
+                        participantMode: 'all',
+                        inputSource: 'ambient',
+                        durationSec: 60,
+                        difficulty: 'normal',
+                        guideTone: 'C4'
+                    };
+                }
+                if (modeId === 'riding_scales') {
+                    return {
+                        question: game?.description || game?.name || 'Crowd scale challenge',
+                        participantMode: 'all',
+                        durationSec: 60,
+                        maxStrikes: 3,
+                        rewardPerRound: 50,
+                        difficulty: 'normal',
+                        guideTone: 'C4'
+                    };
+                }
+                if (modeId === 'applause_countdown') {
+                    return {
+                        question: 'Measure the room',
+                        durationSec: 35,
+                        participantMode: 'all'
+                    };
+                }
+                return {
+                    question: game?.description || game?.name || 'Game break',
+                    participantMode: 'all'
+                };
+            })();
+
+            return {
+                type: 'game_break',
+                label: game?.name || 'Applause Meter',
+                overrides: {
+                    title: game?.name || 'Applause Meter',
+                    plannedDurationSec: modeId === 'karaoke_bracket' || modeId === 'bingo' ? 75 : modeId === 'applause_countdown' ? 35 : 60,
+                    modeLaunchPlan: {
+                        modeKey: modeId,
+                        launchConfig,
+                    },
+                    presentationPlan: {
+                        publicTvTakeoverEnabled: true,
+                        takeoverScene: modeId,
+                        headline: game?.name || 'Applause Meter',
+                        subhead: game?.description || 'Drop a quick crowd game into the live plan.',
+                        accentTheme: game?.category === 'social' ? 'rose' : game?.category === 'brain' ? 'emerald' : 'cyan'
+                    }
+                }
+            };
+        };
+        const pack = packs[safePackId] || buildGameBreakPack(safePackId);
         if (!pack) return null;
         const placement = String(options?.placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
         const persistedDirector = await addRunOfShowItem(pack.type, pack.overrides, {
@@ -18846,7 +18989,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const quickAutomationControls = {
         autoDj: !!autoDj,
-        autoPlayMedia: !!autoPlayMedia,
         autoBgMusic: !!autoBgMusic,
         autoEndOnTrackFinish: !!autoEndOnTrackFinish,
         autoBonusEnabled: !!autoBonusEnabled,
@@ -18854,7 +18996,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         autoPartyEnabled: !!autoCrowdMomentsEnabled,
         popTriviaEnabled: !!popTriviaEnabled,
         onToggleAutoDj: toggleAutoDjQuick,
-        onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,
         onToggleAutoBgMusic: toggleAutoBgMusicQuick,
         onToggleAutoEnd: toggleAutoEndQuick,
         onToggleAutoBonus: toggleAutoBonusQuick,
@@ -18864,6 +19005,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     };
 
     const quickRoomControls = {
+        autoPlayMedia: !!autoPlayMedia,
         bouncerMode: !!room?.bouncerMode,
         postPerformanceBackingPromptEnabled: isPostPerformanceBackingPromptEnabled(room),
         runtimeShellMode: getHostRuntimeShellMode(room),
@@ -18876,6 +19018,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
         queueRotationOptions: NIGHT_SETUP_QUEUE_ROTATION_OPTIONS,
         requestModeOptions: REQUEST_MODE_OPTIONS,
+        onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,
         onToggleBouncerMode: toggleBouncerModeQuick,
         onTogglePostPerformanceBackingPrompt: togglePostPerformanceBackingPromptQuick,
         onToggleRuntimeShellMode: toggleRuntimeShellModeQuick,
@@ -20470,61 +20613,52 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 >
                         {settingsTab === 'general' && (
                         <>
-                        <div className="mb-5 grid grid-cols-1 gap-5 2xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
-                        <div className="bg-zinc-950/60 border border-cyan-500/30 rounded-xl p-4">
-                            <div className="flex items-center justify-between gap-3 flex-wrap">
-                                <div>
-                                    <div className="text-sm uppercase tracking-widest text-cyan-300">Run Tonight</div>
-                                    <div className="text-xs text-zinc-400 mt-1">Core controls first. Open advanced sections only as needed.</div>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-zinc-400 flex-wrap">
-                                    <span className="px-2 py-1 rounded-full border border-white/15">Mode: {room?.activeMode || 'karaoke'}</span>
-                                    <span className="px-2 py-1 rounded-full border border-white/15">Queue: {queuedSongs.length}</span>
-                                    <span className={`px-2 py-1 rounded-full border ${appleMusicAuthorized ? 'border-emerald-400/30 text-emerald-200 bg-emerald-500/10' : 'border-zinc-500/30 text-zinc-300 bg-zinc-900/70'}`}>
+                        <div className="mb-5 grid grid-cols-1 gap-5">
+                        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                    <span className="rounded-full border border-white/15 px-2.5 py-1">Mode: {room?.activeMode || 'karaoke'}</span>
+                                    <span className="rounded-full border border-white/15 px-2.5 py-1">Queue: {queuedSongs.length}</span>
+                                    <span className={`rounded-full border px-2.5 py-1 ${appleMusicAuthorized ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-zinc-500/30 bg-zinc-900/70 text-zinc-300'}`}>
                                         Apple {appleMusicAuthorized ? 'Connected' : 'Not Connected'}
                                     </span>
                                 </div>
+                                <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Quick Actions</div>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-2 mt-3">
-                                <button
-                                    onClick={handleStageQuickStartOpenRoomSetup}
-                                    className={`${STYLES.btnStd} ${STYLES.btnHighlight} justify-start`}
-                                >
-                                    1. Night Setup
-                                </button>
+                            <div className="mt-3 flex flex-wrap gap-2">
                                 <button
                                     onClick={openActiveRoomTv}
-                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} justify-start`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnInfo} px-3 py-2 text-[11px]`}
                                 >
-                                    2. Open Public TV
+                                    Open Public TV
                                 </button>
                                 <button
                                     onClick={copyActiveRoomAudienceLink}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[11px]`}
                                 >
-                                    3. Copy Join Link
+                                    Copy Join Link
                                 </button>
                                 <button
                                     onClick={() => setSettingsTab('gamepad')}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[11px]`}
                                 >
-                                    4. Open Live Modes
+                                    Open Live Modes
                                 </button>
                                 <button
                                     onClick={() => setSettingsTab('media')}
-                                    className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnSecondary} justify-start`}
+                                    className={`${STYLES.btnStd} ${appleMusicAuthorized ? STYLES.btnSuccess : STYLES.btnSecondary} px-3 py-2 text-[11px]`}
                                 >
                                     {appleMusicAuthorized ? 'Media + Apple Music' : 'Open Media Setup'}
                                 </button>
                                 <button
                                     onClick={focusHostInbox}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[11px]`}
                                 >
                                     Open Main Inbox
                                 </button>
                                 <button
                                     onClick={() => setSettingsTab('moderation')}
-                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} justify-start`}
+                                    className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[11px]`}
                                 >
                                     Moderation Policy
                                 </button>

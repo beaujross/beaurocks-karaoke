@@ -343,7 +343,6 @@ const HostTopChrome = ({
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const automationActiveCount = [
         !!quickAutomationControls?.autoDj,
-        !!quickAutomationControls?.autoPlayMedia,
         !!quickAutomationControls?.autoBgMusic,
         !!quickAutomationControls?.autoEndOnTrackFinish,
         !!quickAutomationControls?.autoBonusEnabled,
@@ -371,8 +370,8 @@ const HostTopChrome = ({
         || moderationSeverity === 'critical';
     const queueAttentionVisible = normalizedQueueAttentionCount > 0 && tab !== 'stage';
     const queueAttentionBadgeClass = normalizedQueueAttentionNeedsHost
-        ? 'border-amber-300/30 bg-amber-500/12 text-amber-100'
-        : 'border-cyan-300/30 bg-cyan-500/12 text-cyan-100';
+        ? 'border-pink-100/70 bg-[linear-gradient(135deg,rgba(236,72,153,0.96),rgba(190,24,93,0.92))] text-white shadow-[0_0_18px_rgba(236,72,153,0.42)]'
+        : 'border-pink-300/35 bg-[linear-gradient(135deg,rgba(236,72,153,0.18),rgba(190,24,93,0.24))] text-pink-50 shadow-[0_0_14px_rgba(236,72,153,0.24)]';
     const anyTopMenuOpen = audioPanelOpen
         || showTvQuickMenu
         || showOverlaysMenu
@@ -1062,7 +1061,7 @@ const HostTopChrome = ({
         closeAllTopMenus();
     };
     const operatingStyleSummary = getOperatingStyleSummary({
-        autoPlayMedia: quickAutomationControls?.autoPlayMedia !== false,
+        autoPlayMedia: quickRoomControls?.autoPlayMedia !== false,
         readyCheckDurationSec: quickRoomControls?.readyCheckDurationSec,
         queueSettings: {
             limitMode: quickRoomControls?.queueLimitMode,
@@ -1080,7 +1079,7 @@ const HostTopChrome = ({
         const patch = buildOperatingStylePatch(presetId);
         await quickRoomControls?.onUpdateQueueSettings?.(patch.queueSettings);
         await quickRoomControls?.onSetReadyCheckDuration?.(patch.readyCheckDurationSec);
-        await quickAutomationControls?.onToggleAutoPlayMedia?.(patch.autoPlayMedia);
+        await quickRoomControls?.onToggleAutoPlayMedia?.(patch.autoPlayMedia);
         closeAllTopMenus();
     };
     const openOpsSection = React.useCallback((sectionId = 'ops.room_setup') => {
@@ -1561,13 +1560,6 @@ const HostTopChrome = ({
                                                 onClick: quickAutomationControls.onToggleAutoDj,
                                             },
                                             {
-                                                key: 'autoPlay',
-                                                label: 'Auto Stage Playback',
-                                                active: !!quickAutomationControls.autoPlayMedia,
-                                                icon: 'fa-circle-play',
-                                                onClick: quickAutomationControls.onToggleAutoPlayMedia,
-                                            },
-                                            {
                                                 key: 'autoBg',
                                                 label: 'Auto BG Music',
                                                 active: !!quickAutomationControls.autoBgMusic,
@@ -1823,7 +1815,20 @@ const HostTopChrome = ({
                                             </select>
                                         </label>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => { void quickRoomControls.onToggleAutoPlayMedia?.(); }}
+                                            aria-pressed={quickRoomControls.autoPlayMedia !== false}
+                                            title="Choose whether staged songs start immediately or wait for a host-started track."
+                                            className={`${styles.btnStd} ${quickRoomControls.autoPlayMedia !== false ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <i className="fa-solid fa-circle-play"></i>
+                                                Stage Start
+                                            </span>
+                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.autoPlayMedia !== false ? 'Auto' : 'Manual'}</span>
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => { void quickRoomControls.onToggleBouncerMode?.(); }}

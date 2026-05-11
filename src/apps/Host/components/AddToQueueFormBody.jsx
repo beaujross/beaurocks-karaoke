@@ -1,4 +1,5 @@
 import React from 'react';
+import { GAMES_META } from '../../../lib/gameRegistry';
 import {
     YOUTUBE_PLAYBACK_STATUSES,
     normalizeYouTubePlaybackState
@@ -180,27 +181,6 @@ const quickMomentPacks = [
         toneClass: 'border-cyan-300/22 bg-cyan-500/8',
     },
     {
-        id: 'would_you_rather',
-        category: 'game',
-        title: 'Would You Rather',
-        detail: 'Fast audience vote with instant reveal.',
-        toneClass: 'border-emerald-300/22 bg-emerald-500/8',
-    },
-    {
-        id: 'trivia_break',
-        category: 'game',
-        title: 'Trivia Break',
-        detail: 'One quick room question between singers.',
-        toneClass: 'border-violet-300/22 bg-violet-500/8',
-    },
-    {
-        id: 'applause_meter',
-        category: 'game',
-        title: 'Applause Meter',
-        detail: 'Measure the room before the next singer.',
-        toneClass: 'border-amber-300/22 bg-amber-500/8',
-    },
-    {
         id: 'winner_declaration',
         category: 'announcement',
         title: 'Declare Winner',
@@ -219,6 +199,37 @@ const quickMomentPacks = [
         category: 'sponsor',
         title: 'Sponsor Spotlight',
         detail: 'Quick branded thank-you moment.',
+        toneClass: 'border-amber-300/22 bg-amber-500/8',
+    },
+];
+
+const gameMomentPacks = [
+    {
+        id: 'trivia_pop',
+        title: 'Trivia',
+        detail: 'Timed room question with instant scoreboard payoff.',
+        toneClass: 'border-violet-300/22 bg-violet-500/8',
+    },
+    {
+        id: 'wyr',
+        title: 'Would You Rather',
+        detail: 'Fast audience vote with instant reveal.',
+        toneClass: 'border-emerald-300/22 bg-emerald-500/8',
+    },
+    ...GAMES_META.filter((game) => !['trivia_pop', 'wyr'].includes(String(game?.id || '').trim().toLowerCase())).map((game) => ({
+        id: game.id,
+        title: game.name,
+        detail: game.description,
+        toneClass: game.category === 'voice'
+            ? 'border-cyan-300/22 bg-cyan-500/8'
+            : game.category === 'social'
+                ? 'border-rose-300/22 bg-rose-500/8'
+                : 'border-emerald-300/22 bg-emerald-500/8',
+    })),
+    {
+        id: 'applause_countdown',
+        title: 'Applause Meter',
+        detail: 'Measure the room before the next singer.',
         toneClass: 'border-amber-300/22 bg-amber-500/8',
     },
 ];
@@ -420,11 +431,16 @@ const AddToQueueFormBody = ({
     const showResults = results.length > 0 || searchQ.length >= 3;
     const performanceMode = activeMomentType === 'performance';
     const plannerLaunchMode = activeMomentType === 'audience' || activeMomentType === 'announcement' || activeMomentType === 'game' || activeMomentType === 'sponsor';
-    const filteredMomentPacks = quickMomentPacks.filter((pack) => pack.category === activeMomentType);
-    const recentScenePresets = Array.isArray(scenePresets) ? scenePresets.slice(0, 4) : [];
+    const filteredMomentPacks = activeMomentType === 'game'
+        ? gameMomentPacks
+        : quickMomentPacks.filter((pack) => pack.category === activeMomentType);
+    const allScenePresets = Array.isArray(scenePresets) ? scenePresets : [];
     const openPerformanceSlotCount = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.length : 0;
     const nextOpenSlot = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots[0] || null : null;
-    const laterOpenSlots = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.slice(1, 4) : [];
+    const laterOpenSlots = React.useMemo(
+        () => (Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.slice(1, 4) : []),
+        [runOfShowOpenSlots]
+    );
     const selectedLaterSlot = laterOpenSlots.find((slot) => slot.id === selectedLaterSlotId) || laterOpenSlots[0] || null;
     const performanceResultListProps = {
         results,
@@ -510,12 +526,16 @@ const AddToQueueFormBody = ({
                                 ? 'Audience moment'
                                 : activeMomentType === 'announcement'
                                     ? 'Announcement'
-                                    : 'Game break'}
+                                    : activeMomentType === 'sponsor'
+                                        ? 'Sponsor moment'
+                                        : 'Game break'}
                     </div>
                     <div className="mt-1 text-sm text-zinc-400">
                         {activeMomentType === 'tv'
-                            ? 'Choose a scene source below.'
-                            : 'Add a quick beat or open Planner.'}
+                            ? 'Choose any saved scene below or jump into the media library.'
+                            : activeMomentType === 'game'
+                                ? 'Add any available game break or open Planner for deeper setup.'
+                                : 'Add a quick beat or open Planner.'}
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {activeMomentType === 'tv' && typeof openYtSearch === 'function' ? (
@@ -682,8 +702,16 @@ const AddToQueueFormBody = ({
             )}
 
             {!performanceMode && activeMomentType === 'tv' ? (
-                <div className="mt-3 grid gap-2 xl:grid-cols-2">
-                    {recentScenePresets.length > 0 ? recentScenePresets.map((preset) => {
+                <div className="mt-3">
+                    {allScenePresets.length > 0 ? (
+                        <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
+                            <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
+                                {allScenePresets.length} saved scene{allScenePresets.length === 1 ? '' : 's'}
+                            </span>
+                        </div>
+                    ) : null}
+                    <div className="grid max-h-[30rem] gap-2 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar pr-1 xl:grid-cols-2">
+                    {allScenePresets.length > 0 ? allScenePresets.map((preset) => {
                         const preview = buildScenePresetPreview(preset);
                         return (
                             <div key={preset.id || preset.title} className="rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -741,6 +769,7 @@ const AddToQueueFormBody = ({
                             No saved scenes yet. Use `Search YouTube` or `Open Media Library`.
                         </div>
                     )}
+                    </div>
                 </div>
             ) : null}
 

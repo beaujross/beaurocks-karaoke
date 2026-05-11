@@ -50,6 +50,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /flex-1 min-h-0 overflow-y-auto custom-scrollbar/);
   assert.match(hostQueueTabSource, /queueWorkspaceTabListClass/);
   assert.match(hostQueueTabSource, /renderQueueWorkspaceTabButton/);
+  assert.match(hostQueueTabSource, /const inboxBadgeToneClass = inboxNeedsHostCount > 0[\s\S]*border-pink-100\/70[\s\S]*rgba\(236,72,153,0\.96\)[\s\S]*border-pink-300\/35[\s\S]*text-pink-50/);
   assert.match(hostQueueTabSource, /featureId: 'queue-surface-tab-inbox-desktop'/);
   assert.match(hostQueueTabSource, /data-feature-id="panel-inbox"/);
   assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-queue-live-controls', focusQueueControls\)/);

@@ -685,6 +685,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     );
     const inboxFeedCount = Math.max(0, Number(chatUnread || 0));
     const inboxTotalCount = inboxNeedsHostCount + inboxFeedCount;
+    const inboxBadgeToneClass = inboxNeedsHostCount > 0
+        ? 'border-pink-100/70 bg-[linear-gradient(135deg,rgba(236,72,153,0.96),rgba(190,24,93,0.92))] text-white shadow-[0_0_18px_rgba(236,72,153,0.42)]'
+        : 'border-pink-300/35 bg-[linear-gradient(135deg,rgba(236,72,153,0.18),rgba(190,24,93,0.24))] text-pink-50 shadow-[0_0_14px_rgba(236,72,153,0.24)]';
     const scenePresetCount = Array.isArray(scenePresets) ? scenePresets.length : 0;
     const recentScenePresetTitles = (Array.isArray(scenePresets) ? scenePresets : [])
         .slice(0, 3)
@@ -5192,9 +5195,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     featureId: 'queue-surface-tab-inbox-desktop',
                     badge: inboxTotalCount,
                     activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
-                    badgeToneClass: inboxNeedsHostCount > 0
-                        ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
-                        : 'border-white/10 bg-black/20 text-zinc-200',
+                    badgeToneClass: inboxBadgeToneClass,
                 })}
                 {hasRunOfShowQueueHud ? renderQueueWorkspaceTabButton({
                     id: 'show',
@@ -5250,9 +5251,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         featureId: 'queue-surface-tab-inbox',
                         badge: inboxTotalCount,
                         activeToneClass: queueWorkspaceToneMap.inbox.activeToneClass,
-                        badgeToneClass: inboxNeedsHostCount > 0
-                            ? 'border-cyan-300/25 bg-cyan-500/10 text-cyan-100'
-                            : 'border-white/10 bg-black/20 text-zinc-200',
+                        badgeToneClass: inboxBadgeToneClass,
                     })}
                 </div>
                 {touchReorderAvailable && queueSurface.activeCompactTab === 'queue' ? (
