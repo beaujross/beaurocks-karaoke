@@ -4,6 +4,48 @@ import { EMOJI } from '../lib/emoji';
 import { attachPerformancePlaybackContext } from '../lib/performanceSessionPlayback';
 
 const nowMs = () => Date.now();
+const YOUTUBE_DEFAULT_FRAME_ORIGIN = 'https://www.youtube.com';
+
+const getSafeYouTubeFrameOrigin = (frame = null) => {
+    const rawSrc = String(frame?.getAttribute?.('src') || frame?.src || '').trim();
+    if (!rawSrc) return YOUTUBE_DEFAULT_FRAME_ORIGIN;
+    try {
+        const origin = new URL(rawSrc, window.location.href).origin;
+        return origin.includes('youtube.com') ? origin : YOUTUBE_DEFAULT_FRAME_ORIGIN;
+    } catch {
+        return YOUTUBE_DEFAULT_FRAME_ORIGIN;
+    }
+};
+
+const postYouTubeFrameMessage = (frame = null, message = {}, targetOrigin = YOUTUBE_DEFAULT_FRAME_ORIGIN) => {
+    if (!frame?.contentWindow) return false;
+    try {
+        frame.contentWindow.postMessage(JSON.stringify(message), targetOrigin || getSafeYouTubeFrameOrigin(frame));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+const getTrustedYoutubeDurationSec = ({ room = {}, current = {} } = {}) => {
+    const session = room?.currentPerformanceSession || {};
+    const meta = room?.currentPerformanceMeta || {};
+    const playerReportedDurationSec = Math.max(0, Number(session?.playerReportedDurationSec || 0));
+    const explicitAutoEndSafe = meta?.autoEndSafe === true || current?.autoEndSafe === true;
+    if (!explicitAutoEndSafe && playerReportedDurationSec <= 0) return 0;
+    const durationSec = Math.max(
+        0,
+        playerReportedDurationSec,
+        Number(session?.expectedDurationSec || 0),
+        Number(meta?.backingDurationSec || 0),
+        Number(meta?.durationSec || 0),
+        Number(current?.backingDurationSec || 0),
+        Number(current?.mediaDurationSec || 0),
+        Number(current?.durationSec || 0),
+        Number(current?.duration || 0)
+    );
+    return Number.isFinite(durationSec) && durationSec >= 20 ? durationSec : 0;
+};
 
 const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVideo = true, runOfShowHud = null, onPlaybackEvent = null }) => {
     const mediaUrl = current?.mediaUrl || room?.mediaUrl;
@@ -22,7 +64,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     // Detect YouTube (fallback)
     const isYoutube = mediaUrl && mediaUrl.includes('youtube');
     const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
-    const youtubeFrameOrigin = 'https://www.youtube.com';
+    const youtubeFrameOrigin = YOUTUBE_DEFAULT_FRAME_ORIGIN;
     const nowPlayingLabel = useMemo(() => {
         if (applePlaybackActive) {
             return {
@@ -46,16 +88,19 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const iframeSrc = useMemo(() => {
         const start = room?.videoStartTimestamp ? (nowMs() - room.videoStartTimestamp) / 1000 : 0;
         const pageOrigin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&rel=0&modestbranding=1`;
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&start=${Math.floor(Math.max(0, start))}&enablejsapi=1&playsinline=1&origin=${pageOrigin}&widget_referrer=${pageOrigin}&rel=0&modestbranding=1`;
     }, [youtubeId, room?.videoStartTimestamp]);
+    const youtubeFrameKey = `${youtubeId || ''}:${room?.videoStartTimestamp || 0}`;
 
     const iframeRef = useRef(null);
     const nativeVideoRef = useRef(null);
     const audioRef = useRef(null);
     const [autoplayBlocked, setAutoplayBlocked] = useState(false);
+    const [youtubeIframeReadyKey, setYoutubeIframeReadyKey] = useState('');
     const nativeHeartbeatBucketRef = useRef('');
     const youtubeHeartbeatBucketRef = useRef('');
     const youtubeEndedEventRef = useRef('');
+    const youtubeFallbackEndedEventRef = useRef('');
     const reportPlaybackEvent = useCallback((event = {}) => {
         if (typeof onPlaybackEvent !== 'function') return;
         onPlaybackEvent(attachPerformancePlaybackContext(event, { room, current }));
@@ -93,11 +138,16 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         return () => clearTimeout(resetTimer);
     }, [mediaUrl]);
     
+    const youtubeIframeReady = youtubeIframeReadyKey === youtubeFrameKey;
+
     useEffect(() => {
-        if (iframeRef.current && room?.videoVolume !== undefined) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [room.videoVolume] }), youtubeFrameOrigin);
-        }
-    }, [room?.videoVolume, youtubeFrameOrigin]);
+        if (!isYoutube || !youtubeIframeReady || !iframeRef.current || room?.videoVolume === undefined) return;
+        postYouTubeFrameMessage(
+            iframeRef.current,
+            { event: 'command', func: 'setVolume', args: [room.videoVolume] },
+            getSafeYouTubeFrameOrigin(iframeRef.current) || youtubeFrameOrigin
+        );
+    }, [isYoutube, room?.videoVolume, youtubeFrameOrigin, youtubeIframeReady]);
 
     useEffect(() => {
         if (nativeVideoRef.current && room?.videoVolume !== undefined) {
@@ -115,6 +165,8 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         nativeHeartbeatBucketRef.current = '';
         youtubeHeartbeatBucketRef.current = '';
         youtubeEndedEventRef.current = '';
+        youtubeFallbackEndedEventRef.current = '';
+        setYoutubeIframeReadyKey('');
     }, [mediaUrl, room?.videoStartTimestamp]);
 
     useEffect(() => {
@@ -221,15 +273,16 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     }, [isYoutube, room?.videoStartTimestamp, reportPlaybackEvent, youtubeId]);
 
     useEffect(() => {
-        if (!isYoutube || !youtubeId || !iframeRef.current?.contentWindow) return undefined;
+        if (!isYoutube || !youtubeId || !youtubeIframeReady || !iframeRef.current?.contentWindow) return undefined;
         const sendListening = () => {
             if (!iframeRef.current?.contentWindow) return;
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({
-                event: 'listening',
-                id: youtubeId
-            }), youtubeFrameOrigin);
+            postYouTubeFrameMessage(
+                iframeRef.current,
+                { event: 'listening', id: youtubeFrameKey, channel: 'widget' },
+                getSafeYouTubeFrameOrigin(iframeRef.current) || youtubeFrameOrigin
+            );
         };
-        const first = setTimeout(sendListening, 100);
+        const first = setTimeout(sendListening, 150);
         const second = setTimeout(sendListening, 900);
         const third = setTimeout(sendListening, 1800);
         return () => {
@@ -237,7 +290,31 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             clearTimeout(second);
             clearTimeout(third);
         };
-    }, [iframeSrc, isYoutube, youtubeFrameOrigin, youtubeId]);
+    }, [iframeSrc, isYoutube, youtubeFrameKey, youtubeFrameOrigin, youtubeId, youtubeIframeReady]);
+
+    useEffect(() => {
+        if (!isYoutube || !youtubeId || !room?.videoPlaying || !room?.videoStartTimestamp || isBackingAudioOnly) return undefined;
+        if (String(room?.currentPerformanceSession?.playbackState || '').trim().toLowerCase() === 'ended') return undefined;
+        const durationSec = getTrustedYoutubeDurationSec({ room, current });
+        if (durationSec <= 0) return undefined;
+        const startedAtMs = Number(room?.currentPerformanceMeta?.startedAtMs || room.videoStartTimestamp || 0);
+        if (!Number.isFinite(startedAtMs) || startedAtMs <= 0) return undefined;
+        const fallbackKey = `${youtubeId}:${startedAtMs}:${Math.round(durationSec)}`;
+        const elapsedSec = Math.max(0, (nowMs() - startedAtMs) / 1000);
+        const graceSec = 4;
+        const delayMs = Math.max(1000, Math.ceil(((durationSec + graceSec) - elapsedSec) * 1000));
+        const timer = setTimeout(() => {
+            if (youtubeFallbackEndedEventRef.current === fallbackKey) return;
+            youtubeFallbackEndedEventRef.current = fallbackKey;
+            reportPlaybackEvent({
+                type: 'ended',
+                currentTimeSec: durationSec,
+                durationSec,
+                completionReason: 'duration_elapsed_fallback'
+            });
+        }, delayMs);
+        return () => clearTimeout(timer);
+    }, [current, isBackingAudioOnly, isYoutube, reportPlaybackEvent, room, room?.videoPlaying, room?.videoStartTimestamp, youtubeId]);
 
     // Open backing audio window for non-embeddable videos
     useEffect(() => {
@@ -340,7 +417,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                         />
                     ) : (isYoutube && youtubeId ? (
                         room?.videoPlaying ? 
-                            <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : 'opacity-70'}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0"></iframe> 
+                            <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : 'opacity-70'}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0" onLoad={() => setYoutubeIframeReadyKey(youtubeFrameKey)}></iframe> 
                         : <div className={`absolute inset-0 w-full h-full bg-black/50 flex items-center justify-center text-2xl font-bold ${hideVideoVisuals ? 'opacity-0' : 'opacity-50'}`}>VIDEO PAUSED</div>
                     ) : null)
                 )}
@@ -361,7 +438,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                         />
                     ) : (isYoutube && youtubeId && (
                         room?.videoPlaying ? 
-                            <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : ''}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0"></iframe> 
+                            <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : ''}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0" onLoad={() => setYoutubeIframeReadyKey(youtubeFrameKey)}></iframe> 
                         : <div className={`absolute inset-0 bg-black flex items-center justify-center text-4xl font-bold ${hideVideoVisuals ? 'opacity-0' : ''}`}>WAITING FOR HOST...</div>
                     ))
                 )}

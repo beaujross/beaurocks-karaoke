@@ -2418,11 +2418,15 @@ const MiniVideoPane = ({ room, current, muted = false }) => {
 
     const postYoutubeCommand = useCallback((func, args = []) => {
         if (!iframeRef.current?.contentWindow) return false;
-        iframeRef.current.contentWindow.postMessage(
-            JSON.stringify({ event: 'command', func, args }),
-            youtubeFrameOrigin
-        );
-        return true;
+        try {
+            iframeRef.current.contentWindow.postMessage(
+                JSON.stringify({ event: 'command', func, args }),
+                youtubeFrameOrigin
+            );
+            return true;
+        } catch {
+            return false;
+        }
     }, []);
     const syncYoutubeNow = useCallback(() => {
         if (!iframeRef.current?.contentWindow || !youtubeId || !room?.videoStartTimestamp) return;
