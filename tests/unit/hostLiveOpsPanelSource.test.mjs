@@ -145,6 +145,7 @@ test('stage now playing panel can suppress its old summary header when the live 
 
 test('host media library uses account-scoped collections with legacy room fallback', () => {
   const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  const hostQueueTabSource = readFileSync(hostQueueTabPath, 'utf8');
   assert.ok(hostAppSource.includes("const HOST_MEDIA_ASSETS_COLLECTION = 'host_media_assets'"));
   assert.ok(hostAppSource.includes("const HOST_MEDIA_SCENE_PRESETS_COLLECTION = 'host_media_scene_presets'"));
   assert.ok(hostAppSource.includes("const LEGACY_ROOM_UPLOADS_COLLECTION = 'room_uploads'"));
@@ -157,4 +158,14 @@ test('host media library uses account-scoped collections with legacy room fallba
   assert.ok(hostAppSource.includes("addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), payload)"));
   assert.ok(hostAppSource.includes('getHostMediaAssetCollectionName(item)'));
   assert.ok(hostAppSource.includes('getHostScenePresetCollectionName(preset)'));
+  assert.match(hostQueueTabSource, /const \[mediaLibraryFolderFilter, setMediaLibraryFolderFilter\] = useState\('all'\)/);
+  assert.match(hostQueueTabSource, /const mediaLibraryFolderOptions = useMemo/);
+  assert.match(hostQueueTabSource, /const visibleScenePresets = useMemo/);
+  assert.match(hostQueueTabSource, /const visibleAudioLibraryItems = useMemo/);
+  assert.match(hostQueueTabSource, /folderId: mediaLibraryUploadFolder\.folderId[\s\S]*folderName: mediaLibraryUploadFolder\.folderName/);
+  assert.match(hostQueueTabSource, /Account Media Library/);
+  assert.match(hostQueueTabSource, /All Account Media/);
+  assert.match(hostQueueTabSource, /Folder for next uploads/);
+  assert.doesNotMatch(hostQueueTabSource, /No room audio uploads yet/);
+  assert.doesNotMatch(hostQueueTabSource, /room-specific soundboard library/);
 });

@@ -554,6 +554,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
     const [scenePresetDurationSec, setScenePresetDurationSec] = useState(20);
     const [sceneLibraryOpen, setSceneLibraryOpen] = useState(false);
     const [mediaLibraryTab, setMediaLibraryTab] = useState('scenes');
+    const [mediaLibraryFolderFilter, setMediaLibraryFolderFilter] = useState('all');
+    const [mediaLibraryFolderNameDraft, setMediaLibraryFolderNameDraft] = useState('');
     const [sceneLibraryView, setSceneLibraryView] = useState('grid');
     const [scenePresetDrafts, setScenePresetDrafts] = useState({});
     const [scenePresetSavingId, setScenePresetSavingId] = useState('');
@@ -713,14 +715,63 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             helper: `${(Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === 'bg').length} routed`
         },
     ];
+    const getMediaLibraryFolderKey = useCallback((item = {}) => {
+        const folderId = String(item?.folderId || '').trim();
+        const folderName = String(item?.folderName || '').trim();
+        if (!folderId && !folderName) return 'unfiled';
+        return `folder:${folderId || folderName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}`;
+    }, []);
+    const mediaLibraryFolderOptions = useMemo(() => {
+        const folders = new Map();
+        const addFolder = (item = {}) => {
+            const folderName = String(item?.folderName || '').trim();
+            const folderId = String(item?.folderId || '').trim();
+            if (!folderName && !folderId) return;
+            const key = getMediaLibraryFolderKey(item);
+            const existing = folders.get(key) || { key, folderId, folderName: folderName || folderId, count: 0 };
+            folders.set(key, {
+                ...existing,
+                folderId: existing.folderId || folderId,
+                folderName: existing.folderName || folderName || folderId,
+                count: existing.count + 1,
+            });
+        };
+        (Array.isArray(scenePresets) ? scenePresets : []).forEach(addFolder);
+        (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).forEach(addFolder);
+        return Array.from(folders.values()).sort((a, b) => String(a.folderName).localeCompare(String(b.folderName)));
+    }, [audioLibraryItems, getMediaLibraryFolderKey, scenePresets]);
+    const activeMediaLibraryFolder = mediaLibraryFolderOptions.find((folder) => folder.key === mediaLibraryFolderFilter) || null;
+    const mediaLibraryUploadFolder = useMemo(() => {
+        const draftName = String(mediaLibraryFolderNameDraft || '').trim();
+        if (draftName) {
+            return {
+                folderId: `custom:${draftName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'folder'}`,
+                folderName: draftName,
+            };
+        }
+        if (activeMediaLibraryFolder) {
+            return { folderId: activeMediaLibraryFolder.folderId, folderName: activeMediaLibraryFolder.folderName };
+        }
+        return { folderId: '', folderName: '' };
+    }, [activeMediaLibraryFolder, mediaLibraryFolderNameDraft]);
+    const mediaLibraryFolderMatches = useCallback((item = {}) => {
+        if (mediaLibraryFolderFilter === 'all') return true;
+        return getMediaLibraryFolderKey(item) === mediaLibraryFolderFilter;
+    }, [getMediaLibraryFolderKey, mediaLibraryFolderFilter]);
+    const visibleScenePresets = useMemo(() => (
+        (Array.isArray(scenePresets) ? scenePresets : []).filter(mediaLibraryFolderMatches)
+    ), [mediaLibraryFolderMatches, scenePresets]);
+    const visibleAudioLibraryItems = useMemo(() => (
+        (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter(mediaLibraryFolderMatches)
+    ), [audioLibraryItems, mediaLibraryFolderMatches]);
     const sceneLibraryGridClass = sceneLibraryView === 'list'
         ? 'grid gap-3'
         : 'grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]';
     const activeAudioLane = mediaLibraryTab === 'bg' ? 'bg' : 'sfx';
-    const activeAudioLaneItems = (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => (
+    const activeAudioLaneItems = visibleAudioLibraryItems.filter((item) => (
         normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) === activeAudioLane
     ));
-    const inactiveAudioLaneItems = (Array.isArray(audioLibraryItems) ? audioLibraryItems : []).filter((item) => (
+    const inactiveAudioLaneItems = visibleAudioLibraryItems.filter((item) => (
         normalizeHostAudioLibraryCategory(item?.audioLibraryCategory) !== activeAudioLane
     ));
     const customSoundboardSoundIdSet = new Set(
@@ -767,6 +818,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             const saved = await onCreateScenePreset(file, {
                 title,
                 durationSec: safeDurationSec,
+                folderId: mediaLibraryUploadFolder.folderId,
+                folderName: mediaLibraryUploadFolder.folderName,
             });
             if (saved) successCount += 1;
         }
@@ -776,14 +829,16 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 toast(`${successCount} TV scene${successCount === 1 ? '' : 's'} added to the library.`);
             }
         }
-    }, [onCreateScenePreset, scenePresetDurationSec, scenePresetTitle, toast]);
+    }, [mediaLibraryUploadFolder.folderId, mediaLibraryUploadFolder.folderName, onCreateScenePreset, scenePresetDurationSec, scenePresetTitle, toast]);
     const handleAudioLibraryFileSelection = useCallback(async (fileList, audioLibraryCategory = '') => {
         const files = Array.from(fileList || []).filter(Boolean);
         if (!files.length) return;
         await onUploadAudioLibraryFiles?.(files, {
             audioLibraryCategory: normalizeHostAudioLibraryCategory(audioLibraryCategory),
+            folderId: mediaLibraryUploadFolder.folderId,
+            folderName: mediaLibraryUploadFolder.folderName,
         });
-    }, [onUploadAudioLibraryFiles]);
+    }, [mediaLibraryUploadFolder.folderId, mediaLibraryUploadFolder.folderName, onUploadAudioLibraryFiles]);
     const saveScenePresetDraft = useCallback(async (preset = {}) => {
         if (!preset?.id || typeof onUpdateScenePreset !== 'function') return;
         const draft = scenePresetDrafts[preset.id] || {};
@@ -3872,8 +3927,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             <div className="sticky top-0 z-10 border-b border-white/10 bg-[linear-gradient(145deg,rgba(9,16,28,0.985),rgba(18,12,27,0.985))] px-4 py-3 backdrop-blur sm:px-5 sm:py-3.5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Media Library</div>
-                        <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">One reusable host-media home for Public TV scenes, future soundboard drops, and background beds.</div>
+                        <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-100">Account Media Library</div>
+                        <div className="mt-1 max-w-2xl text-xs text-zinc-300 sm:text-sm">Reusable host media for every night: Public TV scenes, soundboard drops, and background beds.</div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2 text-[10px] font-black uppercase tracking-[0.16em]">
                         <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">{scenePresetCount} saved</span>
@@ -3909,12 +3964,48 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                         );
                     })}
                 </div>
-                <div className="mt-2 rounded-2xl border border-white/10 bg-black/18 px-3 py-2.5 text-xs text-zinc-300">
-                    {mediaLibraryTab === 'scenes'
-                        ? 'Scenes are live now. Use this lane for flyers, sponsor cards, loops, donation beats, and Public TV takeovers.'
-                        : mediaLibraryTab === 'sfx'
-                            ? 'SFX lane is where upload, preview, assign-to-pad, trim, and gain management should live for custom soundboard drops.'
-                            : 'BG Music lane is where upload, preview, tag, set defaults, and choose what Auto BG can pull from should live.'}
+                <div className="mt-3 rounded-2xl border border-white/10 bg-black/18 px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setMediaLibraryFolderFilter('all')}
+                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'all' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                        >
+                            All Account Media
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setMediaLibraryFolderFilter('unfiled')}
+                            className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === 'unfiled' ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                        >
+                            Unfiled
+                        </button>
+                        {mediaLibraryFolderOptions.map((folder) => (
+                            <button
+                                key={folder.key}
+                                type="button"
+                                onClick={() => setMediaLibraryFolderFilter(folder.key)}
+                                className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition ${mediaLibraryFolderFilter === folder.key ? 'border-cyan-300/35 bg-cyan-500/14 text-cyan-100' : 'border-white/10 bg-black/20 text-zinc-300 hover:border-cyan-300/20'}`}
+                            >
+                                {folder.folderName} <span className="text-zinc-500">{folder.count}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(14rem,0.45fr)]">
+                        <div className="text-xs text-zinc-300">
+                            {mediaLibraryTab === 'scenes'
+                                ? 'Scenes cover flyers, sponsor cards, loops, donation beats, and Public TV takeovers.'
+                                : mediaLibraryTab === 'sfx'
+                                    ? 'SFX uploads become reusable host soundboard pads and automatic moment cues.'
+                                    : 'BG uploads become reusable walk-in beds, reset tracks, and Auto BG candidates.'}
+                        </div>
+                        <input
+                            value={mediaLibraryFolderNameDraft}
+                            onChange={(event) => setMediaLibraryFolderNameDraft(event.target.value)}
+                            className={`${STYLES.input} h-10 px-3 text-sm`}
+                            placeholder={activeMediaLibraryFolder ? `Uploading to ${activeMediaLibraryFolder.folderName}` : 'Folder for next uploads'}
+                        />
+                    </div>
                 </div>
                 {mediaLibraryTab === 'scenes' ? (
                 <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.95fr)]">
@@ -3997,7 +4088,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             <div ref={sceneLibraryScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 custom-scrollbar scroll-pt-20 sm:px-5">
                 {mediaLibraryTab === 'scenes' ? (
                 <div className={sceneLibraryGridClass}>
-                    {(scenePresets || []).map((preset) => {
+                    {(visibleScenePresets || []).map((preset) => {
                         const draft = scenePresetDrafts[preset.id] || {
                             title: String(preset?.title || '').trim(),
                             durationSec: Math.max(5, Math.min(600, Number(preset?.durationSec || 20) || 20)),
@@ -4202,7 +4293,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                             </div>
                         );
                     })}
-                    {!scenePresets?.length ? (
+                    {!visibleScenePresets?.length ? (
                         <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
                             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                                 <div className="max-w-xl">
@@ -4291,12 +4382,12 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                 </div>
                             </div>
                         </div>
-                        {!audioLibraryItems.length ? (
+                        {!visibleAudioLibraryItems.length ? (
                             <div className="rounded-[24px] border border-dashed border-cyan-300/16 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_30%),linear-gradient(180deg,rgba(10,16,26,0.92),rgba(12,12,20,0.82))] px-5 py-8">
                                 <div className="max-w-2xl">
-                                    <div className="text-xl font-black text-white">No room audio uploads yet</div>
+                                    <div className="text-xl font-black text-white">No account audio uploads in this view yet</div>
                                     <div className="mt-2 text-sm leading-6 text-zinc-400">
-                                        Add audio here to build a reusable room-specific SFX and background-music bank. These uploads stay room-wide, unlike offline backups in the older Room Uploads section.
+                                        Add audio here to build a reusable account SFX and background-music bank that can travel across nights and rooms.
                                     </div>
                                 </div>
                             </div>
@@ -4310,7 +4401,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                             </div>
                                             <div className="mt-1 text-xs text-zinc-500">
                                                 {mediaLibraryTab === 'sfx'
-                                                    ? 'Pads, cue routing, and fast preview for the room-specific soundboard library.'
+                                                    ? 'Pads, cue routing, and fast preview for the account soundboard library.'
                                                     : 'Manual start, Auto BG eligibility, and reusable walk-in / reset music.'}
                                             </div>
                                         </div>
@@ -4438,14 +4529,14 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                     ) : (
                                         <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-zinc-950/35 px-4 py-5 text-sm text-zinc-500">
                                             {mediaLibraryTab === 'sfx'
-                                                ? 'No uploads are routed into the SFX lane yet. Upload audio above or move an existing room upload into SFX from the section below.'
-                                                : 'No uploads are routed into the BG lane yet. Upload audio above or move an existing room upload into BG from the section below.'}
+                                                ? 'No uploads are routed into the SFX lane for this view yet. Upload audio above or move existing account audio into SFX below.'
+                                                : 'No uploads are routed into the BG lane for this view yet. Upload audio above or move existing account audio into BG below.'}
                                         </div>
                                     )}
                                 </div>
                                 <div className="rounded-[24px] border border-white/10 bg-black/20 p-4">
                                     <div className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-300">Other Audio Uploads</div>
-                                    <div className="mt-1 text-xs text-zinc-500">Move uncategorized or opposite-lane audio into this lane when you are ready to reuse it in live ops.</div>
+                                    <div className="mt-1 text-xs text-zinc-500">Move uncategorized account audio into this lane when you are ready to reuse it in live ops.</div>
                                     <div className="mt-4 grid gap-3 xl:grid-cols-2">
                                         {inactiveAudioLaneItems.map((item) => {
                                             const draft = audioLibraryDrafts[item.id] || buildAudioLibraryDraft(item);
