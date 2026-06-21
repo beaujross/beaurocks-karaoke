@@ -5,8 +5,11 @@ import { test } from 'vitest';
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 const navConfigSource = readFileSync('src/apps/Host/workspace/navConfig.js', 'utf8');
 const workspaceNavigationSource = readFileSync('src/apps/Host/hooks/useHostWorkspaceNavigation.js', 'utf8');
+const hostEntryBootstrapSource = readFileSync('src/apps/Host/hooks/useHostEntryBootstrap.js', 'utf8');
 const getAdminSection = (startKey, nextKey) => {
-  const startMarker = `{settingsTab === '${startKey}' && (`;
+  const startMarker = startKey === 'general'
+    ? `{(settingsTab === 'general' || settingsTab === 'audience_setup') && (`
+    : `{settingsTab === '${startKey}' && (`;
   const endMarker = `{settingsTab === '${nextKey}' && (`;
   const startIndex = hostAppSource.indexOf(startMarker);
   const endIndex = hostAppSource.indexOf(endMarker, startIndex + startMarker.length);
@@ -83,6 +86,16 @@ test('admin navigation keeps core config sections wired into the workspace regis
     'Audience chat should exist in the workspace section registry',
   );
   assert.match(
+    navConfigSource,
+    /\{ id: 'audience\.setup', view: 'audience', label: 'Audience Setup', legacyTab: 'audience_setup' \}/,
+    'Audience setup should exist as a real admin settings section separate from the roster handoff',
+  );
+  assert.match(
+    navConfigSource,
+    /audience_setup: 'audience\.setup'/,
+    'Audience setup should map from settings tab to workspace section',
+  );
+  assert.match(
     hostAppSource,
     /settingsTabToSection: SETTINGS_TAB_TO_SECTION/,
     'Workspace navigation should be able to resolve settings tab keys into admin sections',
@@ -96,6 +109,26 @@ test('admin navigation keeps core config sections wired into the workspace regis
     workspaceNavigationSource,
     /if \(settingsTabToSection\[requested\]\) return settingsTabToSection\[requested\];/,
     'Workspace navigation should accept settings tab keys such as chat or moderation directly',
+  );
+  assert.match(
+    hostEntryBootstrapSource,
+    /view === 'audience'[\s\S]*const mappedTab = sectionToSettingsTab\[chosenSection\];[\s\S]*setTab\('admin'\);[\s\S]*setSettingsTab\(mappedTab\);[\s\S]*setTab\('lobby'\);/,
+    'Audience workspace URLs should open Admin for mapped settings sections and only fall back to lobby for roster/member management',
+  );
+  assert.match(
+    hostAppSource,
+    /key: 'audience_setup',[\s\S]*label: 'Audience Setup',[\s\S]*description: 'Guest app layout, audience access, join flow, request rules, search safety, and room branding\.'/,
+    'Admin nav should expose Audience Setup as its own visible audience settings destination',
+  );
+  assert.match(
+    hostAppSource,
+    /settingsTab === 'general' \|\| settingsTab === 'audience_setup'/,
+    'Audience Setup should reuse the existing audience settings controls instead of routing to the lobby tab',
+  );
+  assert.match(
+    hostAppSource,
+    /settingsTab === 'audience_setup' \? \{ open: true \} : \{\}/,
+    'Audience Setup should open the guest flow audience settings panel directly',
   );
   assert.match(
     hostAppSource,

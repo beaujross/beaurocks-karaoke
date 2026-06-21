@@ -1649,6 +1649,14 @@ const HOST_SETTINGS_SECTIONS = [
         label: 'Audience',
         items: [
             {
+                key: 'audience_setup',
+                label: 'Audience Setup',
+                icon: 'fa-mobile-screen-button',
+                ownership: 'config',
+                description: 'Guest app layout, audience access, join flow, request rules, search safety, and room branding.',
+                keywords: 'audience guest app setup layout join policy requests search branding access'
+            },
+            {
                 key: 'chat',
                 label: 'Chat',
                 icon: 'fa-comments',
@@ -20908,10 +20916,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     data-admin-help={showAdminFieldHelp ? 'on' : 'off'}
                                     className={`host-admin-content flex-1 overflow-y-auto custom-scrollbar ${inAdminWorkspace ? 'p-3 md:p-4 xl:p-5' : 'p-4 md:p-5'}`}
                                 >
-                        {settingsTab === 'general' && (
+                        {(settingsTab === 'general' || settingsTab === 'audience_setup') && (
                         <>
                         <div className="mb-5 grid grid-cols-1 gap-5">
-                        <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                        <div className={`rounded-xl border border-white/10 bg-black/20 p-3 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
                                     <span className="rounded-full border border-white/15 px-2.5 py-1">Mode: {room?.activeMode || 'karaoke'}</span>
@@ -21185,7 +21193,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 </button>
                             </div>
                         </div>
-                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <details className={`mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <summary className="cursor-pointer list-none">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
@@ -21239,7 +21247,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             </div>
                         </details>
-                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <details className={`mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <summary className="cursor-pointer list-none">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
@@ -21310,7 +21318,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             </div>
                         </details>
-                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
+                        <details {...(settingsTab === 'audience_setup' ? { open: true } : {})} className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4">
                             <summary className="cursor-pointer list-none">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>
@@ -22061,7 +22069,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                             </div>
                             </div>
                         </details>
-                        <details className="mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4" open>
+                        <details className={`mt-6 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 ${settingsTab === 'audience_setup' ? 'hidden' : ''}`}>
                             <summary className="cursor-pointer list-none">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div>

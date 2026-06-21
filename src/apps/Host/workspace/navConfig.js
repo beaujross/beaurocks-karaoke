@@ -12,6 +12,7 @@ export const HOST_WORKSPACE_VIEWS = Object.freeze([
 export const HOST_WORKSPACE_SECTIONS = Object.freeze([
     { id: 'ops.room_setup', view: 'ops', label: 'Night Setup', legacyTab: 'general' },
     { id: 'ops.automation', view: 'ops', label: 'Automation', legacyTab: 'automations' },
+    { id: 'audience.setup', view: 'audience', label: 'Audience Setup', legacyTab: 'audience_setup' },
     { id: 'audience.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' },
     { id: 'queue.live_run', view: 'queue', label: 'Live Run', hostTab: 'stage' },
     { id: 'queue.catalog', view: 'queue', label: 'Catalog', hostTab: 'browse' },
@@ -38,6 +39,7 @@ export const LEGACY_TAB_REDIRECTS = Object.freeze({
 export const SETTINGS_TAB_TO_SECTION = Object.freeze({
     general: 'ops.room_setup',
     automations: 'ops.automation',
+    audience_setup: 'audience.setup',
     chat: 'audience.chat',
     moderation: 'audience.moderation',
     monetization: 'audience.monetization',

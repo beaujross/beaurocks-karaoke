@@ -55,7 +55,13 @@ const useHostEntryBootstrap = ({
             } else if (view === 'games') {
                 setTab('games');
             } else if (view === 'audience') {
-                setTab('lobby');
+                const mappedTab = sectionToSettingsTab[chosenSection];
+                if (mappedTab) {
+                    setTab('admin');
+                    setSettingsTab(mappedTab);
+                } else {
+                    setTab('lobby');
+                }
             } else {
                 setTab('admin');
                 const mappedTab = sectionToSettingsTab[chosenSection] || 'general';
