@@ -13,13 +13,13 @@ import {
 } from "../../src/games/vocalGameTuning.js";
 
 test("voice game defaults bias toward easier audience-friendly sessions", () => {
-  assert.equal(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec, 45);
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.durationSec, 50);
   assert.equal(VOICE_GAME_FUN_DEFAULTS.vocalChallenge.difficulty, "easy");
-  assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec, 45);
-  assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes, 5);
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.durationSec, 50);
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.maxStrikes, 6);
   assert.equal(VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound, 50);
-  assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, 4);
-  assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty, "normal");
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, 5);
+  assert.equal(VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty, "easy");
   assert.ok(FLAPPY_BIRD_TUNING.firstObstacleDelayMs > FLAPPY_BIRD_TUNING.startGraceMs);
   assert.equal(FLAPPY_BIRD_TUNING.hostAssistDefaultMs, 4800);
   assert.ok(FLAPPY_BIRD_TUNING.crowdGapForgiveness > FLAPPY_BIRD_TUNING.soloGapForgiveness);
@@ -33,6 +33,7 @@ test("vocal challenge tuning gets stricter as difficulty rises", () => {
   assert.ok(easyCrowd.holdMs < hardSolo.holdMs);
   assert.ok(easyCrowd.minConfidence < hardSolo.minConfidence);
   assert.ok(easyCrowd.minStability < hardSolo.minStability);
+  assert.ok(easyCrowd.intervalMs >= 2500);
   assert.ok(getVocalChallengeSequenceLength("easy") < getVocalChallengeSequenceLength("hard"));
 });
 

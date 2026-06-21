@@ -329,6 +329,100 @@ export const buildQaTvFixture = (fixtureId = '', { roomCode = 'DEMOAAHF', nowMs 
         };
     }
 
+    if (safeId === 'score-hud-charge') {
+        const performanceStartedAt = Number(nowMs || FIXED_QA_TV_NOW_MS) - 64000;
+        const singerUid = 'qa-score-singer';
+        return {
+            started: true,
+            combo: 86,
+            room: {
+                ...room,
+                hostName: 'Score QA Host',
+                activeMode: 'karaoke',
+                showScoring: true,
+                hypeMeterDisplayMode: 'score_integrated',
+                showFameLevel: true,
+                chatShowOnTv: false,
+                hideJoinOverlay: true,
+                marqueeEnabled: false,
+                multiplier: 2,
+                currentPerformanceMeta: {
+                    songId: 'qa-score-song',
+                    startedAtMs: performanceStartedAt,
+                    durationSec: 214,
+                    backingDurationSec: 214,
+                },
+                currentPerformanceSession: {
+                    sessionId: 'qa-score-session',
+                    songId: 'qa-score-song',
+                    startedAtMs: performanceStartedAt,
+                    playbackState: 'playing',
+                    expectedDurationSec: 214,
+                },
+            },
+            roomUsers: [
+                {
+                    uid: singerUid,
+                    name: 'Avery',
+                    avatar: '🎤',
+                    isVip: true,
+                    vipLevel: 2,
+                    lastPerformanceId: 'qa-score-song',
+                    performancePointsGifted: 260,
+                },
+                {
+                    uid: 'qa-fan-mika',
+                    name: 'Mika',
+                    avatar: '🎧',
+                    lastPerformanceId: 'qa-score-song',
+                    performancePointsGifted: 180,
+                },
+            ],
+            songs: [
+                {
+                    id: 'qa-score-song',
+                    roomCode,
+                    status: 'performing',
+                    title: 'Don\'t Stop Believin\'',
+                    artist: 'Journey',
+                    singerName: 'Avery',
+                    singerUid,
+                    name: 'Avery',
+                    duration: 214,
+                    hypeScore: 1180,
+                    applauseScore: 420,
+                    hostBonus: 200,
+                    priorityScore: 0,
+                    performingStartedAt: performanceStartedAt,
+                },
+                {
+                    id: 'qa-next-one',
+                    roomCode,
+                    status: 'staged',
+                    title: 'Mr. Brightside',
+                    artist: 'The Killers',
+                    singerName: 'Mika',
+                    duration: 224,
+                    priorityScore: 1,
+                },
+                {
+                    id: 'qa-next-two',
+                    roomCode,
+                    status: 'requested',
+                    title: 'Dancing Queen',
+                    artist: 'ABBA',
+                    singerName: 'Jules',
+                    duration: 231,
+                    priorityScore: 2,
+                },
+            ],
+            activities: [
+                { id: 'qa-activity-1', text: 'Avery is lighting up the stage', emoji: '🔥', at: performanceStartedAt },
+                { id: 'qa-activity-2', text: 'Mika sent bonus points', emoji: '✨', at: performanceStartedAt + 12000 },
+            ],
+        };
+    }
+
     if (safeId === 'prompt-round-trivia-live') {
         return {
             started: true,

@@ -7,41 +7,41 @@ const GAME_RULES = {
     flappy_bird: {
         title: 'Pitch Runner',
         lines: [
-            'Lock your range first, then ride your sung pitch through each note gap.',
-            'The glowing line shows the target note, and breath pause lets you reset mid-run.',
-            'Host assist can lock you into the safe lane when the room needs a save.'
+            'Crowd mic first: one person calibrates, then the whole room can sing to steer.',
+            'Keep the orb inside the glowing note gap, and use Breath if the room needs a reset.',
+            'Missing a gate is not the end, because extra lives and host assist keep the run moving.'
         ]
     },
     vocal_challenge: {
         title: 'Vocal Challenge',
         lines: [
-            'Follow the glowing melody note as it shifts.',
-            'Close matches still score, and perfect holds stack bonus streak.',
-            'Host can trigger Harmony Boost to widen the window.'
+            'Watch the glowing note and sing with it together as it shifts.',
+            'Near matches still score, so staying loud and close is better than going silent.',
+            'Harmony Boost widens the lane when the room needs a confidence save.'
         ]
     },
     riding_scales: {
         title: 'Riding Scales',
         lines: [
-            'Listen to the sequence, then repeat it note by note.',
-            'The pattern grows gently, and misses replay instead of punishing fast.',
-            'Host can trigger Scale Save to replay the pattern and protect a miss.'
+            'First listen, then echo the pattern back note by note.',
+            'The pattern ramps gently, and most misses turn into replays instead of hard fails.',
+            'Scale Save gives the room another listen before the game takes a strike.'
         ]
     },
     team_pong: {
         title: 'Team Pong',
         lines: [
-            'You are assigned to left or right team.',
-            'Tap to return the ball and keep the rally alive.',
-            'Longer rallies increase teamwork multiplier.'
+            'Phones are the controllers here, so tap when the ball reaches your side.',
+            'Everyone on your team can help keep the rally alive.',
+            'The longer the rally lasts, the more dramatic the finish gets.'
         ]
     },
     bingo: {
         title: 'Bingo',
         lines: [
-            'Watch the board on TV and tap to suggest a square.',
-            'Mystery mode reveals the song + artist.',
-            'First to line up wins.'
+            'Watch the TV board and use your phone when the host asks for a pick or suggestion.',
+            'Mystery mode reveals the song clue after the tile locks in.',
+            'The goal is simple: complete the chosen pattern before the room does.'
         ]
     },
     karaoke_bracket: {
@@ -55,8 +55,8 @@ const GAME_RULES = {
     trivia_pop: {
         title: 'Trivia',
         lines: [
-            'Pick the correct answer before the timer ends.',
-            'Correct answers earn points and bragging rights.'
+            'Your phone is the controller, so lock an answer before the timer ends.',
+            'Fast correct picks matter more than perfect strategy.'
         ]
     },
     trivia_reveal: {
@@ -69,8 +69,8 @@ const GAME_RULES = {
     wyr: {
         title: 'Would You Rather',
         lines: [
-            'Vote for your favorite option.',
-            'See the crowd split in real time.'
+            'Pick a side on your phone and commit once.',
+            'The fun is watching the room split in real time.'
         ]
     },
     wyr_reveal: {
@@ -245,7 +245,7 @@ const GameContainer = ({ activeMode, rulesToken, view, closeLabel = 'Close', ...
                             Enable room mic to start this voice game
                         </div>
                         <div className="mt-4 text-base leading-7 text-zinc-300">
-                            This TV controls the pitch lane and scoring in crowd mic mode. Tap once on the TV device to grant microphone access, then the game will launch.
+                            This TV owns the room mic for crowd sing-along mode. Tap once on the TV device to grant microphone access, then the warmup rules and game will launch.
                         </div>
                         <button
                             type="button"

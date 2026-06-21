@@ -31,7 +31,7 @@ test('getAutoEndSchedule schedules karaoke auto-end for Apple playback without A
     });
 });
 
-test('getAutoEndSchedule returns immediate trigger once track should already be finished', () => {
+test('getAutoEndSchedule does not end non-Apple playback from metadata duration alone', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
         currentId: 'song_456',
@@ -39,16 +39,13 @@ test('getAutoEndSchedule returns immediate trigger once track should already be 
         videoPlaying: true,
         videoStartTimestamp: 1000,
         currentDurationSec: 45,
-        now: 48000
+        now: 60000
     });
 
-    expect(schedule).toEqual({
-        autoEndKey: 'song_456:1000:45',
-        delayMs: 4000
-    });
+    expect(schedule).toBeNull();
 });
 
-test('getAutoEndSchedule prefers captured performance duration over stale request duration', () => {
+test('getAutoEndSchedule waits while non-Apple player-reported playback is before the end', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
         currentId: 'song_789',
@@ -57,16 +54,18 @@ test('getAutoEndSchedule prefers captured performance duration over stale reques
         videoStartTimestamp: 1000,
         capturedDurationSec: 220,
         currentDurationSec: 150,
-        now: 1000
+        performanceSessionSourceType: 'youtube',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 200000,
+        performanceSessionPlayerReportedDurationSec: 220,
+        performanceSessionPlayerPositionSec: 120,
+        now: 240000
     });
 
-    expect(schedule).toEqual({
-        autoEndKey: 'song_789:1000:220',
-        delayMs: 226000
-    });
+    expect(schedule).toBeNull();
 });
 
-test('getAutoEndSchedule prefers longer resolved media duration for video playback', () => {
+test('getAutoEndSchedule can finish non-Apple playback after player-reported progress reaches the end', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
         currentId: 'song_resolved',
@@ -75,16 +74,21 @@ test('getAutoEndSchedule prefers longer resolved media duration for video playba
         videoStartTimestamp: 1000,
         capturedDurationSec: 150,
         currentDurationSec: 220,
-        now: 1000
+        performanceSessionSourceType: 'native_video',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 210000,
+        performanceSessionPlayerReportedDurationSec: 150,
+        performanceSessionPlayerPositionSec: 220,
+        now: 230000
     });
 
     expect(schedule).toEqual({
         autoEndKey: 'song_resolved:1000:220',
-        delayMs: 226000
+        delayMs: 0
     });
 });
 
-test('getAutoEndSchedule uses persisted media clock when YouTube playing flag is stale', () => {
+test('getAutoEndSchedule uses persisted media clock when YouTube playing flag is stale but player reached the end', () => {
     const schedule = getAutoEndSchedule({
         autoEndEnabled: true,
         currentId: 'rollout_ludacris',
@@ -93,12 +97,17 @@ test('getAutoEndSchedule uses persisted media clock when YouTube playing flag is
         videoPlaying: false,
         videoStartTimestamp: 1000,
         currentDurationSec: 240,
-        now: 1000
+        performanceSessionSourceType: 'youtube',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 230000,
+        performanceSessionPlayerReportedDurationSec: 240,
+        performanceSessionPlayerPositionSec: 240,
+        now: 248000
     });
 
     expect(schedule).toEqual({
         autoEndKey: 'rollout_ludacris:1000:240',
-        delayMs: 246000
+        delayMs: 0
     });
 });
 
@@ -146,6 +155,8 @@ test('getAutoEndSchedule defers auto-end when authoritative player heartbeat is 
         performanceSessionSourceType: 'youtube',
         performanceSessionState: 'playing',
         performanceSessionLastHeartbeatAtMs: 186000,
+        performanceSessionPlayerReportedDurationSec: 180,
+        performanceSessionPlayerPositionSec: 179,
         now: 187000
     });
 
@@ -223,4 +234,47 @@ test('getAutoEndSchedule does not auto-end unsafe non-Apple backing durations', 
     });
 
     expect(schedule).toBeNull();
+});
+
+
+test('getAutoEndSchedule falls back for safe YouTube media when player reporting never arrives after the full track window', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'browse_youtube_safe',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        autoEndSafe: true,
+        now: 217000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'browse_youtube_safe:1000:180:safe_media_fallback',
+        delayMs: 0
+    });
+});
+
+test('getAutoEndSchedule falls back when authoritative YouTube heartbeat goes stale before the final position update', () => {
+    const schedule = getAutoEndSchedule({
+        autoEndEnabled: true,
+        currentId: 'youtube_stale_position',
+        activeMode: 'karaoke',
+        mediaUrl: 'https://www.youtube.com/watch?v=t21DFnu00Dc',
+        videoPlaying: true,
+        videoStartTimestamp: 1000,
+        currentDurationSec: 180,
+        performanceSessionSourceType: 'youtube',
+        performanceSessionState: 'playing',
+        performanceSessionLastHeartbeatAtMs: 120000,
+        performanceSessionPlayerReportedDurationSec: 180,
+        performanceSessionPlayerPositionSec: 121,
+        now: 217000
+    });
+
+    expect(schedule).toEqual({
+        autoEndKey: 'youtube_stale_position:1000:180',
+        delayMs: 0
+    });
 });

@@ -654,6 +654,25 @@ const extractYouTubeId = (input = "") => {
   return match ? match[1] : "";
 };
 
+const READY_YOUTUBE_UPLOAD_STATUSES = new Set(["processed", "uploaded"]);
+const ALLOWED_YOUTUBE_PRIVACY_STATUSES = new Set(["public", "unlisted"]);
+const NON_EMBEDDABLE_YOUTUBE_PLAYBACK_STATUSES = new Set(["not_embeddable", "blocked", "private", "unavailable"]);
+
+const isKnownNonEmbeddableYouTubePayload = ({
+  embeddable = null,
+  youtubePlaybackStatus = "",
+  uploadStatus = "",
+  privacyStatus = "",
+} = {}) => {
+  const normalizedPlaybackStatus = String(youtubePlaybackStatus || "").trim().toLowerCase();
+  const normalizedUploadStatus = String(uploadStatus || "").trim().toLowerCase();
+  const normalizedPrivacyStatus = String(privacyStatus || "").trim().toLowerCase();
+  return embeddable === false
+    || NON_EMBEDDABLE_YOUTUBE_PLAYBACK_STATUSES.has(normalizedPlaybackStatus)
+    || (!!normalizedUploadStatus && !READY_YOUTUBE_UPLOAD_STATUSES.has(normalizedUploadStatus))
+    || (!!normalizedPrivacyStatus && !ALLOWED_YOUTUBE_PRIVACY_STATUSES.has(normalizedPrivacyStatus));
+};
+
 const TRACK_SOURCE_LOOKUP_COLLECTION = "track_source_keys";
 const KARAOKE_NOISE_TOKENS = [
   "karaoke",
@@ -849,10 +868,12 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoPlayMedia: true,
     autoEndOnTrackFinish: true,
     showScoring: false,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: false,
     requestMode: "guest_backing_optional",
     allowSingerTrackSelect: true,
-    marqueeEnabled: true,
+    hideNonEmbeddableYouTube: true,
+    marqueeEnabled: false,
     marqueeShowMode: "idle",
     chatShowOnTv: false,
     autoLyricsOnQueue: false,
@@ -870,9 +891,11 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoPlayMedia: true,
     autoEndOnTrackFinish: true,
     showScoring: true,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: true,
     requestMode: "canonical_open",
     allowSingerTrackSelect: false,
+    hideNonEmbeddableYouTube: true,
     marqueeEnabled: false,
     marqueeShowMode: "idle",
     chatShowOnTv: false,
@@ -891,11 +914,13 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoPlayMedia: true,
     autoEndOnTrackFinish: true,
     showScoring: false,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: false,
     requestMode: "guest_backing_optional",
     allowSingerTrackSelect: true,
-    marqueeEnabled: true,
-    marqueeShowMode: "always",
+    hideNonEmbeddableYouTube: true,
+    marqueeEnabled: false,
+    marqueeShowMode: "idle",
     chatShowOnTv: true,
     autoLyricsOnQueue: false,
     gamePreviewId: "bingo",
@@ -907,9 +932,11 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoPlayMedia: false,
     autoEndOnTrackFinish: true,
     showScoring: true,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: false,
     requestMode: "playable_only",
     allowSingerTrackSelect: false,
+    hideNonEmbeddableYouTube: true,
     marqueeEnabled: false,
     marqueeShowMode: "idle",
     chatShowOnTv: false,
@@ -925,9 +952,11 @@ const HOST_PROVISION_PRESET_OVERRIDES = Object.freeze({
     autoPlayMedia: true,
     autoEndOnTrackFinish: true,
     showScoring: true,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: true,
     requestMode: "canonical_open",
     allowSingerTrackSelect: false,
+    hideNonEmbeddableYouTube: true,
     marqueeEnabled: false,
     marqueeShowMode: "idle",
     chatShowOnTv: false,
@@ -2116,6 +2145,7 @@ const buildProvisionedRoomData = ({
     autoBonusEnabled: true,
     autoBonusPoints: 25,
     applauseWarmupSec: 0,
+    performanceIntroSec: 15,
     applauseCountdownSec: 5,
     applauseMeasureSec: 5,
     hostName: resolvedHostName,
@@ -2160,9 +2190,11 @@ const buildProvisionedRoomData = ({
     howToPlay: { active: false, id: nowMs() },
     gameRulesId: 0,
     showScoring: true,
+    hypeMeterDisplayMode: "score_integrated",
     showFameLevel: true,
     requestMode: "canonical_open",
     allowSingerTrackSelect: false,
+    hideNonEmbeddableYouTube: true,
     audienceJoinPolicy: normalizeRoomAudienceJoinPolicy({}),
     hostNightPreset: "custom",
     hostNightPresetConfig: null,
@@ -2325,6 +2357,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "applauseMeasureSec",
   "applausePeak",
   "applauseWarmupSec",
+  "performanceIntroSec",
   "archivedAt",
   "archivedBy",
   "archivedStatus",
@@ -2410,6 +2443,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "hideLogo",
   "hideOverlay",
   "hideWaveform",
+  "hypeMeterDisplayMode",
   "highlightedTile",
   "hostName",
   "hostNightPreset",
@@ -2441,6 +2475,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "performanceRecapBreakdownMs",
   "performanceRecapLeaderboardMs",
   "performanceRecapNextUpMs",
+  "performanceIntroSec",
   "photoOverlay",
   "popTriviaEnabled",
   "queueSettings",
@@ -2458,6 +2493,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "runOfShowRoles",
   "runOfShowTemplateMeta",
   "roundWinnersMoment",
+  "searchSources",
   "selfServeMode",
   "programMode",
   "tvPreviewOverlay",
@@ -2546,6 +2582,7 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "applauseMeasureSec",
   "applausePeak",
   "applauseWarmupSec",
+  "performanceIntroSec",
   "autoBgFadeInMs",
   "autoBgFadeOutMs",
   "autoBgMixDuringSong",
@@ -2571,6 +2608,7 @@ const HOST_ROOM_NUMBER_ROOT_KEYS = new Set([
   "performanceRecapBreakdownMs",
   "performanceRecapLeaderboardMs",
   "performanceRecapNextUpMs",
+  "performanceIntroSec",
   "readyCheckDurationSec",
   "readyCheckRewardPoints",
   "selfieMomentExpiresAt",
@@ -2692,6 +2730,8 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "triviaQuestion",
   "wyrData",
 ]);
+const HOST_ROOM_SEARCH_SOURCE_KEYS = new Set(["local", "youtube", "itunes"]);
+
 const HOST_ROOM_DOTTED_KEY_RULES = [
   {
     pattern: /^announcement\.active$/,
@@ -2747,6 +2787,12 @@ const isHostServerTimestampMarker = (value) =>
     && value[HOST_UPDATE_OP_FIELD] === HOST_UPDATE_SERVER_TIMESTAMP;
 const isValidUpdatePathToken = (value = "") =>
   /^[A-Za-z0-9_-]{1,80}$/.test(value) && !isBlockedKeyToken(value);
+
+const normalizeHostRoomSearchSources = (value = {}) => ({
+  local: value?.local !== false,
+  youtube: value?.youtube !== false,
+  itunes: value?.itunes !== false,
+});
 
 const validateHostRoomUpdateValue = (value, depth = 0) => {
   if (depth > HOST_UPDATE_MAX_DEPTH) {
@@ -2823,6 +2869,20 @@ const validateHostRoomUpdateType = (key, value) => {
   }
   if (HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS.has(key) && !(value === null || isPlainObject(value))) {
     throw new HttpsError("invalid-argument", `Room field "${key}" must be an object or null.`);
+  }
+
+  if (key === "searchSources") {
+    if (!isPlainObject(value)) {
+      throw new HttpsError("invalid-argument", "Room field \"searchSources\" must be an object.");
+    }
+    Object.entries(value).forEach(([sourceKey, sourceValue]) => {
+      if (!HOST_ROOM_SEARCH_SOURCE_KEYS.has(sourceKey)) {
+        throw new HttpsError("invalid-argument", `Room field "searchSources.${sourceKey}" is not supported.`);
+      }
+      if (typeof sourceValue !== "boolean") {
+        throw new HttpsError("invalid-argument", `Room field "searchSources.${sourceKey}" must be a boolean.`);
+      }
+    });
   }
 
   if (key === "bingoData") {
@@ -3062,7 +3122,9 @@ const normalizeProvisionNightPresetPayload = (input = {}) => {
       showVisualizerTv: settings.showVisualizerTv === true,
       showLyricsTv: settings.showLyricsTv === true,
       showScoring: settings.showScoring === true,
+      hypeMeterDisplayMode: normalizeHostSettingsDefaultsHypeMeterDisplayMode(settings.hypeMeterDisplayMode || ""),
       showFameLevel: settings.showFameLevel === true,
+      hideNonEmbeddableYouTube: settings.hideNonEmbeddableYouTube !== false,
       requestMode: normalizeHostRoomRequestMode(settings.requestMode, settings.allowSingerTrackSelect === true),
       allowSingerTrackSelect: settings.allowSingerTrackSelect === true,
       audienceBackingMode: typeof settings.audienceBackingMode === "string" ? settings.audienceBackingMode.trim().toLowerCase() : "",
@@ -3126,11 +3188,13 @@ const buildProvisionPresetOverridesFromConfig = (presetConfig = null) => {
     showVisualizerTv: settings.showVisualizerTv === true,
     showLyricsTv: settings.showLyricsTv === true,
     showScoring: settings.showScoring === true,
+    hypeMeterDisplayMode: normalizeHostSettingsDefaultsHypeMeterDisplayMode(settings.hypeMeterDisplayMode || ""),
     showFameLevel: settings.showFameLevel === true,
     requestMode,
     allowSingerTrackSelect: requestMode === ROOM_REQUEST_MODES.guestBackingOptional,
     audienceBackingMode,
     unknownBackingPolicy,
+    hideNonEmbeddableYouTube: settings.hideNonEmbeddableYouTube !== false,
     audienceJoinPolicy: normalizeRoomAudienceJoinPolicy(settings.audienceJoinPolicy || {}),
     marqueeEnabled: settings.marqueeEnabled === true,
     marqueeShowMode: settings.marqueeShowMode || "idle",
@@ -3265,6 +3329,8 @@ const normalizeHostRoomUpdates = (rawUpdates = {}) => {
       ? buildRoomEventCreditPublicSummary(value)
       : key === "audienceJoinPolicy"
         ? normalizeRoomAudienceJoinPolicy(value || {})
+      : key === "searchSources"
+        ? normalizeHostRoomSearchSources(value || {})
       : value;
     estimatedChars += key.length;
     try {
@@ -3440,10 +3506,20 @@ const normalizeHostSettingsDefaultsQueueRotation = (value = "") => {
   return token === "first_come" ? "first_come" : "round_robin";
 };
 
+const normalizeHostSettingsDefaultsHypeMeterDisplayMode = (value = "") => {
+  const token = String(value || "").trim().toLowerCase();
+  if (token === "score" || token === "integrated" || token === "score_integrated") return "score_integrated";
+  if (token === "bar" || token === "top" || token === "top_bar") return "top_bar";
+  if (token === "both") return "both";
+  if (token === "off" || token === "none" || token === "hidden") return "hidden";
+  return "score_integrated";
+};
+
 const normalizeHostSettingsDefaultsCrowdModeSettings = (input = {}) => ({
   chatShowOnTv: input?.chatShowOnTv === true,
   chatTvMode: normalizeHostSettingsDefaultsChatTvMode(input?.chatTvMode || ""),
   showScoring: input?.showScoring !== false,
+  hypeMeterDisplayMode: normalizeHostSettingsDefaultsHypeMeterDisplayMode(input?.hypeMeterDisplayMode || ""),
   marqueeEnabled: input?.marqueeEnabled === true,
   popTriviaEnabled: input?.popTriviaEnabled === true,
 });
@@ -3511,7 +3587,7 @@ const buildHostSettingsAuditEntryId = ({
   Math.max(0, Number(entryNowMs || 0) || 0),
 ].filter(Boolean).join("_").slice(0, 220);
 
-const getHostSettingsAuditDocRef = ({ db, orgId = "", entryId = "" }) => {
+const getHostSettingsAuditDocRef = ({ orgId = "", entryId = "" }) => {
   const safeOrgId = String(orgId || "").trim();
   const safeEntryId = String(entryId || "").trim();
   if (!safeOrgId || !safeEntryId) return null;
@@ -15994,7 +16070,8 @@ exports.uploadHostSceneMedia = onCall({ cors: true }, async (request) => {
   const extFromMime = mimeType.split("/")[1]?.replace(/[^a-z0-9]/g, "") || "jpg";
   const safeName = rawFileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-90) || `scene.${extFromMime}`;
   const token = crypto.randomUUID();
-  const storagePath = `room_scene_media/${roomCode}/${nowMs()}_${safeName}`;
+  const safeOwnerUid = String(callerUid || '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'host';
+  const storagePath = `host_media/${safeOwnerUid}/scenes/${roomCode}/${nowMs()}_${safeName}`;
   await bucket.file(storagePath).save(mediaBuffer, {
     resumable: false,
     metadata: {
@@ -17810,7 +17887,7 @@ exports.manageHostSettingsDefaults = onCall({ cors: true }, async (request) => {
       settings,
       nowMs: updatedAtMs,
     });
-    const auditRef = getHostSettingsAuditDocRef({ db, orgId, entryId: auditEntry.id });
+    const auditRef = getHostSettingsAuditDocRef({ orgId, entryId: auditEntry.id });
     if (auditRef) {
       await auditRef.set({
         ...auditEntry,
@@ -20126,6 +20203,26 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
     }
 
     const youtubeId = extractYouTubeId(mediaUrl);
+    const youtubeEmbeddable = request.data?.youtubeEmbeddable === true
+      ? true
+      : request.data?.youtubeEmbeddable === false
+        ? false
+        : null;
+    const youtubeUploadStatus = sanitizeQueueSourceToken(request.data?.youtubeUploadStatus || "");
+    const youtubePrivacyStatus = sanitizeQueueSourceToken(request.data?.youtubePrivacyStatus || "");
+    const youtubePlaybackStatus = sanitizeQueueText(request.data?.youtubePlaybackStatus || "", "", 80);
+    const knownNonEmbeddableYoutube = trackSource === "youtube" && !!youtubeId && isKnownNonEmbeddableYouTubePayload({
+      embeddable: youtubeEmbeddable,
+      youtubePlaybackStatus,
+      uploadStatus: youtubeUploadStatus,
+      privacyStatus: youtubePrivacyStatus,
+    });
+    if (knownNonEmbeddableYoutube) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Audience YouTube picks must be embeddable in Public TV."
+      );
+    }
     const hasPlayableBacking = !!youtubeId;
     const hasBacking = !!mediaUrl;
     const hasAppleMusic = !!appleMusicId;
@@ -20151,11 +20248,6 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
       || buildSongKey(songTitle, artist);
     const resolvedTrackSource = trackSource || (appleMusicId ? "apple_music" : null);
     const audioOnly = request.data?.audioOnly === true || resolvedTrackSource === "apple_music";
-    const youtubeEmbeddable = request.data?.youtubeEmbeddable === true
-      ? true
-      : request.data?.youtubeEmbeddable === false
-        ? false
-        : null;
     const serverNow = admin.firestore.FieldValue.serverTimestamp();
 
     const docData = {
@@ -20179,9 +20271,9 @@ exports.submitAudienceQueueSong = onCall({ cors: true }, async (request) => {
       backingAudioOnly: audioOnly,
       playbackReady: hasPlayableBacking,
       youtubeEmbeddable,
-      youtubeUploadStatus: sanitizeQueueSourceToken(request.data?.youtubeUploadStatus || ""),
-      youtubePrivacyStatus: sanitizeQueueSourceToken(request.data?.youtubePrivacyStatus || ""),
-      youtubePlaybackStatus: sanitizeQueueText(request.data?.youtubePlaybackStatus || "", "", 80),
+      youtubeUploadStatus,
+      youtubePrivacyStatus,
+      youtubePlaybackStatus,
       mediaResolutionStatus: queueState.mediaResolutionStatus,
       requestedBackingMode: queueState.requestedBackingMode,
       resolutionStatus: queueState.resolutionStatus,

@@ -15,6 +15,21 @@ test('UnifiedGameLauncher quick launch keeps voice games in TV-controlled crowd 
     /if \(gameId === 'vocal_challenge'\) \{\s*return startVocalAmbient\(\{ quick: true \}\);\s*\}/,
     'Quick Vocal Challenge should always launch the TV crowd-mic path instead of depending on a phone-side controller',
   );
+  assert.match(
+    source,
+    /const startFlappyAmbient = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    'Pitch Runner launches should push a fresh rules token so the room gets control instructions before gameplay',
+  );
+  assert.match(
+    source,
+    /const startVocalAmbient = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    'Vocal Challenge launches should push a fresh rules token so the room gets control instructions before gameplay',
+  );
+  assert.match(
+    source,
+    /const startRidingScalesCrowd = async[\s\S]*gameRulesId: Date\.now\(\)/,
+    'Riding Scales launches should push a fresh rules token so the room gets control instructions before gameplay',
+  );
 });
 
 test('UnifiedGameLauncher game cards keep participant mode inside the metadata pill row', () => {

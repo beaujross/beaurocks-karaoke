@@ -12,7 +12,7 @@
     "dev": "vite",
     "build": "vite build && npm run seo:build:dist && node scripts/generate-asset-aliases.mjs",
     "lint": "npm run lint:src && npm run lint:functions && npm run lint:scripts",
-    "lint:src": "eslint \"src/**/*.{js,jsx}\"",
+    "lint:src": "node scripts/lint-src-chunked.mjs",
     "lint:functions": "eslint \"functions/**/*.js\"",
     "lint:scripts": "eslint \"scripts/**/*.js\"",
     "lint:emoji": "node scripts/scan-emoji.js",
@@ -105,7 +105,8 @@
     "ops:overnight:directory-growth": "node scripts/ops/overnight-directory-growth.mjs",
     "preview": "vite preview",
     "deploy:hosting": "npm run build && npx firebase-tools deploy --only hosting",
-    "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive"
+    "deploy:hosting:ci": "npx firebase-tools deploy --only hosting --non-interactive",
+    "migrate:host-media": "node scripts/ops/migrate-host-media-library-to-account.mjs"
   },
   "dependencies": {
     "firebase": "^12.7.0",
@@ -126,9 +127,8 @@
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
     "playwright": "^1.49.1",
-    "sharp": "^0.34.4",
-    "postcss": "^8.5.6",
     "sharp": "^0.34.5",
+    "postcss": "^8.5.6",
     "tailwindcss": "^3.4.19",
     "vite": "npm:rolldown-vite@7.2.5",
     "vitest": "^4.0.18"

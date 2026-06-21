@@ -22,6 +22,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     // Detect YouTube (fallback)
     const isYoutube = mediaUrl && mediaUrl.includes('youtube');
     const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
+    const youtubeFrameOrigin = 'https://www.youtube.com';
     const nowPlayingLabel = useMemo(() => {
         if (applePlaybackActive) {
             return {
@@ -94,9 +95,9 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     
     useEffect(() => {
         if (iframeRef.current && room?.videoVolume !== undefined) {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({ "event": "command", "func": "setVolume", "args": [room.videoVolume] }), "*");
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [room.videoVolume] }), youtubeFrameOrigin);
         }
-    }, [room?.videoVolume]);
+    }, [room?.videoVolume, youtubeFrameOrigin]);
 
     useEffect(() => {
         if (nativeVideoRef.current && room?.videoVolume !== undefined) {
@@ -225,9 +226,8 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             if (!iframeRef.current?.contentWindow) return;
             iframeRef.current.contentWindow.postMessage(JSON.stringify({
                 event: 'listening',
-                id: youtubeId,
-                channel: 'widget'
-            }), '*');
+                id: youtubeId
+            }), youtubeFrameOrigin);
         };
         const first = setTimeout(sendListening, 100);
         const second = setTimeout(sendListening, 900);
@@ -237,7 +237,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             clearTimeout(second);
             clearTimeout(third);
         };
-    }, [iframeSrc, isYoutube, youtubeId]);
+    }, [iframeSrc, isYoutube, youtubeFrameOrigin, youtubeId]);
 
     // Open backing audio window for non-embeddable videos
     useEffect(() => {

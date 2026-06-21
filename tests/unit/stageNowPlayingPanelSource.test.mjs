@@ -13,7 +13,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
 
   assert.match(
     source,
-    /Current Performance[\s\S]*Now Performing[\s\S]*Track note[\s\S]*Transport/,
+    /Current Performance[\s\S]*Now Performing[\s\S]*Track note[\s\S]*Media Playback/,
     "Backing-track note actions should live inside the current-performance grouping, above playback controls",
   );
   assert.match(
@@ -23,7 +23,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /const stageActionHeading = 'Stage Options';[\s\S]*Track note[\s\S]*Transport[\s\S]*Pop Out[\s\S]*\{stageActionHeading\}[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
+    /const stageActionHeading = 'Performance Flow';[\s\S]*Track note[\s\S]*Media Playback[\s\S]*Pop Out[\s\S]*\{stageActionHeading\}[\s\S]*End performance[\s\S]*fa-forward-step[\s\S]*Stop & Re-Queue/,
     "Backing playback controls should now live inside the Now Performing block before the stage-action transport row",
   );
   assert.match(
@@ -38,7 +38,7 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /min-h-\[54px\]/,
+    /min-h-\[46px\]/,
     "Transport buttons should stay compact enough for constrained host-panel heights",
   );
   assert.doesNotMatch(

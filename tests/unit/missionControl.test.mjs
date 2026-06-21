@@ -20,6 +20,7 @@ const PRESETS = {
             showVisualizerTv: true,
             showLyricsTv: false,
             showScoring: false,
+            hypeMeterDisplayMode: 'score_integrated',
             showFameLevel: false,
             allowSingerTrackSelect: true,
             marqueeEnabled: true,
@@ -55,6 +56,7 @@ const PRESETS = {
             showVisualizerTv: false,
             showLyricsTv: true,
             showScoring: true,
+            hypeMeterDisplayMode: 'score_integrated',
             showFameLevel: true,
             allowSingerTrackSelect: false,
             marqueeEnabled: false,
@@ -117,6 +119,7 @@ test("missionControl.test", () => {
     assert.equal(compiledNoAi.queueSettings.limitCount, 2);
     assert.equal(compiledNoAi.queueSettings.firstTimeBoost, false);
     assert.equal(compiledNoAi.autoLyricsOnQueue, true);
+    assert.equal(compiledNoAi.hypeMeterDisplayMode, 'score_integrated');
     assert.equal(compiledNoAi.gamePreviewId, 'trivia_pop');
     assert.equal(compiledNoAi.hostNightPresetConfig.id, 'competition');
     assert.equal(compiledNoAi.audienceShellVariant, 'streamlined');

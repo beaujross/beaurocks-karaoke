@@ -5587,18 +5587,14 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 const data = await searchYouTubeCatalog({
                     query: `${searchQ} karaoke`,
                     maxResults: 8,
-                    playableOnly: room?.hideNonEmbeddableYouTube === true,
+                    playableOnly: true,
                     roomCode,
                     usageSource: 'audience_request_youtube_search',
                     usageSurface: 'audience',
                 });
                 if (cancelled) return;
                 const normalizedResults = normalizeAudienceYouTubeSearchItems(data?.items || [])
-                    .filter((item) => (
-                        room?.hideNonEmbeddableYouTube === true
-                            ? item.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable
-                            : true
-                    ));
+                    .filter((item) => item.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable);
                 setYoutubeResults(normalizedResults);
             } catch (error) {
                 if (cancelled) return;
@@ -5618,7 +5614,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             cancelled = true;
             clearTimeout(t);
         };
-    }, [audienceManualBackingAllowed, catalogSearchMode, normalizeAudienceYouTubeSearchItems, room?.hideNonEmbeddableYouTube, roomCode, searchQ]);
+    }, [audienceManualBackingAllowed, catalogSearchMode, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
 
     const getAudienceBackingBadgeMeta = useCallback((candidate = null) => {
         const layer = String(candidate?.resolutionLayer || candidate?.layer || '').trim().toLowerCase();
@@ -7652,6 +7648,11 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
 
     const handleAudienceYouTubeResultSelect = (result) => {
         if (!result?.mediaUrl) return;
+        const playbackState = normalizeYouTubePlaybackState(result);
+        if (playbackState.youtubePlaybackStatus !== YOUTUBE_PLAYBACK_STATUSES.embeddable) {
+            toast('Pick a YouTube result that can play inside Public TV.');
+            return;
+        }
         const selectedBackingResolution = deriveAudienceBackingResolution({
             hasBacking: true,
             unknownBackingPolicy,
@@ -7665,16 +7666,16 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 mediaUrl: result.mediaUrl,
                 trackSource: 'youtube',
                 durationSec: Number(result.durationSec || 0),
-                audioOnly: result.playable !== true,
+                audioOnly: false,
                 allowTrack: true,
-                trackLabel: result.playable === true ? 'Audience YouTube pick' : 'Audience YouTube pick (external window)',
+                trackLabel: 'Audience YouTube pick',
                 resolutionStatus: selectedBackingResolution.resolutionStatus,
                 resolutionLayer: 'audience_youtube_search',
                 trustedCandidate: false,
-                youtubeEmbeddable: result.embeddable === true,
-                youtubeUploadStatus: result.uploadStatus || '',
-                youtubePrivacyStatus: result.privacyStatus || '',
-                youtubePlaybackStatus: result.youtubePlaybackStatus || ''
+                youtubeEmbeddable: true,
+                youtubeUploadStatus: playbackState.uploadStatus || result.uploadStatus || '',
+                youtubePrivacyStatus: playbackState.privacyStatus || result.privacyStatus || '',
+                youtubePlaybackStatus: YOUTUBE_PLAYBACK_STATUSES.embeddable
             }
         );
         setYoutubeResults([]);
@@ -14082,9 +14083,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                     ) : (
                                                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-5 text-sm text-zinc-300">
                                                             <div>
-                                                                {room?.hideNonEmbeddableYouTube === true
-                                                                    ? 'No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.'
-                                                                    : 'No YouTube karaoke matches yet. Try a more specific song + artist search.'}
+                                                                No embeddable YouTube karaoke matches yet. Try a more specific song + artist search.
                                                             </div>
                                                             {enrichedCatalogResults.length > 0 && !(showYoutubeFallbackMatches || (youtubeResults.length === 0 && !youtubeResultsLoading)) ? (
                                                                 <button

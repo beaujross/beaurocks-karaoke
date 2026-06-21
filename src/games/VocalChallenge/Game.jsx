@@ -91,6 +91,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const isTurnsMode = mode === 'turns';
     const summaryDurationMs = 2500;
     const crowdMode = isRoomControlled && mode === 'crowd';
+    const introDurationMs = crowdMode ? 3200 : 2400;
     const { intervalMs, holdMs, minConfidence, minStability } = useMemo(
         () => getVocalChallengeDifficultyConfig(difficulty, { crowdMode }),
         [difficulty, crowdMode]
@@ -116,19 +117,20 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
             lastAward: null,
             sequence,
             targetIndex: 0,
-            nextNoteAt: Date.now() + Math.max(intervalMs + 650, crowdMode ? 2800 : 2300),
+            nextNoteAt: Date.now() + Math.max(intervalMs + 900, crowdMode ? 3200 : 2500),
             detectedNote: '-',
             targetNote: sequence[0],
             turnEndsAt: Date.now() + turnDurationMs,
             summaryUntil: null,
             assistUntil: null,
+            introEndsAt: Date.now() + introDurationMs,
             lastTargetChangeAt: Date.now(),
             lastUpdated: Date.now()
         };
         stateRef.current = init;
         setLocalState(init);
         writeState(init);
-    }, [isController, difficulty, data, intervalMs, turnDurationMs, writeState, crowdMode]);
+    }, [isController, difficulty, data, intervalMs, turnDurationMs, writeState, crowdMode, introDurationMs]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -432,6 +434,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
     const lastAwardAgeMs = lastAward?.at ? Math.max(0, renderNowMs - Number(lastAward.at || 0)) : Number.POSITIVE_INFINITY;
     const showAwardBanner = lastAward && lastAwardAgeMs < 1700;
     const assistActive = Number(localState.assistUntil || 0) > renderNowMs;
+    const introActive = Number(localState.introEndsAt || 0) > renderNowMs;
     const noteCycleMs = Math.max(1, Number(localState.nextNoteAt || 0) - Number(localState.lastTargetChangeAt || renderNowMs));
     const noteProgressPct = localState.phase === 'playing'
         ? clamp(((Number(localState.nextNoteAt || renderNowMs) - renderNowMs) / noteCycleMs) * 100, 0, 100)
@@ -450,7 +453,7 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                 <div>
                     <div className="text-sm md:text-base uppercase tracking-[0.24em] md:tracking-[0.3em] text-zinc-300">Vocal Challenge</div>
                     <div className="text-4xl md:text-5xl font-bebas text-pink-300">{data.playerId === 'AMBIENT' ? 'THE CROWD' : (data.playerName || 'SINGER')}</div>
-                    <div className="text-lg md:text-xl text-zinc-300">Match the melody notes as they change.</div>
+                    <div className="text-lg md:text-xl text-zinc-300">{crowdMode ? 'Sing along with the moving melody together.' : 'Match the melody notes as they change.'}</div>
                     {isTurnsMode && (
                         <div className="mt-2 text-base uppercase tracking-[0.2em] text-zinc-400">
                             {isController ? "You're up" : `Up now: ${currentTurnMeta?.name || data.playerName || 'Singer'}`}
@@ -478,6 +481,21 @@ const VocalChallengeGame = ({ isPlayer, roomCode, playerData, gameState, inputSo
                         <div className="text-xs uppercase tracking-[0.35em] text-black/70">Host Assist</div>
                         <div className="text-2xl md:text-3xl font-black text-black">{hostAssistBanner.label}</div>
                         <div className="text-sm md:text-base font-bold text-black/80">Wider match window from {hostAssistBanner.by}</div>
+                    </div>
+                </div>
+            )}
+            {introActive && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-6 text-center pointer-events-none">
+                    <div className="max-w-3xl rounded-[2rem] border border-white/10 bg-black/70 px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.4)]">
+                        <div className="text-xs uppercase tracking-[0.34em] text-zinc-400">{crowdMode ? 'Crowd Warmup' : 'Warmup'}</div>
+                        <div className="mt-3 text-4xl md:text-5xl font-black text-pink-200">
+                            {crowdMode ? 'Follow the glow and sing together' : 'Follow the glow before scoring starts'}
+                        </div>
+                        <div className="mt-3 text-lg text-zinc-300">
+                            {crowdMode
+                                ? 'Close notes still count, so keep the room singing instead of chasing perfection.'
+                                : 'Listen for the first note, then settle into the lane. Near matches still help.'}
+                        </div>
                     </div>
                 </div>
             )}

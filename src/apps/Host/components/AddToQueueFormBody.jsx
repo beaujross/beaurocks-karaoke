@@ -1,5 +1,6 @@
 import React from 'react';
 import { GAMES_META } from '../../../lib/gameRegistry';
+import { resolveRoomUserUid } from '../../../lib/gameLaunchSupport';
 import {
     YOUTUBE_PLAYBACK_STATUSES,
     normalizeYouTubePlaybackState
@@ -234,6 +235,18 @@ const gameMomentPacks = [
     },
 ];
 
+export const GAME_QUEUE_ASSIGNMENT_MODES = Object.freeze({
+    crowd: 'crowd',
+    spotlight: 'spotlight',
+});
+
+const SPOTLIGHT_VOICE_GAME_IDS = new Set(['flappy_bird', 'vocal_challenge', 'riding_scales']);
+
+// eslint-disable-next-line react-refresh/only-export-components -- test-facing helper kept with the queue form logic it validates.
+export const supportsSpotlightSingerAssignment = (packId = '') => (
+    SPOTLIGHT_VOICE_GAME_IDS.has(String(packId || '').trim().toLowerCase())
+);
+
 const normalizePerformerSearch = (value = '') => (
     String(value || '')
         .trim()
@@ -241,10 +254,59 @@ const normalizePerformerSearch = (value = '') => (
         .replace(/\s+/g, ' ')
 );
 
+const normalizeMomentSearch = (value = '') => (
+    String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+);
+
+const matchesMomentSearch = (query = '', fields = []) => {
+    const safeQuery = normalizeMomentSearch(query);
+    if (!safeQuery) return true;
+    return (Array.isArray(fields) ? fields : []).some((field) => normalizeMomentSearch(field).includes(safeQuery));
+};
+
 const buildScenePresetPreview = (preset = {}) => {
     const mediaUrl = String(preset?.mediaUrl || '').trim();
     const mediaType = String(preset?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
     return { mediaUrl, mediaType, isVideo: mediaType === 'video' };
+};
+
+// eslint-disable-next-line react-refresh/only-export-components -- test-facing helper kept with the queue form logic it validates.
+export const buildGameMomentQueueOptions = (packId = '', {
+    placement = 'next',
+    assignmentMode = GAME_QUEUE_ASSIGNMENT_MODES.crowd,
+    performer = null,
+} = {}) => {
+    const safePlacement = String(placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
+    const safeAssignmentMode = String(assignmentMode || '').trim().toLowerCase() === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+        ? GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+        : GAME_QUEUE_ASSIGNMENT_MODES.crowd;
+    const performerUid = String(performer?.uid || '').trim();
+    const performerName = String(performer?.name || '').trim();
+    if (supportsSpotlightSingerAssignment(packId) && safeAssignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight && performerUid) {
+        return {
+            placement: safePlacement,
+            launchConfigOverrides: {
+                participantMode: 'selected',
+                participants: [performerUid],
+            },
+            itemOverrides: {
+                notes: performerName
+                    ? `Spotlight singer: ${performerName}.`
+                    : 'Spotlight singer assigned.',
+            },
+            presentationOverrides: {
+                subhead: performerName
+                    ? `${performerName} takes the mic on phone while the room watches.`
+                    : 'Selected singer takes the mic on phone while the room watches.',
+            },
+        };
+    }
+    return {
+        placement: safePlacement,
+    };
 };
 
 const AddToQueueFormBody = ({
@@ -290,6 +352,8 @@ const AddToQueueFormBody = ({
     const [activeMomentType, setActiveMomentType] = React.useState('performance');
     const [selectedLaterSlotId, setSelectedLaterSlotId] = React.useState('');
     const [performerPickerOpen, setPerformerPickerOpen] = React.useState(false);
+    const [gameAssignmentModes, setGameAssignmentModes] = React.useState({});
+    const [gameSelectedPerformerByPack, setGameSelectedPerformerByPack] = React.useState({});
 
     React.useEffect(() => {
         if (!dockResults) {
@@ -322,6 +386,19 @@ const AddToQueueFormBody = ({
         if (left.type !== right.type) return left.type === 'host' ? -1 : 1;
         return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
     });
+    const assignableGamePerformers = users
+        .map((user) => {
+            const uid = resolveRoomUserUid(user);
+            const name = String(user?.name || '').trim();
+            if (!uid || !name) return null;
+            return {
+                uid,
+                name,
+                avatar: String(user?.avatar || '').trim(),
+            };
+        })
+        .filter(Boolean)
+        .sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
 
     const performerQuery = String(manual?.singer || '').trim();
     const normalizedPerformerQuery = normalizePerformerSearch(performerQuery);
@@ -431,10 +508,21 @@ const AddToQueueFormBody = ({
     const showResults = results.length > 0 || searchQ.length >= 3;
     const performanceMode = activeMomentType === 'performance';
     const plannerLaunchMode = activeMomentType === 'audience' || activeMomentType === 'announcement' || activeMomentType === 'game' || activeMomentType === 'sponsor';
-    const filteredMomentPacks = activeMomentType === 'game'
+    const momentSearchPlaceholder = activeMomentType === 'game'
+        ? 'Search game modes'
+        : activeMomentType === 'tv'
+            ? 'Search saved TV moments'
+            : 'Search show moments';
+    const filteredMomentPacks = (activeMomentType === 'game'
         ? gameMomentPacks
-        : quickMomentPacks.filter((pack) => pack.category === activeMomentType);
+        : quickMomentPacks.filter((pack) => pack.category === activeMomentType))
+        .filter((pack) => matchesMomentSearch(searchQ, [pack.title, pack.detail, pack.id]));
     const allScenePresets = Array.isArray(scenePresets) ? scenePresets : [];
+    const filteredScenePresets = allScenePresets.filter((preset) => matchesMomentSearch(searchQ, [
+        preset?.title,
+        preset?.mediaType,
+        preset?.fileName,
+    ]));
     const openPerformanceSlotCount = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots.length : 0;
     const nextOpenSlot = Array.isArray(runOfShowOpenSlots) ? runOfShowOpenSlots[0] || null : null;
     const laterOpenSlots = React.useMemo(
@@ -534,8 +622,27 @@ const AddToQueueFormBody = ({
                         {activeMomentType === 'tv'
                             ? 'Choose any saved scene below or jump into the media library.'
                             : activeMomentType === 'game'
-                                ? 'Add any available game break or open Planner for deeper setup.'
+                                ? 'Search a game name, then queue it next in the show or place it later in Planner.'
                                 : 'Add a quick beat or open Planner.'}
+                    </div>
+                    <div className="mt-3">
+                        <div className="relative">
+                            <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
+                            <input
+                                data-feature-id="host-moment-search-input"
+                                value={searchQ}
+                                onChange={(e) => setSearchQ(e.target.value)}
+                                className={`${styles.input} pl-8 text-sm`}
+                                placeholder={momentSearchPlaceholder}
+                            />
+                        </div>
+                        <div className="mt-2 text-[11px] text-zinc-500">
+                            {activeMomentType === 'game'
+                                ? `${filteredMomentPacks.length} game mode${filteredMomentPacks.length === 1 ? '' : 's'} ready to queue`
+                                : activeMomentType === 'tv'
+                                    ? `${filteredScenePresets.length} TV moment${filteredScenePresets.length === 1 ? '' : 's'} found`
+                                    : `${filteredMomentPacks.length} queueable moment${filteredMomentPacks.length === 1 ? '' : 's'} found`}
+                        </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                         {activeMomentType === 'tv' && typeof openYtSearch === 'function' ? (
@@ -693,7 +800,7 @@ const AddToQueueFormBody = ({
                     </div>
 
                     {!renderResultsInline && showResults ? (
-                        <div className={`host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-[min(32rem,calc(100dvh-14rem))] flex-col overflow-hidden ${baseResultsCardClass}`}>
+                        <div className={`host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-[min(72dvh,calc(100dvh-8rem))] flex-col overflow-hidden ${baseResultsCardClass}`}>
                             <div className="host-autocomplete-results-stem" aria-hidden="true"></div>
                             <ResultList {...performanceResultListProps} />
                         </div>
@@ -703,15 +810,15 @@ const AddToQueueFormBody = ({
 
             {!performanceMode && activeMomentType === 'tv' ? (
                 <div className="mt-3">
-                    {allScenePresets.length > 0 ? (
+                    {filteredScenePresets.length > 0 ? (
                         <div className="mb-2 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">
                             <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-cyan-100">
-                                {allScenePresets.length} saved scene{allScenePresets.length === 1 ? '' : 's'}
+                                {filteredScenePresets.length} saved scene{filteredScenePresets.length === 1 ? '' : 's'}
                             </span>
                         </div>
                     ) : null}
                     <div className="grid max-h-[30rem] gap-2 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar pr-1 xl:grid-cols-2">
-                    {allScenePresets.length > 0 ? allScenePresets.map((preset) => {
+                    {filteredScenePresets.length > 0 ? filteredScenePresets.map((preset) => {
                         const preview = buildScenePresetPreview(preset);
                         return (
                             <div key={preset.id || preset.title} className="rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -747,18 +854,18 @@ const AddToQueueFormBody = ({
                                                 onClick={() => onQueueScenePreset?.(preset)}
                                                 className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
                                             >
-                                                Add Next In Show
+                                                Queue Next
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => onAddScenePresetToRunOfShow?.(preset)}
                                                 className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
                                             >
-                                                Add Later
+                                                Queue Later
                                             </button>
                                         </div>
                                         <div className="mt-2 text-[11px] text-zinc-500">
-                                            Adds to the live show conveyor, not the singer queue.
+                                            Queues into the live show conveyor, not the singer line.
                                         </div>
                                     </div>
                                 </div>
@@ -766,7 +873,9 @@ const AddToQueueFormBody = ({
                         );
                     }) : (
                         <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-5 text-sm text-zinc-400 xl:col-span-2">
-                            No saved scenes yet. Use `Search YouTube` or `Open Media Library`.
+                            {searchQ.trim()
+                                ? 'No saved TV moments match that search yet.'
+                                : 'No saved scenes yet. Use `Search YouTube` or `Open Media Library`.'}
                         </div>
                     )}
                     </div>
@@ -775,28 +884,139 @@ const AddToQueueFormBody = ({
 
             {!performanceMode && activeMomentType !== 'tv' ? (
                 <div className="mt-3 grid gap-2 xl:grid-cols-2">
-                    {filteredMomentPacks.map((pack) => (
+                    {filteredMomentPacks.length > 0 ? filteredMomentPacks.map((pack) => (
                         <div key={pack.id} className={`rounded-2xl border p-3 ${pack.toneClass}`}>
+                            {(() => {
+                                const spotlightSupported = activeMomentType === 'game' && supportsSpotlightSingerAssignment(pack.id);
+                                const assignmentMode = gameAssignmentModes[pack.id] === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+                                    ? GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+                                    : GAME_QUEUE_ASSIGNMENT_MODES.crowd;
+                                const selectedPerformerUid = String(gameSelectedPerformerByPack[pack.id] || '').trim();
+                                const selectedPerformer = assignableGamePerformers.find((entry) => entry.uid === selectedPerformerUid) || null;
+                                const needsSpotlightSinger = spotlightSupported
+                                    && assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+                                    && !selectedPerformer;
+                                const queueNextOptions = buildGameMomentQueueOptions(pack.id, {
+                                    placement: 'next',
+                                    assignmentMode,
+                                    performer: selectedPerformer,
+                                });
+                                const queueLaterOptions = buildGameMomentQueueOptions(pack.id, {
+                                    placement: 'append',
+                                    assignmentMode,
+                                    performer: selectedPerformer,
+                                });
+                                return (
+                                    <>
                             <div className="text-sm font-black text-white">{pack.title}</div>
                             <div className="mt-1 text-xs text-zinc-300">{pack.detail}</div>
-                            <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="mt-2 text-[11px] text-zinc-500">
+                                {spotlightSupported
+                                    ? assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+                                        ? (selectedPerformer
+                                            ? `${selectedPerformer.name} will use singer phone mic while the room watches.`
+                                            : 'Pick a singer to route phone mic control for this break.')
+                                        : 'Default: crowd sing-along on the TV mic.'
+                                    : 'Queues as a show item so you can run it next or park it later in Planner.'}
+                            </div>
+                            {spotlightSupported ? (
+                                <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            type="button"
+                                            data-feature-id={`moment-pack-mode-crowd-${pack.id}`}
+                                            onClick={() => setGameAssignmentModes((prev) => ({
+                                                ...prev,
+                                                [pack.id]: GAME_QUEUE_ASSIGNMENT_MODES.crowd,
+                                            }))}
+                                            className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                                                assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.crowd
+                                                    ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100'
+                                                    : 'border-white/10 bg-black/25 text-zinc-300'
+                                            }`}
+                                        >
+                                            Crowd Mode
+                                        </button>
+                                        <button
+                                            type="button"
+                                            data-feature-id={`moment-pack-mode-spotlight-${pack.id}`}
+                                            onClick={() => setGameAssignmentModes((prev) => ({
+                                                ...prev,
+                                                [pack.id]: GAME_QUEUE_ASSIGNMENT_MODES.spotlight,
+                                            }))}
+                                            className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                                                assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight
+                                                    ? 'border-amber-300/35 bg-amber-500/12 text-amber-100'
+                                                    : 'border-white/10 bg-black/25 text-zinc-300'
+                                            }`}
+                                        >
+                                            Spotlight Singer
+                                        </button>
+                                    </div>
+                                    {assignmentMode === GAME_QUEUE_ASSIGNMENT_MODES.spotlight ? (
+                                        <div className="mt-3">
+                                            <label className="mb-1 block text-[10px] font-black uppercase tracking-[0.16em] text-zinc-400">
+                                                Singer Phone Mic
+                                            </label>
+                                            <select
+                                                data-feature-id={`moment-pack-performer-${pack.id}`}
+                                                value={selectedPerformerUid}
+                                                onChange={(event) => {
+                                                    const nextUid = String(event.target.value || '').trim();
+                                                    setGameSelectedPerformerByPack((prev) => ({
+                                                        ...prev,
+                                                        [pack.id]: nextUid,
+                                                    }));
+                                                }}
+                                                className={`${styles.input} text-sm`}
+                                            >
+                                                <option value="">Select singer</option>
+                                                {assignableGamePerformers.map((performer) => (
+                                                    <option key={`${pack.id}-${performer.uid}`} value={performer.uid}>
+                                                        {performer.avatar ? `${performer.avatar} ` : ''}{performer.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="mt-2 text-[11px] text-zinc-500">
+                                                {assignableGamePerformers.length
+                                                    ? 'Queued spotlight runs from that singer device instead of the TV crowd mic.'
+                                                    : 'No active singer devices found yet. Keep it in crowd mode until someone joins.'}
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            ) : null}
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
                                 <button
                                     type="button"
-                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, { placement: 'next' })}
-                                    className={`${styles.btnStd} ${styles.btnHighlight} px-3 py-1.5 text-[11px]`}
+                                    data-feature-id={`moment-pack-queue-next-${pack.id}`}
+                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, queueNextOptions)}
+                                    disabled={needsSpotlightSinger}
+                                    className={`${styles.btnStd} ${styles.btnHighlight} w-full px-3 py-1.5 text-[11px] ${needsSpotlightSinger ? 'cursor-not-allowed opacity-50' : ''}`}
                                 >
-                                    Add Next
+                                    Queue Next
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, { placement: 'append' })}
-                                    className={`${styles.btnStd} ${styles.btnSecondary} px-3 py-1.5 text-[11px]`}
+                                    data-feature-id={`moment-pack-queue-later-${pack.id}`}
+                                    onClick={() => onAddQuickRunOfShowMoment?.(pack.id, queueLaterOptions)}
+                                    disabled={needsSpotlightSinger}
+                                    className={`${styles.btnStd} ${styles.btnSecondary} w-full px-3 py-1.5 text-[11px] ${needsSpotlightSinger ? 'cursor-not-allowed opacity-50' : ''}`}
                                 >
-                                    Add Later
+                                    Queue Later
                                 </button>
                             </div>
+                                    </>
+                                );
+                            })()}
                         </div>
-                    ))}
+                    )) : (
+                        <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-5 text-sm text-zinc-400 xl:col-span-2">
+                            {searchQ.trim()
+                                ? 'No queueable moments match that search.'
+                                : 'No queueable moments available yet.'}
+                        </div>
+                    )}
                 </div>
             ) : null}
 

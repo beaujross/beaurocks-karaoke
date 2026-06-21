@@ -149,7 +149,13 @@ export default function HostLiveOpsPanel({
         : runOfShowOnDeckItem?.id
             ? runOfShowOnDeckItem
             : null;
-    const nextSingerLabel = String(nextQueueText || '').trim() || (nextQueueSong ? buildQueueSongLabel(nextQueueSong) : 'No singer ready');
+    const nextSingerName = String(nextQueueSong?.singerName || '').trim();
+    const nextSongTitle = String(nextQueueSong?.songTitle || '').trim();
+    const nextSongArtist = String(nextQueueSong?.artist || '').trim();
+    const nextSingerLabel = nextQueueSong ? (nextSingerName || 'Guest') : 'No singer ready';
+    const nextSingerSongDetail = nextQueueSong
+        ? ([nextSongTitle || 'Song selected', nextSongArtist].filter(Boolean).join(' | '))
+        : '';
     const plannedMomentCount = Number(!!runOfShowLiveItem?.id) + Number(!!runOfShowFlightedItem?.id) + Number(!!runOfShowOnDeckItem?.id);
     const selfServeAccent = selfServePresentation?.toneKey === 'amber'
         ? {
@@ -169,7 +175,7 @@ export default function HostLiveOpsPanel({
         : 'Next Singer';
     const nextSingerCardDetail = selfServeTransitionMoment?.detail
         || (nextQueueSong
-            ? (String(nextQueueReasonLabel || '').trim() || 'Queue-first move')
+            ? nextSingerSongDetail
             : (selfServePresentation?.detail || 'No singer ready'));
     const nextSingerCardMeta = selfServePresentation
         ? (selfServeTransitionMoment?.badgeLabel || selfServePresentation.badgeLabel)

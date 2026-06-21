@@ -2,17 +2,17 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const VOICE_GAME_FUN_DEFAULTS = Object.freeze({
     flappyBird: {
-        lives: 4,
-        difficulty: 'normal'
+        lives: 5,
+        difficulty: 'easy'
     },
     vocalChallenge: {
-        durationSec: 45,
+        durationSec: 50,
         difficulty: 'easy',
         guideTone: true
     },
     ridingScales: {
-        durationSec: 45,
-        maxStrikes: 5,
+        durationSec: 50,
+        maxStrikes: 6,
         rewardPerRound: 50,
         difficulty: 'easy',
         guideTone: true
@@ -47,23 +47,23 @@ export const FLAPPY_BIRD_TUNING = Object.freeze({
 export const getVocalChallengeDifficultyConfig = (difficulty = 'easy', { crowdMode = false } = {}) => {
     if (difficulty === 'hard') {
         return crowdMode
-            ? { intervalMs: 1700, holdMs: 120, minConfidence: 0.28, minStability: 0.16 }
-            : { intervalMs: 1500, holdMs: 130, minConfidence: 0.34, minStability: 0.22 };
+            ? { intervalMs: 1850, holdMs: 115, minConfidence: 0.24, minStability: 0.14 }
+            : { intervalMs: 1650, holdMs: 125, minConfidence: 0.3, minStability: 0.2 };
     }
     if (difficulty === 'standard') {
         return crowdMode
-            ? { intervalMs: 2000, holdMs: 105, minConfidence: 0.22, minStability: 0.1 }
-            : { intervalMs: 1800, holdMs: 115, minConfidence: 0.28, minStability: 0.16 };
+            ? { intervalMs: 2200, holdMs: 95, minConfidence: 0.19, minStability: 0.08 }
+            : { intervalMs: 1950, holdMs: 105, minConfidence: 0.25, minStability: 0.14 };
     }
     return crowdMode
-        ? { intervalMs: 2300, holdMs: 90, minConfidence: 0.18, minStability: 0.08 }
-        : { intervalMs: 2100, holdMs: 100, minConfidence: 0.22, minStability: 0.12 };
+        ? { intervalMs: 2550, holdMs: 80, minConfidence: 0.14, minStability: 0.05 }
+        : { intervalMs: 2250, holdMs: 92, minConfidence: 0.19, minStability: 0.1 };
 };
 
 export const getVocalChallengeSequenceLength = (difficulty = 'easy') => {
     if (difficulty === 'hard') return 9;
-    if (difficulty === 'standard') return 7;
-    return 5;
+    if (difficulty === 'standard') return 6;
+    return 4;
 };
 
 export const getRidingScalesStepMs = (round = 1, difficulty = 'easy') => {
@@ -92,6 +92,6 @@ export const getRidingScalesLengthIncrement = (round = 1, difficulty = 'easy') =
 
 export const getRidingScalesHoldMs = (difficulty = 'easy') => {
     if (difficulty === 'hard') return 150;
-    if (difficulty === 'standard') return 130;
-    return 110;
+    if (difficulty === 'standard') return 120;
+    return 95;
 };

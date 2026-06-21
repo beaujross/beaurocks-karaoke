@@ -106,3 +106,11 @@ test('PublicTV keeps support celebrations full-screen even outside the ambient T
     'TV support celebrations should preserve the dedicated money-rain takeover style.',
   );
 });
+
+test('PublicTV keeps clap reactions above the applause meter overlay', () => {
+  assert.match(
+    source,
+    /<div className=\{`absolute inset-0 \$\{applauseOverlayVisible \? 'z-\[285\]' : 'z-\[200\]'\} pointer-events-none overflow-hidden`\}>/,
+    'The floating reaction layer should rise above the z-260 applause meter while applause mode is active.',
+  );
+});

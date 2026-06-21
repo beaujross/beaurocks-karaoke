@@ -15,19 +15,42 @@ export const usePitch = (isActive, options = {}) => {
     const [noiseFloor, setNoiseFloor] = useState(0);
     const [isSinging, setIsSinging] = useState(false);
 
+    const {
+        minVolumeThreshold = 0.02,
+        noiseGateMultiplier = 1.6,
+        smoothingFactor = 0.6,
+        minFrequency = 80,
+        maxFrequency = 1200,
+        calibrationMs = 1200,
+        confidenceThreshold = 0.6,
+        singingThreshold = 0.08,
+        stableNoteMs = 350,
+        uiUpdateIntervalMs = 50
+    } = options;
+
     const opts = useMemo(() => ({
-        minVolumeThreshold: 0.02,
-        noiseGateMultiplier: 1.6,
-        smoothingFactor: 0.6,
-        minFrequency: 80,
-        maxFrequency: 1200,
-        calibrationMs: 1200,
-        confidenceThreshold: 0.6,
-        singingThreshold: 0.08,
-        stableNoteMs: 350,
-        uiUpdateIntervalMs: 50,
-        ...options
-    }), [options]);
+        minVolumeThreshold,
+        noiseGateMultiplier,
+        smoothingFactor,
+        minFrequency,
+        maxFrequency,
+        calibrationMs,
+        confidenceThreshold,
+        singingThreshold,
+        stableNoteMs,
+        uiUpdateIntervalMs
+    }), [
+        minVolumeThreshold,
+        noiseGateMultiplier,
+        smoothingFactor,
+        minFrequency,
+        maxFrequency,
+        calibrationMs,
+        confidenceThreshold,
+        singingThreshold,
+        stableNoteMs,
+        uiUpdateIntervalMs
+    ]);
 
     // Internal refs to maintain state without re-render thrashing inside the audio loop
     const audioCtx = useRef(null);

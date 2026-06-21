@@ -245,7 +245,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="trivia" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="trivia" className="h-full flex flex-col justify-center p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#00C4D9] uppercase tracking-widest">Trivia Challenge</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -293,7 +293,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                                     data-qa-choice={i}
                                     onClick={() => castVote(i)}
                                     disabled={isSubmittingVote}
-                                    className={`bg-black/50 border-2 border-[#00C4D9]/40 p-4 rounded-xl text-lg font-bold transition-colors text-left flex items-center gap-3 shadow-[0_0_20px_rgba(0,196,217,0.15)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:bg-[#EC4899] active:border-white'}`}
+                                    className={`bg-[linear-gradient(135deg,rgba(14,165,233,0.24),rgba(236,72,153,0.18),rgba(250,204,21,0.14))] border-2 border-cyan-200/70 p-4 rounded-xl text-lg font-bold transition-colors text-left flex items-center gap-3 shadow-[0_0_28px_rgba(34,211,238,0.28)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:bg-[#EC4899] active:border-yellow-200'}`}
                                 >
                                     <span className="bg-[#00C4D9]/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">{TRIVIA_OPTION_LABELS[i]}</span>
                                     {o}
@@ -308,7 +308,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
         // Trivia TV
         return (
-            <div data-prompt-vote-tv-view="trivia" className="h-full w-full flex flex-col items-center justify-center p-12 bg-gradient-to-br from-[#090014] via-[#120026] to-black text-white font-saira relative overflow-hidden z-[100]">
+            <div data-prompt-vote-tv-view="trivia" className="h-full w-full flex flex-col items-center justify-center p-12 bg-[radial-gradient(circle_at_18%_18%,rgba(250,204,21,0.28),transparent_31%),radial-gradient(circle_at_82%_22%,rgba(34,211,238,0.32),transparent_34%),linear-gradient(135deg,#0b0320,#2b0644_46%,#050b1c)] text-white font-saira relative overflow-hidden z-[100]">
                 <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,rgba(236,72,153,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,196,217,0.08)_1px,transparent_1px)] bg-[size:60px_60px] opacity-30"></div>
                 
                 <h1 className="text-5xl font-bebas text-[#EC4899] mb-8 tracking-widest z-10 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)]">
@@ -424,7 +424,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const myVoteWonMajority = hasVoted && majoritySide && myVote === majoritySide;
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-gradient-to-br from-black via-[#12001f] to-[#0b0b18] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-2xl font-black mb-6 text-[#EC4899] uppercase tracking-[0.2em]">WOULD YOU RATHER...</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -496,14 +496,14 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const topRailPadding = wyrPrompt ? 'clamp(260px, 34vh, 430px)' : 'clamp(150px, 20vh, 250px)';
 
         return (
-            <div data-prompt-vote-tv-view="wyr" className="h-full w-full bg-[linear-gradient(145deg,#06090f,#0b1018_38%,#111827)] text-white font-saira relative overflow-hidden z-[100]">
+            <div data-prompt-vote-tv-view="wyr" className="h-full w-full bg-[radial-gradient(circle_at_20%_20%,rgba(45,212,191,0.34),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.34),transparent_34%),linear-gradient(145deg,#04101d,#11103a_42%,#2b0632)] text-white font-saira relative overflow-hidden z-[100]">
                 <div className="absolute inset-x-0 top-5 z-30 px-6 flex flex-col items-center gap-3 pointer-events-none">
                     <h1 className="text-[clamp(2.4rem,4.8vw,6.5rem)] font-bebas text-white tracking-[0.14em] drop-shadow-[0_0_18px_rgba(34,211,238,0.22)] bg-black/60 px-8 py-2 rounded-full border border-white/10">
                         WOULD YOU RATHER...
                     </h1>
                     {wyrPrompt && (
                         <div className="w-full max-w-[96vw] px-6 md:px-10">
-                            <div className="relative overflow-hidden rounded-3xl border border-white/12 bg-[linear-gradient(145deg,rgba(8,10,18,0.96),rgba(15,23,42,0.94))] px-7 py-5 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
+                            <div className="relative overflow-hidden rounded-3xl border border-white/12 bg-[linear-gradient(145deg,rgba(14,165,233,0.28),rgba(236,72,153,0.22),rgba(15,23,42,0.92))] px-7 py-5 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
                                 <div className="pointer-events-none absolute inset-0 opacity-45 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.26),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.22),transparent_56%)]" />
                                 <div className="relative text-[clamp(1rem,1.8vw,1.45rem)] uppercase tracking-[0.24em] text-zinc-200 mb-3 font-bold">Prompt</div>
                                 <div className="relative text-[clamp(2.2rem,4.4vw,4.8rem)] font-black leading-[1.08] text-white whitespace-pre-wrap break-words drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
@@ -523,7 +523,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_26%,rgba(45,212,191,0.16),transparent_28%),radial-gradient(circle_at_84%_24%,rgba(236,72,153,0.16),transparent_26%)]"></div>
                 <div className="flex w-full h-full absolute inset-0 z-0">
                     <div
-                        className="flex-1 bg-[linear-gradient(145deg,rgba(7,22,27,0.98),rgba(15,49,60,0.95))] flex flex-col items-center justify-center relative transition-all duration-1000 border-r border-white/10 overflow-hidden"
+                        className="flex-1 bg-[linear-gradient(145deg,rgba(6,78,59,0.98),rgba(20,184,166,0.78),rgba(14,116,144,0.92))] flex flex-col items-center justify-center relative transition-all duration-1000 border-r border-white/10 overflow-hidden"
                         style={{ flex: isReveal ? (perA === 0 ? 0.0001 : perA / 100) : 1 }}
                     >
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.22),transparent_52%)]" />
@@ -549,7 +549,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                     </div>
 
                     <div
-                        className="flex-1 bg-[linear-gradient(145deg,rgba(24,10,22,0.98),rgba(64,20,47,0.95))] flex flex-col items-center justify-center relative transition-all duration-1000 border-l border-white/10 overflow-hidden"
+                        className="flex-1 bg-[linear-gradient(145deg,rgba(76,5,25,0.98),rgba(236,72,153,0.78),rgba(147,51,234,0.82))] flex flex-col items-center justify-center relative transition-all duration-1000 border-l border-white/10 overflow-hidden"
                         style={{ flex: isReveal ? ((100 - perA) === 0 ? 0.0001 : (100 - perA) / 100) : 1 }}
                     >
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.24),transparent_52%)]" />

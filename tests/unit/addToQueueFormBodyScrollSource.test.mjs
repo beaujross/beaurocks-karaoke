@@ -18,7 +18,7 @@ test('AddToQueueFormBody keeps YouTube/autocomplete results inside a dedicated s
   );
   assert.match(
     source,
-    /host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-\[min\(32rem,calc\(100dvh-14rem\)\)\] flex-col overflow-hidden/,
+    /host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-\[min\(72dvh,calc\(100dvh-8rem\)\)\] flex-col overflow-hidden/,
     'Floating autocomplete results should stay bounded to viewport height and clip into an internal scroller',
   );
   assert.match(

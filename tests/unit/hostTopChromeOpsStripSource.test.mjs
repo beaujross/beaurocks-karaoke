@@ -35,7 +35,7 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
 test('host top chrome keeps room preset cards wrapped and the show-time chip compact', () => {
   assert.match(
     source,
-    /min-h-\[74px\] min-w-0 items-start justify-start whitespace-normal px-3 py-2\.5 text-left normal-case tracking-\[0\.03em\]/,
+    /min-h-\[72px\] min-w-0 items-start justify-start whitespace-normal px-3 py-2\.5 text-left normal-case tracking-\[0\.02em\]/,
     'HostTopChrome preset cards should override the one-line host button shell so long descriptions stay inside the tile',
   );
   assert.match(
@@ -56,18 +56,24 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
   assert.match(
     source,
     /Stage Start[\s\S]*quickRoomControls\.autoPlayMedia !== false \? 'Auto' : 'Manual'/,
-    'HostTopChrome room controls should expose the stage-start mode alongside queue governance controls',
+    'HostTopChrome queue controls should keep stage-start mode with live queue governance',
   );
   assert.match(
     source,
-    /When guests pick a new track[\s\S]*quickRoomControls\.guestTrackPolicyOptions[\s\S]*quickRoomControls\.onSetGuestTrackPolicy/,
-    'HostTopChrome room controls should expose the full guest new-track policy toggle inside the room dropdown',
+    /data-feature-id="deck-queue-menu-toggle"[\s\S]*When guests pick a new track[\s\S]*quickRoomControls\.guestTrackPolicyOptions[\s\S]*quickRoomControls\.onSetGuestTrackPolicy/,
+    'HostTopChrome queue controls should expose the full guest new-track policy toggle inside the queue dropdown',
   );
   assert.match(
     hostAppSource,
     /QUICK_GUEST_TRACK_POLICY_OPTIONS = Object\.freeze\(\[[\s\S]*Send to me first[\s\S]*Let it into the queue[\s\S]*Known tracks only/,
     'HostApp should define the three guest new-track policy labels that feed the room dropdown',
   );
+  assert.match(
+    source,
+    /Allowed search sources[\s\S]*quickRoomControls\.onSetSearchSource[\s\S]*Stage Start[\s\S]*Post-Song Track Check[\s\S]*Runtime Shell/,
+    'HostTopChrome queue controls should own search sources and former room runtime controls',
+  );
+  assert.doesNotMatch(source, /data-feature-id="deck-room-settings-menu-toggle"/);
   assert.doesNotMatch(
     source,
     /key: 'autoPlay'[\s\S]*Auto Stage Playback[\s\S]*quickAutomationControls\.onToggleAutoPlayMedia/,
@@ -76,12 +82,12 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
   assert.match(
     hostAppSource,
     /const quickRoomControls = \{[\s\S]*autoPlayMedia: !!autoPlayMedia,[\s\S]*onToggleAutoPlayMedia: toggleAutoPlayMediaQuick,/,
-    'HostApp should hand the room menu the live stage-start toggle state and handler',
+    'HostApp should hand the queue menu the live stage-start toggle state and handler',
   );
   assert.match(
     hostAppSource,
     /const quickRoomControls = \{[\s\S]*guestTrackPolicy: deriveQuickGuestTrackPolicy\({[\s\S]*guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,[\s\S]*onSetGuestTrackPolicy: setGuestTrackPolicyQuick,/,
-    'HostApp should hand the room menu the derived guest-track policy state and quick setter',
+    'HostApp should hand the queue menu the derived guest-track policy state and quick setter',
   );
   assert.match(
     source,

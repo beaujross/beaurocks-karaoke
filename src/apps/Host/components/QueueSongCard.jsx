@@ -273,7 +273,7 @@ const QueueSongCard = ({
                                 </span>
                             ) : null}
                         </div>
-                        {selfServeState?.detail ? (
+                        {selfServeState?.detail && selected ? (
                             <div className={`mt-1 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'} ${selfServeTone.detailClass}`}>
                                 {selfServeState.detail}
                             </div>
@@ -291,9 +291,9 @@ const QueueSongCard = ({
                                             : lyricsSupportText}
                             </div>
                         ) : null}
-                        {lockedInLineup ? (
+                        {lockedInLineup && selected ? (
                             <div className={`mt-1 text-zinc-400 ${compactViewport ? 'text-[10px] leading-tight' : 'text-[10px] leading-tight'}`}>
-                                This spot is protected so the host can trust the next few performers and stay in flow.
+                                Protected next-up slot.
                             </div>
                         ) : null}
                         {isAudienceSelectedUnverified && (typeof onApproveAudienceBacking === 'function' || typeof onAvoidAudienceBacking === 'function') ? (

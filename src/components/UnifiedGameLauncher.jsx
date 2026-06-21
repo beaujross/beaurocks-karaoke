@@ -741,7 +741,8 @@ const UnifiedGameLauncher = ({
     const startFlappyAmbient = async ({ quick = false } = {}) => {
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal', timestamp: Date.now() },
+            gameData: { playerId: 'AMBIENT', playerName: 'THE CROWD', playerAvatar: 'O', inputSource: 'ambient', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', timestamp: Date.now() },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Pitch Runner (crowd mic).', 'GAME');
@@ -759,7 +760,8 @@ const UnifiedGameLauncher = ({
         }
         await updateRoom({
             activeMode: 'flappy_bird',
-            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal', timestamp: Date.now() },
+            gameData: { playerId: uid, playerName: selected.name || 'SINGER', playerAvatar: selected.avatar || 'O', inputSource: 'singer', status: 'waiting', score: 0, lives: VOICE_GAME_FUN_DEFAULTS.flappyBird.lives, difficulty: VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy', timestamp: Date.now() },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('selected', [uid])
         });
         logActivity(roomCode, 'HOST', `started Solo Pitch Runner for ${selected.name || 'Singer'}.`, 'GAME');
@@ -793,6 +795,7 @@ const UnifiedGameLauncher = ({
                 guideTone: vocalGuideTone,
                 timestamp: Date.now()
             },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Ambient Vocal Challenge.', 'GAME');
@@ -832,6 +835,7 @@ const UnifiedGameLauncher = ({
                 guideTone: vocalGuideTone,
                 timestamp: Date.now()
             },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('selected', participants)
         });
         logActivity(roomCode, 'HOST', 'started Vocal Challenge (turns).', 'GAME');
@@ -873,6 +877,7 @@ const UnifiedGameLauncher = ({
                 rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
             },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('all', [])
         });
         logActivity(roomCode, 'HOST', 'started Riding Scales (crowd).', 'GAME');
@@ -909,6 +914,7 @@ const UnifiedGameLauncher = ({
                 rewardPerRound: Math.max(10, Number(scaleRewardPerRound) || VOICE_GAME_FUN_DEFAULTS.ridingScales.rewardPerRound),
                 status: 'running'
             },
+            gameRulesId: Date.now(),
             ...buildParticipantPayload('selected', participants)
         });
         logActivity(roomCode, 'HOST', 'started Riding Scales (turns).', 'GAME');
@@ -1665,7 +1671,7 @@ const UnifiedGameLauncher = ({
     );
 };
 
-const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, onSelectAll, onSelectParticipants, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive }) => {
+const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive }) => {
     const colorMap = {
         cyan: { border: 'border-cyan-400/30', badge: 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200', text: 'text-cyan-300' },
         pink: { border: 'border-pink-400/30', badge: 'bg-pink-500/10 border-pink-400/30 text-pink-200', text: 'text-pink-300' },

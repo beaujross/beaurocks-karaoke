@@ -69,7 +69,6 @@ const HostRoomLaunchPadBrowser = ({
     requestedLaunchRoomCodeCandidate,
     openExistingRoomWorkspace,
     joiningRoom,
-    eventFocusRoom,
     activeRoomBucket,
     roomBrowserBuckets,
     setRoomBrowserFilter,
@@ -237,7 +236,11 @@ const HostRoomLaunchPadBrowser = ({
     }, [activeRoomBucket?.id]);
     useEffect(() => {
         if (selectedRoom?.code) return;
-        if (!roomBrowserResults.length) setRoomSetupMode('create');
+        if (!roomBrowserResults.length) {
+            const timer = setTimeout(() => setRoomSetupMode('create'), 0);
+            return () => clearTimeout(timer);
+        }
+        return undefined;
     }, [roomBrowserResults.length, selectedRoom?.code]);
     const handleSelectRoom = (roomCode = '') => {
         setSelectedRoomCode(roomCode);
@@ -753,7 +756,7 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="font-semibold text-white">{String(launchRoomName || '').trim() || 'Untitled room'}</div>
                                 <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
                                 <div className="mt-1">Starts {launchStartSummary}</div>
-                                <div className="mt-1">{selectedLaunchPreset?.label || 'No preset selected'} preset ready.</div>
+                                <div className="mt-1">{selectedLaunchPreset?.label || 'Room defaults'} defaults ready.</div>
                             </div>
                         ) : null}
 
@@ -840,48 +843,49 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
 
                             <div>
-                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Night preset</div>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    {presets.map((preset) => {
-                                        const selected = resolvedLaunchPresetId === preset.id;
-                                        return (
-                                            <button
-                                                key={preset.id}
-                                                type="button"
-                                                onClick={() => setHostNightPreset(preset.id)}
-                                                className={`rounded-xl border px-3 py-2 text-left transition ${selected
-                                                    ? 'border-cyan-300/35 bg-cyan-500/12 text-white'
-                                                    : 'border-white/10 bg-white/[0.04] text-cyan-100/74 hover:border-cyan-300/24 hover:bg-white/[0.06]'}`}
-                                            >
-                                                <div className="text-xs font-semibold">{preset.label}</div>
-                                                <div className="mt-0.5 text-[11px] text-cyan-100/56">{(PRESET_UI_META[preset.id] || PRESET_UI_META.casual).eyebrow}</div>
-                                                {!preset.isBuiltIn ? (
-                                                    <div className="mt-1 text-[10px] uppercase tracking-[0.16em] text-amber-100/72">Custom</div>
-                                                ) : null}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => openPresetEditor(selectedPresetIsCustom ? 'edit' : 'copy')}
-                                        className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                <label className="block">
+                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room defaults</div>
+                                    <select
+                                        value={resolvedLaunchPresetId}
+                                        onChange={(event) => setHostNightPreset(event.target.value)}
+                                        className={`${inputClass} mt-2`}
                                     >
-                                        {selectedPresetIsCustom ? 'Edit Selected Preset' : 'Customize Selected Preset'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setPresetDraft(createHostNightPresetDraft(selectedLaunchPreset));
-                                            setPresetEditorMode('copy');
-                                            setPresetEditorOpen(true);
-                                        }}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
-                                    >
-                                        New From This Preset
-                                    </button>
+                                        {presets.map((preset) => (
+                                            <option key={preset.id} value={preset.id}>
+                                                {preset.label}{preset.isBuiltIn ? '' : ' (Custom)'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                                    <div className="text-sm font-semibold text-white">{selectedLaunchPreset?.label || 'Room defaults'}</div>
+                                    <div className="mt-1 text-xs text-cyan-100/62">{selectedPresetMeta.summary}</div>
                                 </div>
+                                <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                    <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-cyan-100/62">
+                                        Manage saved defaults
+                                    </summary>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => openPresetEditor(selectedPresetIsCustom ? 'edit' : 'copy')}
+                                            className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                        >
+                                            {selectedPresetIsCustom ? 'Edit Selected Defaults' : 'Customize Selected Defaults'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setPresetDraft(createHostNightPresetDraft(selectedLaunchPreset));
+                                                setPresetEditorMode('copy');
+                                                setPresetEditorOpen(true);
+                                            }}
+                                            className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-2 text-[10px] uppercase tracking-[0.18em]`}
+                                        >
+                                            New From These Defaults
+                                        </button>
+                                    </div>
+                                </details>
                             </div>
 
                             <div className="rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100/74">
@@ -889,14 +893,14 @@ const HostRoomLaunchPadBrowser = ({
                                 <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
                                 <div className="mt-1">Starts {launchStartSummary}</div>
                                 <div className="mt-1">{discoveryListingEnabled ? 'Listed in Discover' : 'Private join only'}</div>
-                                <div className="mt-1">{selectedLaunchPreset?.label || 'No preset selected'}: {selectedPresetMeta.summary}</div>
+                                <div className="mt-1">{selectedLaunchPreset?.label || 'Room defaults'}: {selectedPresetMeta.summary}</div>
                             </div>
 
                             {presetEditorOpen ? (
                                 <div className="rounded-xl border border-fuchsia-300/22 bg-fuchsia-500/8 px-3 py-3 space-y-3">
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div>
-                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/64">Preset editor</div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-fuchsia-100/64">Defaults editor</div>
                                             <div className="mt-1 text-base font-semibold text-white">{editorTitle}</div>
                                         </div>
                                         <button

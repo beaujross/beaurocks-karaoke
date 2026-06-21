@@ -6,7 +6,7 @@ import { playSfx } from '../../lib/utils';
 import { VOICE_GAME_FUN_DEFAULTS } from '../vocalGameTuning';
 
 const MAX_LIVES = VOICE_GAME_FUN_DEFAULTS.flappyBird.lives;
-const DEFAULT_DIFFICULTY = VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'normal';
+const DEFAULT_DIFFICULTY = VOICE_GAME_FUN_DEFAULTS.flappyBird.difficulty || 'easy';
 const ORB_X = 18;
 const TOP_PCT = 6;
 const FLOOR_TOP_PCT = 84;
@@ -21,15 +21,15 @@ const HOST_ASSIST_BANNER_MS = 2300;
 
 const DIFFICULTY_CONFIG = Object.freeze({
     easy: {
-        gapSemitones: 12,
-        speedPerFrame: 0.38,
-        spawnMs: 2300,
+        gapSemitones: 14,
+        speedPerFrame: 0.34,
+        spawnMs: 2550,
         stepChoices: [-4, -3, -2, -1, 1, 2, 3, 4]
     },
     normal: {
-        gapSemitones: 9,
-        speedPerFrame: 0.48,
-        spawnMs: 1850,
+        gapSemitones: 11,
+        speedPerFrame: 0.42,
+        spawnMs: 2150,
         stepChoices: [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5]
     },
     hard: {
@@ -714,7 +714,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Range Setup</div>
                         <div className="mt-3 text-5xl font-black text-cyan-200">Find Your Lane</div>
                         <div className="mt-3 text-lg text-zinc-300">
-                            Sing your lowest comfortable note, then your highest. When the lines look right, lock the range and start.
+                            Sing one low note, then one high note. After that, the whole room can sing together and steer the run.
                         </div>
                         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
                             <div className="rounded-3xl border border-white/10 bg-black/35 px-5 py-4">
@@ -772,7 +772,7 @@ const PitchRunnerGame = ({ isPlayer, roomCode, playerData, onGameOver, inputSour
                         <div className="text-xs uppercase tracking-[0.4em] text-zinc-400">Pitch Runner</div>
                         <div className="mt-3 text-5xl font-black text-cyan-200">Ride The Note Gap</div>
                         <div className="mt-3 text-lg text-zinc-300">
-                            Match the target note line and keep the orb inside the opening. Your range is locked to {previewLowLabel} through {previewHighLabel}.
+                            Match the target note line and keep the orb inside the opening. Your range is locked to {previewLowLabel} through {previewHighLabel}, and anyone in the room can help sing the lane.
                         </div>
                         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
                             <button

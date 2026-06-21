@@ -62,6 +62,103 @@ test('PublicTV queue sidebar promotes queue count and estimated wait as dedicate
   );
 });
 
+test('PublicTV next-up queue includes staged and assigned singers while skipping track-review blockers', () => {
+  assert.match(
+    tvSource,
+    /const UPCOMING_PUBLIC_TV_QUEUE_STATUS_RANK = Object\.freeze\(\{[\s\S]*staged: 0,[\s\S]*assigned: 1,[\s\S]*requested: 2,/,
+    'The TV queue should rank staged and assigned singers ahead of the open requested queue.',
+  );
+  assert.match(
+    tvSource,
+    /requiresBackingHostReview\(song\?\.resolutionStatus\) \|\| requiresBackingHostReview\(song\?\.mediaResolutionStatus\)/,
+    'The TV next-up list should not promote songs that still need host backing review.',
+  );
+  assert.match(
+    tvSource,
+    /const allQueue = songs\.filter\(isUpcomingPublicTvQueueSong\)\.sort\(compareUpcomingPublicTvQueueSongs\);/,
+    'The normal queue rail and post-performance next-up overlay should share the same upcoming queue derivation.',
+  );
+});
+
+test('PublicTV keeps the performance score anchored to the stage top-right HUD lane', () => {
+  assert.match(
+    tvSource,
+    /const showTopHypeMeter = showHypeMeter && topBarHypeMeter;/,
+    'The score should only drop when the separate top hype bar is actually visible.',
+  );
+  assert.match(
+    tvSource,
+    /const scoreAvoidsFloatingJoinQr = isCinema && showJoinOverlay;[\s\S]*const performanceScorePositionClass = scoreAvoidsFloatingJoinQr[\s\S]*left-3 \$\{performanceScoreTopClass\}[\s\S]*right-3 \$\{performanceScoreTopClass\}/,
+    'The score should stay top-right normally but move away from the floating QR in cinema mode.',
+  );
+  assert.match(
+    tvSource,
+    /showComboCharge=\{scoreIntegratedHypeMeter\}/,
+    'The score HUD should receive combo intensity so its styling stays tied to the hype meter.',
+  );
+  assert.match(
+    tvSource,
+    /className=\{`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 \$\{scoreAvoidsFloatingJoinQr \? 'justify-start' : 'justify-end'\}`\}/,
+    'The score label should align with the collision-aware score position.',
+  );
+});
+
+test('PublicTV score and hype meter share charged stage HUD styling', () => {
+  assert.match(
+    tvSource,
+    /className=\{`tv-score-charge tv-score-charge-\$\{comboTier\}/,
+    'The score display should render as a tiered charged HUD element.',
+  );
+  assert.match(
+    tvSource,
+    /setScoreDelta\(gain\);[\s\S]*setBurstKey\(prev => prev \+ 1\);/,
+    'Score updates should trigger a visible gain burst.',
+  );
+  assert.match(
+    tvSource,
+    /className=\{`tv-hype-meter[\s\S]*tv-hype-meter-inferno[\s\S]*tv-hype-meter-hot[\s\S]*tv-hype-meter-charged/,
+    'The hype meter should expose charge tiers as combo builds.',
+  );
+  assert.match(
+    tvSource,
+    /normalizeHypeMeterDisplayMode\([\s\S]*showScoring \? HYPE_METER_DISPLAY_MODES\.scoreIntegrated : HYPE_METER_DISPLAY_MODES\.topBar/,
+    'Rooms without an explicit setting should avoid duplicating the top bar when scoring is visible.',
+  );
+  assert.match(
+    tvSource,
+    /\$\{showTopHypeMeter \? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'\}/,
+    'The separate top hype bar should be gated independently from the integrated score HUD.',
+  );
+  assert.match(
+    tvSource,
+    /\.tv-hype-meter-charge-front[\s\S]*left: calc\(var\(--combo-pct\) - 10px\);/,
+    'The hype meter should show a moving charge front at the current combo fill.',
+  );
+  assert.match(
+    tvSource,
+    /tv-score-charge-leds[\s\S]*tv-hype-meter-leds/,
+    'The score and hype meters should expose analog LED segment overlays.',
+  );
+  assert.match(
+    tvSource,
+    /performanceIntroSpotlight[\s\S]*spotlightAvatar \|\| EMOJI\.mic[\s\S]*Coming To The Stage[\s\S]*spotlightName \|\| headline/,
+    'Performance intro takeovers should spotlight the singer avatar and name.',
+  );
+  assert.match(
+    tvSource,
+    /@keyframes score-charge-hit[\s\S]*@keyframes hype-charge-flow/,
+    'The score and hype meter should define matching motion language for charged updates.',
+  );
+});
+
+test('PublicTV treats missing marquee show mode as idle', () => {
+  assert.match(
+    tvSource,
+    /const mode = room\?\.marqueeShowMode \|\| 'idle';/,
+    'A room missing marqueeShowMode should not fall back to an always-on scrolling strip.',
+  );
+});
+
 test('PublicTV logo flourish stays subtle and honors reduced-motion preferences', () => {
   assert.match(
     cssSource,

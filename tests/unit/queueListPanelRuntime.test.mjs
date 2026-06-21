@@ -182,7 +182,7 @@ test('QueueListPanel exposes fast run-of-show fill actions when open slots and r
   assert.match(markup, /Fill Next Slot/);
   assert.match(markup, /Fill All Suggested/);
   assert.match(markup, /Assign To Next Open Slot/);
-  assert.match(markup, /Assign Slot/);
+  assert.match(markup, /Assign Selected Slot/);
 });
 
 test('QueueListPanel tightens copy when there is only one open run-of-show slot', async () => {
@@ -232,5 +232,5 @@ test('QueueListPanel does not show fast-fill actions for assignable slots that a
 
   assert.doesNotMatch(markup, /data-feature-id="queue-open-slot-actions"/);
   assert.doesNotMatch(markup, /Fill Next Slot/);
-  assert.match(markup, /Assign Slot/);
+  assert.match(markup, /Assign Selected Slot/);
 });

@@ -48,6 +48,16 @@ test('PublicTV rehydrates applause overlay state from live room mode transitions
   );
   assert.match(
     source,
+    /const applauseMeterPct = clampPct\(applauseRenderStep === 'result' \? applauseMax : micVolume\);/,
+    'PublicTV should show live audio activity during applause warm-up instead of a dead zero meter.',
+  );
+  assert.match(
+    source,
+    /applause-charge-leds[\s\S]*Audio activity is live - warm the room up before the meter opens/,
+    'PublicTV applause warm-up should use the LED meter treatment and explicit live-audio copy.',
+  );
+  assert.match(
+    source,
     /!\s*showVisualizerTv && \(showAmbientFx \|\| applauseOverlayVisible\)/,
     'PublicTV should still mount the applause analyser even when ambient FX are disabled.',
   );

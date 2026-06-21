@@ -424,12 +424,12 @@ const QueueListPanel = ({
             ? 'Fair Queue On Deck'
             : selfServeFormat === SELF_SERVE_FORMATS.openStage
                 ? (lockedLineupComplete ? 'Open Stage On Deck' : 'Build Open Stage Deck')
-                : (lockedLineupComplete ? 'Locked Next Performers' : 'Build The Next Performers');
+                : (lockedLineupComplete ? 'Up Next' : 'Build Up Next');
     const benchSectionLabel = spotlightAuctionLive
         ? 'Fair Queue Bench'
         : selfServeFormat === SELF_SERVE_FORMATS.openStage
             ? 'Open Stage Bench'
-            : 'Build The Bench';
+            : 'Ready Queue';
     const benchSectionDetail = spotlightAuctionLive
         ? 'These ready singers stay warm behind the sponsored opening block and take over when fair queue resumes.'
         : spotlightAuctionComplete

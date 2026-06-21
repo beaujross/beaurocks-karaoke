@@ -50,6 +50,7 @@ test('PromptVoteGame renders Trivia player and TV states with the expected core 
   assert.match(triviaPlayer, /Which artist sang Valerie\?/);
   assert.match(triviaPlayer, /data-qa-choice="0"/);
   assert.match(triviaPlayer, /Amy Winehouse/);
+  assert.match(triviaPlayer, /circle_at_top_left/);
 
   const triviaTv = renderToStaticMarkup(
     React.createElement(PromptVoteGame, {
@@ -74,6 +75,7 @@ test('PromptVoteGame renders Trivia player and TV states with the expected core 
   assert.match(triviaTv, /ANSWER REVEALED/);
   assert.match(triviaTv, /Question Summary/);
   assert.match(triviaTv, /Responses/);
+  assert.match(triviaTv, /circle_at_18%_18/);
 });
 
 test('PromptVoteGame renders Would You Rather player and TV states with the expected choice surfaces', async () => {
@@ -129,4 +131,6 @@ test('PromptVoteGame renders Would You Rather player and TV states with the expe
   assert.match(wyrTv, /Prompt/);
   assert.match(wyrTv, /Power ballad/);
   assert.match(wyrTv, /Singalong anthem/);
+  assert.match(wyrPlayer, /circle_at_top_left/);
+  assert.match(wyrTv, /circle_at_20%_20/);
 });

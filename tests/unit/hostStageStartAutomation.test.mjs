@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.restoreAllMocks();
 });
 
-test('browse-backed stage start uses resolved media duration and does not arm immediate auto-end', async () => {
+test('browse-backed stage start keeps resolved media duration but waits for player proof before auto-end', async () => {
   const updateDocMock = vi.fn(async () => {});
   mockHostQueueTabDependencies({ updateDocMock });
   vi.spyOn(Date, 'now').mockReturnValue(100000);
@@ -108,8 +108,9 @@ test('browse-backed stage start uses resolved media duration and does not arm im
   assert.equal(roomPatch.currentPerformanceMeta.autoEndSafe, true);
   assert.equal(roomPatch.currentPerformanceSession.songId, queueSong.id);
   assert.equal(roomPatch.currentPerformanceSession.startedAtMs, 100000);
-  assert.equal(roomPatch.currentPerformanceSession.lastHeartbeatAtMs, 100000);
+  assert.equal(roomPatch.currentPerformanceSession.lastHeartbeatAtMs, 0);
   assert.equal(roomPatch.currentPerformanceSession.expectedDurationSec, 245);
+  assert.equal(roomPatch.currentPerformanceSession.playerReportedDurationSec, 0);
 
   const schedule = getAutoEndSchedule({
     autoEndEnabled: true,
@@ -129,10 +130,7 @@ test('browse-backed stage start uses resolved media duration and does not arm im
     now: 100000,
   });
 
-  assert.ok(schedule, 'auto-end should still arm for the active performance');
-  assert.equal(schedule.autoEndKey, 'browse_song_1:100000:245');
-  assert.equal(schedule.delayMs, 251000);
-  assert.ok(schedule.delayMs > 10000, 'newly started songs should not auto-end immediately');
+  assert.equal(schedule, null, 'metadata duration should not arm auto-end before player playback reports in');
 
   assert.equal(logActivityMock.mock.calls.length, 1);
 });

@@ -623,6 +623,21 @@ test("SingerApp defaults guest backing rooms to YouTube search", () => {
   );
   assert.match(
     source,
+    /playableOnly: true,/,
+    "Audience direct YouTube search should always use the embeddable/playable-only result set",
+  );
+  assert.match(
+    source,
+    /\.filter\(\(item\) => item\.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES\.embeddable\)/,
+    "Audience direct YouTube search should not render non-embeddable results even from cache",
+  );
+  assert.match(
+    source,
+    /Pick a YouTube result that can play inside Public TV\./,
+    "Audience direct YouTube selection should guard against stale non-embeddable result clicks",
+  );
+  assert.match(
+    source,
     /const handleAudienceCatalogPrimaryAction = \(result\) => \{\s*if \(!result\) return;\s*if \(catalogSearchMode === 'youtube' && audienceManualBackingAllowed\)/,
     "SingerApp should route catalog result presses through a YouTube-first audience action",
   );

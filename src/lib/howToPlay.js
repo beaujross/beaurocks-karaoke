@@ -28,7 +28,7 @@ const GAME_GUIDES = [
     {
         id: 'voice_games',
         label: 'Voice Games',
-        detail: 'Jump into voice-controlled mini-games whenever the host launches one.',
+        detail: 'Most voice games are crowd-mic first: watch the TV, sing together, and only use phone control in spotlight turns.',
         isEnabled: (_room, mode) => ['flappy_bird', 'vocal_challenge', 'riding_scales'].includes(mode)
     },
     {

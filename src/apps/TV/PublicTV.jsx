@@ -62,6 +62,7 @@ import {
     isRunOfShowReleaseWindowVotingOpen,
     normalizeRunOfShowDirector
 } from '../../lib/runOfShowDirector';
+import { requiresBackingHostReview } from '../../lib/requestModes';
 
 function isVipSongForUsers(song, roomUsers = []) {
     if (!song) return false;
@@ -72,6 +73,45 @@ function isVipSongForUsers(song, roomUsers = []) {
     );
     return !!match?.isVip || (match?.vipLevel || 0) > 0;
 }
+
+const UPCOMING_PUBLIC_TV_QUEUE_STATUS_RANK = Object.freeze({
+    staged: 0,
+    assigned: 1,
+    requested: 2,
+    queued: 2
+});
+
+const isUpcomingPublicTvQueueSong = (song = {}) => {
+    const status = String(song?.status || '').trim().toLowerCase();
+    if (UPCOMING_PUBLIC_TV_QUEUE_STATUS_RANK[status] === undefined) return false;
+    if (song?.playbackReady === false) return false;
+    if (requiresBackingHostReview(song?.resolutionStatus) || requiresBackingHostReview(song?.mediaResolutionStatus)) return false;
+    return true;
+};
+
+const compareUpcomingPublicTvQueueSongs = (a = {}, b = {}) => {
+    const aStatus = String(a?.status || '').trim().toLowerCase();
+    const bStatus = String(b?.status || '').trim().toLowerCase();
+    const statusGap = (UPCOMING_PUBLIC_TV_QUEUE_STATUS_RANK[aStatus] ?? 99) - (UPCOMING_PUBLIC_TV_QUEUE_STATUS_RANK[bStatus] ?? 99);
+    if (statusGap !== 0) return statusGap;
+    return (a.priorityScore || 0) - (b.priorityScore || 0);
+};
+
+const HYPE_METER_DISPLAY_MODES = Object.freeze({
+    scoreIntegrated: 'score_integrated',
+    topBar: 'top_bar',
+    both: 'both',
+    hidden: 'hidden'
+});
+
+const normalizeHypeMeterDisplayMode = (value, fallback = HYPE_METER_DISPLAY_MODES.scoreIntegrated) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'score' || raw === 'integrated' || raw === 'score_integrated') return HYPE_METER_DISPLAY_MODES.scoreIntegrated;
+    if (raw === 'bar' || raw === 'top' || raw === 'top_bar') return HYPE_METER_DISPLAY_MODES.topBar;
+    if (raw === 'both') return HYPE_METER_DISPLAY_MODES.both;
+    if (raw === 'off' || raw === 'none' || raw === 'hidden') return HYPE_METER_DISPLAY_MODES.hidden;
+    return fallback;
+};
 import { getSurfaceBaseHref } from '../../lib/surfaceDomains';
 import { getSelfServeAuctionState } from '../../lib/selfServeAuction';
 import {
@@ -1242,6 +1282,9 @@ const RunOfShowTakeoverOverlay = ({
         modeKey ? toTitleCaseWords(modeKey) : detailModeLabel,
     ].filter(Boolean);
     const bodyCopy = summary || subhead;
+    const performanceIntroSpotlight = sceneKey === 'performance_intro';
+    const spotlightName = String(overlay?.performerName || overlay?.singerName || headline || '').trim();
+    const spotlightAvatar = String(overlay?.performerAvatar || overlay?.singerAvatar || '').trim();
     const mediaScene = overlay?.mediaScene && typeof overlay.mediaScene === 'object' ? overlay.mediaScene : null;
     const mediaSceneUrl = String(mediaScene?.mediaUrl || '').trim();
     const mediaSceneType = String(mediaScene?.mediaType || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
@@ -1354,12 +1397,25 @@ const RunOfShowTakeoverOverlay = ({
                             <span className="h-3 w-20 rounded-full" style={theme.lineStyle}></span>
                             <span>{detailModeLabel}</span>
                         </div>
+                        {performanceIntroSpotlight ? (
+                            <div className="mb-7 flex flex-wrap items-end gap-6">
+                                <div className="flex h-[clamp(7rem,13vw,13rem)] w-[clamp(7rem,13vw,13rem)] items-center justify-center rounded-[2rem] border border-white/18 bg-black/34 text-[clamp(4rem,8vw,8rem)] shadow-[0_0_60px_rgba(244,114,182,0.26)] backdrop-blur">
+                                    {spotlightAvatar || EMOJI.mic}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="text-[clamp(1.1rem,2vw,2rem)] font-black uppercase tracking-[0.32em] text-cyan-100/76">Coming To The Stage</div>
+                                    <div className="mt-2 max-w-[1050px] text-[clamp(4.2rem,10vw,12rem)] font-bebas leading-[0.82] text-white drop-shadow-[0_18px_60px_rgba(236,72,153,0.36)]">
+                                        {spotlightName || headline}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
                         <div
                             data-tv-takeover-headline
-                            className="max-w-[1500px] bg-clip-text text-[clamp(6rem,13vw,15rem)] font-bebas leading-[0.84] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]"
+                            className={`${performanceIntroSpotlight ? 'max-w-[1180px] text-[clamp(2.4rem,5vw,6rem)]' : 'max-w-[1500px] text-[clamp(6rem,13vw,15rem)]'} bg-clip-text font-bebas leading-[0.84] text-transparent drop-shadow-[0_18px_60px_rgba(0,0,0,0.32)]`}
                             style={theme.headlineStyle}
                         >
-                            {headline}
+                            {performanceIntroSpotlight ? 'Make Some Noise' : headline}
                         </div>
                         {bodyCopy ? (
                             <div data-tv-takeover-body className="mt-6 max-w-[1320px] text-[clamp(2rem,3vw,3.4rem)] font-semibold leading-[1.04] text-zinc-100">
@@ -1717,33 +1773,78 @@ const SelfServeAttractOverlay = ({
     );
 };
 
-const AnimatedPoints = ({ value }) => {
+const AnimatedPoints = ({ value, combo = 0, showComboCharge = true }) => {
     const [display, setDisplay] = useState(value);
+    const [scoreDelta, setScoreDelta] = useState(0);
+    const [burstKey, setBurstKey] = useState(0);
+    const displayRef = useRef(value);
+    const targetRef = useRef(value);
     const showPulse = value !== display;
+    const comboPct = showComboCharge ? Math.max(0, Math.min(100, Number(combo) || 0)) : 0;
+    const comboTier = showComboCharge
+        ? (comboPct >= 90 ? 'inferno' : comboPct >= 65 ? 'hot' : comboPct >= 35 ? 'charged' : 'base')
+        : 'base';
 
     useEffect(() => {
-        if (display === value) return;
+        if (targetRef.current === value) return undefined;
+        const startValue = displayRef.current;
+        targetRef.current = value;
+        const gain = Math.max(0, value - startValue);
+        if (gain > 0) {
+            setScoreDelta(gain);
+            setBurstKey(prev => prev + 1);
+        }
         const interval = setInterval(() => {
             setDisplay(prev => {
                 const diff = value - prev;
-                if (diff === 0) { clearInterval(interval); return value; }
-                return prev + Math.ceil(diff / 6);
+                if (diff === 0) {
+                    clearInterval(interval);
+                    displayRef.current = value;
+                    return value;
+                }
+                const step = Math.max(1, Math.ceil(Math.abs(diff) / 6)) * Math.sign(diff);
+                const next = Math.abs(diff) <= Math.abs(step) ? value : prev + step;
+                displayRef.current = next;
+                return next;
             });
         }, 30);
         return () => clearInterval(interval);
-    }, [display, value]);
+    }, [value]);
     
     return (
-        <div className={`relative bg-black/60 backdrop-blur-sm px-3 py-2 md:px-5 md:py-3 rounded-full border border-yellow-500/30 flex items-center gap-2 md:gap-3 shadow-lg transition-transform duration-200 ${showPulse ? 'scale-110' : 'scale-100'}`}>
+        <div
+            className={`tv-score-charge tv-score-charge-${comboTier} relative flex items-center gap-3 overflow-hidden rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-md transition-transform duration-200 md:gap-4 md:px-6 md:py-4 2xl:px-7 2xl:py-5 ${showPulse ? 'tv-score-charge-pulse' : ''}`}
+            style={{ '--score-charge': `${comboPct}%` }}
+        >
+            <div className="tv-score-charge-glow" />
+            <div className="tv-score-charge-scan" />
+            {showComboCharge && (
+                <div className="tv-score-charge-meter" aria-hidden="true">
+                    <span />
+                    <i className="tv-score-charge-leds" />
+                </div>
+            )}
             {showPulse && (
-                <div className="absolute inset-0 pointer-events-none">
+                <div key={burstKey} className="absolute inset-0 pointer-events-none">
                     <span className="points-burst points-burst-a"></span>
                     <span className="points-burst points-burst-b"></span>
                     <span className="points-burst points-burst-c"></span>
+                    <span className="points-burst points-burst-d"></span>
+                    {scoreDelta > 0 && (
+                        <span className="tv-score-delta">+{scoreDelta}</span>
+                    )}
                 </div>
             )}
-            <span className="text-yellow-300 font-black text-xl md:text-3xl font-mono">{display}</span>
-            <span className="text-xs md:text-sm text-yellow-500 font-bold tracking-widest">PTS</span>
+            <div className="relative z-10 flex flex-col leading-none">
+                <span className="text-[0.62rem] font-black uppercase tracking-[0.24em] text-amber-100/70 md:text-xs">Score</span>
+                <span className="tv-score-number font-mono text-3xl font-black leading-none text-amber-100 md:text-5xl 2xl:text-6xl">{display}</span>
+            </div>
+            <div className="relative z-10 flex flex-col items-end leading-none">
+                <span className="rounded-full border border-amber-200/30 bg-amber-300/15 px-2 py-1 text-[0.65rem] font-black uppercase tracking-[0.2em] text-amber-100 md:text-xs">PTS</span>
+                {showComboCharge && (
+                    <span className="mt-1 text-[0.6rem] font-black uppercase tracking-[0.18em] text-cyan-100/70 md:text-[0.72rem]">{Math.round(comboPct)}% Hype</span>
+                )}
+            </div>
         </div>
     );
 };
@@ -2640,6 +2741,7 @@ const PublicTV = ({ roomCode }) => {
         if (Array.isArray(fixture.roomUsers)) setRoomUsers(fixture.roomUsers);
         if (Array.isArray(fixture.popTriviaVotes)) setPopTriviaVotes(fixture.popTriviaVotes);
         if (fixture.recap !== undefined) setRecap(fixture.recap || null);
+        if (fixture.combo !== undefined) setCombo(Math.max(0, Math.min(100, Number(fixture.combo) || 0)));
         if (fixture.previewSession) setPreviewSession(fixture.previewSession);
         if (typeof fixture.started === 'boolean') setStarted(fixture.started);
         if (fixture.lobbyVolleyState !== undefined) {
@@ -5071,6 +5173,18 @@ const PublicTV = ({ roomCode }) => {
         )
         : applauseStep;
     const applauseOverlayVisible = applauseModeActive || applauseStep !== 'idle';
+    const applauseMeterPct = clampPct(applauseRenderStep === 'result' ? applauseMax : micVolume);
+    const applauseMeterTier = applauseMeterPct >= 90 ? 'inferno' : applauseMeterPct >= 65 ? 'hot' : applauseMeterPct >= 35 ? 'charged' : 'base';
+    const applauseStatusLabel = applauseRenderStep === 'celebrate'
+        ? 'Warm-up live'
+        : applauseRenderStep === 'measuring'
+            ? 'Meter live'
+            : 'Peak level reached';
+    const applauseTimerLabel = applauseRenderStep === 'celebrate'
+        ? String(celebrateCountdown)
+        : applauseRenderStep === 'measuring'
+            ? String(measure)
+            : 'Final';
     const popTriviaRoundSec = Math.max(
         8,
         Number(room?.popTriviaRoundSec || room?.gameDefaults?.triviaRoundSec || DEFAULT_POP_TRIVIA_ROUND_SEC)
@@ -5173,7 +5287,7 @@ const PublicTV = ({ roomCode }) => {
 
     useEffect(() => {
         const enabled = room?.marqueeEnabled === true;
-        const mode = room?.marqueeShowMode || 'always';
+        const mode = room?.marqueeShowMode || 'idle';
         const hasItems = marqueeItems.length > 0;
         const hasMessages = messages.length > 0;
         const modeOk = mode === 'always'
@@ -5308,7 +5422,7 @@ const PublicTV = ({ roomCode }) => {
         }
     };
 
-    const allQueue = songs.filter(s => s.status === 'requested').sort((a,b) => (a.priorityScore || 0) - (b.priorityScore || 0));
+    const allQueue = songs.filter(isUpcomingPublicTvQueueSong).sort(compareUpcomingPublicTvQueueSongs);
     const nextUp = allQueue.slice(0,5);
     const queueWaitSec = allQueue.reduce((sum, song) => {
         const duration = Number(song?.duration);
@@ -7168,7 +7282,21 @@ const PublicTV = ({ roomCode }) => {
     const purchaseCelebrationIsMoneyRain = purchaseCelebrationBurst?.celebrationStyle === SUPPORT_CELEBRATION_STYLES.moneybagsBurst;
     const showMoneyRainCelebration = !!bonusDropBurst || purchaseCelebrationIsMoneyRain;
     const showJoinOverlay = !room?.hideJoinOverlay;
-    const showFloatingJoinOverlay = isCinema && !guitarTakeoverMode && showJoinOverlay;
+    const tvLogoVisible = !room?.hideLogo;
+    const hypeMeterDisplayMode = normalizeHypeMeterDisplayMode(
+        room?.hypeMeterDisplayMode,
+        showScoring ? HYPE_METER_DISPLAY_MODES.scoreIntegrated : HYPE_METER_DISPLAY_MODES.topBar
+    );
+    const scoreIntegratedHypeMeter = hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.scoreIntegrated
+        || hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.both;
+    const topBarHypeMeter = hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.topBar
+        || hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.both;
+    const showTopHypeMeter = showHypeMeter && topBarHypeMeter;
+    const performanceScoreTopClass = showTopHypeMeter ? 'top-16 md:top-20 2xl:top-24' : 'top-8 md:top-10 2xl:top-12';
+    const scoreAvoidsFloatingJoinQr = isCinema && showJoinOverlay;
+    const performanceScorePositionClass = scoreAvoidsFloatingJoinQr
+        ? `left-3 ${performanceScoreTopClass} max-w-[min(34rem,calc(100%-13rem))] text-left md:left-4 2xl:left-6`
+        : `right-3 ${performanceScoreTopClass} max-w-[calc(100%-2rem)] text-right md:right-4 md:max-w-[min(34rem,calc(100%-3rem))] 2xl:right-6`;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
@@ -7300,7 +7428,7 @@ const PublicTV = ({ roomCode }) => {
                 </div>
             )}
 
-            {!room?.hideLogo && (
+            {tvLogoVisible && (
                 <div className="tv-brand-logo-shell absolute top-3 left-3 md:top-5 md:left-5 2xl:top-8 2xl:left-8 z-50">
                     <img
                         src={room?.logoUrl || ASSETS.logo}
@@ -8076,14 +8204,14 @@ const PublicTV = ({ roomCode }) => {
                         <div className="absolute inset-0 pointer-events-none tv-light-sweep"></div>
                           {current && showScoring && (
                               <div
-                                  className={`absolute z-[80] ${
-                                      showFloatingJoinOverlay
-                                          ? 'left-3 top-8 max-w-[calc(100%-11rem)] text-left md:left-4 md:top-10 md:max-w-[calc(100%-13rem)] 2xl:left-6 2xl:top-12 2xl:max-w-[calc(100%-15rem)]'
-                                          : 'right-3 top-8 text-right md:right-4 md:top-10 2xl:right-6 2xl:top-12'
-                                  }`}
+                                  className={`absolute z-[80] ${performanceScorePositionClass}`}
                               >
-                                  <AnimatedPoints value={Math.max(0, currentPerformancePoints)} />
-                                  <div className={`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 ${showFloatingJoinOverlay ? 'justify-start' : 'justify-end'}`}>
+                                  <AnimatedPoints
+                                      value={Math.max(0, currentPerformancePoints)}
+                                      combo={combo}
+                                      showComboCharge={scoreIntegratedHypeMeter}
+                                  />
+                                  <div className={`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 ${scoreAvoidsFloatingJoinQr ? 'justify-start' : 'justify-end'}`}>
                                     <div className="text-sm md:text-base text-zinc-200 tracking-[0.1em] md:tracking-[0.15em]">PERFORMANCE TOTAL</div>
                                     {currentSingerIsVip && (
                                         <div className="px-2 py-0.5 rounded-full text-sm md:text-base font-bold tracking-[0.1em] md:tracking-[0.14em] bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">
@@ -8093,17 +8221,24 @@ const PublicTV = ({ roomCode }) => {
                                 </div>
                             </div>
                         )}
-                        <div className={`absolute top-0 left-0 w-full h-12 md:h-14 z-[70] bg-black/60 border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)] transition-all duration-500 ${showHypeMeter ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'}`}>
+                        <div
+                            className={`tv-hype-meter absolute top-0 left-0 w-full h-12 md:h-14 z-[70] border-b border-white/15 flex items-center shadow-[0_6px_18px_rgba(0,0,0,0.45)] transition-all duration-500 ${combo > 88 ? 'tv-hype-meter-inferno' : combo > 62 ? 'tv-hype-meter-hot' : combo > 34 ? 'tv-hype-meter-charged' : ''} ${showTopHypeMeter ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'}`}
+                            style={{ '--combo-pct': `${Math.min(100, Math.max(5, combo))}%` }}
+                        >
                             <div className="absolute inset-0 border-y border-white/10 pointer-events-none"></div>
                             <div className="absolute left-2 md:left-4 z-10 font-bold text-sm md:text-xl uppercase tracking-[0.08em] md:tracking-[0.12em] flex gap-1 md:gap-2 items-center">
                                 <span className="text-base md:text-2xl">{EMOJI.fire}</span>
                                 <span>HYPE METER</span>
                                 {room?.multiplier > 1 && <span className="bg-red-600 text-white px-1.5 py-0.5 md:px-2 rounded animate-pulse text-sm md:text-lg">x{room.multiplier} ACTIVE</span>}
                             </div>
-                            <div 
-                                className={`h-full transition-all duration-200 ${combo > 90 ? 'bg-gradient-to-r from-red-500 via-yellow-400 to-red-500 animate-pulse' : combo > 50 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-cyan-600 to-blue-600'}`} 
-                                style={{width: `${Math.min(100, Math.max(5, combo))}%`, boxShadow: `0 0 20px ${combo > 50 ? 'orange' : 'cyan'}`}}
-                            ></div>
+                            <div className="tv-hype-meter-fill" />
+                            <div className="tv-hype-meter-leds" aria-hidden="true" />
+                            <div className="tv-hype-meter-charge-front" />
+                            <div className="tv-hype-meter-sparks" aria-hidden="true">
+                                <span />
+                                <span />
+                                <span />
+                            </div>
                             <div className="absolute left-1/2 top-0 h-full w-1 bg-cyan-400/60 -translate-x-1/2"></div>
                             <div className="absolute left-1/2 top-1.5 -translate-x-1/2 text-sm md:text-lg font-bold text-cyan-200 bg-black/70 px-2 md:px-3 py-1 rounded">2x</div>
                             <div className="absolute left-[90%] top-0 h-full w-1 bg-purple-400/60 -translate-x-1/2"></div>
@@ -8739,59 +8874,75 @@ const PublicTV = ({ roomCode }) => {
 
             {/* Applause Meter Overlay */}
             {applauseOverlayVisible && (
-                <div className="absolute inset-0 z-[260] bg-black/95 flex flex-col items-center justify-center animate-in fade-in">
-                    <div className="mb-4 md:mb-8 flex flex-col items-center gap-3 text-center px-8">
-                        <div className="inline-flex items-center gap-3 rounded-full border border-cyan-400/35 bg-cyan-400/10 px-5 py-2 text-sm md:text-lg font-black uppercase tracking-[0.28em] text-cyan-200 shadow-[0_0_30px_rgba(34,211,238,0.16)]">
-                            <span className="h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.9)]"></span>
-                            Crowd Moment
-                        </div>
-                        <h1 className="text-[clamp(2.75rem,7vw,6.5rem)] font-bebas text-white tracking-[0.12em] md:tracking-[0.2em] leading-none">
-                            {applauseRenderStep === 'celebrate' ? 'WARM UP FOR' : 'CHEER FOR'}
-                        </h1>
-                        <div className="text-[clamp(3rem,9vw,8rem)] font-black uppercase tracking-tight leading-[0.9] text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-300 via-white to-cyan-300 drop-shadow-[0_0_28px_rgba(236,72,153,0.22)]">
-                            {applausePerformerName}
-                        </div>
-                        {applauseSongTitle ? (
-                            <div className="text-lg md:text-3xl font-semibold text-zinc-300 max-w-[70vw] leading-tight">
-                                {applauseSongTitle}
-                            </div>
-                        ) : null}
+                <div
+                    className={"applause-meter-overlay applause-meter-" + applauseMeterTier + " absolute inset-0 z-[260] flex flex-col items-center justify-center overflow-hidden bg-black/95 px-5 py-8 text-center animate-in fade-in"}
+                    style={{ "--applause-charge": applauseMeterPct + "%" }}
+                >
+                    <div className="applause-meter-aurora" aria-hidden="true" />
+                    <div className="applause-meter-beams" aria-hidden="true"><span /><span /><span /></div>
+                    <div className="applause-meter-sparkfield" aria-hidden="true">
+                        {Array.from({ length: 18 }, (_, idx) => (
+                            <span
+                                key={idx}
+                                style={{
+                                    "--spark-left": `${6 + ((idx * 47) % 88)}%`,
+                                    "--spark-bottom": `${7 + ((idx * 13) % 28)}%`,
+                                    "--spark-delay": `${(idx * 0.09).toFixed(2)}s`,
+                                    "--spark-x": `${((idx * 17) % 42) - 21}px`,
+                                    "--spark-rot": `${(idx * 29) % 58}deg`,
+                                }}
+                            />
+                        ))}
                     </div>
-                    <div className="relative w-[76vw] h-[76vw] max-w-[500px] max-h-[500px] flex items-center justify-center">
-                        <div className="absolute inset-0 rounded-full border-[20px] border-zinc-800"></div>
-                        <svg className="absolute inset-0 w-full h-full -rotate-90 transform drop-shadow-[0_0_30px_rgba(0,196,217,0.5)]" viewBox="0 0 100 100">
-                            <defs>
-                                <linearGradient id="applauseGradient" x1="0" y1="0" x2="1" y2="1">
-                                    <stop offset="0%" stopColor="#00C4D9" />
-                                    <stop offset="100%" stopColor="#EC4899" />
-                                </linearGradient>
-                            </defs>
-                            <circle cx="50" cy="50" r="40" stroke="url(#applauseGradient)" strokeWidth="8" fill="none" strokeDasharray="251.2" strokeDashoffset={251.2 * (1 - ((applauseRenderStep === 'result' ? applauseMax : micVolume) / 100))} strokeLinecap="round" className="transition-all duration-75 ease-linear" />
-                        </svg>
-                        <div className="relative z-10 flex flex-col items-center">
-                            <div className="text-[clamp(3.25rem,16vw,10rem)] font-black text-transparent bg-clip-text bg-gradient-to-r from-[#00C4D9] to-[#EC4899] font-mono leading-none drop-shadow-[0_0_20px_rgba(236,72,153,0.35)]">
-                                {Math.round(applauseRenderStep === 'result' ? applauseMax : applauseRenderStep === 'celebrate' ? 0 : micVolume)}
-                            </div>
-                            <div className="text-lg md:text-2xl text-zinc-500 font-bold">dB</div>
+                    <div className="relative z-10 flex w-full max-w-[min(92vw,72rem)] flex-col items-center gap-5 md:gap-7">
+                        <div className="inline-flex items-center gap-3 rounded-full border border-cyan-300/35 bg-cyan-300/12 px-5 py-2 text-xs font-black uppercase tracking-[0.34em] text-cyan-100 shadow-[0_0_30px_rgba(34,211,238,0.2)] md:text-sm">
+                            <span className="applause-meter-live-dot" />
+                            Crowd Meter
                         </div>
-                    </div>
-                    <div className="mt-4 md:mt-8 text-center px-4">
-                        <div className="text-xl md:text-4xl text-cyan-300 font-bebas tracking-[0.1em] md:tracking-widest animate-bounce">
-                            {applauseRenderStep === 'celebrate'
-                                ? `WARM-UP LIVE ${celebrateCountdown}`
-                                : applauseRenderStep === 'measuring'
-                                    ? `METER LIVE ${measure}`
-                                    : 'PEAK LEVEL REACHED'}
-                        </div>
-                        {applauseRenderStep === 'celebrate' ? (
-                            <div className="mt-3 text-sm md:text-xl uppercase tracking-[0.24em] text-zinc-400">
-                                Crowd warm-up before the meter opens
+                        <div className="space-y-2">
+                            <h1 className="text-[clamp(2.6rem,7vw,7rem)] font-bebas uppercase leading-none tracking-[0.16em] text-white drop-shadow-[0_0_28px_rgba(34,211,238,0.18)]">
+                                {applauseRenderStep === "celebrate" ? "Warm Up For" : "Make Noise For"}
+                            </h1>
+                            <div className="text-[clamp(3.2rem,9vw,9rem)] font-black uppercase leading-[0.82] text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-white to-rose-300 drop-shadow-[0_0_34px_rgba(244,114,182,0.3)]">
+                                {applausePerformerName}
                             </div>
+                            {applauseSongTitle ? (
+                                <div className="mx-auto max-w-[70rem] text-[clamp(1.05rem,2.4vw,2.4rem)] font-semibold leading-tight text-zinc-300">
+                                    {applauseSongTitle}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="applause-charge-shell relative w-full max-w-[min(86vw,58rem)] overflow-hidden rounded-3xl border px-5 py-5 shadow-2xl backdrop-blur-md md:px-8 md:py-7">
+                            <div className="applause-charge-glow" aria-hidden="true" />
+                            <div className="applause-charge-scan" aria-hidden="true" />
+                            <div className="relative z-10 flex flex-col gap-4">
+                                <div className="flex flex-wrap items-end justify-between gap-4">
+                                    <div className="text-left">
+                                        <div className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-amber-100/75 md:text-sm">Applause</div>
+                                        <div className="applause-meter-number font-mono text-[clamp(4rem,13vw,10rem)] font-black leading-none text-amber-100">
+                                            {applauseMeterPct}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2 text-right">
+                                        <div className="rounded-full border border-amber-200/30 bg-amber-300/15 px-3 py-1 text-xs font-black uppercase tracking-[0.22em] text-amber-100 md:text-base">dB</div>
+                                        <div className="text-[clamp(1.25rem,3.2vw,3rem)] font-bebas uppercase tracking-[0.1em] text-cyan-100">{applauseTimerLabel}</div>
+                                        <div className="text-xs font-black uppercase tracking-[0.26em] text-cyan-100/70 md:text-sm">{applauseStatusLabel}</div>
+                                    </div>
+                                </div>
+                                <div className="applause-charge-track" aria-hidden="true">
+                                    <span className="applause-charge-fill" />
+                                    <span className="applause-charge-leds" />
+                                    <span className="applause-charge-front" />
+                                    <span className="applause-charge-sparks"><i /><i /><i /><i /></span>
+                                </div>
+                            </div>
+                        </div>
+                        {applauseRenderStep === "celebrate" ? (
+                            <div className="text-sm font-black uppercase tracking-[0.28em] text-zinc-300 md:text-lg">Audio activity is live - warm the room up before the meter opens</div>
                         ) : null}
                     </div>
                 </div>
             )}
-
             {showAmbientFx && showLobbyPlaygroundFx && (
             <>
             {/* Lobby Playground Full-Screen FX */}
@@ -9546,7 +9697,7 @@ const PublicTV = ({ roomCode }) => {
             )}
 
             {/* Reactions */}
-            <div className="absolute inset-0 z-[200] pointer-events-none overflow-hidden">
+            <div className={`absolute inset-0 ${applauseOverlayVisible ? 'z-[285]' : 'z-[200]'} pointer-events-none overflow-hidden`}>
                 {reactions.map(r => {
                     const reactionTheme = getTvReactionThemeKey(r.type);
                     return (
@@ -9731,6 +9882,22 @@ const PublicTV = ({ roomCode }) => {
                 100% { opacity: 0; transform: translate3d(calc(var(--reaction-drift-x, 32px) * 1.22), calc(var(--reaction-rise-y, 96px) * -0.72), 0) scale(calc(var(--reaction-scale, 1) * 0.9)) rotate(var(--reaction-rotate, 0deg)); }
               }
               @keyframes points-burst { 0% { opacity: 0; transform: translateY(10px) scale(0.6); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateY(-18px) scale(1.2); } }
+              @keyframes applause-meter-aurora { 0%, 100% { transform: translate3d(-2%, 0, 0) scale(1); opacity: 0.72; } 50% { transform: translate3d(2%, -1%, 0) scale(1.04); opacity: 0.94; } }
+              @keyframes applause-meter-beam-sweep { 0% { opacity: 0; transform: translateX(-24vw) rotate(var(--beam-tilt, -8deg)); } 20% { opacity: 0.5; } 78% { opacity: 0.32; } 100% { opacity: 0; transform: translateX(28vw) rotate(var(--beam-tilt, -8deg)); } }
+              @keyframes applause-meter-spark-rise { 0% { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.62) rotate(0deg); } 18% { opacity: 0.95; } 100% { opacity: 0; transform: translate3d(var(--spark-x, 0px), -110px, 0) scale(1.08) rotate(var(--spark-rot, 18deg)); } }
+              @keyframes applause-charge-hit { 0%, 100% { transform: scale(1); filter: brightness(1); } 34% { transform: scale(1.025); filter: brightness(1.22); } 62% { transform: scale(0.995); filter: brightness(1.08); } }
+              @keyframes applause-charge-scan { 0% { transform: translateX(-130%) skewX(-15deg); opacity: 0; } 18% { opacity: 0.78; } 100% { transform: translateX(170%) skewX(-15deg); opacity: 0; } }
+              @keyframes applause-charge-flow { 0% { background-position: 0% 50%; } 100% { background-position: 220% 50%; } }
+              @keyframes applause-front-pulse { 0%, 100% { opacity: 0.68; transform: translateX(-3px) scaleY(0.92); } 48% { opacity: 1; transform: translateX(5px) scaleY(1.12); } }
+              @keyframes applause-spark-fly { 0% { opacity: 0; transform: translate3d(-14px, 12px, 0) scale(0.68); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate3d(32px, -28px, 0) scale(1.18); } }
+              @keyframes applause-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 36px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 30px rgba(251,191,36,0.88), 0 0 58px rgba(248,113,113,0.5), 0 0 80px rgba(34,211,238,0.28); } }
+              @keyframes score-charge-hit { 0% { transform: scale(1); filter: brightness(1); } 28% { transform: scale(1.08); filter: brightness(1.38); } 56% { transform: scale(0.99); filter: brightness(1.12); } 100% { transform: scale(1); filter: brightness(1); } }
+              @keyframes score-charge-scan { 0% { transform: translateX(-120%) skewX(-14deg); opacity: 0; } 20% { opacity: 0.72; } 100% { transform: translateX(160%) skewX(-14deg); opacity: 0; } }
+              @keyframes score-delta-rise { 0% { opacity: 0; transform: translateY(12px) scale(0.8); } 24% { opacity: 1; transform: translateY(-4px) scale(1.08); } 100% { opacity: 0; transform: translateY(-34px) scale(1.22); } }
+              @keyframes score-number-flare { 0%, 100% { text-shadow: 0 0 18px rgba(251,191,36,0.52), 0 0 32px rgba(34,211,238,0.18); } 50% { text-shadow: 0 0 28px rgba(251,191,36,0.82), 0 0 52px rgba(248,113,113,0.45), 0 0 70px rgba(34,211,238,0.28); } }
+              @keyframes hype-charge-flow { 0% { background-position: 0% 50%; } 100% { background-position: 180% 50%; } }
+              @keyframes hype-charge-front { 0%, 100% { opacity: 0.62; transform: translateX(-2px) scaleY(0.92); } 45% { opacity: 1; transform: translateX(3px) scaleY(1.08); } }
+              @keyframes hype-spark-fly { 0% { opacity: 0; transform: translate3d(-10px, 10px, 0) scale(0.7); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate3d(26px, -22px, 0) scale(1.1); } }
               @keyframes vip-glow { 0% { opacity: 0.6; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.08); } 100% { opacity: 0.6; transform: scale(0.95); } }
               @keyframes vip-jolt { 0%, 100% { transform: rotate(0deg) scale(1); } 25% { transform: rotate(-2deg) scale(1.05); } 50% { transform: rotate(2deg) scale(1.08); } 75% { transform: rotate(-1deg) scale(1.04); } }
               @keyframes vip-spin { 0% { transform: rotate(0deg) scale(1); } 100% { transform: rotate(360deg) scale(1.2); } }
@@ -10017,10 +10184,262 @@ const PublicTV = ({ roomCode }) => {
               .marquee-shell { transition: opacity 350ms ease, transform 350ms ease; }
               .marquee-on { opacity: 1; transform: translateY(0); animation: marqueeFade 350ms ease; }
               .marquee-off { opacity: 0; transform: translateY(12px); pointer-events: none; }
+              .applause-meter-overlay {
+                --applause-charge: 0%;
+                isolation: isolate;
+              }
+              .applause-meter-overlay::before {
+                content: "";
+                position: absolute;
+                inset: 0;
+                background:
+                  radial-gradient(circle at 50% 44%, rgba(34,211,238,0.2), transparent 34%),
+                  radial-gradient(circle at 24% 28%, rgba(244,114,182,0.18), transparent 34%),
+                  linear-gradient(180deg, rgba(3,7,18,0.16), rgba(0,0,0,0.72));
+                pointer-events: none;
+              }
+              .applause-meter-aurora {
+                position: absolute;
+                inset: -18%;
+                background:
+                  conic-gradient(from 220deg at 50% 52%, rgba(34,211,238,0.16), rgba(250,204,21,0.14), rgba(244,114,182,0.18), rgba(34,211,238,0.16)),
+                  radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), transparent 55%);
+                filter: blur(28px);
+                opacity: 0.8;
+                pointer-events: none;
+              }
+              .motion-safe-fx .applause-meter-aurora { animation: applause-meter-aurora 4.8s ease-in-out infinite; }
+              .applause-meter-beams { position: absolute; inset: 0; overflow: hidden; pointer-events: none; opacity: 0.82; }
+              .applause-meter-beams span { position: absolute; top: 8%; bottom: 8%; width: 16vw; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.16), transparent); filter: blur(2px); }
+              .applause-meter-beams span:nth-child(1) { left: 10%; --beam-tilt: -12deg; }
+              .applause-meter-beams span:nth-child(2) { left: 46%; --beam-tilt: 9deg; animation-delay: 0.7s; }
+              .applause-meter-beams span:nth-child(3) { left: 76%; --beam-tilt: -5deg; animation-delay: 1.3s; }
+              .motion-safe-fx .applause-meter-beams span { animation: applause-meter-beam-sweep 3.6s ease-in-out infinite; }
+              .applause-meter-sparkfield { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+              .applause-meter-sparkfield span {
+                position: absolute;
+                left: var(--spark-left);
+                bottom: var(--spark-bottom);
+                width: 5px;
+                height: 18px;
+                border-radius: 9999px;
+                background: #fef3c7;
+                box-shadow: 0 0 16px rgba(250,204,21,0.75);
+                opacity: 0;
+              }
+              .motion-safe-fx .applause-meter-sparkfield span { animation: applause-meter-spark-rise 1.7s ease-out infinite; animation-delay: var(--spark-delay); }
+              .applause-meter-live-dot { width: 0.7rem; height: 0.7rem; border-radius: 9999px; background: #67e8f9; box-shadow: 0 0 14px rgba(103,232,249,0.92), 0 0 28px rgba(244,114,182,0.28); }
+              .applause-charge-shell {
+                background:
+                  linear-gradient(90deg, rgba(34,211,238,0.2) 0 var(--applause-charge), rgba(15,23,42,0.82) var(--applause-charge) 100%),
+                  radial-gradient(circle at 18% 12%, rgba(255,255,255,0.18), rgba(255,255,255,0) 32%),
+                  linear-gradient(135deg, rgba(10,15,30,0.94), rgba(31,17,12,0.9));
+                border-color: rgba(251,191,36,0.42);
+                box-shadow: 0 18px 54px rgba(0,0,0,0.52), 0 0 34px rgba(251,191,36,0.2), inset 0 0 24px rgba(255,255,255,0.08);
+              }
+              .applause-meter-hot .applause-charge-shell, .applause-meter-inferno .applause-charge-shell { border-color: rgba(251,146,60,0.66); box-shadow: 0 20px 62px rgba(0,0,0,0.56), 0 0 42px rgba(251,146,60,0.32), 0 0 70px rgba(248,113,113,0.18), inset 0 0 28px rgba(255,255,255,0.1); }
+              .applause-meter-inferno .applause-charge-shell { background: linear-gradient(90deg, rgba(248,113,113,0.34) 0 var(--applause-charge), rgba(15,23,42,0.82) var(--applause-charge) 100%), radial-gradient(circle at 18% 12%, rgba(255,255,255,0.22), rgba(255,255,255,0) 32%), linear-gradient(135deg, rgba(22,12,18,0.96), rgba(44,16,8,0.9)); }
+              .applause-charge-glow { position: absolute; inset: -42%; background: radial-gradient(circle, rgba(251,191,36,0.32), rgba(249,115,22,0.18) 36%, rgba(34,211,238,0.1) 58%, transparent 72%); filter: blur(20px); opacity: 0.66; pointer-events: none; }
+              .applause-charge-scan { position: absolute; inset: 0; width: 42%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.32), transparent); pointer-events: none; z-index: 1; }
+              .motion-safe-fx .applause-charge-scan { animation: applause-charge-scan 2.2s ease-in-out infinite; }
+              .motion-safe-fx .applause-charge-shell { animation: applause-charge-hit 1.6s ease-in-out infinite; }
+              .applause-charge-track { position: relative; height: clamp(1.3rem, 3vw, 2.4rem); overflow: hidden; border-radius: 9999px; background: rgba(255,255,255,0.1); box-shadow: inset 0 0 18px rgba(0,0,0,0.35); }
+              .applause-charge-fill { position: absolute; inset: 0 auto 0 0; width: var(--applause-charge); border-radius: inherit; background: linear-gradient(90deg, #0891b2 0%, #22d3ee 36%, #facc15 70%, #fb7185 100%); background-size: 220% 100%; box-shadow: 0 0 24px rgba(34,211,238,0.46), inset 0 0 18px rgba(255,255,255,0.18); transition: width 110ms ease-out; }
+              .applause-charge-leds { position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(90deg, rgba(0,0,0,0.62) 0 4px, transparent 4px 20px), linear-gradient(180deg, rgba(255,255,255,0.18), transparent 48%, rgba(0,0,0,0.28)); mix-blend-mode: soft-light; pointer-events: none; }
+              .applause-meter-hot .applause-charge-fill, .applause-meter-inferno .applause-charge-fill { background: linear-gradient(90deg, #facc15 0%, #fb923c 36%, #ef4444 72%, #fef3c7 100%); background-size: 240% 100%; box-shadow: 0 0 32px rgba(251,146,60,0.62), 0 0 52px rgba(248,113,113,0.32), inset 0 0 20px rgba(255,255,255,0.22); }
+              .motion-safe-fx .applause-charge-fill { animation: applause-charge-flow 1.15s linear infinite; }
+              .applause-charge-front { position: absolute; left: calc(var(--applause-charge) - 12px); top: 3px; bottom: 3px; width: 24px; border-radius: 9999px; background: radial-gradient(circle, rgba(255,255,255,0.94), rgba(250,204,21,0.74) 34%, rgba(248,113,113,0.12) 72%, transparent); box-shadow: 0 0 24px rgba(250,204,21,0.76), 0 0 46px rgba(248,113,113,0.42); pointer-events: none; }
+              .motion-safe-fx .applause-charge-front { animation: applause-front-pulse 0.42s ease-in-out infinite; }
+              .applause-charge-sparks { position: absolute; left: calc(var(--applause-charge) - 24px); top: 0; bottom: 0; width: 68px; pointer-events: none; opacity: 0; }
+              .applause-meter-hot .applause-charge-sparks, .applause-meter-inferno .applause-charge-sparks { opacity: 1; }
+              .applause-charge-sparks i { position: absolute; left: 20px; top: 50%; width: 5px; height: 16px; border-radius: 9999px; background: #fef3c7; box-shadow: 0 0 14px rgba(250,204,21,0.82); }
+              .applause-charge-sparks i:nth-child(2) { top: 24%; animation-delay: 0.16s; transform: rotate(22deg); }
+              .applause-charge-sparks i:nth-child(3) { top: 68%; animation-delay: 0.28s; transform: rotate(-18deg); }
+              .applause-charge-sparks i:nth-child(4) { top: 42%; animation-delay: 0.4s; transform: rotate(8deg); }
+              .motion-safe-fx .applause-charge-sparks i { animation: applause-spark-fly 0.62s ease-out infinite; }
+              .motion-safe-fx .applause-meter-hot .applause-meter-number, .motion-safe-fx .applause-meter-inferno .applause-meter-number { animation: applause-number-flare 0.9s ease-in-out infinite; }
+              .public-tv:not(.motion-safe-fx) .applause-meter-aurora,
+              .public-tv:not(.motion-safe-fx) .applause-meter-beams span,
+              .public-tv:not(.motion-safe-fx) .applause-meter-sparkfield span,
+              .public-tv:not(.motion-safe-fx) .applause-charge-scan,
+              .public-tv:not(.motion-safe-fx) .applause-charge-shell,
+              .public-tv:not(.motion-safe-fx) .applause-charge-fill,
+              .public-tv:not(.motion-safe-fx) .applause-charge-front,
+              .public-tv:not(.motion-safe-fx) .applause-charge-sparks i,
+              .public-tv:not(.motion-safe-fx) .applause-meter-number { animation: none; }
+              .tv-score-charge {
+                --score-charge: 0%;
+                isolation: isolate;
+                min-width: clamp(14rem, 22vw, 23rem);
+                background:
+                  linear-gradient(90deg, rgba(34,211,238,0.22) 0 var(--score-charge), rgba(15,23,42,0.82) var(--score-charge) 100%),
+                  radial-gradient(circle at 18% 12%, rgba(255,255,255,0.2), rgba(255,255,255,0) 32%),
+                  linear-gradient(135deg, rgba(10,15,30,0.92), rgba(30,18,12,0.86));
+                border-color: rgba(251,191,36,0.38);
+                box-shadow: 0 14px 38px rgba(0,0,0,0.42), 0 0 30px rgba(251,191,36,0.18), inset 0 0 20px rgba(255,255,255,0.08);
+              }
+              .tv-score-charge::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                border-radius: inherit;
+                background:
+                  linear-gradient(90deg, rgba(255,255,255,0.13), transparent 28% 72%, rgba(255,255,255,0.1)),
+                  repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 1px, transparent 1px 10px);
+                mix-blend-mode: screen;
+                opacity: 0.38;
+                pointer-events: none;
+              }
+              .tv-score-charge-glow {
+                position: absolute;
+                inset: -42%;
+                background: radial-gradient(circle, rgba(251,191,36,0.32), rgba(249,115,22,0.16) 36%, rgba(34,211,238,0.08) 58%, transparent 72%);
+                filter: blur(18px);
+                opacity: 0.62;
+                pointer-events: none;
+                z-index: 0;
+              }
+              .tv-score-charge-scan {
+                position: absolute;
+                inset: 0;
+                width: 42%;
+                background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+                pointer-events: none;
+                z-index: 1;
+              }
+              .motion-safe-fx .tv-score-charge-scan { animation: score-charge-scan 2.4s ease-in-out infinite; }
+              .motion-safe-fx .tv-score-charge-pulse { animation: score-charge-hit 0.42s cubic-bezier(0.2, 0.75, 0.26, 1.25); }
+              .tv-score-charge-meter {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: 5px;
+                background: rgba(255,255,255,0.1);
+                z-index: 2;
+              }
+              .tv-score-charge-meter span {
+                display: block;
+                width: var(--score-charge);
+                height: 100%;
+                background: linear-gradient(90deg, #22d3ee, #facc15, #fb7185);
+                box-shadow: 0 0 18px rgba(251,191,36,0.62);
+                transition: width 180ms ease-out;
+              }
+              .tv-score-charge-leds {
+                position: absolute;
+                inset: 0;
+                background: repeating-linear-gradient(90deg, rgba(2,6,23,0.72) 0 2px, transparent 2px 14px);
+                mix-blend-mode: multiply;
+                pointer-events: none;
+              }
+              .tv-score-charge-hot,
+              .tv-score-charge-inferno {
+                border-color: rgba(251,146,60,0.62);
+                box-shadow: 0 16px 44px rgba(0,0,0,0.46), 0 0 36px rgba(251,146,60,0.28), 0 0 58px rgba(248,113,113,0.16), inset 0 0 24px rgba(255,255,255,0.1);
+              }
+              .tv-score-charge-inferno {
+                background:
+                  linear-gradient(90deg, rgba(248,113,113,0.32) 0 var(--score-charge), rgba(15,23,42,0.82) var(--score-charge) 100%),
+                  radial-gradient(circle at 18% 12%, rgba(255,255,255,0.22), rgba(255,255,255,0) 32%),
+                  linear-gradient(135deg, rgba(22,12,18,0.96), rgba(44,16,8,0.9));
+              }
+              .motion-safe-fx .tv-score-charge-inferno .tv-score-number,
+              .motion-safe-fx .tv-score-charge-hot .tv-score-number {
+                animation: score-number-flare 1.08s ease-in-out infinite;
+              }
+              .tv-score-delta {
+                position: absolute;
+                top: -0.8rem;
+                right: 1.25rem;
+                z-index: 5;
+                color: #fef3c7;
+                font-weight: 900;
+                font-size: clamp(1.1rem, 2vw, 1.85rem);
+                text-shadow: 0 0 16px rgba(250,204,21,0.76), 0 0 28px rgba(248,113,113,0.46);
+              }
+              .motion-safe-fx .tv-score-delta { animation: score-delta-rise 0.88s ease-out both; }
               .points-burst { position: absolute; width: 8px; height: 8px; border-radius: 9999px; background: #facc15; box-shadow: 0 0 12px rgba(250, 204, 21, 0.7); animation: points-burst 0.6s ease-out forwards; }
               .points-burst-a { top: -6px; left: 18px; }
               .points-burst-b { top: 6px; right: 10px; background: #22d3ee; box-shadow: 0 0 12px rgba(34, 211, 238, 0.7); }
               .points-burst-c { bottom: -4px; left: 40px; background: #f472b6; box-shadow: 0 0 12px rgba(244, 114, 182, 0.7); }
+              .points-burst-d { bottom: 8px; right: 42px; background: #fb7185; box-shadow: 0 0 14px rgba(248, 113, 113, 0.72); }
+              .tv-hype-meter {
+                background:
+                  linear-gradient(180deg, rgba(8,13,28,0.9), rgba(4,8,18,0.78)),
+                  radial-gradient(circle at 18% 50%, rgba(34,211,238,0.18), transparent 42%);
+                overflow: hidden;
+              }
+              .tv-hype-meter-fill {
+                position: absolute;
+                inset: 0 auto 0 0;
+                width: var(--combo-pct);
+                background: linear-gradient(90deg, #0891b2 0%, #22d3ee 40%, #facc15 72%, #fb7185 100%);
+                background-size: 180% 100%;
+                box-shadow: 0 0 22px rgba(34,211,238,0.45), inset 0 0 18px rgba(255,255,255,0.18);
+                transition: width 180ms ease-out;
+              }
+              .motion-safe-fx .tv-hype-meter-fill { animation: hype-charge-flow 1.4s linear infinite; }
+              .tv-hype-meter-leds {
+                position: absolute;
+                inset: 0;
+                background:
+                  repeating-linear-gradient(90deg, rgba(0,0,0,0.54) 0 3px, transparent 3px 18px),
+                  linear-gradient(180deg, rgba(255,255,255,0.16), transparent 42%, rgba(0,0,0,0.24));
+                mix-blend-mode: soft-light;
+                pointer-events: none;
+              }
+              .tv-hype-meter-hot .tv-hype-meter-fill,
+              .tv-hype-meter-inferno .tv-hype-meter-fill {
+                background: linear-gradient(90deg, #facc15 0%, #fb923c 38%, #ef4444 72%, #fef3c7 100%);
+                background-size: 220% 100%;
+                box-shadow: 0 0 28px rgba(251,146,60,0.58), 0 0 44px rgba(248,113,113,0.28), inset 0 0 18px rgba(255,255,255,0.22);
+              }
+              .tv-hype-meter-charge-front {
+                position: absolute;
+                left: calc(var(--combo-pct) - 10px);
+                top: 4px;
+                bottom: 4px;
+                width: 20px;
+                border-radius: 9999px;
+                background: radial-gradient(circle, rgba(255,255,255,0.92), rgba(250,204,21,0.74) 34%, rgba(248,113,113,0.1) 70%, transparent);
+                box-shadow: 0 0 22px rgba(250,204,21,0.72), 0 0 42px rgba(248,113,113,0.4);
+                pointer-events: none;
+              }
+              .motion-safe-fx .tv-hype-meter-charge-front { animation: hype-charge-front 0.42s ease-in-out infinite; }
+              .tv-hype-meter-sparks {
+                position: absolute;
+                left: calc(var(--combo-pct) - 18px);
+                top: 0;
+                bottom: 0;
+                width: 58px;
+                pointer-events: none;
+                opacity: 0;
+              }
+              .tv-hype-meter-hot .tv-hype-meter-sparks,
+              .tv-hype-meter-inferno .tv-hype-meter-sparks { opacity: 1; }
+              .tv-hype-meter-sparks span {
+                position: absolute;
+                left: 16px;
+                top: 50%;
+                width: 4px;
+                height: 14px;
+                border-radius: 9999px;
+                background: #fef3c7;
+                box-shadow: 0 0 14px rgba(250,204,21,0.82);
+                transform-origin: center;
+              }
+              .motion-safe-fx .tv-hype-meter-sparks span { animation: hype-spark-fly 0.7s ease-out infinite; }
+              .tv-hype-meter-sparks span:nth-child(2) { top: 24%; animation-delay: 0.18s; transform: rotate(22deg); }
+              .tv-hype-meter-sparks span:nth-child(3) { top: 68%; animation-delay: 0.34s; transform: rotate(-18deg); }
+              .public-tv:not(.motion-safe-fx) .tv-score-charge-scan,
+              .public-tv:not(.motion-safe-fx) .tv-score-charge-pulse,
+              .public-tv:not(.motion-safe-fx) .tv-score-delta,
+              .public-tv:not(.motion-safe-fx) .tv-hype-meter-fill,
+              .public-tv:not(.motion-safe-fx) .tv-hype-meter-charge-front,
+              .public-tv:not(.motion-safe-fx) .tv-hype-meter-sparks span {
+                animation: none;
+              }
               .reaction-stack { will-change: transform, opacity; transform-origin: center bottom; }
               .reaction-stack-drift-left { animation: reaction-drift-left var(--reaction-duration, 8600ms) cubic-bezier(0.2, 0.72, 0.22, 1) forwards; }
               .reaction-stack-drift-right { animation: reaction-drift-right var(--reaction-duration, 8600ms) cubic-bezier(0.2, 0.72, 0.22, 1) forwards; }

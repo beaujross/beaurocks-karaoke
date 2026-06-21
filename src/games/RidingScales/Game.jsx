@@ -92,6 +92,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const holdMs = getRidingScalesHoldMs(difficulty);
     const isTurnsMode = gameData.mode === 'turns';
     const summaryDurationMs = 2500;
+    const introDurationMs = gameData.mode === 'crowd' ? 3200 : 2400;
 
     const syncState = useCallback((next) => {
         stateRef.current = next;
@@ -127,13 +128,14 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
             summaryUntil: null,
             assistUntil: null,
             assistCharges: 1,
+            introEndsAt: Date.now() + introDurationMs,
             lastPhaseChangeAt: Date.now(),
             lastNoteAdvanceAt: Date.now(),
             lastUpdated: Date.now()
         };
         syncState(init);
         writeState(init);
-    }, [isController, difficulty, gameData, syncState, writeState]);
+    }, [isController, difficulty, gameData, syncState, writeState, introDurationMs]);
 
     useEffect(() => {
         const t = setTimeout(() => ensureInit(), 0);
@@ -458,6 +460,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
     const earnedPoints = (localState.bestRound || 1) * rewardPerRound;
     const renderNowMs = Number(localState.lastUpdated || localState.nextAt || 0);
     const assistActive = Number(localState.assistUntil || 0) > renderNowMs;
+    const introActive = Number(localState.introEndsAt || 0) > renderNowMs;
     const phaseWindowMs = Math.max(1, Number(localState.nextAt || 0) - Number(localState.lastNoteAdvanceAt || renderNowMs));
     const phaseProgressPct = (localState.phase === 'playback' || localState.phase === 'input')
         ? clamp(((Number(localState.nextAt || renderNowMs) - renderNowMs) / phaseWindowMs) * 100, 0, 100)
@@ -474,7 +477,7 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                 <div>
                     <div className="text-sm md:text-base uppercase tracking-[0.24em] md:tracking-[0.3em] text-zinc-300">Riding Scales</div>
                     <div className="text-4xl md:text-5xl font-bebas text-cyan-300">{gameData.playerId === 'GROUP' ? 'THE CROWD' : (gameData.playerName || 'SINGER')}</div>
-                    <div className="text-lg md:text-xl text-zinc-300">Repeat the scale pattern as it grows.</div>
+                    <div className="text-lg md:text-xl text-zinc-300">{gameData.playerId === 'GROUP' ? 'Listen together, then echo the pattern back as a room.' : 'Repeat the scale pattern as it grows.'}</div>
                     {isTurnsMode && (
                         <div className="mt-2 text-base uppercase tracking-[0.2em] text-zinc-400">
                             {isController ? "You're up" : `Up now: ${currentTurnMeta?.name || gameData.playerName || 'Singer'}`}
@@ -516,6 +519,19 @@ const RidingScalesGame = ({ isPlayer, roomCode, playerData, gameState, inputSour
                     {localState.phase === 'playback' ? 'Listen To Sequence' : 'Repeat It Now'}
                 </div>
             </div>
+            {introActive && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-6 text-center pointer-events-none">
+                    <div className="max-w-3xl rounded-[2rem] border border-white/10 bg-black/72 px-8 py-6 shadow-[0_0_40px_rgba(0,0,0,0.4)]">
+                        <div className="text-xs uppercase tracking-[0.34em] text-zinc-400">{gameData.playerId === 'GROUP' ? 'Crowd Warmup' : 'Warmup'}</div>
+                        <div className="mt-3 text-4xl md:text-5xl font-black text-cyan-200">
+                            {gameData.playerId === 'GROUP' ? 'Listen first, then answer together' : 'Listen first, then answer back'}
+                        </div>
+                        <div className="mt-3 text-lg text-zinc-300">
+                            Misses can replay the pattern, so keep going even if the first try is messy.
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="absolute inset-x-10 top-28 bottom-24 flex flex-col gap-6">
                 <div className="grid grid-cols-1 xl:grid-cols-[1.35fr,0.65fr] gap-4">

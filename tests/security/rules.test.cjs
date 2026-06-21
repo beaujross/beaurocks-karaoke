@@ -431,6 +431,66 @@ async function run() {
       await assertFails(db.doc(roomPath()).update({ activeMode: "karaoke_bracket" }));
     }],
 
+    ["firestore: public TV can report performance playback session progress", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomPath()).set({
+          hostUid: HOST_UID,
+          hostUids: [HOST_UID],
+          activeMode: "karaoke",
+          currentPerformanceSession: {
+            sessionId: "song_1_1000",
+            songId: "song_1",
+            startedAtMs: 1000,
+            playbackState: "starting",
+          },
+          currentPerformanceMeta: {
+            songId: "song_1",
+            durationSec: 0,
+            backingDurationSec: 0,
+            autoEndSafe: false,
+          },
+        });
+      });
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertSucceeds(db.doc(roomPath()).update({
+        "currentPerformanceSession.lastReportedAtMs": 12000,
+        "currentPerformanceSession.lastHeartbeatAtMs": 12000,
+        "currentPerformanceSession.playerReportedDurationSec": 205,
+        "currentPerformanceSession.playerPositionSec": 47,
+        "currentPerformanceSession.playbackState": "playing",
+        "currentPerformanceSession.playbackStartedAtMs": 12000,
+        "currentPerformanceMeta.durationSec": 205,
+        "currentPerformanceMeta.backingDurationSec": 205,
+        "currentPerformanceMeta.durationSource": "player_reported",
+        "currentPerformanceMeta.durationConfidence": "high",
+        "currentPerformanceMeta.autoEndSafe": true,
+      }));
+    }],
+
+    ["firestore: public TV cannot rewrite active performance session identity", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomPath()).set({
+          hostUid: HOST_UID,
+          hostUids: [HOST_UID],
+          activeMode: "karaoke",
+          currentPerformanceSession: {
+            sessionId: "song_1_1000",
+            songId: "song_1",
+            startedAtMs: 1000,
+            playbackState: "starting",
+          },
+        });
+      });
+      const db = anonymousContext(GUEST_UID).firestore();
+      await assertFails(db.doc(roomPath()).update({
+        "currentPerformanceSession.songId": "song_2",
+        "currentPerformanceSession.lastReportedAtMs": 12000,
+      }));
+    }],
+
+
     ["firestore: non-host cannot update non-whitelisted room key", async () => {
       const db = testEnv.authenticatedContext(GUEST_UID).firestore();
       await assertFails(db.doc(roomPath()).update({ tipPointRate: 999 }));
@@ -1166,6 +1226,89 @@ async function run() {
       const guestRef = guestStorage.ref(`room_uploads/${ROOM_CODE}/private.mp4`);
       await assertSucceeds(hostRef.getDownloadURL());
       await assertFails(guestRef.getDownloadURL());
+    }],
+
+    ["firestore: host can create account media asset for hosted room", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/host_media_assets/asset_1`).set({
+          ownerUid: HOST_UID,
+          roomCode: ROOM_CODE,
+          roomCodes: [ROOM_CODE],
+          libraryScope: "account",
+          title: "Walk-in music",
+          mediaUrl: "https://example.com/audio.mp3",
+          url: "https://example.com/audio.mp3",
+          mediaType: "audio",
+          storagePath: `host_media/${HOST_UID}/uploads/${ROOM_CODE}/audio.mp3`,
+        })
+      );
+    }],
+
+    ["firestore: non-owner cannot create account media asset", async () => {
+      const db = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertFails(
+        db.doc(`${ROOT}/host_media_assets/asset_2`).set({
+          ownerUid: HOST_UID,
+          roomCode: ROOM_CODE,
+          roomCodes: [ROOM_CODE],
+          libraryScope: "account",
+          title: "Intrude",
+          mediaUrl: "https://example.com/audio.mp3",
+          mediaType: "audio",
+        })
+      );
+    }],
+
+    ["firestore: room co-host can read shared account media but not delete it", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(roomPath()).set({ hostUid: HOST_UID, hostUids: [HOST_UID, OTHER_UID], activeMode: "karaoke" }, { merge: true });
+        await db.doc(`${ROOT}/host_media_assets/asset_3`).set({
+          ownerUid: HOST_UID,
+          roomCode: ROOM_CODE,
+          roomCodes: [ROOM_CODE],
+          libraryScope: "account",
+          title: "Shared scene",
+          mediaUrl: "https://example.com/scene.mp4",
+          mediaType: "video",
+        });
+      });
+      const db = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertSucceeds(db.doc(`${ROOT}/host_media_assets/asset_3`).get());
+      await assertFails(db.doc(`${ROOT}/host_media_assets/asset_3`).delete());
+    }],
+
+    ["firestore: host can create account media folder", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(
+        db.doc(`${ROOT}/host_media_folders/folder_1`).set({
+          ownerUid: HOST_UID,
+          title: "Bingo Night",
+          kind: "sfx",
+          createdAtMs: 1,
+        })
+      );
+    }],
+
+    ["storage: owner can upload account host media", async () => {
+      const storage = testEnv.authenticatedContext(HOST_UID).storage(BUCKET);
+      const audioRef = storage.ref(`host_media/${HOST_UID}/uploads/${ROOM_CODE}/clip.mp3`);
+      const imageRef = storage.ref(`host_media/${HOST_UID}/scenes/${ROOM_CODE}/slide.png`);
+      await assertSucceeds(audioRef.putString("abc", "raw", { contentType: "audio/mpeg" }));
+      await assertSucceeds(imageRef.putString("abc", "raw", { contentType: "image/png" }));
+    }],
+
+    ["storage: non-owner cannot access account host media", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const storage = context.storage(BUCKET);
+        const ref = storage.ref(`host_media/${HOST_UID}/uploads/${ROOM_CODE}/private.mp3`);
+        await ref.putString("abc", "raw", { contentType: "audio/mpeg" });
+      });
+      const otherStorage = testEnv.authenticatedContext(OTHER_UID).storage(BUCKET);
+      const otherRef = otherStorage.ref(`host_media/${HOST_UID}/uploads/${ROOM_CODE}/private.mp3`);
+      await assertFails(otherRef.getDownloadURL());
+      await assertFails(otherRef.putString("def", "raw", { contentType: "audio/mpeg" }));
     }],
 
     ["firestore: super admin email can update host libraries for another host room", async () => {

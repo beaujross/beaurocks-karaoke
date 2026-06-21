@@ -139,7 +139,7 @@ async function run() {
       assert.equal(result.ok, true);
       assert.equal(result.roomCode, ROOM_CODE);
       assert.equal(result.mediaType, "image");
-      assert.match(String(result.storagePath || ""), new RegExp(`^room_scene_media/${ROOM_CODE}/`));
+      assert.match(String(result.storagePath || ""), new RegExp(`^host_media/${HOST_UID}/scenes/${ROOM_CODE}/`));
       assert.match(String(result.url || ""), /alt=media&token=/);
 
       const [exists] = await bucket.file(result.storagePath).exists();

@@ -10,6 +10,7 @@ const useHostWorkspaceNavigation = ({
     normalizeHostWorkspaceTab,
     roomCodeInput = '',
     sectionToSettingsTab = {},
+    settingsTabToSection = {},
     setActiveWorkspaceSection,
     setActiveWorkspaceView,
     setSettingsNavOpen,
@@ -18,8 +19,28 @@ const useHostWorkspaceNavigation = ({
     setTab,
     tab = '',
 }) => {
+    const resolveWorkspaceSection = useCallback((sectionId = 'ops.room_setup', { forceAdmin = false } = {}) => {
+        const requested = String(sectionId || 'ops.room_setup').trim() || 'ops.room_setup';
+        const directSectionMeta = getSectionMeta(requested);
+        if (directSectionMeta) {
+            if (forceAdmin && directSectionMeta.hostTab && !sectionToSettingsTab[requested]) {
+                return hostWorkspaceSections.find((section) => section.view === directSectionMeta.view && !!sectionToSettingsTab[section.id])?.id || requested;
+            }
+            return requested;
+        }
+        if (settingsTabToSection[requested]) return settingsTabToSection[requested];
+        const defaultSectionId = getViewDefaultSection(requested);
+        if (defaultSectionId) {
+            if (forceAdmin && !sectionToSettingsTab[defaultSectionId]) {
+                return hostWorkspaceSections.find((section) => section.view === requested && !!sectionToSettingsTab[section.id])?.id || defaultSectionId;
+            }
+            return defaultSectionId;
+        }
+        return 'ops.room_setup';
+    }, [getSectionMeta, getViewDefaultSection, hostWorkspaceSections, sectionToSettingsTab, settingsTabToSection]);
+
     const routeToWorkspaceSection = useCallback((sectionId = 'ops.room_setup', { forceAdmin = false } = {}) => {
-        const targetSection = sectionId || 'ops.room_setup';
+        const targetSection = resolveWorkspaceSection(sectionId, { forceAdmin });
         const sectionMeta = getSectionMeta(targetSection);
         const viewId = sectionMeta?.view || 'ops';
         const mappedTab = sectionToSettingsTab[targetSection] || 'general';
@@ -36,6 +57,7 @@ const useHostWorkspaceNavigation = ({
         setShowSettings(true);
     }, [
         getSectionMeta,
+        resolveWorkspaceSection,
         sectionToSettingsTab,
         setActiveWorkspaceSection,
         setActiveWorkspaceView,
@@ -68,14 +90,7 @@ const useHostWorkspaceNavigation = ({
         const requestedView = String(viewId || 'ops').trim() || 'ops';
         const hasSettingsForView = adminWorkspaceViews.some((view) => view.id === requestedView);
         const nextView = hasSettingsForView ? requestedView : 'ops';
-        const defaultSectionId = getViewDefaultSection(nextView);
-        const sectionId = sectionToSettingsTab[defaultSectionId]
-            ? defaultSectionId
-            : (
-                hostWorkspaceSections.find((section) =>
-                    section.view === nextView && !!sectionToSettingsTab[section.id]
-                )?.id || 'ops.room_setup'
-            );
+        const sectionId = resolveWorkspaceSection(nextView, { forceAdmin: true });
         const mappedTab = sectionToSettingsTab[sectionId] || 'general';
         setActiveWorkspaceView(nextView);
         setActiveWorkspaceSection(sectionId);
@@ -84,8 +99,7 @@ const useHostWorkspaceNavigation = ({
         setShowSettings(true);
     }, [
         adminWorkspaceViews,
-        getViewDefaultSection,
-        hostWorkspaceSections,
+        resolveWorkspaceSection,
         sectionToSettingsTab,
         setActiveWorkspaceSection,
         setActiveWorkspaceView,

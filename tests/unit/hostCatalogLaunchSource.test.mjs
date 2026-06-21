@@ -149,8 +149,8 @@ test('host catalogue helper mode requires singer assignment before queueing', ()
   );
   assert.match(
     hostAppSource,
-    /duration: durationSec \|\| null,\s*durationSec: durationSec \|\| null,\s*mediaDurationSec: durationSec \|\| null,\s*backingDurationSec: durationSec \|\| null,\s*autoEndSafe: durationSec > 0,/,
-    'Helper YouTube queue writes should preserve duration in the auto-end-safe fields',
+    /duration: durationSec \|\| null,\s*durationSec: durationSec \|\| null,\s*mediaDurationSec: durationSec \|\| null,\s*backingDurationSec: durationSec \|\| null,\s*autoEndSafe: false,/,
+    'Helper YouTube queue writes should preserve duration without allowing metadata-only auto-end',
   );
   assert.match(
     hostAppSource,

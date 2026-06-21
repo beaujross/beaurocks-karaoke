@@ -18,6 +18,7 @@ export const getTrackDurationSecFromSearchResult = (result = {}, fallback = 180)
 };
 
 const PERFORMANCE_SESSION_HEARTBEAT_GRACE_MS = 15000;
+const NON_APPLE_STALE_PLAYBACK_FALLBACK_MS = 30000;
 const AUTHORITATIVE_PERFORMANCE_SESSION_SOURCES = new Set([
     'apple_music',
     'youtube',
@@ -46,6 +47,8 @@ export const getAutoEndSchedule = ({
     performanceSessionSourceType = '',
     performanceSessionLastHeartbeatAtMs = 0,
     performanceSessionEndedAtMs = 0,
+    performanceSessionPlayerReportedDurationSec = 0,
+    performanceSessionPlayerPositionSec = 0,
     capturedDurationSec = 0,
     currentDurationSec = 0,
     autoEndSafe = true,
@@ -76,7 +79,7 @@ export const getAutoEndSchedule = ({
     const startedAt = applePlaying
         ? Number(appleStartedAt || 0)
         : Number(videoStartTimestamp || 0);
-    const durationSec = applePlaying
+    const rawDurationSec = applePlaying
         ? Number(Math.max(
             Number(appleDurationSec || 0),
             Number(capturedDurationSec || 0),
@@ -87,14 +90,32 @@ export const getAutoEndSchedule = ({
             Number(currentDurationSec || 0)
         ) || 0);
 
-    if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
-    if (!Number.isFinite(durationSec) || durationSec < 20) return null;
-
-    const endAtMs = startedAt + ((durationSec + AUTO_END_POST_TRACK_BUFFER_SEC) * 1000);
-    const safeNow = Number(now || Date.now()) || Date.now();
     const normalizedSessionSourceType = String(performanceSessionSourceType || '').trim().toLowerCase();
     const hasAuthoritativeHeartbeat = AUTHORITATIVE_PERFORMANCE_SESSION_SOURCES.has(normalizedSessionSourceType)
         && Number(performanceSessionLastHeartbeatAtMs || 0) > 0;
+    const playerReportedDurationSec = Number(performanceSessionPlayerReportedDurationSec || 0);
+    const playerPositionSec = Number(performanceSessionPlayerPositionSec || 0);
+    const durationSec = applePlaying
+        ? rawDurationSec
+        : Math.max(
+            Number.isFinite(playerReportedDurationSec) ? playerReportedDurationSec : 0,
+            Number(rawDurationSec || 0)
+        );
+
+    const endAtMs = startedAt + ((durationSec + AUTO_END_POST_TRACK_BUFFER_SEC) * 1000);
+    const safeNow = Number(now || Date.now()) || Date.now();
+    if (!Number.isFinite(startedAt) || startedAt <= 0) return null;
+    if (!Number.isFinite(durationSec) || durationSec < 20) return null;
+    if (!applePlaying) {
+        const hasPlayerDuration = Number.isFinite(playerReportedDurationSec) && playerReportedDurationSec >= 20;
+        if (!hasAuthoritativeHeartbeat || !hasPlayerDuration) {
+            if (safeNow < endAtMs + NON_APPLE_STALE_PLAYBACK_FALLBACK_MS) return null;
+            return {
+                autoEndKey: normalizedCurrentId + ':' + startedAt + ':' + Math.round(durationSec) + ':safe_media_fallback',
+                delayMs: 0
+            };
+        }
+    }
     if (hasAuthoritativeHeartbeat && safeNow >= endAtMs) {
         const heartbeatAgeMs = Math.max(0, safeNow - Number(performanceSessionLastHeartbeatAtMs || 0));
         if (heartbeatAgeMs < PERFORMANCE_SESSION_HEARTBEAT_GRACE_MS) {
@@ -103,7 +124,17 @@ export const getAutoEndSchedule = ({
                 delayMs: Math.max(2000, PERFORMANCE_SESSION_HEARTBEAT_GRACE_MS - heartbeatAgeMs)
             };
         }
+        if (!applePlaying) {
+            const safePlayerPositionSec = Number.isFinite(playerPositionSec) ? playerPositionSec : 0;
+            if (
+                safePlayerPositionSec < Math.max(0, durationSec - 3)
+                && safeNow < endAtMs + NON_APPLE_STALE_PLAYBACK_FALLBACK_MS
+            ) {
+                return null;
+            }
+        }
     }
+    if (!applePlaying && safeNow < endAtMs) return null;
     const delayMs = Math.max(0, Math.round(endAtMs - safeNow));
     return {
         autoEndKey: `${normalizedCurrentId}:${startedAt}:${Math.round(durationSec)}`,

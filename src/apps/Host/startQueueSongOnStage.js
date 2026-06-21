@@ -141,7 +141,7 @@ export const startQueueSongOnStage = async ({
     : associatedBackingDurationSec > 0
       ? 'medium'
       : 'low';
-  const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0 || associatedBackingDurationSec > 0;
+  const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0;
   const stageDisplayFlags = {
     showLyricsTv: !!roomSnapshot?.showLyricsTv,
     showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
@@ -162,9 +162,9 @@ export const startQueueSongOnStage = async ({
     mediaUrl: songMediaUrl || '',
     startedAtMs: performanceStartedAtMs,
     playbackState: autoStartMedia ? 'starting' : 'idle',
-    playerReportedDurationSec: performanceDurationSec,
+    playerReportedDurationSec: useAppleBacking ? performanceDurationSec : 0,
     expectedDurationSec: performanceDurationSec,
-    lastHeartbeatAtMs: autoStartMedia ? performanceStartedAtMs : 0,
+    lastHeartbeatAtMs: useAppleBacking && autoStartMedia ? performanceStartedAtMs : 0,
     lastReportedAtMs: performanceStartedAtMs,
     completionReason: '',
     watchdogDeadlineMs: performanceStartedAtMs + ((performanceDurationSec + 90) * 1000),

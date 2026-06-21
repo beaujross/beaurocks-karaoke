@@ -33,7 +33,7 @@ const useHostNightSetupFlow = ({
     audienceFeatureAccess = {},
     nightSetupAutoPlayMedia = true,
     nightSetupChatOnTv = false,
-    nightSetupMarqueeEnabled = true,
+    nightSetupMarqueeEnabled = false,
     nightSetupPlanSnapshotRef,
     nightSetupPrimaryMode = 'karaoke',
     nightSetupPresetId = 'casual',
@@ -430,7 +430,9 @@ const useHostNightSetupFlow = ({
             showVisualizerTv: !!legacyPresetSettings.showVisualizerTv,
             showLyricsTv: !!legacyPresetSettings.showLyricsTv,
             showScoring: !!nightSetupShowScoring,
+            hypeMeterDisplayMode: legacyPresetSettings.hypeMeterDisplayMode || 'score_integrated',
             showFameLevel: !!legacyPresetSettings.showFameLevel,
+            hideNonEmbeddableYouTube: legacyPresetSettings.hideNonEmbeddableYouTube !== false,
             requestMode: normalizedLegacyRequestMode,
             allowSingerTrackSelect: normalizedLegacyRequestMode === legacyGuestBackingOptionalRequestMode,
             audienceBackingMode: deriveAudienceBackingMode({
@@ -444,7 +446,7 @@ const useHostNightSetupFlow = ({
                 allowSingerTrackSelect: legacyPresetSettings.allowSingerTrackSelect,
             }),
             marqueeEnabled: !!nightSetupMarqueeEnabled,
-            marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'always',
+            marqueeShowMode: legacyPresetSettings.marqueeShowMode || 'idle',
             chatShowOnTv: !!nightSetupChatOnTv,
             chatTvMode: legacyPresetSettings.chatTvMode || 'auto',
             bouncerMode: !!legacyPresetSettings.bouncerMode,
@@ -556,7 +558,7 @@ const useHostNightSetupFlow = ({
                 setAudienceBrandTheme(payload.audienceBrandTheme);
             }
             setMarqueeEnabled(!!payload.marqueeEnabled);
-            setMarqueeShowMode(payload.marqueeShowMode || 'always');
+            setMarqueeShowMode(payload.marqueeShowMode || 'idle');
             setChatShowOnTv(!!payload.chatShowOnTv);
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);

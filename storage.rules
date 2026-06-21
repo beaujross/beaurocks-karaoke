@@ -57,11 +57,22 @@ service firebase.storage {
         && firestore.exists(roomUserDocPath(roomCode, request.auth.uid));
     }
 
+    function isHostMediaOwner(ownerUid) {
+      return isAuthed() && (ownerUid == request.auth.uid || isSuperAdmin());
+    }
+
     function isAllowedMediaUpload() {
       return request.resource != null
         && request.resource.size <= 150 * 1024 * 1024
         && request.resource.contentType != null
         && request.resource.contentType.matches('^(audio|video)/.*$');
+    }
+
+    function isAllowedHostAccountMediaUpload() {
+      return request.resource != null
+        && request.resource.size <= 150 * 1024 * 1024
+        && request.resource.contentType != null
+        && request.resource.contentType.matches('^(audio|video|image)/.*$');
     }
 
     function isAllowedLogoUpload() {
@@ -82,6 +93,12 @@ service firebase.storage {
       allow read: if isRoomHost(roomCode);
       allow create, update: if isRoomHost(roomCode) && isAllowedMediaUpload();
       allow delete: if isRoomHost(roomCode);
+    }
+
+    match /host_media/{ownerUid}/{fileName=**} {
+      allow read: if isHostMediaOwner(ownerUid);
+      allow create, update: if isHostMediaOwner(ownerUid) && isAllowedHostAccountMediaUpload();
+      allow delete: if isHostMediaOwner(ownerUid);
     }
 
     match /room_branding/{roomCode}/{fileName=**} {

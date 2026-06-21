@@ -51,7 +51,7 @@ const buildProps = (overrides = {}) => ({
   scenePresets: [],
   onQueueScenePreset: noop,
   onAddScenePresetToRunOfShow: noop,
-  onAddQuickRunOfShowMoment: noop,
+  onAddQuickRunOfShowMoment: vi.fn(),
   runOfShowOpenSlots: [
     { id: 'slot-1', label: '#2 Performance Slot', sequence: 2 },
     { id: 'slot-2', label: '#3 Performance Slot', sequence: 3 },
@@ -88,22 +88,36 @@ const findByFeatureId = (tree, featureId) => {
   return match;
 };
 
-const renderAddToQueueFormBody = async (overrides = {}) => {
+const renderAddToQueueFormBody = async (overrides = {}, stateOverrides = {}) => {
   vi.resetModules();
+  vi.doMock('../../src/lib/gameRegistry.js', () => ({
+    GAMES_META: [
+      { id: 'bingo', name: 'Bingo', description: 'Mark live stage moments.', category: 'brain' },
+      { id: 'vocal_challenge', name: 'Vocal Challenge', description: 'Follow moving pitch targets.', category: 'voice' },
+      { id: 'trivia_pop', name: 'Trivia', description: 'Quick room trivia.', category: 'brain' },
+      { id: 'wyr', name: 'Would You Rather', description: 'Fast audience vote.', category: 'brain' },
+    ],
+  }));
   vi.doMock('react', async () => {
-    const actual = await vi.importActual('react');
-    const useState = (initialValue) => [typeof initialValue === 'function' ? initialValue() : initialValue, noop];
+    const useState = (initialValue) => {
+      const resolvedValue = typeof initialValue === 'function' ? initialValue() : initialValue;
+      if (stateOverrides.activeMomentType && resolvedValue === 'performance') {
+        return [stateOverrides.activeMomentType, noop];
+      }
+      return [resolvedValue, noop];
+    };
     const useEffect = noop;
+    const useMemo = (factory) => factory();
     const nextDefault = {
-      ...(actual.default ?? actual),
       useState,
       useEffect,
+      useMemo,
     };
     return {
-      ...actual,
       default: nextDefault,
       useState,
       useEffect,
+      useMemo,
     };
   });
   const { default: AddToQueueFormBody } = await import('../../src/apps/Host/components/AddToQueueFormBody.jsx');
@@ -166,4 +180,66 @@ test('AddToQueueFormBody routes manual performance buttons to the intended plan 
     slotId: 'slot-2',
     slotLabel: '#3 Performance Slot',
   });
+});
+
+test('AddToQueueFormBody lets hosts search game modes and queue them next or later in the show', async () => {
+  const { props, tree } = await renderAddToQueueFormBody({
+    searchQ: 'bingo',
+  }, {
+    activeMomentType: 'game',
+  });
+  const searchInput = findByFeatureId(tree, 'host-moment-search-input');
+  const queueNext = findByFeatureId(tree, 'moment-pack-queue-next-bingo');
+  const queueLater = findByFeatureId(tree, 'moment-pack-queue-later-bingo');
+  const nonMatch = findByFeatureId(tree, 'moment-pack-queue-next-vocal_challenge');
+
+  assert.ok(searchInput);
+  assert.equal(searchInput.props.placeholder, 'Search game modes');
+  assert.ok(queueNext);
+  assert.ok(queueLater);
+  assert.equal(nonMatch, null);
+
+  queueNext.props.onClick();
+  queueLater.props.onClick();
+
+  assert.equal(props.onAddQuickRunOfShowMoment.mock.calls.length, 2);
+  assert.deepEqual(props.onAddQuickRunOfShowMoment.mock.calls[0], ['bingo', { placement: 'next' }]);
+  assert.deepEqual(props.onAddQuickRunOfShowMoment.mock.calls[1], ['bingo', { placement: 'append' }]);
+});
+
+test('buildGameMomentQueueOptions creates spotlight singer queue payloads for voice games', async () => {
+  vi.resetModules();
+  const { buildGameMomentQueueOptions, GAME_QUEUE_ASSIGNMENT_MODES } = await import('../../src/apps/Host/components/AddToQueueFormBody.jsx');
+
+  assert.deepEqual(
+    buildGameMomentQueueOptions('vocal_challenge', {
+      placement: 'append',
+      assignmentMode: GAME_QUEUE_ASSIGNMENT_MODES.spotlight,
+      performer: { uid: 'u2', name: 'Taylor' },
+    }),
+    {
+      placement: 'append',
+      launchConfigOverrides: {
+        participantMode: 'selected',
+        participants: ['u2'],
+      },
+      itemOverrides: {
+        notes: 'Spotlight singer: Taylor.',
+      },
+      presentationOverrides: {
+        subhead: 'Taylor takes the mic on phone while the room watches.',
+      },
+    },
+  );
+
+  assert.deepEqual(
+    buildGameMomentQueueOptions('bingo', {
+      placement: 'next',
+      assignmentMode: GAME_QUEUE_ASSIGNMENT_MODES.spotlight,
+      performer: { uid: 'u2', name: 'Taylor' },
+    }),
+    {
+      placement: 'next',
+    },
+  );
 });

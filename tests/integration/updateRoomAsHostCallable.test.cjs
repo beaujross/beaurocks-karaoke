@@ -83,6 +83,11 @@ async function run() {
             customEmoji: "account_required",
           },
         },
+        searchSources: {
+          local: true,
+          youtube: true,
+          itunes: false,
+        },
         hostNightPresetConfig: {
           id: "festival_custom",
           label: "Festival Custom",
@@ -160,6 +165,7 @@ async function run() {
           "autoDj",
           "audienceShellVariant",
           "audienceFeatureAccess",
+          "searchSources",
           "hostNightPresetConfig",
           "lobbyOrbSkinUrl",
           "eventCredits",
@@ -177,6 +183,11 @@ async function run() {
       const snap = await roomRef.get();
       assert.equal(snap.get("activeMode"), "bingo");
       assert.equal(snap.get("autoDj"), true);
+      assert.deepEqual(snap.get("searchSources"), {
+        local: true,
+        youtube: true,
+        itunes: false,
+      });
       assert.equal(snap.get("audienceShellVariant"), "streamlined");
       assert.equal(snap.get("audienceFeatureAccess.features.customEmoji"), "account_required");
       assert.equal(snap.get("hostNightPresetConfig.id"), "festival_custom");
@@ -324,6 +335,7 @@ async function run() {
         performanceRecapBreakdownMs: 6000,
         performanceRecapLeaderboardMs: 8000,
         performanceRecapNextUpMs: 5000,
+        performanceIntroSec: 12,
       }));
 
       assert.equal(result.ok, true);
@@ -333,6 +345,7 @@ async function run() {
           "performanceRecapBreakdownMs",
           "performanceRecapLeaderboardMs",
           "performanceRecapNextUpMs",
+          "performanceIntroSec",
         ])
       );
 
@@ -340,6 +353,7 @@ async function run() {
       assert.equal(snap.get("performanceRecapBreakdownMs"), 6000);
       assert.equal(snap.get("performanceRecapLeaderboardMs"), 8000);
       assert.equal(snap.get("performanceRecapNextUpMs"), 5000);
+      assert.equal(snap.get("performanceIntroSec"), 12);
     }],
 
     ["host can update audience YouTube-only search mode", async () => {
@@ -721,6 +735,27 @@ async function run() {
     ["invalid value types are rejected", async () => {
       await expectHttpsError(
         () => updateRoomAsHost.run(requestFor(HOST_UID, { autoDj: "yes" })),
+        "invalid-argument"
+      );
+    }],
+
+    ["invalid search source payloads are rejected", async () => {
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          searchSources: {
+            local: true,
+            youtube: "yes",
+          },
+        })),
+        "invalid-argument"
+      );
+      await expectHttpsError(
+        () => updateRoomAsHost.run(requestFor(HOST_UID, {
+          searchSources: {
+            youtube: true,
+            spotify: true,
+          },
+        })),
         "invalid-argument"
       );
     }],

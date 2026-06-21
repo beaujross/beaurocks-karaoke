@@ -272,7 +272,7 @@ const buildSpotlightLaunchConfig = (modeId = '', option = null) => {
             participantMode: 'all',
             inputSource: 'ambient',
             durationSec: 60,
-            difficulty: 'normal',
+            difficulty: 'easy',
             guideTone: 'C4'
         };
     }
@@ -281,9 +281,9 @@ const buildSpotlightLaunchConfig = (modeId = '', option = null) => {
             question: detail || 'Crowd scale challenge',
             participantMode: 'all',
             durationSec: 60,
-            maxStrikes: 3,
+            maxStrikes: 6,
             rewardPerRound: 50,
-            difficulty: 'normal',
+            difficulty: 'easy',
             guideTone: 'C4'
         };
     }

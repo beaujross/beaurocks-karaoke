@@ -223,12 +223,9 @@ test('HostQueueTab renders the extracted queue runtime shell with a TV library l
   assert.match(markup, /data-feature-id="queue-workspace-top-chrome"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
-  assert.match(markup, /data-feature-id="panel-tv-moments"/);
-  assert.match(markup, /data-feature-id="panel-tv-moments-toggle"/);
+  assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
+  assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments-toggle"/);
   assert.match(markup, /Live Queue/);
-  assert.match(markup, /Media Library/);
-  assert.match(markup, /data-feature-id="open-tv-library"/);
-  assert.match(markup, /Open Media Library/);
 });
 
 test('HostQueueTab still renders the runtime shell when its UI is hidden', async () => {
@@ -242,9 +239,7 @@ test('HostQueueTab still renders the runtime shell when its UI is hidden', async
   assert.match(markup, /data-feature-id="host-panel-layout-controls"/);
   assert.match(markup, /data-feature-id="host-live-ops-panel"/);
   assert.match(markup, /data-feature-id="panel-queue-list"/);
-  assert.match(markup, /data-feature-id="panel-tv-moments"/);
-  assert.match(markup, /Media Library/);
-  assert.match(markup, /Open Media Library/);
+  assert.doesNotMatch(markup, /data-feature-id="panel-tv-moments"/);
 });
 
 test('HostQueueTab flags run-of-show attention in the queue-tab show handoff', async () => {
@@ -527,8 +522,8 @@ test('HostQueueTab protects the live lineup and exposes quick between-song inser
     onAddQuickRunOfShowMoment: noop,
   });
 
-  assert.match(markup, /Locked Next Performers/);
-  assert.match(markup, /Build The Bench/);
+  assert.match(markup, /Up Next/);
+  assert.match(markup, /Ready Queue/);
   assert.doesNotMatch(markup, /Lock the lineup|Lineup protected|Queue needs attention/);
   assert.doesNotMatch(markup, /Trivia Next/);
   assert.doesNotMatch(markup, /Winner Next/);

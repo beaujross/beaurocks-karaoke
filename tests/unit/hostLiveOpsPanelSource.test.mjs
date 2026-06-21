@@ -37,7 +37,7 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostAppSource, /performanceElapsedSec/);
   assert.match(hostAppSource, /toast\(`Co-host: \$\{freshSignal\.hostLabel\}/);
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-queue-live-controls'\)\)/);
-  assert.match(hostAppSource, /querySelector\('\[data-feature-id="deck-room-settings-menu-toggle"\]'\)/);
+  assert.match(hostAppSource, /querySelector\('\[data-feature-id="deck-queue-menu-toggle"\]'\)/);
   assert.match(hostAppSource, /window\.dispatchEvent\(new CustomEvent\('beaurocks:focus-host-inbox'\)\)/);
   assert.match(hostQueueTabSource, /import HostLiveOpsPanel from '\.\/HostLiveOpsPanel';/);
   assert.match(hostQueueTabSource, /import HostInboxPanel from '\.\/HostInboxPanel';/);
@@ -56,7 +56,10 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-queue-live-controls', focusQueueControls\)/);
   assert.match(hostQueueTabSource, /window\.addEventListener\('beaurocks:focus-host-inbox', focusInbox\)/);
   assert.match(hostQueueTabSource, /<HostInboxPanel[\s\S]*moderationQueueItems=\{moderationQueueItems\}/);
-  assert.match(hostQueueTabSource, /data-feature-id="open-tv-library"/);
+  assert.match(hostQueueTabSource, /onOpenSceneLibrary=\{\(\) => setSceneLibraryOpen\(true\)\}/);
+  assert.match(hostAppSource, /mediaLibraryOpenRequest: sceneLibraryOpenRequest/);
+  assert.match(hostQueueTabSource, /mediaLibraryOpenRequest = null/);
+  assert.match(hostQueueTabSource, /setMediaLibraryTab\(\['scenes', 'sfx', 'bg'\]\.includes\(requestedTab\) \? requestedTab : 'scenes'\)/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-layout-controls"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-expand-all"/);
   assert.match(hostQueueTabSource, /data-feature-id="host-panel-collapse-all"/);
@@ -69,7 +72,6 @@ test('host stage runtime keeps the stage primary and leaves the snapshot strip b
   assert.doesNotMatch(hostQueueTabSource, /data-feature-id="queue-live-controls"/);
   assert.doesNotMatch(hostQueueTabSource, /renderQuickAccessInline=\{!!queueQuickControls\}/);
   assert.doesNotMatch(hostQueueTabSource, /const compactQueueStatusChips = \[/);
-  assert.match(hostQueueTabSource, /featureId="panel-tv-moments-toggle"/);
   assert.match(hostQueueTabSource, /data-feature-id="tv-moments-library-modal"/);
   assert.match(hostQueueTabSource, /flex items-start justify-center overflow-y-auto overscroll-contain/);
   assert.match(hostQueueTabSource, /const \[sceneLibraryChromeOffset, setSceneLibraryChromeOffset\] = useState\(112\);/);
@@ -100,6 +102,8 @@ test('room snapshot panel keeps host runtime compact and hopper-aware', () => {
   assert.match(source, /Live Snapshot/);
   assert.match(source, /On Stage/);
   assert.match(source, /Next Singer/);
+  assert.match(source, /const nextSingerName = String\(nextQueueSong\?\.singerName/);
+  assert.match(source, /nextSingerSongDetail/);
   assert.match(source, /Planned/);
   assert.match(source, /artworkUrl=\{getRunOfShowSceneArtwork\(queuedMoment\)\}/);
   assert.match(source, /avatarEmoji=\{getRunOfShowSceneEmoji\(queuedMoment\)\}/);
@@ -136,4 +140,21 @@ test('stage now playing panel can suppress its old summary header when the live 
   assert.match(source, /showStageSummaryHeader = true/);
   assert.match(source, /\{showStageSummaryHeader \? \(/);
   assert.match(source, /Live Stage/);
+});
+
+
+test('host media library uses account-scoped collections with legacy room fallback', () => {
+  const hostAppSource = readFileSync(hostAppPath, 'utf8');
+  assert.ok(hostAppSource.includes("const HOST_MEDIA_ASSETS_COLLECTION = 'host_media_assets'"));
+  assert.ok(hostAppSource.includes("const HOST_MEDIA_SCENE_PRESETS_COLLECTION = 'host_media_scene_presets'"));
+  assert.ok(hostAppSource.includes("const LEGACY_ROOM_UPLOADS_COLLECTION = 'room_uploads'"));
+  assert.ok(hostAppSource.includes("where('ownerUid', '==', activeHostUid)"));
+  assert.ok(hostAppSource.includes("where('roomCode', '==', roomCode)"));
+  assert.ok(hostAppSource.includes('dedupeHostMediaDocs(latestAccountUploads, latestRoomAccountUploads, latestLegacyUploads)'));
+  assert.ok(hostAppSource.includes('host_media/${safeOwnerUid}/uploads/${roomCode}'));
+  assert.match(hostAppSource, /ownerUid: uid[\s\S]*libraryScope: 'account'[\s\S]*folderId: String\(options\?\.folderId/);
+  assert.ok(hostAppSource.includes("addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), payload)"));
+  assert.ok(hostAppSource.includes("addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), payload)"));
+  assert.ok(hostAppSource.includes('getHostMediaAssetCollectionName(item)'));
+  assert.ok(hostAppSource.includes('getHostScenePresetCollectionName(preset)'));
 });

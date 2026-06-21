@@ -24,8 +24,8 @@ test('live queue surface keeps the reorderable queue ahead of helper workflows',
     'Host queue tab should render the queue panel before Track Check helper content',
   );
 
-  const lockedQueueIndex = queueListPanelSource.indexOf('Locked Next Performers');
-  const benchQueueIndex = queueListPanelSource.indexOf('Build The Bench');
+  const lockedQueueIndex = queueListPanelSource.indexOf('Up Next');
+  const benchQueueIndex = queueListPanelSource.indexOf('Ready Queue');
   const awaitingApprovalIndex = queueListPanelSource.indexOf('Awaiting Approval');
   const inlineActionsIndex = queueSongCardSource.indexOf("selected ? 'Less' : 'More'");
   assert.notStrictEqual(lockedQueueIndex, -1, 'Queue list panel should still expose the protected live lineup');

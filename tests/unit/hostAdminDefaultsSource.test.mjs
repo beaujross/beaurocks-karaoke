@@ -4,6 +4,7 @@ import { test } from 'vitest';
 
 const hostAppSource = readFileSync('src/apps/Host/HostApp.jsx', 'utf8');
 const navConfigSource = readFileSync('src/apps/Host/workspace/navConfig.js', 'utf8');
+const workspaceNavigationSource = readFileSync('src/apps/Host/hooks/useHostWorkspaceNavigation.js', 'utf8');
 const getAdminSection = (startKey, nextKey) => {
   const startMarker = `{settingsTab === '${startKey}' && (`;
   const endMarker = `{settingsTab === '${nextKey}' && (`;
@@ -53,7 +54,8 @@ test('admin keeps preview, chat, and moderation controls in their canonical home
   const chatSection = getAdminSection('chat', 'live_effects');
 
   assert.match(generalSection, /Open Live Display Controls/);
-  assert.match(generalSection, /Audience and Public TV previews stay in the live Overlays menu/);
+  assert.match(generalSection, /Preview Surfaces/);
+  assert.match(generalSection, /Open TV/);
   assert.doesNotMatch(generalSection, /Audience Preview On|Public TV Preview On/);
   assert.match(generalSection, /Open Main Inbox/);
   assert.match(generalSection, /Moderation Policy/);
@@ -72,13 +74,28 @@ test('admin keeps preview, chat, and moderation controls in their canonical home
 test('admin navigation keeps core config sections wired into the workspace registry', () => {
   assert.match(
     navConfigSource,
-    /defaultSection: 'audience\.roster'/,
-    'Audience workspace should default to the primary roster surface instead of dropping hosts into chat',
+    /\{ id: 'audience', label: 'Audience'[\s\S]*defaultSection: 'audience\.roster'/,
+    'The host Audience surface should keep roster as its explicit host-tab handoff',
   );
   assert.match(
     navConfigSource,
     /\{ id: 'audience\.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' \}/,
     'Audience chat should exist in the workspace section registry',
+  );
+  assert.match(
+    hostAppSource,
+    /settingsTabToSection: SETTINGS_TAB_TO_SECTION/,
+    'Workspace navigation should be able to resolve settings tab keys into admin sections',
+  );
+  assert.match(
+    workspaceNavigationSource,
+    /forceAdmin && directSectionMeta\.hostTab && !sectionToSettingsTab\[requested\][\s\S]*hostWorkspaceSections\.find\(\(section\) => section\.view === directSectionMeta\.view/,
+    'Forced admin navigation should turn host-tab handoffs like audience.roster into settings sections',
+  );
+  assert.match(
+    workspaceNavigationSource,
+    /if \(settingsTabToSection\[requested\]\) return settingsTabToSection\[requested\];/,
+    'Workspace navigation should accept settings tab keys such as chat or moderation directly',
   );
   assert.match(
     hostAppSource,
@@ -137,8 +154,8 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /tab === 'admin' && \(\s*<div className="ml-auto flex items-center gap-2 text-xs text-zinc-300">[\s\S]*data-feature-id="admin-host-panel-mode-toggle"/,
-    'Admin should keep the host panel mode toggle visible across the admin workspace, not only in the full-admin substate',
+    /data-feature-id="admin-audience-host-layout-card"[\s\S]*data-feature-id="admin-host-panel-mode-toggle"/,
+    'Admin should keep the host panel mode toggle visible with the audience and host layout controls',
   );
   assert.match(
     hostAppSource,

@@ -14,6 +14,7 @@ test('AAHF preset carries streamlined audience defaults', () => {
     assert.equal(config.id, 'aahf');
     assert.equal(config.settings.audienceShellVariant, 'streamlined');
     assert.equal(config.settings.marqueeEnabled, false);
+    assert.equal(config.settings.hideNonEmbeddableYouTube, true);
     assert.equal(config.settings.popTriviaEnabled, false);
     assert.equal(config.settings.audienceFeatureAccess.features.customEmoji, 'open');
     assert.equal(config.settings.audienceFeatureAccess.features.premiumReactions, 'open');
@@ -46,6 +47,7 @@ test('custom preset normalization preserves queue and request policy fields', ()
     assert.equal(preset.basePresetId, 'competition');
     assert.equal(preset.settings.requestMode, 'guest_backing_optional');
     assert.equal(preset.settings.allowSingerTrackSelect, true);
+    assert.equal(preset.settings.hideNonEmbeddableYouTube, true);
     assert.equal(preset.settings.queueSettings.limitCount, 3);
     assert.equal(preset.settings.queueSettings.rotation, 'fifo');
     assert.equal(preset.settings.queueSettings.firstTimeBoost, false);

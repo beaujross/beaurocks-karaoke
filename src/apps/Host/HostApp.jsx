@@ -88,6 +88,7 @@ import { HOST_APP_CONFIG } from '../../lib/uiConstants';
 import { CAPABILITY_KEYS, getMissingCapabilityLabel } from '../../billing/capabilities';
 import { POINTS_PACKS } from '../../billing/catalog';
 import { getHostSubscriptionPlan, getSubscriptionPlanLabel } from '../../billing/hostPlans';
+
 import { buildSongKey, ensureSong, ensureTrack, getTrackDiagnostics, resolveCanonicalTrackIdentity } from '../../lib/songCatalog';
 import { buildRoomRecapSummary, buildRoomRecapUrl } from '../../lib/roomRecap';
 import {
@@ -340,6 +341,63 @@ import {
     buildPurchaseCelebrationReplay,
     MONEYBAGS_BADGE_LABEL,
 } from '../../lib/roomMonetization';
+
+
+const HYPE_METER_DISPLAY_MODES = Object.freeze({
+    scoreIntegrated: 'score_integrated',
+    topBar: 'top_bar',
+    both: 'both',
+    hidden: 'hidden'
+});
+
+const normalizeHypeMeterDisplayMode = (value, fallback = HYPE_METER_DISPLAY_MODES.scoreIntegrated) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (raw === 'score' || raw === 'integrated' || raw === 'score_integrated') return HYPE_METER_DISPLAY_MODES.scoreIntegrated;
+    if (raw === 'bar' || raw === 'top' || raw === 'top_bar') return HYPE_METER_DISPLAY_MODES.topBar;
+    if (raw === 'both') return HYPE_METER_DISPLAY_MODES.both;
+    if (raw === 'off' || raw === 'none' || raw === 'hidden') return HYPE_METER_DISPLAY_MODES.hidden;
+    return fallback;
+};
+
+const DEFAULT_SEARCH_SOURCES = Object.freeze({ local: true, youtube: true, itunes: true });
+
+const HOST_MEDIA_ASSETS_COLLECTION = 'host_media_assets';
+const HOST_MEDIA_SCENE_PRESETS_COLLECTION = 'host_media_scene_presets';
+const LEGACY_ROOM_UPLOADS_COLLECTION = 'room_uploads';
+const LEGACY_ROOM_SCENE_PRESETS_COLLECTION = 'room_scene_presets';
+
+const normalizeHostMediaCollectionName = (value = '', fallback = HOST_MEDIA_ASSETS_COLLECTION) => {
+    const token = String(value || '').trim();
+    return token === LEGACY_ROOM_UPLOADS_COLLECTION
+        || token === LEGACY_ROOM_SCENE_PRESETS_COLLECTION
+        || token === HOST_MEDIA_ASSETS_COLLECTION
+        || token === HOST_MEDIA_SCENE_PRESETS_COLLECTION
+        ? token
+        : fallback;
+};
+
+const getHostMediaAssetCollectionName = (item = {}) => normalizeHostMediaCollectionName(item?._collection || item?.collectionName, HOST_MEDIA_ASSETS_COLLECTION);
+const getHostScenePresetCollectionName = (preset = {}) => normalizeHostMediaCollectionName(preset?._collection || preset?.collectionName, HOST_MEDIA_SCENE_PRESETS_COLLECTION);
+
+const dedupeHostMediaDocs = (...groups) => {
+    const seen = new Set();
+    const merged = [];
+    groups.flat().filter(Boolean).forEach((item) => {
+        const key = String(item?.storagePath || item?.mediaUrl || item?.url || item?.id || '').trim();
+        const collectionKey = String(item?._collection || item?.collectionName || '').trim();
+        const compositeKey = key || collectionKey + ':' + merged.length;
+        if (seen.has(compositeKey)) return;
+        seen.add(compositeKey);
+        merged.push(item);
+    });
+    return merged;
+};
+
+const normalizeHostSearchSources = (value = {}, fallback = DEFAULT_SEARCH_SOURCES) => ({
+    local: value?.local !== undefined ? value.local !== false : fallback.local !== false,
+    youtube: value?.youtube !== undefined ? value.youtube !== false : fallback.youtube !== false,
+    itunes: value?.itunes !== undefined ? value.itunes !== false : fallback.itunes !== false,
+});
 
 const HostQueueTab = React.lazy(() => import('./components/HostQueueTab'));
 const HostLogoManager = React.lazy(() => import('./components/HostLogoManager'));
@@ -1059,7 +1117,7 @@ const startQueueSongOnStage = async ({
         : associatedBackingDurationSec > 0
             ? 'medium'
             : 'low';
-    const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0 || associatedBackingDurationSec > 0;
+    const autoEndSafe = useAppleBacking || resolvedBackingDurationSec > 0;
     const stageDisplayFlags = {
         showLyricsTv: !!roomSnapshot?.showLyricsTv,
         showVisualizerTv: !!roomSnapshot?.showVisualizerTv,
@@ -1080,9 +1138,9 @@ const startQueueSongOnStage = async ({
         mediaUrl: songMediaUrl || '',
         startedAtMs: performanceStartedAtMs,
         playbackState: autoStartMedia ? 'starting' : 'idle',
-        playerReportedDurationSec: performanceDurationSec,
+        playerReportedDurationSec: useAppleBacking ? performanceDurationSec : 0,
         expectedDurationSec: performanceDurationSec,
-        lastHeartbeatAtMs: autoStartMedia ? performanceStartedAtMs : 0,
+        lastHeartbeatAtMs: useAppleBacking && autoStartMedia ? performanceStartedAtMs : 0,
         lastReportedAtMs: performanceStartedAtMs,
         completionReason: '',
         watchdogDeadlineMs: performanceStartedAtMs + ((performanceDurationSec + 90) * 1000)
@@ -1210,7 +1268,7 @@ const buildRunOfShowQueueAssignmentPatch = (song = {}, item = {}) => {
         : youtubeId
             ? 'youtube'
             : (mediaUrl || trackId ? 'canonical_default' : String(item?.backingPlan?.sourceType || 'canonical_default').trim().toLowerCase() || 'canonical_default');
-    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' Â· ') || 'Queued performance';
+    const label = [song?.songTitle, song?.artist].map((value) => String(value || '').trim()).filter(Boolean).join(' · ') || 'Queued performance';
     const durationSec = getAssociatedBackingDurationSec(song) || normalizeDurationSec(song?.duration);
     const shouldSyncPlannedDuration = durationSec > 0 && String(item?.plannedDurationSource || '').trim().toLowerCase() !== 'manual';
     return {
@@ -1379,7 +1437,7 @@ const STYLES = {
     btnSecondary: "bg-zinc-950/88 border border-zinc-700 text-zinc-200 bg-clip-padding overflow-hidden hover:border-cyan-300/28 hover:text-white hover:bg-zinc-900/92",
     btnStandardBrandHover: "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-[#EC4899]/60 hover:text-white hover:bg-zinc-800 transition-all",
     panel: "bg-zinc-900/95 border border-white/10 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden",
-    input: "bg-zinc-950 border border-zinc-700 rounded-lg p-2 text-sm text-white focus:border-[#00C4D9] outline-none transition-colors w-full placeholder-zinc-500",
+    input: "min-h-[44px] bg-zinc-950 border border-zinc-600 rounded-xl px-3 py-2.5 text-[15px] leading-5 text-white focus:border-[#00C4D9] focus:ring-2 focus:ring-[#00C4D9]/20 outline-none transition-colors w-full placeholder-zinc-500",
     header: "text-xs font-bold text-[#00C4D9] mb-2 tracking-widest uppercase border-b border-white/5 pb-1 flex justify-between items-center"
 };
 
@@ -1466,21 +1524,15 @@ const NIGHT_SETUP_PRIMARY_MODES = [
 const NIGHT_SETUP_STEPS = [
     {
         id: 0,
-        label: 'Warmup',
-        subtitle: 'Pick your night type',
-        sections: ['Section 1: Night Type', 'Section 2: Preset Feature Bundle']
+        label: 'Defaults',
+        subtitle: 'Choose room defaults',
+        sections: ['Section 1: Room Defaults', 'Section 2: Live Defaults']
     },
     {
         id: 1,
-        label: 'Rules',
-        subtitle: 'Set queue behavior',
-        sections: ['Section 1: Request Limits', 'Section 2: Rotation + Fairness']
-    },
-    {
-        id: 2,
-        label: 'Main Event',
-        subtitle: 'Choose room format',
-        sections: ['Section 1: Room Format', 'Section 2: Live Toggles']
+        label: 'Queue',
+        subtitle: 'Set queue and live defaults',
+        sections: ['Section 1: Request Limits', 'Section 2: Live Defaults']
     }
 ];
 
@@ -2639,11 +2691,10 @@ const IncomingModerationQueuePanel = ({
                                 <img
                                     src={item.image}
                                     alt={item.title}
-                                    className={`w-20 h-20 object-cover bg-zinc-950 border border-white/10 ${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'rounded-full ring-2 ring-cyan-300/35 ring-offset-2 ring-offset-zinc-950' : 'rounded-lg'}`}
-                                    style={(item.type === 'crowd_selfie' || item.type === 'selfie') ? { objectPosition: '50% 28%' } : undefined}
+                                    className={`${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'h-28 w-24 sm:h-32 sm:w-28 object-contain rounded-xl ring-2 ring-cyan-300/35 ring-offset-2 ring-offset-zinc-950' : 'w-20 h-20 object-cover rounded-lg'} bg-zinc-950 border border-white/10`}
                                 />
                             ) : (
-                                <div className={`w-20 h-20 bg-zinc-950 border border-white/10 flex items-center justify-center text-zinc-500 ${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'rounded-full ring-2 ring-cyan-300/20 ring-offset-2 ring-offset-zinc-950' : 'rounded-lg'}`}>
+                                <div className={`${(item.type === 'crowd_selfie' || item.type === 'selfie') ? 'h-28 w-24 sm:h-32 sm:w-28 rounded-xl ring-2 ring-cyan-300/20 ring-offset-2 ring-offset-zinc-950' : 'w-20 h-20 rounded-lg'} bg-zinc-950 border border-white/10 flex items-center justify-center text-zinc-500`}>
                                     <i className={`fa-solid ${item.type === 'bingo' ? 'fa-table-cells-large' : 'fa-image'}`}></i>
                                 </div>
                             )}
@@ -4786,6 +4837,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [scenePresetUploading, setScenePresetUploading] = useState(false);
     const [scenePresetUploadProgress, setScenePresetUploadProgress] = useState(0);
     const [sceneLibraryModalOpen, setSceneLibraryModalOpen] = useState(false);
+    const [sceneLibraryOpenRequest, setSceneLibraryOpenRequest] = useState(null);
     const [scenePresetsHydrated, setScenePresetsHydrated] = useState(false);
     const [scenePresetSeedPending, setScenePresetSeedPending] = useState(false);
     const [commandPaletteRequestToken, setCommandPaletteRequestToken] = useState(0);
@@ -4840,7 +4892,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [top100ArtLoading, setTop100ArtLoading] = useState({});
     const [localLibrary, setLocalLibrary] = useState(() => LOCAL_LIBRARY);
     const [ytIndex, setYtIndex] = useState([]);
-    const [searchSources, setSearchSources] = useState({ local: true, youtube: true, itunes: true });
+    const [searchSources, setSearchSources] = useState(DEFAULT_SEARCH_SOURCES);
     const [hideNonEmbeddableYouTube, setHideNonEmbeddableYouTube] = useState(true);
     const [ytPlaylistUrl, setYtPlaylistUrl] = useState('');
     const [qaYtPlaylistUrl, setQaYtPlaylistUrl] = useState(() => {
@@ -5308,12 +5360,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [marqueeDurationSec, setMarqueeDurationSec] = useState(12);
     const [marqueeIntervalSec, setMarqueeIntervalSec] = useState(20);
     const [marqueeItems, setMarqueeItems] = useState([]);
-    const [marqueeShowMode, setMarqueeShowMode] = useState('always');
+    const [marqueeShowMode, setMarqueeShowMode] = useState('idle');
     const [queueLimitMode, setQueueLimitMode] = useState('none');
     const [queueLimitCount, setQueueLimitCount] = useState(0);
     const [queueRotation, setQueueRotation] = useState('round_robin');
     const [queueFirstTimeBoost, setQueueFirstTimeBoost] = useState(true);
     const [showScoring, setShowScoring] = useState(true);
+    const [hypeMeterDisplayMode, setHypeMeterDisplayMode] = useState(HYPE_METER_DISPLAY_MODES.scoreIntegrated);
     const [showFameLevel, setShowFameLevel] = useState(true);
     const [requestMode, setRequestMode] = useState(REQUEST_MODES.canonicalOpen);
     const [allowSingerTrackSelect, setAllowSingerTrackSelect] = useState(false);
@@ -5593,7 +5646,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [nightSetupShowScoring, setNightSetupShowScoring] = useState(true);
     const [nightSetupAutoPlayMedia, setNightSetupAutoPlayMedia] = useState(true);
     const [nightSetupChatOnTv, setNightSetupChatOnTv] = useState(false);
-    const [nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled] = useState(true);
+    const [nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled] = useState(false);
     const [nightSetupRecommendation, setNightSetupRecommendation] = useState({ presetId: 'casual', reason: '' });
     const [nightSetupPlanPulse, setNightSetupPlanPulse] = useState({
         night: 0,
@@ -6471,7 +6524,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 headline: item.presentationPlan?.headline || item.title || getRunOfShowItemLabel(item.type),
                 subhead: item.presentationPlan?.subhead || item.notes || '',
                 summary: item.type === 'performance'
-                    ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' Â· ')
+                    ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
                     : '',
                 modeKey: item?.modeLaunchPlan?.modeKey || '',
                 takeoverScene: item.presentationPlan?.takeoverScene || item.type,
@@ -6641,6 +6694,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showLyricsSinger: !!roomSnapshot?.showLyricsSinger
         };
         await stopAppleMusic?.();
+        const introDurationSec = Math.max(
+            3,
+            Math.min(30, Math.round(Number(roomRef.current?.performanceIntroSec ?? RUN_OF_SHOW_PERFORMANCE_INTRO_SEC) || RUN_OF_SHOW_PERFORMANCE_INTRO_SEC))
+        );
+        const performerAvatar = String(queueSong?.avatar || queueSong?.emoji || item?.assignedPerformerAvatar || item?.performerAvatar || '').trim();
         await updateRoom({
             activeMode: 'karaoke',
             activeScreen: 'stage',
@@ -6650,11 +6708,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 type: 'performance',
                 title: item?.title || queueSong.songTitle || 'Performance Slot',
                 headline: queueSong.singerName || 'Next Performer',
-                subhead: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' Â· ') || 'Mic change in progress',
+                subhead: [queueSong.songTitle, queueSong.artist].filter(Boolean).join(' · ') || 'Mic change in progress',
                 summary: 'Mic transition in progress',
+                performerName: queueSong.singerName || item?.assignedPerformerName || 'Next Performer',
+                performerAvatar,
+                singerName: queueSong.singerName || item?.assignedPerformerName || 'Next Performer',
+                singerAvatar: performerAvatar,
+                reactionConfig: { mode: 'free_clap' },
                 takeoverScene: 'performance_intro',
                 accentTheme: item?.presentationPlan?.accentTheme || 'pink',
-                durationSec: RUN_OF_SHOW_PERFORMANCE_INTRO_SEC,
+                durationSec: introDurationSec,
                 startedAtMs
             },
             mediaUrl: '',
@@ -6760,11 +6823,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .finally(() => {
                     clearRunOfShowPerformanceIntroTimer();
                 });
-        }, RUN_OF_SHOW_PERFORMANCE_INTRO_SEC * 1000);
+        }, introDurationSec * 1000);
         return {
             queueDocId,
             durationSec: performanceDurationSec,
-            introDurationSec: RUN_OF_SHOW_PERFORMANCE_INTRO_SEC
+            introDurationSec
         };
     }, [clearRunOfShowPerformanceIntroTimer, isAudioUrl, playAppleMusicTrack, resolveHostDurationForUrl, roomCode, stopAppleMusic, updateRoom]);
     const buildRunOfShowCompletionRoomUpdates = useCallback((item = {}, completedAtMs = nowMs()) => {
@@ -6803,7 +6866,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         headline: item?.presentationPlan?.headline || item?.title || getRunOfShowItemLabel(item?.type || ''),
         subhead: item?.presentationPlan?.subhead || item?.modeLaunchPlan?.launchConfig?.question || item?.notes || '',
         summary: item?.type === 'performance'
-            ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' Â· ')
+            ? [item?.assignedPerformerName, item?.songTitle, item?.artistName].filter(Boolean).join(' · ')
             : '',
         modeKey: item?.modeLaunchPlan?.modeKey || '',
         options: parseRunOfShowOptions(item?.modeLaunchPlan?.launchConfig || {}),
@@ -6990,7 +7053,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             lastPresentedRoomCode: roomCode,
             presentedCount: nextPresentedCount
         };
-        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', matchedPreset.id), patch).catch((error) => {
+        await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostScenePresetCollectionName(matchedPreset), matchedPreset.id), patch).catch((error) => {
             hostLogger.warn('Could not record scene preset presentation history', error);
         });
         setScenePresets((current) => (Array.isArray(current) ? current : []).map((preset) => (
@@ -7242,6 +7305,58 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     }, [getCurrentRunOfShowDirector, persistRunOfShowDirector]);
     const addQuickRunOfShowMoment = useCallback(async (packId = '', options = {}) => {
         const safePackId = String(packId || '').trim().toLowerCase();
+        const mergeQuickMomentOverrides = (baseOverrides = {}) => {
+            const safeBaseOverrides = baseOverrides && typeof baseOverrides === 'object'
+                ? baseOverrides
+                : {};
+            const launchConfigOverrides = options?.launchConfigOverrides && typeof options.launchConfigOverrides === 'object'
+                ? options.launchConfigOverrides
+                : null;
+            const presentationOverrides = options?.presentationOverrides && typeof options.presentationOverrides === 'object'
+                ? options.presentationOverrides
+                : null;
+            const itemOverrides = options?.itemOverrides && typeof options.itemOverrides === 'object'
+                ? options.itemOverrides
+                : null;
+            const baseModeLaunchPlan = safeBaseOverrides.modeLaunchPlan && typeof safeBaseOverrides.modeLaunchPlan === 'object'
+                ? safeBaseOverrides.modeLaunchPlan
+                : null;
+            const itemModeLaunchPlan = itemOverrides?.modeLaunchPlan && typeof itemOverrides.modeLaunchPlan === 'object'
+                ? itemOverrides.modeLaunchPlan
+                : null;
+            const nextModeLaunchPlan = baseModeLaunchPlan || itemModeLaunchPlan || launchConfigOverrides
+                ? {
+                    ...(baseModeLaunchPlan || {}),
+                    ...(itemModeLaunchPlan || {}),
+                    launchConfig: {
+                        ...((baseModeLaunchPlan?.launchConfig && typeof baseModeLaunchPlan.launchConfig === 'object')
+                            ? baseModeLaunchPlan.launchConfig
+                            : {}),
+                        ...(launchConfigOverrides || {}),
+                        ...((itemModeLaunchPlan?.launchConfig && typeof itemModeLaunchPlan.launchConfig === 'object')
+                            ? itemModeLaunchPlan.launchConfig
+                            : {}),
+                    }
+                }
+                : undefined;
+            const nextPresentationPlan = safeBaseOverrides.presentationPlan || itemOverrides?.presentationPlan || presentationOverrides
+                ? {
+                    ...((safeBaseOverrides.presentationPlan && typeof safeBaseOverrides.presentationPlan === 'object')
+                        ? safeBaseOverrides.presentationPlan
+                        : {}),
+                    ...(presentationOverrides || {}),
+                    ...((itemOverrides?.presentationPlan && typeof itemOverrides.presentationPlan === 'object')
+                        ? itemOverrides.presentationPlan
+                        : {}),
+                }
+                : undefined;
+            return {
+                ...safeBaseOverrides,
+                ...(itemOverrides || {}),
+                ...(nextModeLaunchPlan ? { modeLaunchPlan: nextModeLaunchPlan } : {}),
+                ...(nextPresentationPlan ? { presentationPlan: nextPresentationPlan } : {}),
+            };
+        };
         const packs = {
             host_update: {
                 type: 'announcement',
@@ -7518,7 +7633,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         participantMode: 'all',
                         inputSource: 'ambient',
                         durationSec: 60,
-                        difficulty: 'normal',
+                        difficulty: 'easy',
                         guideTone: 'C4'
                     };
                 }
@@ -7527,9 +7642,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         question: game?.description || game?.name || 'Crowd scale challenge',
                         participantMode: 'all',
                         durationSec: 60,
-                        maxStrikes: 3,
+                        maxStrikes: 6,
                         rewardPerRound: 50,
-                        difficulty: 'normal',
+                        difficulty: 'easy',
                         guideTone: 'C4'
                     };
                 }
@@ -7569,7 +7684,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const pack = packs[safePackId] || buildGameBreakPack(safePackId);
         if (!pack) return null;
         const placement = String(options?.placement || '').trim().toLowerCase() === 'append' ? 'append' : 'next';
-        const persistedDirector = await addRunOfShowItem(pack.type, pack.overrides, {
+        const persistedDirector = await addRunOfShowItem(pack.type, mergeQuickMomentOverrides(pack.overrides), {
             placement,
             activateShow: true
         });
@@ -7820,7 +7935,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         syncRunOfShowTakeoverSoundtrack,
         updateRoom
     ]);
-    const useScenePresetInRunOfShow = useCallback(async (preset = {}) => {
+    const addScenePresetToRunOfShow = useCallback(async (preset = {}) => {
         const director = getCurrentRunOfShowDirector();
         const items = Array.isArray(director?.items) ? director.items : [];
         const mediaType = getRoomMediaType(preset);
@@ -7883,7 +7998,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         trackHostOperatorEvent,
         toast
     ]);
-    const applyScenePresetToRunOfShow = useScenePresetInRunOfShow;
+    const applyScenePresetToRunOfShow = addScenePresetToRunOfShow;
     const runOfShowAssignableSlots = useMemo(
         () => (Array.isArray(runOfShowDirector?.items) ? runOfShowDirector.items : [])
             .filter((item) => item?.type === 'performance')
@@ -7897,7 +8012,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ].filter(Boolean);
                 return {
                     id: item.id,
-                    label: parts.join(' Â· '),
+                    label: parts.join(' · '),
                     status: String(item?.status || '').trim().toLowerCase(),
                     queueLinkState: String(item?.queueLinkState || '').trim().toLowerCase(),
                     assignedPerformerName: String(item?.assignedPerformerName || '').trim(),
@@ -9494,6 +9609,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (room?.showScoring !== undefined && room?.showScoring !== null) {
             setShowScoring(!!room.showScoring);
         }
+        setHypeMeterDisplayMode(normalizeHypeMeterDisplayMode(room?.hypeMeterDisplayMode));
         if (room?.showFameLevel !== undefined && room?.showFameLevel !== null) {
             setShowFameLevel(!!room.showFameLevel);
         }
@@ -9558,16 +9674,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const activePreset = roomPresetConfig
             || hostNightPresets[room?.hostNightPreset]
             || null;
-        if (activePreset?.searchSources) {
-            setSearchSources(activePreset.searchSources);
-        }
+        const presetSearchSources = activePreset?.searchSources || DEFAULT_SEARCH_SOURCES;
+        const roomSearchSources = room?.searchSources && typeof room.searchSources === 'object'
+            ? normalizeHostSearchSources(room.searchSources, presetSearchSources)
+            : normalizeHostSearchSources(presetSearchSources, DEFAULT_SEARCH_SOURCES);
+        setSearchSources(roomSearchSources);
         if (room?.bingoAudienceReopenEnabled !== undefined && room?.bingoAudienceReopenEnabled !== null) {
             setAudienceBingoReopenEnabled(room.bingoAudienceReopenEnabled !== false);
         }
         if (room?.popTriviaEnabled !== undefined && room?.popTriviaEnabled !== null) {
             setPopTriviaEnabled(room.popTriviaEnabled === true);
         }
-    }, [room, room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.hideNonEmbeddableYouTube, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.hostNightPresetConfig, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, roomPresetConfig, hostNightPresets]);
+    }, [room, room?.tipUrl, room?.tipQrUrl, room?.tipCrates, room?.hostName, room?.logoUrl, room?.lobbyOrbSkinUrl, room?.autoDj, room?.autoPlayMedia, room?.autoDjDelaySec, room?.autoEndOnTrackFinish, room?.autoBonusEnabled, room?.autoBonusPoints, room?.readyCheckDurationSec, room?.readyCheckRewardPoints, room?.missionControl?.party, room?.autoBgFadeOutMs, room?.autoBgFadeInMs, room?.autoBgMixDuringSong, room?.queueSettings, room?.showScoring, room?.hypeMeterDisplayMode, room?.showFameLevel, room?.requestMode, room?.allowSingerTrackSelect, room?.audienceBackingMode, room?.unknownBackingPolicy, room?.hideNonEmbeddableYouTube, room?.audienceShellVariant, room?.programMode, room?.runOfShowEnabled, room?.runOfShowDirector, room?.runOfShowPolicy, room?.runOfShowRoles, room?.runOfShowTemplateMeta, room?.hostNightPreset, room?.hostNightPresetConfig, room?.searchSources, room?.bingoAudienceReopenEnabled, room?.popTriviaEnabled, roomPresetConfig, hostNightPresets]);
     useEffect(() => {
         if (isMarketingDemoFixture) return () => {};
         if (!roomCode || !isRunOfShowRoom) {
@@ -10232,35 +10350,78 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 .sort((a, b) => toMs(b?.timestamp) - toMs(a?.timestamp));
              setActivities(items);
         });
-        const unsubUploads = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), where('roomCode', '==', roomCode)),
+        const activeHostUid = String(auth.currentUser?.uid || uid || '').trim();
+        let latestLegacyUploads = [];
+        let latestAccountUploads = [];
+        let latestRoomAccountUploads = [];
+        const applyMediaUploads = () => {
+            const items = dedupeHostMediaDocs(latestAccountUploads, latestRoomAccountUploads, latestLegacyUploads);
+            const total = items.reduce((sum, item) => sum + (Number(item.size || 0) || 0), 0);
+            setRoomUploadBytes(total);
+            setLocalLibrary(prev => {
+                const localOnly = prev.filter(item => item._local);
+                return [...LOCAL_LIBRARY, ...items, ...localOnly];
+            });
+        };
+        const unsubLegacyUploads = onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_UPLOADS_COLLECTION), where('roomCode', '==', roomCode)),
             snap => {
-                const items = snap.docs.map(d => ({ id: d.id, _cloud: true, ...d.data() }));
-                const total = items.reduce((sum, item) => sum + (item.size || 0), 0);
-                setRoomUploadBytes(total);
-                setLocalLibrary(prev => {
-                    const localOnly = prev.filter(item => item._local);
-                    return [...LOCAL_LIBRARY, ...items, ...localOnly];
-                });
+                latestLegacyUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _legacy: true, _collection: LEGACY_ROOM_UPLOADS_COLLECTION, collectionName: LEGACY_ROOM_UPLOADS_COLLECTION, ...d.data() }));
+                applyMediaUploads();
             }
         );
-        const unsubScenePresets = onSnapshot(
-            query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), where('roomCode', '==', roomCode)),
+        const unsubAccountUploads = activeHostUid ? onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('ownerUid', '==', activeHostUid)),
             snap => {
-                const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                items.sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
-                setScenePresets(items);
-                setScenePresetsHydrated(true);
+                latestAccountUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...d.data() }));
+                applyMediaUploads();
+            }
+        ) : (() => {});
+        const unsubRoomAccountUploads = onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), where('roomCode', '==', roomCode)),
+            snap => {
+                latestRoomAccountUploads = snap.docs.map(d => ({ id: d.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...d.data() }));
+                applyMediaUploads();
             }
         );
-        
+        let latestLegacyScenePresets = [];
+        let latestAccountScenePresets = [];
+        let latestRoomAccountScenePresets = [];
+        const applyScenePresets = () => {
+            const items = dedupeHostMediaDocs(latestAccountScenePresets, latestRoomAccountScenePresets, latestLegacyScenePresets);
+            items.sort((a, b) => Number(b.createdAtMs || 0) - Number(a.createdAtMs || 0));
+            setScenePresets(items);
+            setScenePresetsHydrated(true);
+        };
+        const unsubLegacyScenePresets = onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', LEGACY_ROOM_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode)),
+            snap => {
+                latestLegacyScenePresets = snap.docs.map(d => ({ id: d.id, _legacy: true, _collection: LEGACY_ROOM_SCENE_PRESETS_COLLECTION, collectionName: LEGACY_ROOM_SCENE_PRESETS_COLLECTION, ...d.data() }));
+                applyScenePresets();
+            }
+        );
+        const unsubAccountScenePresets = activeHostUid ? onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('ownerUid', '==', activeHostUid)),
+            snap => {
+                latestAccountScenePresets = snap.docs.map(d => ({ id: d.id, _collection: HOST_MEDIA_SCENE_PRESETS_COLLECTION, collectionName: HOST_MEDIA_SCENE_PRESETS_COLLECTION, ...d.data() }));
+                applyScenePresets();
+            }
+        ) : (() => {});
+        const unsubRoomAccountScenePresets = onSnapshot(
+            query(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), where('roomCode', '==', roomCode)),
+            snap => {
+                latestRoomAccountScenePresets = snap.docs.map(d => ({ id: d.id, _collection: HOST_MEDIA_SCENE_PRESETS_COLLECTION, collectionName: HOST_MEDIA_SCENE_PRESETS_COLLECTION, ...d.data() }));
+                applyScenePresets();
+            }
+        );
+
         // VIP Contacts if tab is active
         if (tab === 'lobby' && lobbyTab === 'vip') {
             getDocs(query(collection(db, 'artifacts', APP_ID, 'public', 'data', 'contacts'), where('roomCode', '==', roomCode))).then(snap => setContacts(snap.docs.map(d => d.data())));
         }
 
-        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubUploads(); unsubScenePresets(); };
-    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId]);
+        return () => { unsubRoom(); unsubSongs(); unsubUsers(); unsubActivity(); unsubLegacyUploads(); unsubAccountUploads(); unsubRoomAccountUploads(); unsubLegacyScenePresets(); unsubAccountScenePresets(); unsubRoomAccountScenePresets(); };
+    }, [roomCode, tab, lobbyTab, isMarketingDemoFixture, qaHostFixtureId, uid]);
     useEffect(() => {
         if (isMarketingDemoFixture || qaHostFixtureId) {
             setScenePresetsHydrated(true);
@@ -12206,6 +12367,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setQueueRotation(payload.queueSettings.rotation);
             setQueueFirstTimeBoost(!!payload.queueSettings.firstTimeBoost);
             setShowScoring(!!payload.showScoring);
+            setHypeMeterDisplayMode(normalizeHypeMeterDisplayMode(payload.hypeMeterDisplayMode));
             setShowFameLevel(!!payload.showFameLevel);
             setRequestMode(normalizeRoomRequestMode(payload.requestMode, payload.allowSingerTrackSelect));
             setAllowSingerTrackSelect(!!payload.allowSingerTrackSelect);
@@ -12221,7 +12383,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }));
             setAudienceJoinPolicy(normalizeAudienceJoinPolicy(payload.audienceJoinPolicy || {}));
             setMarqueeEnabled(!!payload.marqueeEnabled);
-            setMarqueeShowMode(payload.marqueeShowMode || 'always');
+            setMarqueeShowMode(payload.marqueeShowMode || 'idle');
             setAudienceBingoReopenEnabled(payload.bingoAudienceReopenEnabled !== false);
             setAutoLyricsOnQueue(!!payload.autoLyricsOnQueue);
             setPopTriviaEnabled(payload.popTriviaEnabled === true);
@@ -12234,7 +12396,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (payload.audienceFeatureAccess) {
                 setAudienceFeatureAccess(normalizeAudienceFeatureAccess(payload.audienceFeatureAccess));
             }
-            setSearchSources(preset.searchSources || { local: true, youtube: true, itunes: true });
+            setSearchSources(normalizeHostSearchSources(payload.searchSources || {}, DEFAULT_SEARCH_SOURCES));
 
             if (payload.autoBgMusic && !playingBg) {
                 setBgMusicState(true);
@@ -12326,6 +12488,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
                     readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
                     showScoring: !!showScoring,
+                    hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(hypeMeterDisplayMode),
                     showFameLevel: !!showFameLevel,
                     requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
                     allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
@@ -13258,7 +13421,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
             const title = String(options?.title || '').trim() || file.name.replace(/\.[^/.]+$/, '');
             const directUpload = async () => {
-                const storagePath = `room_uploads/${roomCode}/${nowMs()}_${safeName}`;
+                const safeOwnerUid = String(uid || '').replace(/[^a-zA-Z0-9_-]/g, '_') || 'host';
+                const storagePath = `host_media/${safeOwnerUid}/uploads/${roomCode}/${nowMs()}_${safeName}`;
                 const fileRef = storageRef(storage, storagePath);
                 await prepareHostStorageWrite();
                 const uploadTask = uploadBytesResumable(fileRef, file, contentType ? { contentType } : undefined);
@@ -13307,7 +13471,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 ? normalizeHostAudioLibraryItemMetadata(options)
                 : normalizeHostAudioLibraryItemMetadata({});
             const payload = {
+                ownerUid: uid,
                 roomCode,
+                roomCodes: [roomCode].filter(Boolean),
+                libraryScope: 'account',
+                folderId: String(options?.folderId || '').trim(),
+                folderName: String(options?.folderName || '').trim(),
                 title,
                 artist: mediaType === 'audio' ? 'Local Upload' : (mediaType === 'image' ? 'Scene Upload' : 'Local Upload'),
                 url: mediaUrl,
@@ -13325,8 +13494,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 createdAtMs: nowMs(),
                 createdBy: room?.hostName || 'Host'
             };
-            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads'), payload);
-            const newItem = { id: docRef.id, _cloud: true, ...payload };
+            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_ASSETS_COLLECTION), payload);
+            const newItem = { id: docRef.id, _cloud: true, _collection: HOST_MEDIA_ASSETS_COLLECTION, collectionName: HOST_MEDIA_ASSETS_COLLECTION, ...payload };
             setLocalLibrary(prev => [...prev, newItem]);
             trackHostOperatorEvent('host_room_media_uploaded', {
                 media_type: mediaType,
@@ -13337,10 +13506,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (options?.successToast !== false) {
                 toast(
                     mediaType === 'audio'
-                        ? 'Uploaded audio to room library'
+                        ? 'Uploaded audio to account library'
                         : mediaType === 'image'
-                            ? 'Uploaded scene media to room library'
-                            : 'Uploaded video to room library'
+                            ? 'Uploaded scene media to account library'
+                            : 'Uploaded video to account library'
                 );
             }
             return newItem;
@@ -13364,12 +13533,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             setUploadProgress(0);
         }
     }, [fileToDataUrl, hostLogger, prepareHostStorageWrite, room?.hostName, roomCode, roomUploadBytes, toast, trackHostOperatorEvent, uid]);
-    const uploadMediaFileToRunOfShow = useCallback(async (file, options = {}) => {
-        return uploadRoomMediaAsset(file, {
-            ...(options || {}),
-            successToast: options?.successToast ?? false,
-        });
-    }, [uploadRoomMediaAsset]);
     const saveMediaAssetAsScenePreset = useCallback(async (item = {}, options = {}) => {
         const mediaUrl = getRoomMediaUrl(item);
         if (!canUseRoomMediaAsScene(item) || !mediaUrl) {
@@ -13391,7 +13554,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         }
         const createdAtMs = nowMs();
         const payload = {
+            ownerUid: uid,
             roomCode,
+            roomCodes: [roomCode].filter(Boolean),
+            libraryScope: 'account',
+            folderId: String(item?.folderId || '').trim(),
+            folderName: String(item?.folderName || '').trim(),
             title,
             mediaUrl,
             mediaType,
@@ -13408,12 +13576,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             fileName: String(item?.fileName || '').trim(),
             size: Number(item?.size || 0) || 0,
             sourceUploadId,
+            sourceUploadCollection: getHostMediaAssetCollectionName(item),
             createdAt: serverTimestamp(),
             createdAtMs,
             createdBy: hostName || room?.hostName || 'Host'
         };
         try {
-            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+            const docRef = await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), payload);
             trackHostOperatorEvent('host_scene_preset_saved', {
                 media_type: mediaType,
                 media_title: title,
@@ -13421,13 +13590,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 source_upload_id: sourceUploadId || ''
             });
             toast('Saved to TV library.');
-            return { id: docRef.id, ...payload };
+            return { id: docRef.id, _collection: HOST_MEDIA_SCENE_PRESETS_COLLECTION, collectionName: HOST_MEDIA_SCENE_PRESETS_COLLECTION, ...payload };
         } catch (error) {
             hostLogger.error('Could not save upload to TV library', error);
             toast('Could not save that upload to the TV library.');
             return null;
         }
-    }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast, trackHostOperatorEvent]);
+    }, [canUseRoomMediaAsScene, hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast, trackHostOperatorEvent, uid]);
     const syncAahfSceneLibrarySeedPack = useCallback(async ({ silent = false } = {}) => {
         if (!isAahfSceneLibraryTargetRoom(roomCode)) {
             return { addedCount: 0, skipped: true };
@@ -13454,7 +13623,12 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             for (let index = 0; index < missingAssets.length; index += 1) {
                 const asset = missingAssets[index];
                 const payload = {
+                    ownerUid: uid,
                     roomCode,
+                    roomCodes: [roomCode].filter(Boolean),
+                    libraryScope: 'account',
+                    folderId: 'seed:aahf',
+                    folderName: 'AAHF Seed Pack',
                     title: asset.title,
                     mediaUrl: buildSceneLibrarySeedMediaUrl(asset.mediaUrl),
                     mediaType: asset.mediaType,
@@ -13467,7 +13641,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     createdAtMs: nowMs() + index,
                     createdBy: hostName || room?.hostName || 'AAHF Scene Seed'
                 };
-                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets'), payload);
+                await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', HOST_MEDIA_SCENE_PRESETS_COLLECTION), payload);
                 addedCount += 1;
             }
             if (!silent && addedCount > 0) {
@@ -13483,7 +13657,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         } finally {
             setScenePresetSeedPending(false);
         }
-    }, [hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast]);
+    }, [hostLogger, hostName, room?.hostName, roomCode, scenePresets, toast, uid]);
     useEffect(() => {
         if (!scenePresetsHydrated || !isAahfSceneLibraryTargetRoom(roomCode) || isMarketingDemoFixture || qaHostFixtureId) {
             return;
@@ -13556,7 +13730,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             bgAutoEligible: metadata.bgAutoEligible,
         };
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads', itemId), updatePayload);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostMediaAssetCollectionName(item), itemId), updatePayload);
             setLocalLibrary((prev) => (
                 (Array.isArray(prev) ? prev : []).map((entry) => (
                     String(entry?.id || '').trim() === itemId
@@ -13750,11 +13924,11 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             ));
             for (const preset of linkedScenePresets) {
                 if (preset?.id) {
-                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id)).catch(() => {});
+                    await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostScenePresetCollectionName(preset), preset.id)).catch(() => {});
                 }
             }
             await deleteObject(storageRef(storage, item.storagePath));
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_uploads', item.id));
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostMediaAssetCollectionName(item), item.id));
             toast('Removed upload');
         } catch (e) {
             hostLogger.error(e);
@@ -13878,7 +14052,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const addRoomUploadToRunOfShow = async (item = {}) => {
         const preset = await saveMediaAssetAsScenePreset(item);
         if (!preset) return null;
-        return useScenePresetInRunOfShow(preset);
+        return addScenePresetToRunOfShow(preset);
     };
     const clearScenePreset = async () => {
         try {
@@ -13913,7 +14087,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             if (preset.storagePath && !String(preset?.sourceUploadId || '').trim()) {
                 await deleteObject(storageRef(storage, preset.storagePath)).catch(() => {});
             }
-            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id));
+            await deleteDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostScenePresetCollectionName(preset), preset.id));
             toast('Scene preset deleted.');
         } catch (error) {
             hostLogger.error('Could not delete scene preset', error);
@@ -13954,7 +14128,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             updatedAtMs: nowMs(),
         };
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'room_scene_presets', preset.id), payload);
+            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', getHostScenePresetCollectionName(preset), preset.id), payload);
             toast('Scene preset updated.');
             return { ...preset, ...payload };
         } catch (error) {
@@ -14470,6 +14644,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             showVisualizerTv: !!presetSettings.showVisualizerTv,
             showLyricsTv: !!presetSettings.showLyricsTv,
             showScoring: !!presetSettings.showScoring,
+            hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(presetSettings.hypeMeterDisplayMode),
             showFameLevel: !!presetSettings.showFameLevel,
             requestMode: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect),
             allowSingerTrackSelect: normalizeRoomRequestMode(presetSettings.requestMode, presetSettings.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
@@ -14485,7 +14660,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             }),
             audienceJoinPolicy: normalizeAudienceJoinPolicy(presetSettings.audienceJoinPolicy || {}),
             marqueeEnabled: !!presetSettings.marqueeEnabled,
-            marqueeShowMode: presetSettings.marqueeShowMode || 'always',
+            marqueeShowMode: presetSettings.marqueeShowMode || 'idle',
             chatShowOnTv: !!presetSettings.chatShowOnTv,
             chatTvMode: presetSettings.chatTvMode || 'auto',
             bouncerMode: !!presetSettings.bouncerMode,
@@ -14508,6 +14683,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 rotation: queueSettings.rotation || 'round_robin',
                 firstTimeBoost: queueSettings.firstTimeBoost !== false,
             },
+            searchSources: normalizeHostSearchSources(preset.searchSources || {}, DEFAULT_SEARCH_SOURCES),
         };
         const nextAudienceShellVariant = String(presetSettings.audienceShellVariant || '').trim();
         if (nextAudienceShellVariant) {
@@ -14556,6 +14732,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         normalizeHostWorkspaceTab,
         roomCodeInput,
         sectionToSettingsTab: SECTION_TO_SETTINGS_TAB,
+        settingsTabToSection: SETTINGS_TAB_TO_SECTION,
         setActiveWorkspaceSection,
         setActiveWorkspaceView,
         setSettingsNavOpen,
@@ -14637,10 +14814,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         if (typeof window === 'undefined') return;
         window.requestAnimationFrame(() => {
             window.dispatchEvent(new CustomEvent('beaurocks:focus-queue-live-controls'));
-            const roomSettingsMenu = document.querySelector('[data-feature-id="deck-room-settings-menu-toggle"]');
-            roomSettingsMenu?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            if (roomSettingsMenu?.getAttribute('aria-expanded') !== 'true') {
-                roomSettingsMenu?.click?.();
+            const queueMenu = document.querySelector('[data-feature-id="deck-queue-menu-toggle"]');
+            queueMenu?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (queueMenu?.getAttribute('aria-expanded') !== 'true') {
+                queueMenu?.click?.();
             }
         });
     }, [handleTopChromeTabChange]);
@@ -14671,7 +14848,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         leaveAdminWithTarget('stage');
     }, [leaveAdminWithTarget]);
     const openSceneLibraryFromAdmin = useCallback(() => {
-        setSceneLibraryModalOpen(true);
+        setSceneLibraryOpenRequest({ tab: 'scenes', token: Date.now() });
         leaveAdminWithTarget('stage');
     }, [leaveAdminWithTarget]);
     const openRunOfShowWorkspaceFromAdmin = useCallback(() => {
@@ -14732,7 +14909,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const detail = blockers > 0
             ? 'Finish TV and guest entry before launch.'
             : waiting > 0
-                ? 'Open TV and share the join link from Queue Controls.'
+                ? 'Open TV and share the join link from the Queue menu.'
                 : `${roomReadinessQueueSummary} · ${roomReadinessAutomationLabel}`;
         return {
             blockers,
@@ -15415,7 +15592,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             mediaResolutionStatus,
             resolutionStatus,
             resolutionLayer,
-            autoEndSafe: durationSec > 0,
+            autoEndSafe: false,
             status: 'requested',
             timestamp: serverTimestamp(),
             priorityScore: nowMs(),
@@ -16078,7 +16255,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             durationSec: durationSec || null,
             mediaDurationSec: durationSec || null,
             backingDurationSec: durationSec || null,
-            autoEndSafe: durationSec > 0,
+            autoEndSafe: false,
             playbackReady: true,
             mediaResolutionStatus: 'browse_ready',
             resolutionStatus: 'resolved',
@@ -16764,8 +16941,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const readinessChecks = [
             { label: 'Host identity', ok: !!String(hostName || '').trim() },
             { label: 'Room code assigned', ok: !!String(roomCode || '').trim() },
-            { label: 'Night type selected', ok: !!String(selectedPreset?.id || '').trim() },
-            { label: 'Room format selected', ok: !!String(selectedMode?.id || '').trim() },
+            { label: 'Starting template selected', ok: !!String(selectedPreset?.id || '').trim() },
             { label: 'Queue policy set', ok: !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim() },
             { label: 'Branding logo', ok: !!String(logoUrl || '').trim() },
             {
@@ -16864,16 +17040,13 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         };
         const canContinueNightSetupStep = nightSetupStep === 0
             ? !!String(nightSetupPresetId || '').trim()
-            : nightSetupStep === 1
-                ? !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim()
-                : !!String(nightSetupPrimaryMode || '').trim();
+            : !!String(nightSetupQueueLimitMode || '').trim() && !!String(nightSetupQueueRotation || '').trim();
         const isPlanFieldUpdated = (fieldKey) => (nowMs() - Number(nightSetupPlanPulse?.[fieldKey] || 0)) < 1500;
         const pacingLabel = `${limitOption.label}${nightSetupQueueLimitMode !== 'none' ? ` (${Math.max(0, Number(nightSetupQueueLimitCount || 0))})` : ''} | ${rotationOption.label}`;
         const readinessLabel = `${readinessScore}% Ready${readinessMissing.length > 0 ? ` (${readinessMissing.length} missing)` : ''}`;
         const tonightPlanFields = [
-            { key: 'night', label: 'Night', value: selectedPreset.label },
-            { key: 'pacing', label: 'Pacing', value: pacingLabel },
-            { key: 'spotlight', label: 'Format', value: selectedMode.label },
+            { key: 'night', label: 'Defaults', value: selectedPreset.label },
+            { key: 'pacing', label: 'Queue', value: pacingLabel },
             { key: 'readiness', label: 'Readiness', value: readinessLabel }
         ];
         const roomFormatLauncher = roomCode ? (
@@ -17157,9 +17330,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
                             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
                                 <div className="min-w-0">
-                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Pre-Show Setup</div>
-                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Set The Night Flow</div>
-                                    <div className="text-sm text-zinc-400 mt-1">Pick night type, queue rules, and room format.</div>
+                                    <div className="text-xs uppercase tracking-[0.35em] text-zinc-500">Room Setup</div>
+                                    <div className="text-2xl md:text-3xl font-black text-white mt-1">Run Tonight</div>
+                                    <div className="text-sm text-zinc-400 mt-1">Set room defaults, queue behavior, and live TV basics.</div>
                                 </div>
                                 <div className="flex-1 min-w-0 lg:px-4">
                                     <div className="flex flex-wrap lg:flex-nowrap items-center justify-center gap-2">
@@ -17214,14 +17387,14 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                             onClick={() => seedNightSetupFromPreset(recommendation.presetId, { keepQueueDraft: false })}
                                             className={`${STYLES.btnStd} ${STYLES.btnInfo}`}
                                         >
-                                            Apply {hostNightPresets[recommendation.presetId]?.label || 'Recommended'} Preset
+                                            Apply {hostNightPresets[recommendation.presetId]?.label || 'Recommended'} Defaults
                                         </button>
                                     )}
                                 </div>
                                 {nightSetupStep === 0 && (
                                     <div className="space-y-3">
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Choose Night</div>
+                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Defaults</div>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                             {hostNightPresetList.map((preset) => {
@@ -17232,48 +17405,45 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                     <button
                                                         key={`night-setup-preset-${preset.id}`}
                                                         onClick={() => seedNightSetupFromPreset(preset.id, { keepQueueDraft: false })}
-                                                        className={`relative overflow-hidden text-left rounded-2xl border transform-gpu transition-all duration-200 ease-out min-h-[206px] md:h-[246px] ${
+                                                        className={`text-left rounded-2xl border px-3 py-3 transition-all min-h-[112px] ${
                                                             active
-                                                                ? 'border-cyan-300/85 ring-1 ring-cyan-300/55 shadow-[0_0_34px_rgba(34,211,238,0.22)]'
-                                                                : 'border-zinc-700 hover:border-zinc-500'
+                                                                ? 'border-cyan-300/70 bg-cyan-500/12 shadow-[0_0_24px_rgba(34,211,238,0.16)]'
+                                                                : 'border-zinc-700 bg-zinc-900/60 hover:border-zinc-500'
                                                         }`}
                                                     >
-                                                        <div className={`absolute inset-0 bg-gradient-to-br ${meta.accent}`}></div>
-                                                        <div className="relative h-full px-4 py-4 flex flex-col">
-                                                            <div className="flex items-start justify-between gap-2">
-                                                                <div className="text-lg text-cyan-100"><i className={`fa-solid ${meta.icon}`}></i></div>
-                                                                <span
-                                                                    className={`text-[10px] uppercase tracking-[0.25em] px-2 py-1 rounded-full border border-cyan-300/40 bg-cyan-500/20 text-cyan-100 min-w-[102px] text-center ${
-                                                                        active ? '' : 'opacity-0'
-                                                                    }`}
-                                                                    aria-hidden={!active}
-                                                                >
-                                                                    Locked In
-                                                                </span>
-                                                            </div>
-                                                            <div className="text-lg font-bold text-white mt-2">{preset.label}</div>
-                                                            <div className="text-sm text-zinc-300 mt-1" style={clampTwoLines}>{preset.description}</div>
-                                                            <div className="mt-auto">
-                                                                {changeSummary.count > 0 && (
-                                                                    <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-300">
-                                                                        {changeSummary.count} setting change{changeSummary.count === 1 ? '' : 's'}
-                                                                    </div>
-                                                                )}
-                                                                <div className="text-xs text-zinc-400 mt-1" style={clampOneLine}>
-                                                                    Queue: {changeSummary.queueSummary}
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2 text-white font-bold">
+                                                                    <i className={`fa-solid ${meta.icon} text-cyan-200`}></i>
+                                                                    <span>{preset.label}</span>
                                                                 </div>
+                                                                <div className="mt-1 text-xs text-zinc-400" style={clampOneLine}>Queue: {changeSummary.queueSummary}</div>
                                                             </div>
+                                                            <span
+                                                                className={`shrink-0 rounded-full border px-2 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                                                                    active
+                                                                        ? 'border-cyan-300/40 bg-cyan-500/20 text-cyan-100'
+                                                                        : 'border-zinc-700 bg-zinc-950/60 text-zinc-500'
+                                                                }`}
+                                                            >
+                                                                {active ? 'Selected' : 'Use'}
+                                                            </span>
                                                         </div>
+                                                        {changeSummary.count > 0 && (
+                                                            <div className="mt-3 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                                                                {changeSummary.count} default change{changeSummary.count === 1 ? '' : 's'}
+                                                            </div>
+                                                        )}
                                                     </button>
                                                 );
                                             })}
                                         </div>
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3">
-                                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Current Selection</div>
+                                            <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-500">Selected Defaults</div>
                                             <div className="text-sm text-zinc-200 mt-1">{selectedPreset.label}</div>
                                             <div className="text-xs text-zinc-400 mt-1" style={clampOneLine}>Queue: {selectedPresetSnapshot.queueSummary}</div>
                                             <div className="text-xs text-zinc-400 mt-1">
-                                                Defaults enabled: {enabledPresetFeatureCount}/{presetFeaturePills.length}
+                                                Default toggles: {enabledPresetFeatureCount}/{presetFeaturePills.length}
                                                 {selectedPresetChangeSummary.count > 0 ? ` | ${selectedPresetChangeSummary.count} change${selectedPresetChangeSummary.count === 1 ? '' : 's'} pending` : ''}
                                             </div>
                                         </div>
@@ -17352,40 +17522,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                                 {nightSetupQueueFirstTimeBoost ? 'ON: New singers get priority uplift.' : 'OFF: Queue order runs without boost.'}
                                             </div>
                                         </button>
-                                    </div>
-                                )}
-
-                                {nightSetupStep === 2 && (
-                                    <div className="space-y-4">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Room Format</div>
-                                        </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                                            {NIGHT_SETUP_PRIMARY_MODES.map((mode) => (
-                                                <button
-                                                    key={`night-setup-mode-${mode.id}`}
-                                                    onClick={() => setNightSetupPrimaryMode(mode.id)}
-                                                    className={`relative overflow-hidden text-left rounded-2xl border px-3 py-3 transition-all min-h-[120px] ${nightSetupPrimaryMode === mode.id ? 'border-fuchsia-400/60' : 'border-zinc-700 hover:border-zinc-500'}`}
-                                                >
-                                                    <div className={`absolute inset-0 bg-gradient-to-br ${mode.accent}`}></div>
-                                                    <div className="relative flex items-center justify-between gap-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <i className={`fa-solid ${mode.icon} text-fuchsia-200`}></i>
-                                                            <div className="text-sm font-bold text-white">{mode.label}</div>
-                                                        </div>
-                                                        <span
-                                                            className={`text-[10px] uppercase tracking-[0.25em] text-fuchsia-100 min-w-[70px] text-right ${
-                                                                nightSetupPrimaryMode === mode.id ? '' : 'opacity-0'
-                                                            }`}
-                                                            aria-hidden={nightSetupPrimaryMode !== mode.id}
-                                                        >
-                                                            Primary
-                                                        </span>
-                                                    </div>
-                                                    <div className="relative text-xs text-zinc-300 mt-2" style={clampTwoLines}>{mode.description}</div>
-                                                </button>
-                                            ))}
-                                        </div>
                                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
                                             <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Live Defaults</div>
                                         </div>
@@ -17433,13 +17569,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                     </div>
                                 )}
+
                                 {roomFormatLauncher && (
-                                    <div className="space-y-3">
-                                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2.5">
-                                            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Optional Format Layer</div>
+                                    <details className="rounded-2xl border border-zinc-800 bg-zinc-900/50 px-3 py-3">
+                                        <summary className="cursor-pointer list-none text-[11px] uppercase tracking-[0.24em] text-zinc-500">
+                                            Optional room formats
+                                        </summary>
+                                        <div className="mt-3">
+                                            {roomFormatLauncher}
                                         </div>
-                                        {roomFormatLauncher}
-                                    </div>
+                                    </details>
                                 )}
                             </div>
                         </div>
@@ -17492,9 +17631,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         Back
                                     </button>
                                 )}
-                                {nightSetupStep < 2 ? (
+                                {nightSetupStep < 1 ? (
                                     <button
-                                        onClick={() => setNightSetupStep((prev) => Math.min(2, prev + 1))}
+                                        onClick={() => setNightSetupStep((prev) => Math.min(1, prev + 1))}
                                         disabled={!canContinueNightSetupStep}
                                         className={`${STYLES.btnStd} ${
                                             canContinueNightSetupStep
@@ -17960,6 +18099,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10)),
         readyCheckRewardPoints: Math.max(0, Number(readyCheckRewardPoints || 0)),
         showScoring: !!showScoring,
+        hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(hypeMeterDisplayMode),
         showFameLevel: !!showFameLevel,
         requestMode: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect),
         allowSingerTrackSelect: normalizeRoomRequestMode(requestMode, allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
@@ -18024,6 +18164,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             readyCheckDurationSec: Math.max(3, Number(room.readyCheckDurationSec || 10)),
             readyCheckRewardPoints: Math.max(0, Number(room.readyCheckRewardPoints || 0)),
             showScoring: room.showScoring !== false,
+            hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(room.hypeMeterDisplayMode),
             showFameLevel: room.showFameLevel !== false,
             requestMode: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect),
             allowSingerTrackSelect: normalizeRoomRequestMode(room.requestMode, room.allowSingerTrackSelect) === REQUEST_MODES.guestBackingOptional,
@@ -18115,6 +18256,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         chatShowOnTv: !!chatShowOnTv,
         chatTvMode: chatTvMode || 'auto',
         showScoring: !!showScoring,
+        hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(hypeMeterDisplayMode),
         marqueeEnabled: !!marqueeEnabled,
         popTriviaEnabled: !!popTriviaEnabled,
     });
@@ -18132,6 +18274,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setChatShowOnTv(!!patch.chatShowOnTv);
         setChatTvMode(patch.chatTvMode || 'auto');
         setShowScoring(patch.showScoring !== false);
+        setHypeMeterDisplayMode(normalizeHypeMeterDisplayMode(patch.hypeMeterDisplayMode));
         setMarqueeEnabled(!!patch.marqueeEnabled);
         setPopTriviaEnabled(!!patch.popTriviaEnabled);
     };
@@ -18508,6 +18651,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 chatShowOnTv: !!persistedRoomSettingsPayload.chatShowOnTv,
                 chatTvMode: persistedRoomSettingsPayload.chatTvMode || 'auto',
                 showScoring: persistedRoomSettingsPayload.showScoring !== false,
+                hypeMeterDisplayMode: normalizeHypeMeterDisplayMode(persistedRoomSettingsPayload.hypeMeterDisplayMode),
                 marqueeEnabled: !!persistedRoomSettingsPayload.marqueeEnabled,
                 popTriviaEnabled: !!persistedRoomSettingsPayload.popTriviaEnabled,
             }
@@ -19124,6 +19268,24 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onTogglePopTrivia: togglePopTriviaQuick,
     };
 
+    const setSearchSourceQuick = async (sourceKey, enabled) => {
+        const safeKey = String(sourceKey || '').trim();
+        if (!['local', 'youtube', 'itunes'].includes(safeKey)) return;
+        const nextSources = normalizeHostSearchSources({
+            ...searchSources,
+            [safeKey]: enabled !== false,
+        }, DEFAULT_SEARCH_SOURCES);
+        const previousSources = normalizeHostSearchSources(searchSources, DEFAULT_SEARCH_SOURCES);
+        setSearchSources(nextSources);
+        try {
+            await updateRoom({ searchSources: nextSources });
+        } catch (error) {
+            setSearchSources(previousSources);
+            hostLogger.error('Search source update failed', error);
+            toast('Could not update search sources.');
+        }
+    };
+
     const quickRoomControls = {
         autoPlayMedia: !!autoPlayMedia,
         bouncerMode: !!room?.bouncerMode,
@@ -19139,6 +19301,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             allowSingerTrackSelect,
             unknownBackingPolicy,
         }),
+        searchSources: normalizeHostSearchSources(searchSources, DEFAULT_SEARCH_SOURCES),
         guestTrackPolicyOptions: QUICK_GUEST_TRACK_POLICY_OPTIONS,
         readyCheckDurationSec: Math.max(3, Number(readyCheckDurationSec || 10) || 10),
         queueLimitOptions: NIGHT_SETUP_QUEUE_LIMIT_OPTIONS,
@@ -19151,6 +19314,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onUpdateQueueSettings: updateQueueSettingsQuick,
         onSetRequestMode: setRequestModeQuick,
         onSetGuestTrackPolicy: setGuestTrackPolicyQuick,
+        onSetSearchSource: setSearchSourceQuick,
         onSetReadyCheckDuration: setReadyCheckDurationQuick,
         onTriggerReadyCheck: startReadyCheck,
     };
@@ -19238,6 +19402,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         getAppleMusicUserToken,
         silenceAll,
         commandPaletteRequestToken,
+        mediaLibraryOpenRequest: sceneLibraryOpenRequest,
         showLegacyLiveEffects: false,
         compactViewport: compactHostViewport,
         layoutMode: hostStageLayoutMode,
@@ -19264,7 +19429,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         onUpdateScenePreset: updateScenePreset,
         onLaunchScenePreset: launchScenePreset,
         onQueueScenePreset: (preset) => queueScenePresetAsMoment(preset, { placement: 'next', activateShow: true }),
-        onAddScenePresetToRunOfShow: useScenePresetInRunOfShow,
+        onAddScenePresetToRunOfShow: addScenePresetToRunOfShow,
         onClearScenePreset: clearScenePreset,
         onDeleteScenePreset: deleteScenePreset,
         onSeedScenePresetLibrary: syncAahfSceneLibrarySeedPack,
@@ -19651,6 +19816,10 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     onLaunchScenePreset={launchScenePreset}
                     onQueueScenePreset={queueScenePresetAsMoment}
                     onAddScenePresetToRunOfShow={applyScenePresetToRunOfShow}
+                    onOpenSceneLibrary={(tabKey = 'scenes') => {
+                        setSceneLibraryOpenRequest({ tab: tabKey, token: Date.now() });
+                        handleTopChromeTabChange('stage');
+                    }}
                     onClearScenePreset={clearScenePreset}
                     onReplayPurchaseCelebration={replayLatestPurchaseCelebration}
                     onApplyCrowdModePreset={applyLiveCrowdModePreset}
@@ -21325,6 +21494,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                   Show performance score on TV
                               </label>
                               <div className="host-form-helper">Turns the TV performance points counter on or off.</div>
+                              <label className="block text-sm text-zinc-300 mt-3">
+                                  <span className="mb-1 block text-xs uppercase tracking-[0.2em] text-zinc-500">Hype meter display</span>
+                                  <select
+                                      value={hypeMeterDisplayMode}
+                                      onChange={e => setHypeMeterDisplayMode(normalizeHypeMeterDisplayMode(e.target.value))}
+                                      className={STYLES.input}
+                                  >
+                                      <option value={HYPE_METER_DISPLAY_MODES.scoreIntegrated}>Inside score display</option>
+                                      <option value={HYPE_METER_DISPLAY_MODES.topBar}>Top stage bar</option>
+                                      <option value={HYPE_METER_DISPLAY_MODES.both}>Both</option>
+                                      <option value={HYPE_METER_DISPLAY_MODES.hidden}>Hidden</option>
+                                  </select>
+                              </label>
+                              <div className="host-form-helper">Controls whether combo energy appears inside the score HUD, as the separate top bar, both, or not at all.</div>
                               <label className="flex items-center gap-2 text-sm text-zinc-300 mt-2">
                                   <input
                                       type="checkbox"
@@ -21551,7 +21734,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                           Clear Round Winners Podium
                                       </button>
                                       <div className="host-form-helper">
-                                          Public TV is currently showing: {(activeRoundWinnersMoment.winners || []).map((winner) => winner?.name).filter(Boolean).join(' â€¢ ') || 'Round winners'}
+                                          Public TV is currently showing: {(activeRoundWinnersMoment.winners || []).map((winner) => winner?.name).filter(Boolean).join(' • ') || 'Round winners'}
                                       </div>
                                   </>
                               )}
@@ -21588,8 +21771,20 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                     return (
                                     <button
                                         key={src}
-                                        onClick={() => {
-                                            setSearchSources(prev => ({ ...prev, [src]: !prev[src] }));
+                                        onClick={async () => {
+                                            const nextSources = normalizeHostSearchSources({
+                                                ...searchSources,
+                                                [src]: !searchSources[src],
+                                            }, DEFAULT_SEARCH_SOURCES);
+                                            const previousSources = normalizeHostSearchSources(searchSources, DEFAULT_SEARCH_SOURCES);
+                                            setSearchSources(nextSources);
+                                            try {
+                                                await updateRoom({ searchSources: nextSources });
+                                            } catch (error) {
+                                                setSearchSources(previousSources);
+                                                hostLogger.error('Search source update failed', error);
+                                                toast('Could not update search sources.');
+                                            }
                                         }}
                                         className={`text-sm uppercase tracking-widest px-3 py-1 rounded-full border ${
                                             searchSources[src]
@@ -23976,7 +24171,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                         </div>
                                         <div className="mt-2 text-xs text-zinc-400">
                                             Current cooldown: {Math.max(120, Number(room?.lobbyPlaygroundPerUserCooldownMs || 220))}ms per tap
-                                            {' â€¢ '}
+                                            {' • '}
                                             Cap: {Math.max(1, Math.min(120, Number(room?.lobbyPlaygroundMaxPerMinute || 12)))}/min
                                         </div>
                                     </div>

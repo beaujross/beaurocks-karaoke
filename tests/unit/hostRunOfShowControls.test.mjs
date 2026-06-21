@@ -397,6 +397,8 @@ test("Host top chrome keeps the dropdown strip lean", () => {
   assert.doesNotMatch(source, /quickAudioControlClass|showInlineAudioQuickControls/);
   assert.match(source, /data-feature-id="deck-audio-menu-toggle"/);
   assert.match(source, /Audio \+ Mix/);
+  assert.match(source, /data-feature-id="deck-queue-menu-toggle"/);
+  assert.match(source, /Queue Management/);
   assert.match(source, /Post-Song Track Check/);
 });
 
@@ -462,12 +464,11 @@ test("HostApp routes scene images through the host callable without a direct-sto
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
 
-test("Host scene presets can be slotted into the conveyor and live below the queue", () => {
+test("Host scene presets can be slotted into the conveyor from the media library", () => {
   const hostSource = readFileSync(hostAppPath, "utf8");
   const queueTabSource = readFileSync(hostQueueTabPath, "utf8");
   const queueSongCardSource = readFileSync(queueSongCardPath, "utf8");
 
-  assert.match(queueTabSource, /data-feature-id="panel-tv-moments"/);
   assert.match(queueTabSource, /Media Library/);
   assert.match(queueTabSource, /Scenes/);
   assert.match(queueTabSource, /SFX/);
@@ -479,19 +480,16 @@ test("Host scene presets can be slotted into the conveyor and live below the que
   assert.match(hostSource, /const saveMediaAssetAsScenePreset = useCallback\(async \(item = \{\}, options = \{\}\) => \{/);
   assert.match(hostSource, /const syncAahfSceneLibrarySeedPack = useCallback\(async \(\{ silent = false \} = \{\}\) => \{/);
   assert.match(hostSource, /AAHF_SCENE_LIBRARY_SEED_ASSETS/);
-  assert.match(hostSource, /const useScenePresetInRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
-  assert.match(hostSource, /const uploadMediaFileToRunOfShow = useCallback\(async \(file, options = \{\}\) => \{/);
+  assert.match(hostSource, /const addScenePresetToRunOfShow = useCallback\(async \(preset = \{\}\) => \{/);
+  assert.match(hostSource, /const applyScenePresetToRunOfShow = addScenePresetToRunOfShow;/);
   assert.match(hostSource, /Scene media needs an uploaded cloud URL before it can join Run Of Show\./);
   assert.match(hostSource, /onQueueScenePreset:\s*\(preset\)\s*=>\s*queueScenePresetAsMoment/);
-  assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*useScenePresetInRunOfShow/);
+  assert.match(hostSource, /onAddScenePresetToRunOfShow:\s*addScenePresetToRunOfShow/);
   assert.match(hostSource, /sceneLibrarySeedPack:\s*isAahfSceneLibraryTargetRoom\(roomCode\)/);
   assert.match(hostSource, /runOfShowSelectedItemId/);
   assert.match(hostSource, /onSelectionChange=\{setRunOfShowSelectedItemId\}/);
   assert.match(hostSource, /const queueScenePresetAsMoment = useCallback\(async \(preset = \{\}, options = \{\}\) => \{/);
   assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
-  assert.ok(
-    queueTabSource.indexOf("<QueueListPanel") < queueTabSource.lastIndexOf('{scenePresetsSection}'),
-    "Media Library should render below the queue board instead of above it",
-  );
+  assert.doesNotMatch(queueTabSource, /scenePresetsSection/);
 });

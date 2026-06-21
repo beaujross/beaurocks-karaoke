@@ -76,6 +76,19 @@ service cloud.firestore {
         );
     }
 
+    function isHostMediaOwner(data) {
+      return isAuthed()
+        && data.keys().hasAny(['ownerUid'])
+        && data.ownerUid is string
+        && (data.ownerUid == request.auth.uid || isSuperAdmin());
+    }
+
+    function isHostMediaRoomHost(data) {
+      return data.keys().hasAny(['roomCode'])
+        && data.roomCode is string
+        && isRoomHost(data.roomCode);
+    }
+
     function isValidRoomUserId(roomUserId, roomCode, uid) {
       return roomCode is string
         && uid is string
@@ -564,6 +577,78 @@ service cloud.firestore {
       ];
     }
 
+    function performanceSessionPlaybackWritableKeys() {
+      return [
+        'lastReportedAtMs',
+        'playerReportedDurationSec',
+        'playerPositionSec',
+        'playbackState',
+        'lastHeartbeatAtMs',
+        'playbackStartedAtMs',
+        'pausedAtMs',
+        'endedAtMs',
+        'completionReason',
+        'error'
+      ];
+    }
+
+    function performanceMetaPlaybackWritableKeys() {
+      return [
+        'durationSec',
+        'backingDurationSec',
+        'durationSource',
+        'durationConfidence',
+        'autoEndSafe'
+      ];
+    }
+
+    function performancePlaybackStateAllowed(value) {
+      return value is string
+        && value in ['playing', 'paused', 'ended', 'error', 'starting', 'idle'];
+    }
+
+    function performanceSessionPlaybackFieldsSafe(prevSession, nextSession) {
+      return prevSession is map
+        && nextSession is map
+        && nextSession.diff(prevSession).affectedKeys().hasOnly(performanceSessionPlaybackWritableKeys())
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['lastReportedAtMs']) || nextSession.lastReportedAtMs is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['playerReportedDurationSec']) || nextSession.playerReportedDurationSec is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['playerPositionSec']) || nextSession.playerPositionSec is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['lastHeartbeatAtMs']) || nextSession.lastHeartbeatAtMs is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['playbackStartedAtMs']) || nextSession.playbackStartedAtMs is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['pausedAtMs']) || nextSession.pausedAtMs is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['endedAtMs']) || nextSession.endedAtMs is number)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['playbackState']) || performancePlaybackStateAllowed(nextSession.playbackState))
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['completionReason']) || nextSession.completionReason is string)
+        && (!nextSession.diff(prevSession).affectedKeys().hasAny(['error']) || nextSession.error is string);
+    }
+
+    function performanceMetaPlaybackFieldsSafe(prevMeta, nextMeta) {
+      return prevMeta is map
+        && nextMeta is map
+        && nextMeta.diff(prevMeta).affectedKeys().hasOnly(performanceMetaPlaybackWritableKeys())
+        && (!nextMeta.diff(prevMeta).affectedKeys().hasAny(['durationSec']) || nextMeta.durationSec is number)
+        && (!nextMeta.diff(prevMeta).affectedKeys().hasAny(['backingDurationSec']) || nextMeta.backingDurationSec is number)
+        && (!nextMeta.diff(prevMeta).affectedKeys().hasAny(['durationSource']) || nextMeta.durationSource == 'player_reported')
+        && (!nextMeta.diff(prevMeta).affectedKeys().hasAny(['durationConfidence']) || nextMeta.durationConfidence == 'high')
+        && (!nextMeta.diff(prevMeta).affectedKeys().hasAny(['autoEndSafe']) || nextMeta.autoEndSafe == true);
+    }
+
+    function isPerformanceSessionPlaybackUpdate(prevData, nextData) {
+      return nextData.diff(prevData).affectedKeys().hasOnly(['currentPerformanceSession', 'currentPerformanceMeta'])
+        && nextData.keys().hasAny(['currentPerformanceSession'])
+        && prevData.keys().hasAny(['currentPerformanceSession'])
+        && performanceSessionPlaybackFieldsSafe(prevData.currentPerformanceSession, nextData.currentPerformanceSession)
+        && (
+          !nextData.diff(prevData).affectedKeys().hasAny(['currentPerformanceMeta'])
+          || (
+            nextData.keys().hasAny(['currentPerformanceMeta'])
+            && prevData.keys().hasAny(['currentPerformanceMeta'])
+            && performanceMetaPlaybackFieldsSafe(prevData.currentPerformanceMeta, nextData.currentPerformanceMeta)
+          )
+        );
+    }
+
     // User profiles
     match /users/{uid} {
       allow read: if isAuthed()
@@ -851,7 +936,10 @@ service cloud.firestore {
           && !isRoomHost(roomCode)
           && request.resource.data.hostUid == resource.data.hostUid
           && request.resource.data.hostUids == resource.data.hostUids
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(nonHostRoomWritableKeys());
+          && (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(nonHostRoomWritableKeys())
+            || isPerformanceSessionPlaybackUpdate(resource.data, request.resource.data)
+          );
 
         allow delete: if isBrossApp(appId) && isRoomHost(roomCode);
       }
@@ -878,6 +966,47 @@ service cloud.firestore {
           && isRoomHost(request.resource.data.roomCode);
         allow delete: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
         allow update: if false;
+      }
+
+      match /host_media_assets/{assetId} {
+        allow read: if isBrossApp(appId)
+          && isAuthed()
+          && (isHostMediaOwner(resource.data) || isHostMediaRoomHost(resource.data));
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && isHostMediaOwner(request.resource.data)
+          && isHostMediaRoomHost(request.resource.data);
+        allow update: if isBrossApp(appId)
+          && isHostMediaOwner(resource.data)
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.roomCode == resource.data.roomCode;
+        allow delete: if isBrossApp(appId) && isHostMediaOwner(resource.data);
+      }
+
+      match /host_media_scene_presets/{presetId} {
+        allow read: if isBrossApp(appId)
+          && isAuthed()
+          && (isHostMediaOwner(resource.data) || isHostMediaRoomHost(resource.data));
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && isHostMediaOwner(request.resource.data)
+          && isHostMediaRoomHost(request.resource.data);
+        allow update: if isBrossApp(appId)
+          && isHostMediaOwner(resource.data)
+          && request.resource.data.ownerUid == resource.data.ownerUid
+          && request.resource.data.roomCode == resource.data.roomCode;
+        allow delete: if isBrossApp(appId) && isHostMediaOwner(resource.data);
+      }
+
+      match /host_media_folders/{folderId} {
+        allow read: if isBrossApp(appId) && isAuthed() && isHostMediaOwner(resource.data);
+        allow create: if isBrossApp(appId)
+          && isAuthed()
+          && isHostMediaOwner(request.resource.data);
+        allow update: if isBrossApp(appId)
+          && isHostMediaOwner(resource.data)
+          && request.resource.data.ownerUid == resource.data.ownerUid;
+        allow delete: if isBrossApp(appId) && isHostMediaOwner(resource.data);
       }
 
       match /room_users/{roomUserId} {

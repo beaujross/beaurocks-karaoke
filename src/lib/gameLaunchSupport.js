@@ -94,6 +94,34 @@ const resolveParticipantsForLaunch = ({ launchConfig = {}, roomUsers = [] } = {}
     };
 };
 
+const buildParticipantMeta = (participants = [], roomUsers = [], fallbackAvatar = 'O', fallbackName = 'Singer') => (
+    uniqueCleanList(participants).map((participantUid) => {
+        const roomUser = findRoomUserByUid(roomUsers, participantUid);
+        return {
+            id: participantUid,
+            name: cleanText(roomUser?.name) || fallbackName,
+            avatar: cleanText(roomUser?.avatar) || fallbackAvatar
+        };
+    })
+);
+
+const resolveLeadParticipantProfile = (participants = [], roomUsers = [], fallbackAvatar = 'O', fallbackName = 'Singer') => {
+    const leadUid = cleanText(Array.isArray(participants) ? participants[0] : '');
+    if (!leadUid) {
+        return {
+            uid: '',
+            name: fallbackName,
+            avatar: fallbackAvatar
+        };
+    }
+    const roomUser = findRoomUserByUid(roomUsers, leadUid);
+    return {
+        uid: leadUid,
+        name: cleanText(roomUser?.name) || fallbackName,
+        avatar: cleanText(roomUser?.avatar) || fallbackAvatar
+    };
+};
+
 export const buildDefaultBingoBoard = ({ size = 5, mode = 'karaoke', title = 'Karaoke Bingo' } = {}) => {
     const safeSize = Math.max(3, Math.min(7, Math.round(Number(size || 5) || 5)));
     const total = safeSize * safeSize;
@@ -323,6 +351,26 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
     }
 
     if (modeKey === 'flappy_bird') {
+        const leadParticipant = resolveLeadParticipantProfile(participants, roomUsers);
+        if (participantMode === 'selected' && leadParticipant.uid) {
+            return {
+                activeMode: 'flappy_bird',
+                activeScreen: 'stage',
+                gameData: {
+                    ...baseGameData,
+                    playerId: leadParticipant.uid,
+                    playerName: leadParticipant.name,
+                    playerAvatar: leadParticipant.avatar,
+                    inputSource: 'singer',
+                    status: 'waiting',
+                    score: 0,
+                    lives: clampNumber(launchConfig.lives, 1, 9, 5),
+                    difficulty: cleanText(launchConfig.difficulty) || 'easy',
+                    timestamp: startedAtMs
+                },
+                ...buildParticipantPayload('selected', participants)
+            };
+        }
         return {
             activeMode: 'flappy_bird',
             activeScreen: 'stage',
@@ -334,8 +382,8 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
                 inputSource: 'ambient',
                 status: 'waiting',
                 score: 0,
-                lives: clampNumber(launchConfig.lives, 1, 9, 3),
-                difficulty: cleanText(launchConfig.difficulty) || 'normal',
+                lives: clampNumber(launchConfig.lives, 1, 9, 5),
+                difficulty: cleanText(launchConfig.difficulty) || 'easy',
                 timestamp: startedAtMs
             },
             ...buildParticipantPayload('all', [])
@@ -343,6 +391,32 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
     }
 
     if (modeKey === 'vocal_challenge') {
+        const leadParticipant = resolveLeadParticipantProfile(participants, roomUsers);
+        if (participantMode === 'selected' && leadParticipant.uid) {
+            return {
+                activeMode: 'vocal_challenge',
+                activeScreen: 'stage',
+                gameData: {
+                    ...baseGameData,
+                    playerId: leadParticipant.uid,
+                    playerName: leadParticipant.name,
+                    playerAvatar: leadParticipant.avatar,
+                    inputSource: 'turns',
+                    mode: 'turns',
+                    participants,
+                    participantMeta: buildParticipantMeta(participants, roomUsers),
+                    turnIndex: 0,
+                    status: 'playing',
+                    score: 0,
+                    streak: 0,
+                    turnDurationMs: durationSec * 1000,
+                    difficulty: cleanText(launchConfig.difficulty) || 'easy',
+                    guideTone: cleanText(launchConfig.guideTone) || 'C4',
+                    timestamp: startedAtMs
+                },
+                ...buildParticipantPayload('selected', participants)
+            };
+        }
         return {
             activeMode: 'vocal_challenge',
             activeScreen: 'stage',
@@ -357,7 +431,7 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
                 score: 0,
                 streak: 0,
                 turnDurationMs: durationSec * 1000,
-                difficulty: cleanText(launchConfig.difficulty) || 'normal',
+                difficulty: cleanText(launchConfig.difficulty) || 'easy',
                 guideTone: cleanText(launchConfig.guideTone) || 'C4',
                 timestamp: startedAtMs
             },
@@ -367,6 +441,33 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
 
     if (modeKey === 'riding_scales') {
         const patternIndex = Math.abs(Math.floor(Number(startedAtMs || 0))) % DEFAULT_SCALE_PATTERNS.length;
+        const leadParticipant = resolveLeadParticipantProfile(participants, roomUsers);
+        if (participantMode === 'selected' && leadParticipant.uid) {
+            return {
+                activeMode: 'riding_scales',
+                activeScreen: 'stage',
+                gameData: {
+                    ...baseGameData,
+                    playerId: leadParticipant.uid,
+                    playerName: leadParticipant.name,
+                    playerAvatar: leadParticipant.avatar,
+                    inputSource: 'turns',
+                    mode: 'turns',
+                    participants,
+                    participantMeta: buildParticipantMeta(participants, roomUsers),
+                    turnIndex: 0,
+                    startedAt: startedAtMs,
+                    turnDurationMs: durationSec * 1000,
+                    pattern: DEFAULT_SCALE_PATTERNS[patternIndex],
+                    difficulty: cleanText(launchConfig.difficulty) || 'easy',
+                    guideTone: cleanText(launchConfig.guideTone) || 'C4',
+                    maxStrikes: clampNumber(launchConfig.maxStrikes, 1, 9, 6),
+                    rewardPerRound: clampNumber(launchConfig.rewardPerRound, 10, 1000, 50),
+                    status: 'running'
+                },
+                ...buildParticipantPayload('selected', participants)
+            };
+        }
         return {
             activeMode: 'riding_scales',
             activeScreen: 'stage',
@@ -380,9 +481,9 @@ export const buildRunOfShowGameLaunchRoomUpdates = ({
                 startedAt: startedAtMs,
                 turnDurationMs: durationSec * 1000,
                 pattern: DEFAULT_SCALE_PATTERNS[patternIndex],
-                difficulty: cleanText(launchConfig.difficulty) || 'normal',
+                difficulty: cleanText(launchConfig.difficulty) || 'easy',
                 guideTone: cleanText(launchConfig.guideTone) || 'C4',
-                maxStrikes: clampNumber(launchConfig.maxStrikes, 1, 9, 3),
+                maxStrikes: clampNumber(launchConfig.maxStrikes, 1, 9, 6),
                 rewardPerRound: clampNumber(launchConfig.rewardPerRound, 10, 1000, 50),
                 status: 'running'
             },

@@ -185,6 +185,67 @@ describe('game launch support', () => {
     expect(updates.gameParticipantMode).toBe('all');
   });
 
+  it('maps flappy bird spotlight cards to singer-phone control', () => {
+    const updates = buildRunOfShowGameLaunchRoomUpdates({
+      item: {
+        id: 'flappy-card',
+        type: 'game_break',
+        title: 'Pitch Runner',
+        modeLaunchPlan: {
+          modeKey: 'flappy_bird',
+          launchConfig: {
+            participantMode: 'selected',
+            participants: ['u2'],
+            lives: 4,
+            difficulty: 'normal',
+          },
+        },
+      },
+      roomUsers: [{ uid: 'u1', name: 'Host' }, { uid: 'u2', name: 'Taylor', avatar: 'T' }],
+      startedAtMs: 12345,
+    });
+
+    expect(updates.activeMode).toBe('flappy_bird');
+    expect(updates.gameData.playerId).toBe('u2');
+    expect(updates.gameData.playerName).toBe('Taylor');
+    expect(updates.gameData.playerAvatar).toBe('T');
+    expect(updates.gameData.inputSource).toBe('singer');
+    expect(updates.gameData.lives).toBe(4);
+    expect(updates.gameParticipantMode).toBe('selected');
+    expect(updates.gameParticipants).toEqual(['u2']);
+  });
+
+  it('maps vocal challenge spotlight cards to turn-based singer-phone control', () => {
+    const updates = buildRunOfShowGameLaunchRoomUpdates({
+      item: {
+        id: 'vocal-spotlight-card',
+        type: 'game_break',
+        title: 'Vocal Spotlight',
+        plannedDurationSec: 75,
+        modeLaunchPlan: {
+          modeKey: 'vocal_challenge',
+          launchConfig: {
+            participantMode: 'selected',
+            participants: ['u2'],
+            guideTone: 'F4',
+          },
+        },
+      },
+      roomUsers: [{ uid: 'u2', name: 'Taylor', avatar: 'T' }],
+      startedAtMs: 12345,
+    });
+
+    expect(updates.activeMode).toBe('vocal_challenge');
+    expect(updates.gameData.playerId).toBe('u2');
+    expect(updates.gameData.inputSource).toBe('turns');
+    expect(updates.gameData.mode).toBe('turns');
+    expect(updates.gameData.participants).toEqual(['u2']);
+    expect(updates.gameData.participantMeta).toEqual([{ id: 'u2', name: 'Taylor', avatar: 'T' }]);
+    expect(updates.gameData.turnIndex).toBe(0);
+    expect(updates.gameData.turnDurationMs).toBe(75000);
+    expect(updates.gameParticipantMode).toBe('selected');
+  });
+
   it('maps riding scales cards with crowd input, rewards, and a stable pattern', () => {
     const updates = buildRunOfShowGameLaunchRoomUpdates({
       item: {
@@ -211,6 +272,39 @@ describe('game launch support', () => {
     expect(updates.gameData.pattern).toEqual(['C', 'E', 'G', 'A', 'G', 'F', 'E', 'D', 'C']);
     expect(updates.gameData.maxStrikes).toBe(2);
     expect(updates.gameData.rewardPerRound).toBe(75);
+  });
+
+  it('maps riding scales spotlight cards to turn-based singer-phone control', () => {
+    const updates = buildRunOfShowGameLaunchRoomUpdates({
+      item: {
+        id: 'scale-spotlight-card',
+        type: 'game_break',
+        title: 'Riding Scales Spotlight',
+        modeLaunchPlan: {
+          modeKey: 'riding_scales',
+          launchConfig: {
+            participantMode: 'selected',
+            participants: ['u2'],
+            durationSec: 45,
+            guideTone: 'D4',
+            rewardPerRound: 60,
+          },
+        },
+      },
+      roomUsers: [{ uid: 'u2', name: 'Taylor', avatar: 'T' }],
+      startedAtMs: 12345,
+    });
+
+    expect(updates.activeMode).toBe('riding_scales');
+    expect(updates.gameData.playerId).toBe('u2');
+    expect(updates.gameData.inputSource).toBe('turns');
+    expect(updates.gameData.mode).toBe('turns');
+    expect(updates.gameData.participants).toEqual(['u2']);
+    expect(updates.gameData.participantMeta).toEqual([{ id: 'u2', name: 'Taylor', avatar: 'T' }]);
+    expect(updates.gameData.turnIndex).toBe(0);
+    expect(updates.gameData.turnDurationMs).toBe(45000);
+    expect(updates.gameData.rewardPerRound).toBe(60);
+    expect(updates.gameParticipantMode).toBe('selected');
   });
 
   it('maps applause countdown cards without leaving stale game payloads behind', () => {

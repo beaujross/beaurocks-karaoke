@@ -216,6 +216,30 @@ async function run() {
       assert.equal(queueSnap.get("status"), "requested");
     }],
 
+    ["audience queue song rejects known non-embeddable YouTube picks", async () => {
+      await resetState({
+        requestMode: "guest_backing_optional",
+        allowSingerTrackSelect: true,
+        audienceBackingMode: "canonical_plus_audience_youtube",
+      });
+
+      await expectHttpsError(
+        () => submitAudienceQueueSong.run(requestFor(GUEST_UID, {
+          roomCode: ROOM_CODE,
+          clientRequestId: "non_embed_pick",
+          songTitle: "External Only",
+          artist: "Singer",
+          mediaUrl: "https://www.youtube.com/watch?v=abc123XYZ9",
+          trackSource: "youtube",
+          youtubeEmbeddable: false,
+          youtubePlaybackStatus: "not_embeddable",
+          youtubeUploadStatus: "processed",
+          youtubePrivacyStatus: "public",
+        })),
+        "failed-precondition"
+      );
+    }],
+
     ["audience queue song lets co-host queue for another joined singer", async () => {
       await resetState({
         runOfShowRoles: {

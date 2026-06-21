@@ -30,7 +30,7 @@ test("hostSettingsCatalog groups crowd and operating-style fields into host-faci
 
   assert.deepEqual(
     bundles.crowd_mode.map((setting) => setting.key),
-    ["chatShowOnTv", "chatTvMode", "showScoring", "marqueeEnabled", "marqueeShowMode", "popTriviaEnabled"],
+    ["chatShowOnTv", "chatTvMode", "showScoring", "hypeMeterDisplayMode", "marqueeEnabled", "marqueeShowMode", "popTriviaEnabled"],
   );
 
   assert.deepEqual(

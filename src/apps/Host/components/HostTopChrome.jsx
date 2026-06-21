@@ -46,10 +46,10 @@ const NavStatusMetric = ({
         className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[10px] uppercase tracking-[0.14em] ${toneClass}`}
     >
         <span className={`inline-flex h-2 w-2 rounded-full ${active ? 'bg-emerald-300 shadow-[0_0_8px_rgba(110,231,183,0.85)]' : 'bg-rose-300 shadow-[0_0_8px_rgba(252,165,165,0.55)]'}`}></span>
-        {!!iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
+        {iconClass && <i className={`${iconClass} text-[10px] text-zinc-200`}></i>}
         <span className="hidden lg:inline text-zinc-100">{label}</span>
         <span className="font-black text-white">{value}</span>
-        {!!detail ? <span className="hidden xl:inline text-zinc-100/80">{detail}</span> : null}
+        {detail ? <span className="hidden xl:inline text-zinc-100/80">{detail}</span> : null}
     </div>
 );
 
@@ -190,6 +190,7 @@ const HostTopChrome = ({
     onLaunchScenePreset,
     onQueueScenePreset,
     onAddScenePresetToRunOfShow,
+    onOpenSceneLibrary,
     onClearScenePreset,
     onReplayPurchaseCelebration,
     onApplyCrowdModePreset,
@@ -232,7 +233,7 @@ const HostTopChrome = ({
     const [showSfxQuickMenu, setShowSfxQuickMenu] = React.useState(false);
     const [showVibeQuickMenu, setShowVibeQuickMenu] = React.useState(false);
     const [showAutomationQuickMenu, setShowAutomationQuickMenu] = React.useState(false);
-    const [showRoomQuickMenu, setShowRoomQuickMenu] = React.useState(false);
+    const [showQueueQuickMenu, setShowQueueQuickMenu] = React.useState(false);
     const [compactRunOfShowCollapsed, setCompactRunOfShowCollapsed] = React.useState(() => {
         try {
             if (typeof window === 'undefined') return false;
@@ -250,7 +251,7 @@ const HostTopChrome = ({
     const sfxQuickMenuRef = React.useRef(null);
     const vibeQuickMenuRef = React.useRef(null);
     const automationQuickMenuRef = React.useRef(null);
-    const roomQuickMenuRef = React.useRef(null);
+    const queueQuickMenuRef = React.useRef(null);
     const stormActive = room?.lightMode === 'storm';
     const strobeActive = room?.lightMode === 'strobe';
     const guitarActive = room?.lightMode === 'guitar';
@@ -361,7 +362,10 @@ const HostTopChrome = ({
     const quickMenuSectionTitleClass = 'text-xs uppercase tracking-[0.22em] text-zinc-100';
     const quickMenuSectionHintClass = 'mt-1 text-[11px] leading-relaxed text-zinc-400';
     const quickMenuCardClass = 'rounded-xl border border-cyan-400/20 bg-black/45 p-2.5';
-    const quickMenuSelectClass = `${styles.input} mt-1 h-10 text-sm bg-zinc-950/95 border border-cyan-300/35`;
+    const quickMenuSelectClass = `${styles.input} mt-1 min-h-[44px] px-3 text-sm bg-zinc-950/95 border border-cyan-300/35 focus:border-cyan-200`;
+    const quickMenuFieldClass = 'block text-sm text-zinc-200';
+    const quickMenuLabelClass = 'block text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300';
+    const quickMenuHelperClass = 'mt-1.5 block text-xs leading-5 text-zinc-500';
     const quickMenuToggleClass = `${styles.btnStd} ${styles.btnNeutral} ${minimalRuntimeChrome ? 'h-8 px-2.5 py-1 text-[11px]' : runOfShowFocusMode ? 'h-9 px-3 py-1.5 text-[12px]' : denseChrome ? 'h-10 px-3 py-1.5 text-[12px]' : 'h-9 px-3 py-1.5 text-[12px]'} ${compactTopQuickStrip ? 'w-full min-w-0' : 'shrink-0 whitespace-nowrap'} normal-case tracking-[0.04em]`;
     const quickStripItemClass = compactTopQuickStrip ? 'relative min-w-0 flex-[1_1_calc(50%-0.25rem)]' : 'relative shrink-0';
     const automationActiveCount = [
@@ -402,7 +406,7 @@ const HostTopChrome = ({
         || showSfxQuickMenu
         || showVibeQuickMenu
         || showAutomationQuickMenu
-        || showRoomQuickMenu
+        || showQueueQuickMenu
         || showLaunchMenu
         || showNavMenu;
     const showMissionStatusBanner = missionControlEnabled
@@ -678,7 +682,7 @@ const HostTopChrome = ({
         setShowSfxQuickMenu(false);
         setShowVibeQuickMenu(false);
         setShowAutomationQuickMenu(false);
-        setShowRoomQuickMenu(false);
+        setShowQueueQuickMenu(false);
     }, [setAudioPanelOpen]);
     const closeAllTopMenus = React.useCallback(() => {
         closeAllDeckMenus();
@@ -892,7 +896,7 @@ const HostTopChrome = ({
                 sfxQuickMenuRef,
                 vibeQuickMenuRef,
                 automationQuickMenuRef,
-                roomQuickMenuRef,
+                queueQuickMenuRef,
                 launchMenuRef,
                 navMenuRef
             ];
@@ -1526,6 +1530,17 @@ const HostTopChrome = ({
                                             <i className="fa-solid fa-music mr-1"></i>
                                             {currentTrackName || 'BG Track'}
                                         </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onOpenSceneLibrary?.('bg');
+                                                closeAllTopMenus();
+                                            }}
+                                            className={`${styles.btnStd} ${styles.btnNeutral} w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
+                                        >
+                                            <i className="fa-solid fa-folder-music"></i>
+                                            Manage BG Library
+                                        </button>
                                     </div>
                                     <div className={`${quickMenuCardClass} flex items-center gap-3`}>
                                         <div className="min-w-[72px] text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Mix</div>
@@ -1682,44 +1697,42 @@ const HostTopChrome = ({
                     </div>
                 ) : null}
                 {quickRoomControls ? (
-                    <div className={quickStripItemClass} ref={roomQuickMenuRef}>
+                    <div className={quickStripItemClass} ref={queueQuickMenuRef}>
                         <button
                             type="button"
-                            data-feature-id="deck-room-settings-menu-toggle"
-                            aria-expanded={showRoomQuickMenu}
+                            data-feature-id="deck-queue-menu-toggle"
+                            aria-expanded={showQueueQuickMenu}
                             onClick={() => {
-                                const next = !showRoomQuickMenu;
+                                const next = !showQueueQuickMenu;
                                 closeAllTopMenus();
-                                setShowRoomQuickMenu(next);
+                                setShowQueueQuickMenu(next);
                             }}
-                            className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[170px] sm:min-w-[190px]'}`}
-                            title="Room settings"
+                            className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[158px] sm:min-w-[176px]'}`}
+                            title="Queue management"
                             style={{ touchAction: 'manipulation' }}
                         >
-                            <i className="fa-solid fa-sliders mr-1"></i>
-                            Room: {quickRoomControls.bouncerMode ? 'Review' : 'Open'}
-                            <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showRoomQuickMenu ? 'rotate-180' : ''}`}></i>
+                            <i className="fa-solid fa-list-check mr-1"></i>
+                            Queue: {queueLimitLabel}
+                            <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showQueueQuickMenu ? 'rotate-180' : ''}`}></i>
                         </button>
-                        {showRoomQuickMenu && (
+                        {showQueueQuickMenu && (
                             <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(560px,95vw)] max-h-[74vh] p-3.5`}>
-                                <div className={quickMenuSectionTitleClass}>Room Settings</div>
-                                <div className={quickMenuSectionHintClass}>
-                                    The high-stress room rules live here now. Use the deeper setup workspace only when you need the full matrix.
-                                </div>
+                                <div className={quickMenuSectionTitleClass}>Queue Management</div>
+                                <div className={quickMenuSectionHintClass}>Live queue rules, guest requests, and ready checks for tonight.</div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <div className="text-xs uppercase tracking-[0.22em] text-emerald-200">Operating style</div>
+                                            <div className="text-xs uppercase tracking-[0.18em] text-emerald-200">Host assist</div>
                                             <div role="status" aria-live="polite" aria-atomic="true">
                                                 <div className="mt-1 text-sm font-semibold text-white">{operatingStyleSummary.label}</div>
-                                                <div className="mt-1 text-[11px] text-zinc-300">{operatingStyleSummary.description}</div>
+                                                <div className="mt-1 text-xs leading-5 text-zinc-300">{operatingStyleSummary.description}</div>
                                             </div>
                                         </div>
-                                        <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-emerald-100">
+                                        <span className="rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-emerald-100">
                                             {operatingStyleSummary.shortLabel}
                                         </span>
                                     </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                                         {OPERATING_STYLE_PRESETS.map((preset) => {
                                             const selected = operatingStyleSummary.presetId === preset.id;
                                             return (
@@ -1729,103 +1742,66 @@ const HostTopChrome = ({
                                                     onClick={() => { void applyOperatingStylePreset(preset.id); }}
                                                     aria-pressed={selected}
                                                     aria-label={`Use ${preset.label} operating style`}
-                                                    className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[74px] min-w-0 items-start justify-start whitespace-normal px-3 py-2.5 text-left normal-case tracking-[0.03em]`}
+                                                    className={`${styles.btnStd} ${selected ? styles.btnHighlight : styles.btnNeutral} min-h-[72px] min-w-0 items-start justify-start whitespace-normal px-3 py-2.5 text-left normal-case tracking-[0.02em]`}
                                                 >
                                                     <span className="flex min-w-0 flex-col items-start text-left">
                                                         <span className="text-sm font-semibold leading-tight">{preset.shortLabel}</span>
-                                                        <span className="mt-1 text-[10px] leading-4 text-zinc-400 normal-case tracking-normal whitespace-normal break-words">{preset.description}</span>
+                                                        <span className="mt-1 text-xs leading-4 text-zinc-400 normal-case tracking-normal whitespace-normal break-words">{preset.description}</span>
                                                     </span>
                                                 </button>
                                             );
                                         })}
                                     </div>
-                                <div className="text-[11px] text-zinc-400">
-                                    Operating styles update queue limits, ready-check pacing, and auto stage playback together. Fine-tune the detailed room controls below only when you need a one-off exception.
-                                </div>
-                                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                                    <div className="text-zinc-500">
-                                        {liveOperatingStyleHistoryLabel || 'Live changes affect tonight only.'}
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                        <div className="text-zinc-500">{liveOperatingStyleHistoryLabel || 'Live changes affect tonight only.'}</div>
+                                        {typeof onUndoOperatingStylePreset === 'function' ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => { void onUndoOperatingStylePreset('operating_style', { surface: 'top_chrome' }); closeAllTopMenus(); }}
+                                                className={`${styles.btnStd} ${styles.btnNeutral} min-h-[36px] px-3 py-1.5 text-xs normal-case tracking-[0.02em]`}
+                                            >
+                                                Undo last live style
+                                            </button>
+                                        ) : null}
                                     </div>
-                                    {typeof onUndoOperatingStylePreset === 'function' ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => { void onUndoOperatingStylePreset('operating_style', { surface: 'top_chrome' }); closeAllTopMenus(); }}
-                                            className={`${styles.btnStd} ${styles.btnNeutral} min-h-[34px] px-3 py-1.5 text-[11px] normal-case tracking-[0.03em]`}
-                                        >
-                                            Undo last live style
-                                        </button>
-                                    ) : null}
                                 </div>
-                            </div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                        <label className="text-xs text-zinc-300">
-                                            Audience request mode
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <label className={quickMenuFieldClass}>
+                                            <span className={quickMenuLabelClass}>Audience request mode</span>
                                             <select
                                                 value={quickRoomControls.requestMode || 'canonical_open'}
                                                 onChange={(event) => { void quickRoomControls.onSetRequestMode?.(event.target.value); }}
                                                 className={quickMenuSelectClass}
                                             >
                                                 {(quickRoomControls.requestModeOptions || []).map((option) => (
-                                                    <option key={`room-request-mode-${option.id}`} value={option.id}>
-                                                        {option.label}
-                                                    </option>
+                                                    <option key={`queue-request-mode-${option.id}`} value={option.id}>{option.label}</option>
                                                 ))}
                                             </select>
-                                            <span className="mt-1 block text-[10px] text-zinc-500">{requestModeShortLabel}</span>
+                                            <span className={quickMenuHelperClass}>{requestModeShortLabel}</span>
                                         </label>
-                                        <div className="text-xs text-zinc-300">
-                                            <div>When guests pick a new track</div>
-                                            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                                {(quickRoomControls.guestTrackPolicyOptions || []).map((option) => {
-                                                    const active = quickRoomControls.guestTrackPolicy === option.id;
-                                                    return (
-                                                        <button
-                                                            key={`room-guest-track-policy-${option.id}`}
-                                                            type="button"
-                                                            onClick={() => { void quickRoomControls.onSetGuestTrackPolicy?.(option.id); }}
-                                                            aria-pressed={active}
-                                                            className={`${styles.btnStd} ${active ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-center px-3 py-2 text-center text-[11px] normal-case tracking-[0.03em]`}
-                                                        >
-                                                            {option.label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                            <span className="mt-2 block text-[10px] text-zinc-500">
-                                                {quickRoomControls.guestTrackPolicy === 'auto_queue_unverified'
-                                                    ? 'Guests can drop a new YouTube track straight into the queue.'
-                                                    : quickRoomControls.guestTrackPolicy === 'block_unknown'
-                                                        ? 'Guests only see tracks that are already known or approved for the room.'
-                                                        : 'New guest-picked tracks stop with you before they enter the queue.'}
-                                            </span>
-                                        </div>
-                                        <label className="text-xs text-zinc-300">
-                                            Queue cap
+                                        <label className={quickMenuFieldClass}>
+                                            <span className={quickMenuLabelClass}>Queue cap</span>
                                             <select
                                                 value={quickRoomControls.queueLimitMode || 'none'}
                                                 onChange={(event) => {
                                                     const nextMode = event.target.value;
                                                     void quickRoomControls.onUpdateQueueSettings?.({
                                                         limitMode: nextMode,
-                                                        limitCount: nextMode === 'none'
-                                                            ? 0
-                                                            : Math.max(1, Number(quickRoomControls.queueLimitCount || 2) || 2),
+                                                        limitCount: nextMode === 'none' ? 0 : Math.max(1, Number(quickRoomControls.queueLimitCount || 2) || 2),
                                                     });
                                                 }}
                                                 className={quickMenuSelectClass}
                                             >
                                                 {(quickRoomControls.queueLimitOptions || []).map((option) => (
-                                                    <option key={`room-limit-mode-${option.id}`} value={option.id}>
-                                                        {option.label}
-                                                    </option>
+                                                    <option key={`queue-limit-mode-${option.id}`} value={option.id}>{option.label}</option>
                                                 ))}
                                             </select>
-                                            <span className="mt-1 block text-[10px] text-zinc-500">{queueLimitLabel}</span>
+                                            <span className={quickMenuHelperClass}>{queueLimitLabel}</span>
                                         </label>
                                         {quickRoomControls.queueLimitMode && quickRoomControls.queueLimitMode !== 'none' ? (
-                                            <label className="text-xs text-zinc-300">
-                                                Request cap count
+                                            <label className={quickMenuFieldClass}>
+                                                <span className={quickMenuLabelClass}>Request cap count</span>
                                                 <select
                                                     value={Math.max(1, Number(quickRoomControls.queueLimitCount || 2) || 2)}
                                                     onChange={(event) => {
@@ -1836,44 +1812,87 @@ const HostTopChrome = ({
                                                     className={quickMenuSelectClass}
                                                 >
                                                     {Array.from({ length: 8 }).map((_, index) => (
-                                                        <option key={`room-limit-count-${index + 1}`} value={index + 1}>
-                                                            {index + 1} request{index === 0 ? '' : 's'}
-                                                        </option>
+                                                        <option key={`queue-limit-count-${index + 1}`} value={index + 1}>{index + 1} request{index === 0 ? '' : 's'}</option>
                                                     ))}
                                                 </select>
                                             </label>
                                         ) : null}
-                                        <label className="text-xs text-zinc-300">
-                                            Queue rotation
+                                        <label className={quickMenuFieldClass}>
+                                            <span className={quickMenuLabelClass}>Queue rotation</span>
                                             <select
                                                 value={quickRoomControls.queueRotation || 'round_robin'}
-                                                onChange={(event) => {
-                                                    void quickRoomControls.onUpdateQueueSettings?.({ rotation: event.target.value });
-                                                }}
+                                                onChange={(event) => { void quickRoomControls.onUpdateQueueSettings?.({ rotation: event.target.value }); }}
                                                 className={quickMenuSelectClass}
                                             >
                                                 {(quickRoomControls.queueRotationOptions || []).map((option) => (
-                                                    <option key={`room-rotation-${option.id}`} value={option.id}>
-                                                        {option.label}
-                                                    </option>
+                                                    <option key={`queue-rotation-${option.id}`} value={option.id}>{option.label}</option>
                                                 ))}
                                             </select>
-                                            <span className="mt-1 block text-[10px] text-zinc-500">{queueRotationLabel}</span>
+                                            <span className={quickMenuHelperClass}>{queueRotationLabel}</span>
                                         </label>
-                                        <label className="text-xs text-zinc-300">
-                                            Ready check duration
+                                        <label className={quickMenuFieldClass}>
+                                            <span className={quickMenuLabelClass}>Ready check duration</span>
                                             <select
                                                 value={Math.max(3, Number(quickRoomControls.readyCheckDurationSec || 10) || 10)}
                                                 onChange={(event) => { void quickRoomControls.onSetReadyCheckDuration?.(event.target.value); }}
                                                 className={quickMenuSelectClass}
                                             >
                                                 {[5, 8, 10, 12, 15, 20, 30].map((value) => (
-                                                    <option key={`ready-check-duration-${value}`} value={value}>
-                                                        {value} sec
-                                                    </option>
+                                                    <option key={`ready-check-duration-${value}`} value={value}>{value} sec</option>
                                                 ))}
                                             </select>
                                         </label>
+                                    </div>
+                                    <div className="text-xs text-zinc-300">
+                                        <div className={quickMenuLabelClass}>When guests pick a new track</div>
+                                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                            {(quickRoomControls.guestTrackPolicyOptions || []).map((option) => {
+                                                const active = quickRoomControls.guestTrackPolicy === option.id;
+                                                return (
+                                                    <button
+                                                        key={`queue-guest-track-policy-${option.id}`}
+                                                        type="button"
+                                                        onClick={() => { void quickRoomControls.onSetGuestTrackPolicy?.(option.id); }}
+                                                        aria-pressed={active}
+                                                        className={`${styles.btnStd} ${active ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-center px-3 py-2 text-center text-sm normal-case tracking-[0.02em]`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <span className={quickMenuHelperClass}>
+                                            {quickRoomControls.guestTrackPolicy === 'auto_queue_unverified'
+                                                ? 'Guests can drop a new YouTube track straight into the queue.'
+                                                : quickRoomControls.guestTrackPolicy === 'block_unknown'
+                                                    ? 'Guests only see tracks that are already known or approved for the room.'
+                                                    : 'New guest-picked tracks stop with you before they enter the queue.'}
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-zinc-300">
+                                        <div className={quickMenuLabelClass}>Allowed search sources</div>
+                                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                            {[
+                                                { id: 'local', label: 'Library', iconClass: 'fa-solid fa-folder-music' },
+                                                { id: 'youtube', label: 'YouTube', iconClass: 'fa-brands fa-youtube' },
+                                                { id: 'itunes', label: 'Apple', iconClass: 'fa-brands fa-apple' },
+                                            ].map((source) => {
+                                                const active = quickRoomControls.searchSources?.[source.id] !== false;
+                                                return (
+                                                    <button
+                                                        key={`queue-search-source-${source.id}`}
+                                                        type="button"
+                                                        onClick={() => { void quickRoomControls.onSetSearchSource?.(source.id, !active); }}
+                                                        aria-pressed={active}
+                                                        className={`${styles.btnStd} ${active ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between px-3 py-2 text-sm normal-case tracking-[0.02em]`}
+                                                    >
+                                                        <span className="inline-flex items-center gap-2"><i className={source.iconClass}></i>{source.label}</span>
+                                                        <span className="text-xs uppercase tracking-widest">{active ? 'On' : 'Off'}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <span className={quickMenuHelperClass}>Controls which catalogs power host autocomplete and guest browsing.</span>
                                     </div>
                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                                         <button
@@ -1881,86 +1900,75 @@ const HostTopChrome = ({
                                             onClick={() => { void quickRoomControls.onToggleAutoPlayMedia?.(); }}
                                             aria-pressed={quickRoomControls.autoPlayMedia !== false}
                                             title="Choose whether staged songs start immediately or wait for a host-started track."
-                                            className={`${styles.btnStd} ${quickRoomControls.autoPlayMedia !== false ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                            className={`${styles.btnStd} ${quickRoomControls.autoPlayMedia !== false ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
                                         >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-circle-play"></i>
-                                                Stage Start
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.autoPlayMedia !== false ? 'Auto' : 'Manual'}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { void quickRoomControls.onToggleBouncerMode?.(); }}
-                                            className={`${styles.btnStd} ${quickRoomControls.bouncerMode ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                        >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-user-lock"></i>
-                                                Host Approval
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.bouncerMode ? 'On' : 'Off'}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                void quickRoomControls.onUpdateQueueSettings?.({
-                                                    firstTimeBoost: !quickRoomControls.queueFirstTimeBoost,
-                                                });
-                                            }}
-                                            className={`${styles.btnStd} ${quickRoomControls.queueFirstTimeBoost ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                        >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-sparkles"></i>
-                                                First-Time Boost
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.queueFirstTimeBoost ? 'On' : 'Off'}</span>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => { quickRoomControls.onTriggerReadyCheck?.(); }}
-                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                        >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-people-arrows"></i>
-                                                Ready Check
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">Run</span>
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-circle-play"></i>Stage Start</span>
+                                            <span className="text-xs uppercase tracking-widest">{quickRoomControls.autoPlayMedia !== false ? 'Auto' : 'Manual'}</span>
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { void quickRoomControls.onTogglePostPerformanceBackingPrompt?.(); }}
                                             aria-pressed={quickRoomControls.postPerformanceBackingPromptEnabled === true}
                                             title="Ask after each YouTube-backed performance whether the backing was good."
-                                            className={`${styles.btnStd} ${quickRoomControls.postPerformanceBackingPromptEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                            className={`${styles.btnStd} ${quickRoomControls.postPerformanceBackingPromptEnabled ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
                                         >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-circle-question"></i>
-                                                Post-Song Track Check
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.postPerformanceBackingPromptEnabled ? 'On' : 'Off'}</span>
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-circle-question"></i>Post-Song Track Check</span>
+                                            <span className="text-xs uppercase tracking-widest">{quickRoomControls.postPerformanceBackingPromptEnabled ? 'On' : 'Off'}</span>
                                         </button>
                                         <button
                                             type="button"
                                             onClick={() => { void quickRoomControls.onToggleRuntimeShellMode?.(); }}
                                             aria-pressed={quickRoomControls.runtimeShellMode === 'social_game_night_experiment'}
                                             title="Switch between the classic host runtime and the Social Game Night experiment."
-                                            className={`${styles.btnStd} ${quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                            className={`${styles.btnStd} ${quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
                                         >
-                                            <span className="inline-flex items-center gap-2">
-                                                <i className="fa-solid fa-record-vinyl"></i>
-                                                Runtime Shell
-                                            </span>
-                                            <span className="text-[11px] uppercase tracking-widest">{quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? 'Social' : 'Classic'}</span>
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-record-vinyl"></i>Runtime Shell</span>
+                                            <span className="text-xs uppercase tracking-widest">{quickRoomControls.runtimeShellMode === 'social_game_night_experiment' ? 'Social' : 'Classic'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { void quickRoomControls.onToggleBouncerMode?.(); }}
+                                            className={`${styles.btnStd} ${quickRoomControls.bouncerMode ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-user-lock"></i>Host Approval</span>
+                                            <span className="text-xs uppercase tracking-widest">{quickRoomControls.bouncerMode ? 'On' : 'Off'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                void quickRoomControls.onUpdateQueueSettings?.({ firstTimeBoost: !quickRoomControls.queueFirstTimeBoost });
+                                            }}
+                                            className={`${styles.btnStd} ${quickRoomControls.queueFirstTimeBoost ? styles.btnHighlight : styles.btnNeutral} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-sparkles"></i>First-Time Boost</span>
+                                            <span className="text-xs uppercase tracking-widest">{quickRoomControls.queueFirstTimeBoost ? 'On' : 'Off'}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { quickRoomControls.onTriggerReadyCheck?.(); }}
+                                            className={`${styles.btnStd} ${styles.btnSecondary} min-h-[44px] justify-between py-2 text-sm normal-case tracking-[0.02em]`}
+                                        >
+                                            <span className="inline-flex items-center gap-2"><i className="fa-solid fa-people-arrows"></i>Ready Check</span>
+                                            <span className="text-xs uppercase tracking-widest">Run</span>
                                         </button>
                                     </div>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => openOpsSection('ops.room_setup')}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} mt-3 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    Open Full Room Setup
-                                </button>
+                                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { setTab?.('stage'); closeAllTopMenus(); }}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} justify-center py-2 text-sm normal-case tracking-[0.02em]`}
+                                    >
+                                        Open Queue Workspace
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => openOpsSection('ops.room_setup')}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} justify-center py-2 text-sm normal-case tracking-[0.02em]`}
+                                    >
+                                        Open Full Room Setup
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2608,12 +2616,12 @@ const HostTopChrome = ({
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setTab?.('stage');
+                                    onOpenSceneLibrary?.('scenes');
                                     closeAllTopMenus();
                                 }}
                                 className={`${styles.btnStd} ${styles.btnNeutral} mt-3 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
                             >
-                                Open Queue Workspace
+                                Open Media Library
                             </button>
                         </div>
                     )}
@@ -2669,6 +2677,17 @@ const HostTopChrome = ({
                                         style={{ background: `linear-gradient(90deg, #00E5FF ${sfxVolumeDraftPct}%, #27272a ${sfxVolumeDraftPct}%)` }}
                                     />
                                 </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        onOpenSceneLibrary?.('sfx');
+                                        closeAllTopMenus();
+                                    }}
+                                    className={`${styles.btnStd} ${styles.btnSecondary} mt-2.5 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    <i className="fa-solid fa-folder-plus"></i>
+                                    Upload / Organize SFX
+                                </button>
                                 <div className="mt-2.5 space-y-1.5 max-h-52 overflow-y-auto custom-scrollbar pr-1">
                                     {(sounds || []).map((sound) => (
                                         <button

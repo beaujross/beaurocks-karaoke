@@ -7,8 +7,10 @@ const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopil
 const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
 const selfServeLauncherPath = 'src/apps/Host/components/SelfServeModeLauncher.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
+const launchPadBrowserPath = 'src/apps/Host/components/HostRoomLaunchPadBrowser.jsx';
 const nightSetupFlowPath = 'src/apps/Host/hooks/useHostNightSetupFlow.js';
 const hostAppPath = 'src/apps/Host/HostApp.jsx';
+const functionsPath = 'functions/index.js';
 const hostAppSource = readFileSync(hostAppPath, 'utf8');
 const getAdminSection = (startKey, nextKey) => {
   const startMarker = `{settingsTab === '${startKey}' && (`;
@@ -142,7 +144,7 @@ test('host panel presents readiness and one launch action before deeper setup', 
   assert.doesNotMatch(
     topChromeSource,
     /Queue Controls/,
-    'Host top chrome should not duplicate queue live controls as a top-level launch surface',
+    'Host top chrome should not duplicate the old queue controls surface label',
   );
   assert.match(
     topChromeSource,
@@ -171,8 +173,8 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
   assert.match(
     hostAppSource,
-    /querySelector\('\[data-feature-id="deck-room-settings-menu-toggle"\]'\)/,
-    'Readiness should target the top room-settings quick menu instead of reopening setup',
+    /querySelector\('\[data-feature-id="deck-queue-menu-toggle"\]'\)/,
+    'Readiness should target the top queue quick menu instead of reopening setup',
   );
   assert.match(
     hostAppSource,
@@ -196,8 +198,9 @@ test('host panel presents readiness and one launch action before deeper setup', 
   );
 });
 
-test('room formats live in Night Setup instead of the Games tab', () => {
+test('room formats are optional while room creation centers on defaults', () => {
   const selfServeLauncherSource = readFileSync(selfServeLauncherPath, 'utf8');
+  const launchPadBrowserSource = readFileSync(launchPadBrowserPath, 'utf8');
 
   assert.match(
     hostAppSource,
@@ -216,8 +219,23 @@ test('room formats live in Night Setup instead of the Games tab', () => {
   );
   assert.match(
     hostAppSource,
-    /Optional Format Layer/,
-    'Classic night setup should expose room formats as an optional layer instead of a required step',
+    /Optional room formats/,
+    'Classic night setup should tuck self-serve formats behind an optional drawer instead of a required activity step',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /Room defaults/,
+    'Room creation should frame preset-backed setup as room defaults.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /<select[\s\S]*value=\{resolvedLaunchPresetId\}/,
+    'Room creation should use a compact defaults selector instead of a wall of preset cards.',
+  );
+  assert.doesNotMatch(
+    launchPadBrowserSource,
+    /Night preset/,
+    'Room creation should not lead with night preset language.',
   );
   assert.match(
     selfServeLauncherSource,
@@ -358,6 +376,95 @@ test('room settings avoids duplicate-looking event and base preset choices', () 
     hostAppSource,
     /Base room: \{profile\.basePresetLabel\}/,
     'Event cards should explain which base room preset they apply',
+  );
+});
+
+test('room settings persists Search Sources toggles and preset defaults to the room', () => {
+  assert.match(
+    hostAppSource,
+    /const DEFAULT_SEARCH_SOURCES = Object\.freeze\(\{ local: true, youtube: true, itunes: true \}\);/,
+    'Host room settings should share a single default for local, YouTube, and Apple search sources.',
+  );
+  assert.match(
+    hostAppSource,
+    /room\?\.searchSources && typeof room\.searchSources === 'object'[\s\S]*?normalizeHostSearchSources\(room\.searchSources, presetSearchSources\)/,
+    'Host state sync should prefer the saved room Search Sources over preset defaults.',
+  );
+  assert.match(
+    hostAppSource,
+    /await updateRoom\(\{ searchSources: nextSources \}\);/,
+    'Search Sources buttons should persist changes to the room document.',
+  );
+  assert.match(
+    hostAppSource,
+    /setSearchSources\(previousSources\);[\s\S]*?toast\('Could not update search sources\.'\);/,
+    'Failed Search Sources saves should roll the UI back and warn the host.',
+  );
+  assert.match(
+    hostAppSource,
+    /searchSources: normalizeHostSearchSources\(preset\.searchSources \|\| \{\}, DEFAULT_SEARCH_SOURCES\),/,
+    'Applying a room preset should persist that preset Search Sources package into the room.',
+  );
+  assert.match(
+    hostAppSource,
+    /setSearchSources\(normalizeHostSearchSources\(payload\.searchSources \|\| \{\}, DEFAULT_SEARCH_SOURCES\)\);/,
+    'Preset application should update local Search Sources from the room payload it saved.',
+  );
+});
+
+test('new room setup keeps marquee off unless the host explicitly enables it', () => {
+  const nightSetupFlowSource = readFileSync(nightSetupFlowPath, 'utf8');
+  const functionsSource = readFileSync(functionsPath, 'utf8');
+
+  assert.match(
+    hostAppSource,
+    /const \[nightSetupMarqueeEnabled, setNightSetupMarqueeEnabled\] = useState\(false\);/,
+    'Classic room setup should not seed the marquee toggle on.',
+  );
+  assert.match(
+    hostAppSource,
+    /const \[marqueeShowMode, setMarqueeShowMode\] = useState\('idle'\);/,
+    'Room settings should default marquee rotation to idle instead of always-on.',
+  );
+  assert.match(
+    hostAppSource,
+    /const \[hypeMeterDisplayMode, setHypeMeterDisplayMode\] = useState\(HYPE_METER_DISPLAY_MODES\.scoreIntegrated\);/,
+    'Room settings should default the hype meter into the score display instead of duplicating the top bar.',
+  );
+  assert.match(
+    hostAppSource,
+    /<option value=\{HYPE_METER_DISPLAY_MODES\.scoreIntegrated\}>Inside score display<\/option>/,
+    'Hosts should be able to choose the integrated score display mode from room settings.',
+  );
+  assert.match(
+    nightSetupFlowSource,
+    /nightSetupMarqueeEnabled = false,/,
+    'Shared night setup flow should default marquee off.',
+  );
+  assert.match(
+    nightSetupFlowSource,
+    /marqueeShowMode: legacyPresetSettings\.marqueeShowMode \|\| 'idle'/,
+    'Setup payload fallback should not force always-on marquee mode.',
+  );
+  assert.match(
+    functionsSource,
+    /casual: Object\.freeze\(\{[\s\S]*?marqueeEnabled: false,[\s\S]*?marqueeShowMode: "idle"/,
+    'Server-side casual provisioning should keep marquee off for newly created rooms.',
+  );
+  assert.match(
+    functionsSource,
+    /bingo: Object\.freeze\(\{[\s\S]*?marqueeEnabled: false,[\s\S]*?marqueeShowMode: "idle"/,
+    'Server-side bingo provisioning should keep marquee off and avoid always-on marquee mode.',
+  );
+  assert.match(
+    functionsSource,
+    /hypeMeterDisplayMode: "score_integrated"/,
+    'Server-side provisioning should default new rooms to the non-duplicated integrated score HUD mode.',
+  );
+  assert.match(
+    functionsSource,
+    /hideNonEmbeddableYouTube: true/,
+    'Server-side provisioning should default new rooms to embeddable-only YouTube search.',
   );
 });
 
