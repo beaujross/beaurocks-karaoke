@@ -71,7 +71,7 @@ test("popTriviaServer.test", async () => {
   assert.match(fallbackText, /Take On Me/);
   assert.doesNotMatch(
     fallbackText,
-    /production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story/i
+    /production trick|might use|classic crowd move|usually helps most|guitar cable check|sets up the story|release-year|billboard|grammy|music video|record label/i
   );
   const fallbackQuestions = normalizePopTriviaQuestions(fallbackRows, {
     idPrefix: "ROOM_fallback",
@@ -294,5 +294,7 @@ test("popTriviaServer.test", async () => {
 
   const functionsSource = readFileSync("functions/index.js", "utf8");
   assert.match(functionsSource, /Do not ask generic filler/);
+  assert.match(functionsSource, /At least 3 questions must mention the song title/);
+  assert.match(functionsSource, /If you cannot write a safe factual question, write a title\/performance question instead/);
   assert.match(functionsSource, /"category":"hook_recognition"/);
 });

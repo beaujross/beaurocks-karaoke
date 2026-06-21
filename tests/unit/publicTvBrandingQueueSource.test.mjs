@@ -88,8 +88,13 @@ test('PublicTV keeps the performance score anchored to the stage top-right HUD l
   );
   assert.match(
     tvSource,
-    /const scoreAvoidsFloatingJoinQr = isCinema && showJoinOverlay;[\s\S]*const performanceScorePositionClass = scoreAvoidsFloatingJoinQr[\s\S]*left-3 \$\{performanceScoreTopClass\}[\s\S]*right-3 \$\{performanceScoreTopClass\}/,
-    'The score should stay top-right normally but move away from the floating QR in cinema mode.',
+    /const scoreHasFloatingJoinQr = isCinema && showJoinOverlay;[\s\S]*\? 'top-\[11\.75rem\] md:top-\[12\.75rem\] 2xl:top-\[14\.75rem\]'[\s\S]*const performanceScorePositionClass = `right-3 \${performanceScoreTopClass\}/,
+    'The score should stay in the top-right HUD lane and drop below the floating QR in cinema mode.',
+  );
+  assert.doesNotMatch(
+    tvSource,
+    /scoreAvoidsFloatingJoinQr[\s\S]*left-3/,
+    'Cinema mode should not move the score to the left side of the stage.',
   );
   assert.match(
     tvSource,
@@ -98,8 +103,8 @@ test('PublicTV keeps the performance score anchored to the stage top-right HUD l
   );
   assert.match(
     tvSource,
-    /className=\{`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 \$\{scoreAvoidsFloatingJoinQr \? 'justify-start' : 'justify-end'\}`\}/,
-    'The score label should align with the collision-aware score position.',
+    /className=\{`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 justify-end`\}/,
+    'The score label should align with the right-anchored score position.',
   );
 });
 

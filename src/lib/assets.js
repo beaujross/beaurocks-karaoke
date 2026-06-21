@@ -46,4 +46,11 @@ export const STORM_SFX = {
     bigDrops: localAsset('audio/storm/big-rain-drops.mp3')
 };
 
+export const PROMPT_VOTE_SFX = {
+    launch: "https://beauross.com/wp-content/uploads/dj-airhorn-sound-39405.mp3",
+    voteLock: "https://beauross.com/wp-content/uploads/cowbell-made-with-Voicemod.mp3",
+    reveal: "https://beauross.com/wp-content/uploads/1415_dhol-drums-01.mp3",
+    correct: "https://beauross.com/wp-content/uploads/1194_crowd-cheering-01.mp3"
+};
+
 export const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];

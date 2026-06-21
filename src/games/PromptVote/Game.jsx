@@ -6,10 +6,19 @@ import {
     castPromptVote,
     finalizePromptVoteRound,
 } from '../../lib/firebase';
-import { APP_ID } from '../../lib/assets';
+import { APP_ID, PROMPT_VOTE_SFX } from '../../lib/assets';
 
 const DEFAULT_EMOJI = String.fromCodePoint(0x1f600);
 const TRIVIA_OPTION_LABELS = ['A', 'B', 'C', 'D'];
+
+const playPromptVoteCue = (url = '', volume = 0.28) => {
+    if (!url || typeof Audio === 'undefined') return;
+    try {
+        const audio = new Audio(url);
+        audio.volume = Math.max(0, Math.min(1, volume));
+        audio.play().catch(() => {});
+    } catch (_) {}
+};
 
 const getTimestampMs = (value) => {
     if (!value) return 0;
@@ -55,6 +64,9 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
     const [isSubmittingVote, setIsSubmittingVote] = useState(false);
     const [voteError, setVoteError] = useState('');
     const [nowMs, setNowMs] = useState(Date.now());
+    const launchCueRef = useRef('');
+    const revealCueRef = useRef('');
+    const voteCueRef = useRef('');
 
     const roundDurationSec = Math.max(0, Number(gameState?.durationSec || 0));
     const startedAtMs = getTimestampMs(gameState?.startedAt);
@@ -66,6 +78,27 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
     const timerSecRemaining = isTimerDriven ? Math.ceil(timerMsRemaining / 1000) : null;
     const timerExpired = isTimerDriven && timerMsRemaining <= 0;
     const isReveal = modeReveal || questionStatus === 'reveal' || timerExpired;
+
+    useEffect(() => {
+        const cueKey = `${safeMode}_${questionId || ''}`;
+        if (isPlayer || !questionId || isReveal || launchCueRef.current === cueKey) return;
+        launchCueRef.current = cueKey;
+        playPromptVoteCue(isTrivia ? PROMPT_VOTE_SFX.launch : PROMPT_VOTE_SFX.voteLock, isTrivia ? 0.2 : 0.18);
+    }, [isPlayer, isReveal, isTrivia, questionId, safeMode]);
+
+    useEffect(() => {
+        const cueKey = `${safeMode}_${questionId || ''}_reveal`;
+        if (isPlayer || !questionId || !isReveal || revealCueRef.current === cueKey) return;
+        revealCueRef.current = cueKey;
+        playPromptVoteCue(isTrivia ? PROMPT_VOTE_SFX.reveal : PROMPT_VOTE_SFX.correct, 0.24);
+    }, [isPlayer, isReveal, isTrivia, questionId, safeMode]);
+
+    useEffect(() => {
+        const cueKey = `${safeMode}_${questionId || ''}_${String(myVote)}`;
+        if (!isPlayer || !questionId || !hasVoted || myVote === null || voteCueRef.current === cueKey) return;
+        voteCueRef.current = cueKey;
+        playPromptVoteCue(PROMPT_VOTE_SFX.voteLock, 0.18);
+    }, [hasVoted, isPlayer, myVote, questionId, safeMode]);
 
     useEffect(() => {
         if (!isTimerDriven || isReveal) return;
@@ -245,7 +278,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="trivia" className="h-full flex flex-col justify-center p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="trivia" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start sm:justify-center p-4 sm:p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-xl font-bold mb-6 text-[#00C4D9] uppercase tracking-widest">Trivia Challenge</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -253,7 +286,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                             {timerSecRemaining}s left
                         </div>
                     )}
-                    <h1 className="text-2xl font-bold mb-8 leading-tight">{gameState.q}</h1>
+                    <h1 className="text-[clamp(1.35rem,6vw,2rem)] font-bold mb-5 sm:mb-8 leading-tight">{gameState.q}</h1>
                     {hasVoted || isReveal ? (
                         <div className="text-center animate-in zoom-in">
                             <div className="text-6xl mb-4">{DEFAULT_EMOJI}</div>
@@ -293,7 +326,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                                     data-qa-choice={i}
                                     onClick={() => castVote(i)}
                                     disabled={isSubmittingVote}
-                                    className={`bg-[linear-gradient(135deg,rgba(14,165,233,0.24),rgba(236,72,153,0.18),rgba(250,204,21,0.14))] border-2 border-cyan-200/70 p-4 rounded-xl text-lg font-bold transition-colors text-left flex items-center gap-3 shadow-[0_0_28px_rgba(34,211,238,0.28)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:bg-[#EC4899] active:border-yellow-200'}`}
+                                    className={`bg-[linear-gradient(135deg,rgba(14,165,233,0.24),rgba(236,72,153,0.18),rgba(250,204,21,0.14))] border-2 border-cyan-200/70 p-3 sm:p-4 rounded-xl text-base sm:text-lg font-bold transition-colors text-left flex items-center gap-3 shadow-[0_0_28px_rgba(34,211,238,0.28)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:bg-[#EC4899] active:border-yellow-200'}`}
                                 >
                                     <span className="bg-[#00C4D9]/20 w-8 h-8 flex items-center justify-center rounded-full text-sm">{TRIVIA_OPTION_LABELS[i]}</span>
                                     {o}
@@ -308,18 +341,18 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
 
         // Trivia TV
         return (
-            <div data-prompt-vote-tv-view="trivia" className="h-full w-full flex flex-col items-center justify-center p-12 bg-[radial-gradient(circle_at_18%_18%,rgba(250,204,21,0.28),transparent_31%),radial-gradient(circle_at_82%_22%,rgba(34,211,238,0.32),transparent_34%),linear-gradient(135deg,#0b0320,#2b0644_46%,#050b1c)] text-white font-saira relative overflow-hidden z-[100]">
+            <div data-prompt-vote-tv-view="trivia" className="h-full w-full min-h-0 flex flex-col items-center justify-center gap-2 sm:gap-3 p-3 sm:p-5 lg:p-6 bg-[radial-gradient(circle_at_18%_18%,rgba(250,204,21,0.28),transparent_31%),radial-gradient(circle_at_82%_22%,rgba(34,211,238,0.32),transparent_34%),linear-gradient(135deg,#0b0320,#2b0644_46%,#050b1c)] text-white font-saira relative overflow-hidden z-[100]">
                 <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(90deg,rgba(236,72,153,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(0,196,217,0.08)_1px,transparent_1px)] bg-[size:60px_60px] opacity-30"></div>
                 
-                <h1 className="text-5xl font-bebas text-[#EC4899] mb-8 tracking-widest z-10 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)]">
+                <h1 className="text-[clamp(1.65rem,3.7vw,4rem)] font-bebas text-[#EC4899] tracking-widest z-10 drop-shadow-[0_0_18px_rgba(236,72,153,0.55)] leading-none">
                     {isReveal ? "ANSWER REVEALED" : "TRIVIA TIME"}
                 </h1>
 
-                <h2 className="text-6xl font-black text-center mb-12 max-w-6xl leading-tight z-10 drop-shadow-[0_0_35px_rgba(0,196,217,0.35)]">
+                <h2 className="text-[clamp(1.35rem,4.1vw,4rem)] font-black text-center max-w-[min(90vw,68rem)] max-h-[23vh] overflow-hidden leading-[1.04] z-10 drop-shadow-[0_0_35px_rgba(0,196,217,0.35)]">
                     {gameState.q}
                 </h2>
 
-                <div className="z-10 mb-6 flex flex-wrap items-center justify-center gap-3 text-base md:text-lg uppercase tracking-[0.18em] text-zinc-300">
+                <div className="z-10 flex flex-wrap items-center justify-center gap-2 sm:gap-3 text-[clamp(0.68rem,1.2vw,0.95rem)] uppercase tracking-[0.16em] text-zinc-300">
                     {!isReveal && timerSecRemaining !== null && (
                         <span className="bg-black/40 border border-white/10 px-3 py-2 rounded-full">
                             {timerSecRemaining}s left
@@ -330,7 +363,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                     </span>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:gap-8 w-full max-w-6xl z-10">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3 xl:gap-4 w-full max-w-[min(94vw,70rem)] max-h-[45vh] z-10">
                     {gameState.options?.map((o, i) => {
                         const isCorrect = i === gameState.correct;
                         const voters = votes.filter(v => v.val === i);
@@ -338,7 +371,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                         
                         return (
                             <div key={i} className={`
-                                p-8 rounded-3xl border-4 text-4xl font-bold relative overflow-hidden transition-all duration-500 flex flex-col justify-center min-h-[190px]
+                                p-3 sm:p-4 lg:p-5 rounded-2xl sm:rounded-3xl border-2 sm:border-4 text-[clamp(0.95rem,2.25vw,2.15rem)] font-bold relative overflow-hidden transition-all duration-500 flex flex-col justify-center min-h-[clamp(82px,15vh,145px)]
                                 ${isCorrect && isReveal ? 'bg-[#00C4D9] border-white scale-105 shadow-[0_0_55px_rgba(0,196,217,0.7)] text-black' : 'bg-black/50 border-[#EC4899]/30 text-zinc-200'}
                                 ${isDimmed ? 'opacity-30 blur-sm' : 'opacity-100'}
                             `}>
@@ -367,7 +400,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                 </div>
 
                 {isReveal && (
-                    <div className="z-10 mt-8 w-full max-w-5xl bg-black/55 border border-white/15 rounded-3xl p-6">
+                    <div className="z-10 mt-2 sm:mt-3 w-full max-w-[min(92vw,64rem)] max-h-[28vh] overflow-y-auto custom-scrollbar bg-black/55 border border-white/15 rounded-2xl sm:rounded-3xl p-3 sm:p-5">
                         <div className="text-lg uppercase tracking-[0.18em] text-zinc-200 mb-3">Question Summary</div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
                             <div className="bg-zinc-900/70 border border-white/10 rounded-xl p-3">
@@ -424,7 +457,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         const myVoteWonMajority = hasVoted && majoritySide && myVote === majoritySide;
         if (isPlayer) {
             return (
-                <div data-prompt-vote-player-view="wyr" className="h-full flex flex-col justify-center p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
+                <div data-prompt-vote-player-view="wyr" className="h-full min-h-0 overflow-y-auto flex flex-col justify-start sm:justify-center p-4 sm:p-6 bg-[radial-gradient(circle_at_top_left,rgba(250,204,21,0.28),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.34),transparent_42%),linear-gradient(135deg,#06111f,#210632_48%,#080b18)] text-white font-saira text-center">
                     <div className="text-2xl font-black mb-6 text-[#EC4899] uppercase tracking-[0.2em]">WOULD YOU RATHER...</div>
                     {!isReveal && timerSecRemaining !== null && (
                         <div className="mb-4 inline-flex self-center items-center gap-2 text-xs uppercase tracking-[0.3em] bg-black/40 border border-white/10 px-4 py-2 rounded-full text-zinc-200">
@@ -463,12 +496,12 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                             )}
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-4 h-full max-h-[60vh] justify-center">
+                        <div className="flex flex-col gap-3 sm:gap-4 min-h-0 justify-center">
                             <button
                                 data-wyr-choice="A"
                                 onClick={() => castVote('A')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-gradient-to-br from-[#EC4899] to-[#c0267c] border-4 border-white/20 rounded-3xl text-3xl font-black shadow-[0_14px_38px_rgba(236,72,153,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[150px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                className={`flex-1 bg-gradient-to-br from-[#EC4899] to-[#c0267c] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(236,72,153,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
                                 <span className="text-xs uppercase tracking-[0.3em] mb-2 text-pink-100/90">Choice A</span>
                                 {gameState.optionA}
@@ -478,7 +511,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                                 data-wyr-choice="B"
                                 onClick={() => castVote('B')}
                                 disabled={isSubmittingVote}
-                                className={`flex-1 bg-gradient-to-br from-[#00C4D9] to-[#0f8ea7] border-4 border-white/20 rounded-3xl text-3xl font-black shadow-[0_14px_38px_rgba(0,196,217,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[150px] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                                className={`flex-1 bg-gradient-to-br from-[#00C4D9] to-[#0f8ea7] border-4 border-white/20 rounded-3xl text-[clamp(1.35rem,7vw,2rem)] font-black shadow-[0_14px_38px_rgba(0,196,217,0.45)] transition-transform flex flex-col items-center justify-center p-5 leading-tight min-h-[clamp(112px,24vh,150px)] ${isSubmittingVote ? 'opacity-70 cursor-not-allowed' : 'active:scale-[0.98]'}`}
                             >
                                 <span className="text-xs uppercase tracking-[0.3em] mb-2 text-cyan-100/90">Choice B</span>
                                 {gameState.optionB}
@@ -493,20 +526,20 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
         // TV View
         const wyrPrompt = String(gameState?.question || '').trim();
 
-        const topRailPadding = wyrPrompt ? 'clamp(260px, 34vh, 430px)' : 'clamp(150px, 20vh, 250px)';
+        const topRailPadding = wyrPrompt ? 'clamp(150px, 24vh, 280px)' : 'clamp(105px, 17vh, 190px)';
 
         return (
             <div data-prompt-vote-tv-view="wyr" className="h-full w-full bg-[radial-gradient(circle_at_20%_20%,rgba(45,212,191,0.34),transparent_32%),radial-gradient(circle_at_82%_18%,rgba(236,72,153,0.34),transparent_34%),linear-gradient(145deg,#04101d,#11103a_42%,#2b0632)] text-white font-saira relative overflow-hidden z-[100]">
-                <div className="absolute inset-x-0 top-5 z-30 px-6 flex flex-col items-center gap-3 pointer-events-none">
-                    <h1 className="text-[clamp(2.4rem,4.8vw,6.5rem)] font-bebas text-white tracking-[0.14em] drop-shadow-[0_0_18px_rgba(34,211,238,0.22)] bg-black/60 px-8 py-2 rounded-full border border-white/10">
+                <div className="absolute inset-x-0 top-3 sm:top-5 z-30 px-3 sm:px-6 flex flex-col items-center gap-2 sm:gap-3 pointer-events-none">
+                    <h1 className="text-[clamp(1.65rem,3.7vw,4.4rem)] font-bebas text-white tracking-[0.14em] drop-shadow-[0_0_18px_rgba(34,211,238,0.22)] bg-black/60 px-5 sm:px-8 py-1.5 sm:py-2 rounded-full border border-white/10 leading-none">
                         WOULD YOU RATHER...
                     </h1>
                     {wyrPrompt && (
-                        <div className="w-full max-w-[96vw] px-6 md:px-10">
-                            <div className="relative overflow-hidden rounded-3xl border border-white/12 bg-[linear-gradient(145deg,rgba(14,165,233,0.28),rgba(236,72,153,0.22),rgba(15,23,42,0.92))] px-7 py-5 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
+                        <div className="w-full max-w-[96vw] px-2 sm:px-6 md:px-10">
+                            <div className="relative overflow-hidden rounded-3xl border border-white/12 bg-[linear-gradient(145deg,rgba(14,165,233,0.28),rgba(236,72,153,0.22),rgba(15,23,42,0.92))] px-4 sm:px-6 py-2.5 sm:py-4 text-center shadow-[0_16px_52px_rgba(0,0,0,0.62)] backdrop-blur-sm">
                                 <div className="pointer-events-none absolute inset-0 opacity-45 bg-[radial-gradient(circle_at_top_left,rgba(45,212,191,0.26),transparent_50%),radial-gradient(circle_at_bottom_right,rgba(236,72,153,0.22),transparent_56%)]" />
-                                <div className="relative text-[clamp(1rem,1.8vw,1.45rem)] uppercase tracking-[0.24em] text-zinc-200 mb-3 font-bold">Prompt</div>
-                                <div className="relative text-[clamp(2.2rem,4.4vw,4.8rem)] font-black leading-[1.08] text-white whitespace-pre-wrap break-words drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
+                                <div className="relative text-[clamp(0.82rem,1.35vw,1.15rem)] uppercase tracking-[0.24em] text-zinc-200 mb-2 font-bold">Prompt</div>
+                                <div className="relative text-[clamp(1.25rem,3.15vw,3.2rem)] font-black leading-[1.06] text-white whitespace-pre-wrap break-words max-h-[24vh] overflow-hidden drop-shadow-[0_3px_10px_rgba(0,0,0,0.5)]">
                                     {wyrPrompt}
                                 </div>
                             </div>
@@ -530,7 +563,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                         <div className="absolute inset-y-0 right-0 w-px bg-white/10" />
                         <div className="absolute top-6 left-6 text-sm uppercase tracking-[0.18em] bg-black/35 border border-teal-300/35 text-teal-100 rounded-full px-3 py-1 font-bold">A</div>
                         <div className="z-10 text-center w-full px-8 md:px-12 pb-10" style={{ paddingTop: topRailPadding }}>
-                            <div className="text-[clamp(2rem,5.2vw,6rem)] font-black drop-shadow-xl mb-4 leading-[1.05] break-words">
+                            <div className="text-[clamp(1.35rem,3.8vw,4.2rem)] font-black drop-shadow-xl mb-4 leading-[1.04] break-words">
                                 {gameState.optionA}
                             </div>
                             {isReveal && (
@@ -555,7 +588,7 @@ const PromptVoteGame = ({ isPlayer, roomCode, gameState, activeMode, user }) => 
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.24),transparent_52%)]" />
                         <div className="absolute top-6 right-6 text-sm uppercase tracking-[0.18em] bg-black/35 border border-pink-300/35 text-pink-100 rounded-full px-3 py-1 font-bold">B</div>
                         <div className="z-10 text-center w-full px-8 md:px-12 pb-10" style={{ paddingTop: topRailPadding }}>
-                            <div className="text-[clamp(2rem,5.2vw,6rem)] font-black drop-shadow-xl mb-4 leading-[1.05] break-words">
+                            <div className="text-[clamp(1.35rem,3.8vw,4.2rem)] font-black drop-shadow-xl mb-4 leading-[1.04] break-words">
                                 {gameState.optionB}
                             </div>
                             {isReveal && (

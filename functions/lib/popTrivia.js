@@ -134,48 +134,56 @@ const buildPopTriviaSongContext = (song = {}) => {
 const buildFallbackPopTriviaSeedRows = (song = {}) => {
   const context = buildPopTriviaSongContext(song);
   const songTitle = cleanText(context.songTitle || "this song", "this song");
+  const artist = cleanText(context.artist || "the artist", "the artist");
   const singerName = cleanText(context.singerName || "the singer", "the singer");
+  const hasLove = /\blove|heart|baby|kiss|sweet|dream\b/i.test(songTitle);
+  const hasNight = /\bnight|dance|party|fire|hot|uptown|funk|groove\b/i.test(songTitle);
+  const emotionalCue = hasLove
+    ? "the feeling behind the title"
+    : hasNight
+      ? "the room-energy cue in the title"
+      : "the title phrase";
+  const crowdMove = hasNight ? "Move with the beat" : "Sing the hook back";
 
   return [
     {
-      q: `In "${songTitle}", what is the best cue that the whole room can join in?`,
-      correct: "The chorus hook",
-      w1: "A quiet verse line",
-      w2: "The final fade-out",
-      w3: "A background count-in",
+      q: `For karaoke, what should the room listen for first in "${songTitle}"?`,
+      correct: "The title or hook phrase",
+      w1: "A quiet verse detail",
+      w2: "A random crowd chant",
+      w3: "The final fade-out",
       category: "hook_recognition",
       source: "fallback",
     },
     {
-      q: `If "${songTitle}" starts lower than expected, what is the strongest first move?`,
-      correct: "Keep the verse relaxed",
-      w1: "Shout the first line",
-      w2: "Race ahead of the beat",
-      w3: "Drop the melody",
-      category: "performance",
-      source: "fallback",
-    },
-    {
-      q: `What makes a backing track for "${songTitle}" easiest for the crowd to follow?`,
-      correct: "Clear beat and lyric timing",
-      w1: "Hidden lead vocals",
-      w2: "A surprise tempo jump",
-      w3: "No intro cue",
-      category: "arrangement",
-      source: "fallback",
-    },
-    {
-      q: `When ${singerName} reaches the biggest line in "${songTitle}", what wins the room?`,
-      correct: "Commit to the hook",
-      w1: "Mumble through the chorus",
-      w2: "Hide behind the screen",
-      w3: "Skip the payoff",
+      q: `If ${singerName} wants "${songTitle}" to land fast, what is the strongest crowd cue?`,
+      correct: crowdMove,
+      w1: "Wait silently for the bridge",
+      w2: "Ignore the chorus timing",
+      w3: "Guess a random backstage fact",
       category: "crowd_moment",
+      source: "fallback",
+    },
+    {
+      q: `What makes "${songTitle}" by ${artist} safest as a pop-up trivia prompt?`,
+      correct: emotionalCue,
+      w1: "A random trivia rumor",
+      w2: "A made-up backstage story",
+      w3: "A fake fan nickname",
+      category: "safe_fact",
+      source: "fallback",
+    },
+    {
+      q: `When the hook of "${songTitle}" arrives, what should the karaoke screen help everyone do?`,
+      correct: "Find the singalong moment",
+      w1: "Hide the lyric timing",
+      w2: "Change the song key randomly",
+      w3: "Mute the backing rhythm",
+      category: "singalong",
       source: "fallback",
     },
   ];
 };
-
 const normalizePopTriviaSeedRows = (rows = [], options = {}) => {
   if (!Array.isArray(rows)) return [];
   const limit = Math.max(1, Number(options?.limit || DEFAULT_POP_TRIVIA_MAX_QUESTIONS));

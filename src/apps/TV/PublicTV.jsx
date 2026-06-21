@@ -7292,11 +7292,13 @@ const PublicTV = ({ roomCode }) => {
     const topBarHypeMeter = hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.topBar
         || hypeMeterDisplayMode === HYPE_METER_DISPLAY_MODES.both;
     const showTopHypeMeter = showHypeMeter && topBarHypeMeter;
-    const performanceScoreTopClass = showTopHypeMeter ? 'top-16 md:top-20 2xl:top-24' : 'top-8 md:top-10 2xl:top-12';
-    const scoreAvoidsFloatingJoinQr = isCinema && showJoinOverlay;
-    const performanceScorePositionClass = scoreAvoidsFloatingJoinQr
-        ? `left-3 ${performanceScoreTopClass} max-w-[min(34rem,calc(100%-13rem))] text-left md:left-4 2xl:left-6`
-        : `right-3 ${performanceScoreTopClass} max-w-[calc(100%-2rem)] text-right md:right-4 md:max-w-[min(34rem,calc(100%-3rem))] 2xl:right-6`;
+    const scoreHasFloatingJoinQr = isCinema && showJoinOverlay;
+    const performanceScoreTopClass = scoreHasFloatingJoinQr
+        ? 'top-[11.75rem] md:top-[12.75rem] 2xl:top-[14.75rem]'
+        : showTopHypeMeter
+            ? 'top-16 md:top-20 2xl:top-24'
+            : 'top-8 md:top-10 2xl:top-12';
+    const performanceScorePositionClass = `right-3 ${performanceScoreTopClass} max-w-[calc(100%-2rem)] text-right md:right-4 md:max-w-[min(34rem,calc(100%-3rem))] 2xl:right-6`;
     const showVisualizerTv = !!room?.showVisualizerTv;
     const visualizerBaseMode = room?.visualizerMode || 'ribbon';
     const visualizerDynamicModeEnabled = room?.visualizerDynamicMode !== false;
@@ -8211,7 +8213,7 @@ const PublicTV = ({ roomCode }) => {
                                       combo={combo}
                                       showComboCharge={scoreIntegratedHypeMeter}
                                   />
-                                  <div className={`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 ${scoreAvoidsFloatingJoinQr ? 'justify-start' : 'justify-end'}`}>
+                                  <div className={`mt-1 flex items-center gap-1 md:mt-2 md:gap-2 justify-end`}>
                                     <div className="text-sm md:text-base text-zinc-200 tracking-[0.1em] md:tracking-[0.15em]">PERFORMANCE TOTAL</div>
                                     {currentSingerIsVip && (
                                         <div className="px-2 py-0.5 rounded-full text-sm md:text-base font-bold tracking-[0.1em] md:tracking-[0.14em] bg-yellow-400 text-black shadow-[0_0_10px_rgba(253,224,71,0.6)]">

@@ -10055,6 +10055,7 @@ Current singer: ${singerName || "N/A"}.
 Rules:
 - Each question must be answerable in under 10 seconds.
 - Prefer questions that feel tied to this song or this live karaoke performance, not generic music theory.
+- At least 3 questions must mention the song title, artist, or an unmistakable title phrase.
 - Use one of these categories per question: hook_recognition, performance, arrangement, crowd_moment, singalong, safe_fact.
 - Mix playful song facts, hook recognition, performance strategy, arrangement cues, and crowd moments.
 - Do not ask generic filler such as "which song section sets up the story", "what usually helps most in karaoke", or "which production trick is common".
@@ -10062,7 +10063,9 @@ Rules:
 - Wrong answers should be plausible and funny, not random nonsense.
 - Avoid obscure deep-cut facts and avoid speculation.
 - If metadata confidence is sparse or source mode is youtube/custom, do not invent release years, chart stats, album facts, music-video facts, or artist biography facts.
-- In sparse mode, use karaoke-IQ questions anchored to the title/performance, hook recognition, arrangement cues, and crowd-energy questions that are answerable without catalog facts.
+- In sparse mode, do not ask "who released", "what year", "which album", award, chart, label, music-video, or biography questions.
+- In sparse mode, use karaoke-IQ questions anchored to the title/performance, hook recognition, arrangement cues, singer strategy, and crowd-energy questions that are answerable from the room without catalog facts.
+- If you cannot write a safe factual question, write a title/performance question instead.
 Format strictly as JSON array of objects:
 [{"q":"...","correct":"...","w1":"...","w2":"...","w3":"...","category":"hook_recognition"}]
 Do not include markdown.`;

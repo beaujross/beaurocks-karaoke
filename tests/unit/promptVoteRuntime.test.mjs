@@ -16,6 +16,7 @@ const mockPromptVoteDeps = () => {
 
   vi.doMock('../../src/lib/assets.js', () => ({
     APP_ID: 'bross-app',
+    PROMPT_VOTE_SFX: { launch: '/launch.mp3', voteLock: '/vote.mp3', reveal: '/reveal.mp3', correct: '/correct.mp3' },
   }));
 };
 
@@ -76,6 +77,8 @@ test('PromptVoteGame renders Trivia player and TV states with the expected core 
   assert.match(triviaTv, /Question Summary/);
   assert.match(triviaTv, /Responses/);
   assert.match(triviaTv, /circle_at_18%_18/);
+  assert.match(triviaTv, /max-h-\[28vh\]/);
+  assert.match(triviaTv, /min-h-\[clamp\(82px,15vh,145px\)\]/);
 });
 
 test('PromptVoteGame renders Would You Rather player and TV states with the expected choice surfaces', async () => {
@@ -133,4 +136,6 @@ test('PromptVoteGame renders Would You Rather player and TV states with the expe
   assert.match(wyrTv, /Singalong anthem/);
   assert.match(wyrPlayer, /circle_at_top_left/);
   assert.match(wyrTv, /circle_at_20%_20/);
+  assert.match(wyrPlayer, /min-h-\[clamp\(112px,24vh,150px\)\]/);
+  assert.match(wyrTv, /clamp\(150px, 24vh, 280px\)/);
 });
