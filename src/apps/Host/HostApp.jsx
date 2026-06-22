@@ -3792,8 +3792,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                             </button>
                         </div>
                         {doodleSubmissions.length > 0 && (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                {doodleSubmissions.slice(0, 8).map((submission) => {
+                            <div data-host-game-submission-scroll="doodle" className="grid max-h-[min(58dvh,34rem)] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                                {doodleSubmissions.map((submission) => {
                                     const isApproved = !!submission.approved;
                                     const voteCount = doodleVoteCounts[String(submission?.uid || '').trim()] || 0;
                                     const isLeader = doodleLeadingSubmission?.id === submission.id && doodle?.status === 'voting';
@@ -3804,7 +3804,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                                                 onClick={() => openSubmissionPreview(submission, { type: 'doodle', label: 'Doodle-oke Submission', votes: voteCount, fit: 'contain' })}
                                                 className="block w-full"
                                             >
-                                                <img src={submission.image} alt={submission.name || 'Sketch'} className="w-full h-24 object-contain bg-zinc-950" />
+                                                <img src={submission.image} alt={submission.name || 'Sketch'} className="h-36 w-full object-contain bg-zinc-950 sm:h-40" />
                                             </button>
                                             <div className="px-2 py-1.5 text-[11px] text-zinc-300">
                                                 <div className="flex items-center justify-between gap-2">
@@ -3887,8 +3887,8 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                                 )}
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            {selfieSubmissions.length > 0 ? selfieSubmissions.slice(0, 8).map((submission) => {
+                        <div data-host-game-submission-scroll="selfie" className="grid max-h-[min(58dvh,34rem)] grid-cols-1 gap-3 overflow-y-auto overscroll-contain pr-1 pb-2 custom-scrollbar sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                            {selfieSubmissions.length > 0 ? selfieSubmissions.map((submission) => {
                                 const voteCount = selfieVoteCounts[String(submission?.uid || '').trim()] || 0;
                                 const isApproved = !selfie?.requireApproval || !!submission.approved;
                                 const isLeader = selfieLeadingSubmission?.id === submission.id && selfie?.status === 'voting';
@@ -3896,10 +3896,10 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                                     <div key={submission.id} className={`rounded-xl border overflow-hidden ${isLeader ? 'border-fuchsia-300/40 bg-fuchsia-500/8' : 'border-zinc-700 bg-zinc-900/70'}`}>
                                         <button
                                             type="button"
-                                            onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'cover' })}
+                                            onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'contain' })}
                                             className="block w-full"
                                         >
-                                            <img src={submission.url} alt={submission.userName || 'Guest selfie'} className="h-28 w-full object-cover bg-zinc-950" />
+                                            <img src={submission.url} alt={submission.userName || 'Guest selfie'} className="h-44 w-full object-contain bg-zinc-950 sm:h-48" />
                                         </button>
                                         <div className="px-2 py-2 text-[11px] text-zinc-300">
                                             <div className="flex items-center justify-between gap-2">
@@ -3911,7 +3911,7 @@ const HostGameControlPad = ({ roomCode, room, updateRoom, setTab, tvBase, tvLaun
                                             <div className="mt-2 flex flex-wrap gap-1.5">
                                                 <button
                                                     type="button"
-                                                    onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'cover' })}
+                                                    onClick={() => openSubmissionPreview(submission, { type: 'selfie', label: 'Selfie Challenge Submission', votes: voteCount, fit: 'contain' })}
                                                     className={`${STYLES.btnStd} ${STYLES.btnNeutral} flex-1 text-[10px] py-1`}
                                                 >
                                                     View
@@ -19913,7 +19913,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
             <div
                 data-host-main-scroll="true"
-                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : tab === 'run_of_show' ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
+                className={`relative z-0 flex flex-1 min-h-0 flex-col ${tab === 'run_of_show' ? 'p-3 sm:p-4 md:p-5 lg:p-6' : mediumHostViewport ? 'p-3 sm:p-3.5 md:p-4 lg:p-5' : 'p-4 sm:p-5 md:p-6 lg:p-7'} overflow-x-hidden overflow-y-auto ${tabletTouchViewport ? 'overscroll-y-contain' : (tab === 'run_of_show' || tab === 'games') ? 'md:overflow-y-auto' : 'md:overflow-hidden'}`}
             >
                 {room?.activeMode && room.activeMode !== 'karaoke' && (
                     <HostGameControlPad
@@ -20066,8 +20066,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 )}
                 {tab === 'browse' && browsePanel}
                 {tab === 'games' && (
-                    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar pr-1">
+                    <div className="flex min-h-0 flex-col gap-4">
+                        <div className="min-h-0 custom-scrollbar pr-1">
                             <UnifiedGameLauncher
                                 room={room}
                                 roomCode={roomCode}

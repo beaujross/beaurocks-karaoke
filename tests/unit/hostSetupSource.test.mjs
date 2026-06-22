@@ -603,3 +603,25 @@ test('tight 15 catalog sanitation tolerates null entries', () => {
     'Tight 15 normalization must not read entry.songTitle directly because null entries crash the Games tab.',
   );
 });
+test('host game control pad submissions remain scrollable above the launchpad', () => {
+  assert.match(
+    hostAppSource,
+    /\(tab === 'run_of_show' \|\| tab === 'games'\) \? 'md:overflow-y-auto' : 'md:overflow-hidden'/,
+    'The Games tab main column should scroll because the live game control pad renders above the launchpad.',
+  );
+  assert.match(
+    hostAppSource,
+    /data-host-game-submission-scroll="doodle"[^>]*max-h-\[min\(58dvh,34rem\)\][^>]*overflow-y-auto[\s\S]*\{doodleSubmissions\.map\(\(submission\) => \{/,
+    'Doodle submissions should render in their own scrollable review grid without truncating to the first eight.',
+  );
+  assert.match(
+    hostAppSource,
+    /data-host-game-submission-scroll="selfie"[^>]*max-h-\[min\(58dvh,34rem\)\][^>]*overflow-y-auto[\s\S]*\{selfieSubmissions\.length > 0 \? selfieSubmissions\.map\(\(submission\) => \{/,
+    'Selfie submissions should render in their own scrollable review grid without truncating to the first eight.',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /(?:doodleSubmissions|selfieSubmissions)\.slice\(0, 8\)\.map/,
+    'Host review surfaces should not hide submitted game media behind an arbitrary eight-item cap.',
+  );
+});
