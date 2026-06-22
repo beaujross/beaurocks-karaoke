@@ -591,3 +591,15 @@ test('host account org fallback builds a literal org id for setup reads', () => 
     'Room setup must not reference a bare org_ identifier, which crashes production renders.',
   );
 });
+test('tight 15 catalog sanitation tolerates null entries', () => {
+  assert.match(
+    hostAppSource,
+    /const normalizeTight15Entry = \(entry = \{\}\) => \{\s*const safeEntry = entry && typeof entry === 'object' \? entry : \{\};[\s\S]*String\(safeEntry\.songTitle \|\| safeEntry\.song \|\| ''\)/,
+    'Tight 15 normalization should guard null catalog entries before reading songTitle.',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /const normalizeTight15Entry = \(entry = \{\}\) => \{\s*const songTitle = String\(entry\.songTitle/,
+    'Tight 15 normalization must not read entry.songTitle directly because null entries crash the Games tab.',
+  );
+});

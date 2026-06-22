@@ -379,7 +379,8 @@ const UnifiedGameLauncher = ({
     onSetBracketMatchWinner,
     onSetBracketWinnerFromCrowdVotes,
     onToggleBracketCrowdVoting,
-    onForfeitBracketContestant
+    onForfeitBracketContestant,
+    onAddQuickRunOfShowMoment
 }) => {
     const toast = useToast() || console.log;
     const canUseAiGeneration = !!capabilities?.['ai.generate_content'];
@@ -1874,7 +1875,7 @@ const UnifiedGameLauncher = ({
     );
 };
 
-const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive }) => {
+const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, infoBadges, smartDefaults, onQuickLaunch, onPreview, previewActive, nextQuestionAction }) => {
     const colorMap = {
         cyan: { border: 'border-cyan-400/30', badge: 'bg-cyan-500/10 border-cyan-400/30 text-cyan-200', text: 'text-cyan-300' },
         pink: { border: 'border-pink-400/30', badge: 'bg-pink-500/10 border-pink-400/30 text-pink-200', text: 'text-pink-300' },

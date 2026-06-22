@@ -101,6 +101,19 @@ test('UnifiedGameLauncher supports event trivia imports and Run of Show sequenci
   assert.match(source, /const \[triviaImportText, setTriviaImportText\] = useState\(''\);/, 'Trivia import text should be owned by UnifiedGameLauncher state before it is passed into the config modal');
   assert.match(source, /data-feature-id="trivia-bank-batch-import"/, 'Trivia config should expose a batch import textarea for event questions');
   assert.match(source, /onAddQuickRunOfShowMoment\('trivia_break'/, 'Trivia bank entries should be queueable as Run of Show trivia breaks');
+  assert.match(source, /const UnifiedGameLauncher = \(\{[\s\S]*onAddQuickRunOfShowMoment[\s\S]*\}\) => \{/, 'UnifiedGameLauncher should receive the Run of Show queue callback as a prop');
   assert.match(source, /launchConfigOverrides: buildTriviaRunOfShowLaunchConfig\(entry, triviaRoundSec, triviaAutoReveal\)/, 'Queued Run of Show trivia should preserve the selected bank question and round settings');
   assert.match(source, /Queue visible set/, 'Hosts should be able to queue a filtered event set as a sequence');
+});
+test('GameCardItem receives next-question action through props', () => {
+  assert.match(
+    source,
+    /const GameCardItem = \(\{[^}]*nextQuestionAction[^}]*\}\) => \{/,
+    'GameCardItem must destructure nextQuestionAction from props instead of reading an undefined outer variable.',
+  );
+  assert.doesNotMatch(
+    source,
+    /const GameCardItem = \(\{(?![^}]*nextQuestionAction)[^}]*\}\) => \{[\s\S]*\{nextQuestionAction \? \(/,
+    'The active game card should not render nextQuestionAction without receiving it as a prop.',
+  );
 });

@@ -2124,15 +2124,16 @@ const TIGHT15_MAX = 15;
 const normalizeTight15Text = (value = '') => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
 const normalizeTight15Entry = (entry = {}) => {
-    const songTitle = String(entry.songTitle || entry.song || '').trim();
-    const artist = String(entry.artist || entry.singerName || '').trim();
+    const safeEntry = entry && typeof entry === 'object' ? entry : {};
+    const songTitle = String(safeEntry.songTitle || safeEntry.song || '').trim();
+    const artist = String(safeEntry.artist || safeEntry.singerName || '').trim();
     if (!songTitle || !artist) return null;
     return {
-        id: entry.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: safeEntry.id || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         songTitle,
         artist,
-        albumArtUrl: String(entry.albumArtUrl || entry.artworkUrl || '').trim(),
-        addedAt: Number(entry.addedAt || Date.now())
+        albumArtUrl: String(safeEntry.albumArtUrl || safeEntry.artworkUrl || '').trim(),
+        addedAt: Number(safeEntry.addedAt || Date.now())
     };
 };
 
@@ -20101,6 +20102,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                                 onSetBracketWinnerFromCrowdVotes={setBracketWinnerFromCrowdVotes}
                                 onToggleBracketCrowdVoting={toggleBracketCrowdVoting}
                                 onForfeitBracketContestant={forfeitBracketContestant}
+                                onAddQuickRunOfShowMoment={addQuickRunOfShowMoment}
                             />
                         </div>
                     </div>
