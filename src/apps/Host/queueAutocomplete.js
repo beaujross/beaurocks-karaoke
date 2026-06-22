@@ -45,3 +45,12 @@ export const buildIndexedYouTubeAutocompleteEntries = (entries = [], query = '')
             query
         ))
 );
+export const buildCuratedYouTubeAutocompleteEntries = (entries = [], query = '') => (
+    buildIndexedYouTubeAutocompleteEntries(entries, query)
+        .map((entry) => ({
+            ...entry,
+            sourceReason: entry?.sourceReason || 'curated_browse',
+            sourceDetail: entry?.sourceDetail || 'Known playable curated backing. No live YouTube search needed.',
+            resolutionLayer: entry?.resolutionLayer || 'global_browse_index',
+        }))
+);

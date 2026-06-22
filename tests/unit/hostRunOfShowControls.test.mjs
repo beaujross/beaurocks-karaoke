@@ -374,8 +374,8 @@ test("Host queue review presents Apple sing-along and YouTube backing as primary
 test("Scene image uploads stay on the callable host upload path", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 20 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 20 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
   assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
@@ -458,8 +458,8 @@ test("HostApp auto-routes the post-performance backing prompt into inbox if the 
 test("HostApp routes scene images through the host callable without a direct-storage fallback", () => {
   const source = readFileSync(hostAppPath, "utf8");
 
-  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 20 \* 1024 \* 1024\) \{/);
-  assert.match(source, /toast\('Scene images must be 20 MB or smaller\.'\);/);
+  assert.match(source, /if \(mediaType === 'image' && file\.size && file\.size > 8 \* 1024 \* 1024\) \{/);
+  assert.match(source, /toast\('Scene images must be 8 MB or smaller\.'\);/);
   assert.match(source, /if \(mediaType === 'image'\) \{\s*\(\{ storagePath, mediaUrl \} = await callableUpload\(\)\);/s);
   assert.doesNotMatch(source, /Scene preset callable upload failed; trying direct storage upload/);
 });
@@ -492,4 +492,14 @@ test("Host scene presets can be slotted into the conveyor from the media library
   assert.match(hostSource, /takeoverScene:\s*'media_scene'/);
   assert.match(hostSource, /mediaSceneUrl:\s*mediaUrl,/);
   assert.doesNotMatch(queueTabSource, /scenePresetsSection/);
+});
+
+test("Host transport issues sparse playback commands instead of syncing every playback tick", () => {
+  const source = readFileSync(hostQueueTabPath, "utf8");
+
+  assert.match(source, /const issuePlaybackControlCommand = useCallback\(async \(type, options = \{\}\) => \{/, "Host queue should centralize playback command creation");
+  assert.match(source, /updates = \{ playbackControlCommand: command \}/, "Host transport should write one sparse command object");
+  assert.match(source, /await issuePlaybackControlCommand\(currentSourcePlaying \? 'pause' : 'resume'\)/, "Play\/pause should issue pause\/resume commands for Public TV media");
+  assert.match(source, /await issuePlaybackControlCommand\('restart', \{ seekToSec: 0 \}\)/, "Restart should be a command, not a player remount requirement");
+  assert.match(source, /const jumpCurrentPlayback = useCallback\(async \(deltaSec = 0\)/, "Host transport should expose jump commands for timeline controls");
 });

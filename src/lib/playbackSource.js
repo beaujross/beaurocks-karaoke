@@ -53,7 +53,10 @@ export const isBackingPlaying = ({ usesAppleBacking = false, room, appleMusicPla
         const status = (room?.appleMusicPlayback?.status || '').toLowerCase();
         return status === 'playing' || !!appleMusicPlaying;
     }
-    return !!room?.videoPlaying;
+    const sessionState = String(room?.currentPerformanceSession?.playbackState || '').trim().toLowerCase();
+    if (sessionState === 'paused' || sessionState === 'ended') return false;
+    if (sessionState === 'playing') return true;
+    return !!room?.videoPlaying && !room?.pausedAt;
 };
 
 export const getBackingSourceLabel = ({ usesAppleBacking = false, mediaUrl = '' } = {}) => {

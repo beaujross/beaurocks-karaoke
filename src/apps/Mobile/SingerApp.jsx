@@ -31,6 +31,7 @@ import {
     lockBingoMysteryPick
 } from '../../lib/firebase';
 import { APP_ID, ASSETS, STORM_SFX } from '../../lib/assets';
+import { searchBrowseCuratedYouTubeIndex, searchCuratedYouTubeEntries } from '../../lib/curatedKaraokeIndex';
 import {
     isYouTubeQuotaBlockedError,
     searchYouTubeCatalog
@@ -1170,6 +1171,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [top100Art, setTop100Art] = useState({});
     const [top100ArtLoading, setTop100ArtLoading] = useState({});
     const [ytIndex, setYtIndex] = useState([]);
+    const [globalYtIndex, setGlobalYtIndex] = useState([]);
     const [roomLibraryUploads, setRoomLibraryUploads] = useState([]);
     const [showYtIndex, setShowYtIndex] = useState(false);
     const [ytIndexFilter, setYtIndexFilter] = useState('');
@@ -1887,6 +1889,7 @@ const SingerApp = ({ roomCode, uid }) => {
     const [dismissedHostLyrics, setDismissedHostLyrics] = useState(false);
     const [showAudienceVideo, setShowAudienceVideo] = useState(false);
     const [showAudienceVideoFullscreen, setShowAudienceVideoFullscreen] = useState(false);
+    const [audienceYoutubeReadyKey, setAudienceYoutubeReadyKey] = useState('');
     const [stageHomePanelExpanded, setStageHomePanelExpanded] = useState(false);
     const [stagePanelCollapsedByTab, setStagePanelCollapsedByTab] = useState({
         home: false,
@@ -4212,14 +4215,17 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     const hostLyricsActive = !!room?.showLyricsSinger && hasLyrics;
     const audienceVideoForced = room?.audienceVideoMode === 'force';
     const audienceYoutubeStateRef = useRef({ currentTime: null, playerState: null });
+    const audienceYoutubeLastSeekKeyRef = useRef('');
     const audienceIframeSrc = useMemo(() => {
         if (!youtubeId) return null;
         const start = room?.videoStartTimestamp ? (Date.now() - room.videoStartTimestamp) / 1000 : 0;
         const origin = typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : '';
-        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=1&playsinline=1&mute=1&enablejsapi=1&origin=${origin}&rel=0&modestbranding=1&start=${Math.floor(Math.max(0, start))}`;
+        return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&controls=0&disablekb=1&fs=0&playsinline=1&mute=1&enablejsapi=1&origin=${origin}&rel=0&modestbranding=1&iv_load_policy=3&start=${Math.floor(Math.max(0, start))}`;
     }, [youtubeId, room?.videoStartTimestamp]);
     const showAudienceVideoInline = (audienceVideoForced || showAudienceVideo) && !!mediaUrl && !isAudio;
     const showAudienceVideoActive = showAudienceVideoInline || showAudienceVideoFullscreen;
+    const audienceYoutubeFrameKey = `${youtubeId || ''}_${room?.videoStartTimestamp || 0}`;
+    const audienceYoutubeReady = !isYoutube || audienceYoutubeReadyKey === audienceYoutubeFrameKey;
 
     const syncAudienceVideoNow = useCallback(() => {
         if (!audienceVideoRef.current || !room?.videoStartTimestamp) return;
@@ -4242,12 +4248,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         if (!audienceIframeRef.current?.contentWindow || !youtubeId || !room?.videoStartTimestamp) return;
         const targetTime = Math.max(0, (Date.now() - room.videoStartTimestamp) / 1000);
         const currentTime = audienceYoutubeStateRef.current.currentTime;
-        const drift = Number.isFinite(currentTime) ? Math.abs(currentTime - targetTime) : Number.POSITIVE_INFINITY;
-        if (drift > 0.75) {
+        const hasKnownTime = Number.isFinite(currentTime);
+        const drift = hasKnownTime ? Math.abs(currentTime - targetTime) : 0;
+        const initialSeekKey = `${audienceYoutubeFrameKey}:initial`;
+        if ((!hasKnownTime && audienceYoutubeLastSeekKeyRef.current !== initialSeekKey) || (hasKnownTime && drift > 2.5)) {
+            audienceYoutubeLastSeekKeyRef.current = hasKnownTime ? `${audienceYoutubeFrameKey}:${Math.round(targetTime)}` : initialSeekKey;
             postAudienceYoutubeCommand('seekTo', [targetTime, true]);
         }
         postAudienceYoutubeCommand(room?.videoPlaying ? 'playVideo' : 'pauseVideo', []);
-    }, [postAudienceYoutubeCommand, youtubeId, room?.videoStartTimestamp, room?.videoPlaying]);
+    }, [audienceYoutubeFrameKey, postAudienceYoutubeCommand, youtubeId, room?.videoStartTimestamp, room?.videoPlaying]);
 
     const submitDoodleDrawing = useCallback(async () => {
         if (!roomCode || !user || !room?.doodleOke?.promptId || !activeUid) return;
@@ -4329,7 +4338,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     useEffect(() => {
         if (!showAudienceVideoActive || !isYoutube || !youtubeId) return;
         const timer = setTimeout(syncAudienceYoutubeNow, 160);
-        const syncTimer = setInterval(syncAudienceYoutubeNow, room?.videoPlaying ? 700 : 1100);
+        const syncTimer = setInterval(syncAudienceYoutubeNow, room?.videoPlaying ? 2200 : 1600);
         return () => {
             clearTimeout(timer);
             clearInterval(syncTimer);
@@ -4338,6 +4347,8 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
     useEffect(() => {
         if (typeof window === 'undefined' || !showAudienceVideoActive || !isYoutube || !youtubeId) return undefined;
         audienceYoutubeStateRef.current = { currentTime: null, playerState: null };
+        audienceYoutubeLastSeekKeyRef.current = '';
+        setAudienceYoutubeReadyKey('');
         const handleMessage = (event) => {
             if (event.source !== audienceIframeRef.current?.contentWindow) return;
             let payload = event.data;
@@ -4348,18 +4359,30 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                     return;
                 }
             }
-            if (!payload || payload.event !== 'infoDelivery') return;
+            if (!payload || typeof payload !== 'object') return;
+            if (payload.event === 'onReady') {
+                setAudienceYoutubeReadyKey(audienceYoutubeFrameKey);
+                return;
+            }
+            if (payload.event === 'onStateChange') {
+                const stateCode = Number(payload.info);
+                audienceYoutubeStateRef.current.playerState = stateCode;
+                if (stateCode === 1) setAudienceYoutubeReadyKey(audienceYoutubeFrameKey);
+                return;
+            }
+            if (payload.event !== 'infoDelivery') return;
             const info = payload.info || {};
             if (typeof info.currentTime === 'number') {
                 audienceYoutubeStateRef.current.currentTime = info.currentTime;
             }
             if (typeof info.playerState === 'number') {
                 audienceYoutubeStateRef.current.playerState = info.playerState;
+                if (info.playerState === 1) setAudienceYoutubeReadyKey(audienceYoutubeFrameKey);
             }
         };
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [showAudienceVideoActive, isYoutube, youtubeId]);
+    }, [audienceYoutubeFrameKey, showAudienceVideoActive, isYoutube, youtubeId]);
 
     useEffect(() => {
         if (!room?.howToPlay?.active || !room?.howToPlay?.id) return;
@@ -4590,6 +4613,15 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         });
         return () => unsub();
     }, [roomCode, isAudienceFixtureMode]);
+    useEffect(() => {
+        if (isAudienceFixtureMode) return;
+        const unsub = onSnapshot(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'global_youtube_indexes', 'karaoke'),
+            (snap) => setGlobalYtIndex(Array.isArray(snap.data()?.ytIndex) ? snap.data().ytIndex : []),
+            () => setGlobalYtIndex([])
+        );
+        return () => unsub();
+    }, [isAudienceFixtureMode]);
     useEffect(() => {
         if (!roomCode || isAudienceFixtureMode) return;
         const unsub = onSnapshot(
@@ -5583,6 +5615,21 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
         setYoutubeResultsLoading(true);
         setYoutubeResultsError('');
         const t = setTimeout(async () => {
+            const curatedResults = [...searchCuratedYouTubeEntries(globalYtIndex, searchQ), ...searchBrowseCuratedYouTubeIndex(searchQ, { playableOnly: true })]
+                .filter((item) => item.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable)
+                .map((item) => ({
+                    ...item,
+                    mediaUrl: item.mediaUrl || item.url,
+                    sourceDetail: item.sourceDetail || 'Known playable Browse catalogue backing.',
+                }))
+                .slice(0, 8);
+            if (curatedResults.length >= 4) {
+                if (!cancelled) {
+                    setYoutubeResults(curatedResults);
+                    setYoutubeResultsLoading(false);
+                }
+                return;
+            }
             try {
                 const data = await searchYouTubeCatalog({
                     query: `${searchQ} karaoke`,
@@ -5595,14 +5642,22 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                 if (cancelled) return;
                 const normalizedResults = normalizeAudienceYouTubeSearchItems(data?.items || [])
                     .filter((item) => item.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.embeddable);
-                setYoutubeResults(normalizedResults);
+                const seenVideoIds = new Set();
+                setYoutubeResults([...curatedResults, ...normalizedResults].filter((item) => {
+                    const key = String(item?.videoId || item?.url || '').trim();
+                    if (!key || seenVideoIds.has(key)) return false;
+                    seenVideoIds.add(key);
+                    return true;
+                }).slice(0, 8));
             } catch (error) {
                 if (cancelled) return;
-                setYoutubeResults([]);
+                setYoutubeResults(curatedResults);
                 setYoutubeResultsError(
-                    isYouTubeQuotaBlockedError(error)
-                        ? 'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Try song matches below or ask the host to paste a direct URL.'
-                        : 'Could not load YouTube results right now.'
+                    curatedResults.length
+                        ? ''
+                        : isYouTubeQuotaBlockedError(error)
+                            ? 'Live YouTube search is temporarily paused because the YouTube quota is exhausted. Try song matches below or ask the host to paste a direct URL.'
+                            : 'Could not load YouTube results right now.'
                 );
             } finally {
                 if (!cancelled) {
@@ -5614,7 +5669,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
             cancelled = true;
             clearTimeout(t);
         };
-    }, [audienceManualBackingAllowed, catalogSearchMode, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
+    }, [audienceManualBackingAllowed, catalogSearchMode, globalYtIndex, normalizeAudienceYouTubeSearchItems, roomCode, searchQ]);
 
     const getAudienceBackingBadgeMeta = useCallback((candidate = null) => {
         const layer = String(candidate?.resolutionLayer || candidate?.layer || '').trim().toLowerCase();
@@ -10778,12 +10833,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                         <iframe
                             key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
                             ref={audienceIframeRef}
-                            className="absolute inset-0 w-full h-full"
+                            className="absolute inset-0 w-full h-full pointer-events-none select-none"
                             src={audienceIframeSrc}
-                            allow="autoplay; fullscreen"
+                            allow="autoplay; encrypted-media"
                             title="Audience Video"
                             frameBorder="0"
-                            onLoad={syncAudienceYoutubeNow}
+                            tabIndex={-1}
+                            onLoad={() => { setAudienceYoutubeReadyKey(audienceYoutubeFrameKey); syncAudienceYoutubeNow(); }}
                         ></iframe>
                     )}
                     {!isNativeVideo && !youtubeId && (
@@ -12706,7 +12762,7 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                             Full screen
                                                         </button>
                                                         <span className={`text-[10px] tracking-[0.25em] px-2 py-0.5 rounded-full border ${room?.videoPlaying ? 'border-emerald-400/40 text-emerald-200 bg-emerald-500/10' : 'border-zinc-500/40 text-zinc-300 bg-black/40'}`}>
-                                                            {room?.videoPlaying ? 'SYNCED' : 'PAUSED'}
+                                                            {room?.videoPlaying ? (audienceYoutubeReady ? 'SYNCED' : 'SYNCING') : 'PAUSED'}
                                                         </span>
                                                         {audienceVideoForced && <span className="text-cyan-300 tracking-normal uppercase">Synced by host</span>}
                                                     </div>
@@ -12725,12 +12781,13 @@ const getEmojiChar = (t) => getReactionEmoji(t, EMOJI.heart);
                                                         <iframe
                                                             key={`${youtubeId}_${room?.videoStartTimestamp || 0}`}
                                                             ref={audienceIframeRef}
-                                                            className="absolute inset-0 w-full h-full"
+                                                            className="absolute inset-0 w-full h-full pointer-events-none select-none"
                                                             src={audienceIframeSrc}
-                                                            allow="autoplay; fullscreen"
+                                                            allow="autoplay; encrypted-media"
                                                             title="Audience Video"
                                                             frameBorder="0"
-                                                            onLoad={syncAudienceYoutubeNow}
+                                                            tabIndex={-1}
+                                                            onLoad={() => { setAudienceYoutubeReadyKey(audienceYoutubeFrameKey); syncAudienceYoutubeNow(); }}
                                                         ></iframe>
                                                     )}
                                                     {!isNativeVideo && !youtubeId && (

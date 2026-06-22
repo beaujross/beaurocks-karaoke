@@ -15,6 +15,7 @@ import useQueueReorder from '../hooks/useQueueReorder';
 import useQueueMediaTools from '../hooks/useQueueMediaTools';
 import useQueueSongActions from '../hooks/useQueueSongActions';
 import {
+  buildCuratedYouTubeAutocompleteEntries,
   buildIndexedYouTubeAutocompleteEntries,
   buildLocalLibraryAutocompleteEntries,
 } from '../queueAutocomplete';
@@ -37,6 +38,7 @@ import {
   syncSelfServeAuctionState,
 } from '../../../lib/firebase';
 import { APP_ID } from '../../../lib/assets';
+import { buildBrowseCuratedYouTubeIndex } from '../../../lib/curatedKaraokeIndex';
 import {
   searchYouTubeCatalog,
 } from '../../../lib/youtubeSearchClient';
@@ -476,7 +478,7 @@ const POST_PERFORMANCE_BACKING_PROMPT_AUTO_CLOSE_MS = 12000;
 const MAX_DEFERRED_TRACK_CHECKS = 6;
 const EARLY_END_DECISION_THRESHOLD_SEC = 35;
 const EARLY_END_DECISION_AUTO_CONTINUE_MS = 6500;
-const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
+const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '', updateRoom, logActivity, localLibrary, playSfxSafe, users, sfxMuted, setSfxMuted, sfxLevel, sfxVolume, setSfxVolume, searchSources, ytIndex, accountYtIndex = [], globalYtIndex = [], setYtIndex, persistYtIndex, hideNonEmbeddableYouTube = false, autoDj, holdAutoBgDuringStageActivation, chatUnread, dmUnread, chatMessages, handleChatViewMode = () => {}, sendHostDmMessage, itunesBackoffRemaining, appleMusicAuthorized = false, appleMusicPlaying, appleMusicStatus, playAppleMusicTrack, pauseAppleMusic, resumeAppleMusic, stopAppleMusic, hostName, fetchTop100Art, openChatSettings, dmTargetUid, setDmTargetUid, dmDraft, setDmDraft, getAppleMusicUserToken, silenceAll, compactViewport, mediumViewport = false, layoutMode = 'desktop', showLegacyLiveEffects = true, commandPaletteRequestToken = 0, mediaLibraryOpenRequest = null, onUpsertYtIndexEntries, runOfShowEnabled = false, runOfShowDirector = null, runOfShowLiveItem = null, runOfShowStagedItem = null, runOfShowNextItem = null, runOfShowPreflightReport = null, onOpenRunOfShow, onOpenRunOfShowIssue, onFocusRunOfShowItem, onPreviewRunOfShowItem, onMoveRunOfShowItem, onSkipRunOfShowItem, onStartRunOfShow, onAdvanceRunOfShow, onRewindRunOfShow, onToggleRunOfShowPause, onStopRunOfShow, onClearRunOfShow, onAddQuickRunOfShowMoment, onReturnCurrentToQueue, runOfShowAssignableSlots = [], runOfShowOpenSlots = [], onAssignQueueSongToRunOfShowItem, onAssignQueueSongToNextOpenRunOfShowSlot, onFillRunOfShowOpenSlotsFromQueue, scenePresets = [], scenePresetUploading = false, scenePresetUploadProgress = 0, onCreateScenePreset, onUpdateScenePreset, onLaunchScenePreset, onQueueScenePreset, onAddScenePresetToRunOfShow, onClearScenePreset, onDeleteScenePreset, onSeedScenePresetLibrary, onSceneLibraryModalChange, sceneLibrarySeedPack = null, scenePresetSeedPending = false, audioLibraryItems = [], customSoundboardSounds = [], onUploadAudioLibraryFiles = async () => ({ uploadedCount: 0 }), onUpdateAudioLibraryItem = async () => null, onDeleteAudioLibraryItem = async () => {}, onStartBgTrack = async () => null, currentBgTrackUploadId = '', coHostSignals = [], moderationQueueItems = [], moderationCounts = {}, moderationActions = {}, moderationBusyAction = '', moderationNeedsAttention = false, onOpenModerationInbox = null, ytDiagnosticsMap = {}, fetchYtDiagnostics = async () => null, getYtDiagnosticsKey = () => '', getTrackDiagnosticsTone = () => null, getTrackDiagnosticsSupport = () => '', runtimeVisible = true, fullscreenPrototype = false, prototypeExitHref = '', styles, emoji, smallWaveform }) => {
     const STYLES = styles;
     const EMOJI = emoji;
     const SmallWaveform = smallWaveform;
@@ -1667,39 +1669,50 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                 sourceReason: 'youtube_index',
                 sourceDetail: 'Indexed YouTube playlist match.'
             });
+            const curatedMatches = annotateQueueSearchResults(
+                buildCuratedYouTubeAutocompleteEntries([...accountYtIndex, ...globalYtIndex, ...buildBrowseCuratedYouTubeIndex()], normalizedQuery)
+                    .filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true)),
+                {
+                    sourceReason: 'curated_browse',
+                    sourceDetail: 'Known playable Browse catalogue backing. No live YouTube search needed.'
+                }
+            );
+            const knownYouTubeMatches = mergeUniqueQueueSearchResults(ytMatches, curatedMatches);
             let liveYouTubeMatches = [];
-            try { 
-                const ytFallbackData = await searchYouTubeCatalog({
-                    query: `${normalizedQuery} karaoke`,
-                    maxResults: 6,
-                    playableOnly: hideNonEmbeddableYouTube === true,
-                    roomCode,
-                    usageSource: 'host_queue_search_youtube_fallback',
-                    usageSurface: 'host',
-                });
-                if (cancelled) return;
-                liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
-                    reason: 'youtube_search',
-                    hideNonEmbeddable: hideNonEmbeddableYouTube
-                });
-            } catch(e) { 
-                if (cancelled) return;
-                hostLogger.debug('YouTube autocomplete search failed', e);
-            } 
+            if (knownYouTubeMatches.length < 4) {
+                try {
+                    const ytFallbackData = await searchYouTubeCatalog({
+                        query: `${normalizedQuery} karaoke`,
+                        maxResults: 6,
+                        playableOnly: hideNonEmbeddableYouTube === true,
+                        roomCode,
+                        usageSource: 'host_queue_search_youtube_fallback',
+                        usageSurface: 'host',
+                    });
+                    if (cancelled) return;
+                    liveYouTubeMatches = normalizeYouTubeSearchItems(ytFallbackData?.items || [], {
+                        reason: 'youtube_search',
+                        hideNonEmbeddable: hideNonEmbeddableYouTube
+                    });
+                } catch(e) {
+                    if (cancelled) return;
+                    hostLogger.debug('YouTube autocomplete search failed', e);
+                }
+            }
             if (cancelled) return;
             setQueueSearchSourceNote(hideNonEmbeddableYouTube
-                ? 'Autocomplete source: YouTube embeddable tracks + local library.'
-                : 'Autocomplete source: YouTube tracks + local library. Non-embeddable picks are labeled.');
+                ? 'Autocomplete source: indexed + curated embeddable YouTube tracks, then live YouTube if needed.'
+                : 'Autocomplete source: indexed + curated YouTube tracks, then live YouTube if needed. Non-embeddable picks are labeled.');
             setQueueSearchNoResultHint(hideNonEmbeddableYouTube
                 ? 'No embeddable YouTube tracks found. Try artist + song or use manual YouTube search.'
                 : 'No YouTube tracks found. Try artist + song or use manual YouTube search.');
-            setResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches));
+            setResults(mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, liveYouTubeMatches));
         }, 500); 
         return () => {
             cancelled = true;
             clearTimeout(t);
         }; 
-    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, searchSources, setResults, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
+    }, [searchQ, autocompleteProvider, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, setResults, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
 
     const getResultRowKey = (r, idx = 0) => {
         return `${r?.source || 'song'}_${r?.trackId || r?.videoId || r?.url || r?.trackName || idx}`;
@@ -3387,6 +3400,80 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
         clearAutoDjApplauseFallback();
     }, [clearAutoDjApplauseFallback, room?.activeMode, pushAutoDjEvent]);
 
+    const getCurrentPlaybackPositionSec = useCallback(() => {
+        const session = room?.currentPerformanceSession || {};
+        const reportedPositionSec = Math.max(0, Number(session?.playerPositionSec || 0));
+        const lastReportedAtMs = Math.max(0, Number(session?.lastReportedAtMs || 0));
+        const playbackState = String(session?.playbackState || '').trim().toLowerCase();
+        if (playbackState === 'paused' || playbackState === 'ended') return reportedPositionSec;
+        if (reportedPositionSec > 0 && lastReportedAtMs > 0) {
+            return reportedPositionSec + Math.max(0, (nowMs() - lastReportedAtMs) / 1000);
+        }
+        const startedAtMs = Math.max(0, Number(room?.currentPerformanceMeta?.startedAtMs || room?.videoStartTimestamp || 0));
+        return startedAtMs > 0 ? Math.max(0, (nowMs() - startedAtMs) / 1000) : 0;
+    }, [room?.currentPerformanceMeta?.startedAtMs, room?.currentPerformanceSession, room?.videoStartTimestamp]);
+
+    const issuePlaybackControlCommand = useCallback(async (type, options = {}) => {
+        if (!current) return null;
+        const now = nowMs();
+        const session = room?.currentPerformanceSession || null;
+        const commandId = `playback_${type}_${now}_${Math.random().toString(36).slice(2, 8)}`;
+        const rawSeekToSec = Number(options.seekToSec);
+        const rawDeltaSec = Number(options.deltaSec);
+        const currentPositionSec = getCurrentPlaybackPositionSec();
+        const hasSeekTo = Number.isFinite(rawSeekToSec) && rawSeekToSec >= 0;
+        const hasDelta = Number.isFinite(rawDeltaSec) && rawDeltaSec !== 0;
+        const seekToSec = hasSeekTo ? rawSeekToSec : hasDelta ? Math.max(0, currentPositionSec + rawDeltaSec) : null;
+        const command = {
+            commandId,
+            type,
+            performanceSessionId: String(session?.sessionId || '').trim() || null,
+            songId: String(current?.id || '').trim() || null,
+            issuedAtMs: now,
+            source: 'host_transport',
+            ...(seekToSec !== null ? { seekToSec } : {}),
+            ...(hasDelta ? { deltaSec: rawDeltaSec } : {})
+        };
+        const nextPlaybackState = type === 'pause' ? 'paused' : ['resume', 'restart', 'seek', 'jump'].includes(type) ? 'playing' : String(session?.playbackState || 'playing');
+        const updates = { playbackControlCommand: command };
+        if (session?.sessionId) {
+            updates.currentPerformanceSession = {
+                ...session,
+                playbackState: nextPlaybackState,
+                lastControlCommandId: commandId,
+                lastControlCommandAtMs: now,
+                ...(seekToSec !== null ? { playerPositionSec: seekToSec, lastReportedAtMs: now } : {}),
+                ...(type === 'pause' ? { pausedAtMs: now, playerPositionSec: currentPositionSec, lastReportedAtMs: now } : {}),
+                ...(type === 'resume' ? { pausedAtMs: null, lastHeartbeatAtMs: now } : {})
+            };
+        }
+        if (type === 'pause') {
+            updates.videoPlaying = true;
+            updates.pausedAt = now;
+        } else if (type === 'resume') {
+            let newStart = room?.videoStartTimestamp || now;
+            if (room?.pausedAt && room?.videoStartTimestamp) {
+                const elapsedBeforePause = room.pausedAt - room.videoStartTimestamp;
+                newStart = now - elapsedBeforePause;
+            }
+            updates.videoPlaying = true;
+            updates.videoStartTimestamp = newStart;
+            updates.pausedAt = null;
+            updates.appleMusicPlayback = null;
+        } else if (type === 'restart') {
+            updates.videoPlaying = true;
+            updates.videoStartTimestamp = now;
+            updates.pausedAt = null;
+            updates.appleMusicPlayback = null;
+        } else if ((type === 'seek' || type === 'jump') && seekToSec !== null) {
+            updates.videoPlaying = true;
+            updates.videoStartTimestamp = now - (seekToSec * 1000);
+            updates.pausedAt = null;
+            updates.appleMusicPlayback = null;
+        }
+        await updateRoom(updates);
+        return command;
+    }, [current, getCurrentPlaybackPositionSec, room?.currentPerformanceMeta?.startedAtMs, room?.currentPerformanceSession, room?.pausedAt, room?.videoStartTimestamp, updateRoom]);
     // Unified play/pause for the current backing source (Apple or media URL).
     async function togglePlay() {
         if (!current) return;
@@ -3409,19 +3496,7 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             return;
         }
         await stopAppleMusic?.();
-        const now = nowMs();
-        if (room?.videoPlaying) {
-            await updateRoom({ videoPlaying: false, pausedAt: now, appleMusicPlayback: null });
-        } else {
-            let newStart = room?.videoStartTimestamp || now;
-            if (room?.pausedAt && room?.videoStartTimestamp) {
-                const elapsedBeforePause = room.pausedAt - room.videoStartTimestamp;
-                newStart = now - elapsedBeforePause;
-            } else if (!room?.videoStartTimestamp) {
-                newStart = now;
-            }
-            await updateRoom({ videoPlaying: true, videoStartTimestamp: newStart, pausedAt: null, appleMusicPlayback: null });
-        }
+        await issuePlaybackControlCommand(currentSourcePlaying ? 'pause' : 'resume');
     }
 
     const nextQueueSong = queue[0];
@@ -3528,8 +3603,19 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
             return;
         }
         await stopAppleMusic?.();
-        await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
-    }, [current, currentUsesAppleBacking, playAppleMusicTrack, stopAppleMusic, updateRoom]);
+        await issuePlaybackControlCommand('restart', { seekToSec: 0 });
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, playAppleMusicTrack, stopAppleMusic, updateRoom]);
+    const jumpCurrentPlayback = useCallback(async (deltaSec = 0) => {
+        if (!current || currentUsesAppleBacking) return;
+        await stopAppleMusic?.();
+        await issuePlaybackControlCommand('jump', { deltaSec });
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, stopAppleMusic]);
+
+    const seekCurrentPlayback = useCallback(async (seekToSec = 0) => {
+        if (!current || currentUsesAppleBacking) return;
+        await stopAppleMusic?.();
+        await issuePlaybackControlCommand('seek', { seekToSec });
+    }, [current, currentUsesAppleBacking, issuePlaybackControlCommand, stopAppleMusic]);
     const openCurrentBackingWindow = useCallback(() => {
         if (!currentMediaUrl) {
             toast('Backing link is unavailable right now.');
@@ -5589,6 +5675,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onCustomBonusChange={setCustomBonus}
                     onTogglePlay={togglePlay}
                     onRestartPlayback={restartCurrentPlayback}
+                    onJumpPlayback={jumpCurrentPlayback}
+                    onSeekPlayback={seekCurrentPlayback}
                     onOpenBackingWindow={openCurrentBackingWindow}
                     onEndPerformance={handleEndPerformance}
                     onStartApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
@@ -5623,6 +5711,8 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                     onCustomBonusChange={setCustomBonus}
                     onTogglePlay={togglePlay}
                     onRestartPlayback={restartCurrentPlayback}
+                    onJumpPlayback={jumpCurrentPlayback}
+                    onSeekPlayback={seekCurrentPlayback}
                     onOpenBackingWindow={openCurrentBackingWindow}
                     onEndPerformance={handleEndPerformance}
                     onStartApplause={() => current && startApplauseSequence({ songId: current.id, autoFinalize: false })}
@@ -5716,6 +5806,9 @@ const HostQueueTab = ({ songs, room, roomCode, hostBase, tvBase, tvLaunchUrl = '
                                         onOpenBackingWindow={openCurrentBackingWindow}
                                         onReturnCurrentToQueue={onReturnCurrentToQueue || returnCurrentPerformanceToQueue}
                                         progressStageToNext={progressStageToNext}
+                                        onRestartPlayback={restartCurrentPlayback}
+                                        onJumpPlayback={jumpCurrentPlayback}
+                                        onSeekPlayback={seekCurrentPlayback}
                                         showStageSummaryHeader={false}
                                         styles={STYLES}
                                         emoji={EMOJI}

@@ -5,6 +5,7 @@ import { test } from 'vitest';
 const primaryPicksPath = 'src/apps/Host/components/setup/MissionSetupPrimaryPicks.jsx';
 const autopilotPreviewPath = 'src/apps/Host/components/setup/MissionSetupAutopilotPreview.jsx';
 const footerPath = 'src/apps/Host/components/setup/MissionSetupFooter.jsx';
+const missionSetupShellPath = 'src/apps/Host/components/setup/MissionSetupShell.jsx';
 const selfServeLauncherPath = 'src/apps/Host/components/SelfServeModeLauncher.jsx';
 const topChromePath = 'src/apps/Host/components/HostTopChrome.jsx';
 const launchPadBrowserPath = 'src/apps/Host/components/HostRoomLaunchPadBrowser.jsx';
@@ -232,6 +233,31 @@ test('room formats are optional while room creation centers on defaults', () => 
     /<select[\s\S]*value=\{resolvedLaunchPresetId\}/,
     'Room creation should use a compact defaults selector instead of a wall of preset cards.',
   );
+  assert.match(
+    launchPadBrowserSource,
+    /Defaults configure queue, requests, search, TV\/crowd layers, automation, and audience access\./,
+    'Room defaults should explain the product areas affected by the selected preset.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /selectedPresetImpactRows\.map\(\(row\) =>/,
+    'Room creation should show a concise impact preview for the selected defaults.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /Start time optional/,
+    'Room start time should be framed as optional instead of a required primary field.',
+  );
+  assert.match(
+    launchPadBrowserSource,
+    /Planning ahead\?/,
+    'Secondary show-plan creation should be tucked behind a planning disclosure.',
+  );
+  assert.doesNotMatch(
+    launchPadBrowserSource,
+    /Create \+ Open Room Settings/,
+    'Room creation should not offer a duplicate create-and-open-settings CTA.',
+  );
   assert.doesNotMatch(
     launchPadBrowserSource,
     /Night preset/,
@@ -409,6 +435,41 @@ test('room settings persists Search Sources toggles and preset defaults to the r
     hostAppSource,
     /setSearchSources\(normalizeHostSearchSources\(payload\.searchSources \|\| \{\}, DEFAULT_SEARCH_SOURCES\)\);/,
     'Preset application should update local Search Sources from the room payload it saved.',
+  );
+});
+
+test('room setup shells stay top-aligned and scrollable on short viewports', () => {
+  const missionSetupShellSource = readFileSync(missionSetupShellPath, 'utf8');
+
+  assert.match(
+    hostAppSource,
+    /min-h-\[100dvh\] overflow-x-hidden overflow-y-auto overscroll-y-contain/,
+    'Standalone room setup should use dynamic viewport height and vertical scrolling so the top cannot render above the visible screen.',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /md:justify-center/,
+    'Standalone room setup should not vertically center tall content on desktop because that can clip the top edge.',
+  );
+  assert.match(
+    hostAppSource,
+    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]/,
+    'Classic setup modal should reserve safe-area top padding and remain scrollable.',
+  );
+  assert.match(
+    hostAppSource,
+    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
+    'Classic setup modal should top-align its panel instead of centering tall content.',
+  );
+  assert.match(
+    missionSetupShellSource,
+    /fixed inset-0 z-\[92\] overflow-y-auto overscroll-y-contain[\s\S]*?pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]/,
+    'Guided setup shell should reserve safe-area top padding and remain scrollable.',
+  );
+  assert.match(
+    missionSetupShellSource,
+    /mx-auto flex min-h-full w-full max-w-6xl items-start/,
+    'Guided setup shell should top-align its panel on short screens.',
   );
 });
 

@@ -57,6 +57,18 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid);
     }
 
+    function organizationMemberDocPath(orgId, uid) {
+      return /databases/$(database)/documents/organizations/$(orgId)/members/$(uid);
+    }
+
+    function isOrganizationMember(orgId) {
+      return isAuthed()
+        && orgId is string
+        && exists(organizationMemberDocPath(orgId, request.auth.uid));
+    }
+
+
+
     function roomExists(roomCode) {
       return roomCode is string && exists(roomDocPath(roomCode));
     }
@@ -948,6 +960,12 @@ service cloud.firestore {
         allow create, update, delete: if isBrossApp(appId) && isRoomHost(roomCode);
       }
 
+
+      match /global_youtube_indexes/{indexId} {
+        allow read: if isBrossApp(appId);
+        allow write: if false;
+      }
+
       match /room_uploads/{uploadId} {
         allow read: if isBrossApp(appId) && isAuthed() && isRoomHost(resource.data.roomCode);
         allow create: if isBrossApp(appId)
@@ -1408,6 +1426,11 @@ service cloud.firestore {
         allow read: if isBrossApp(appId);
         allow write: if false;
       }
+    }
+
+    match /organizations/{orgId}/youtube_indexes/{indexId} {
+      allow read: if isOrganizationMember(orgId);
+      allow write: if false;
     }
 
     // Everything else locked

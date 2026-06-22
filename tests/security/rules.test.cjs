@@ -1320,6 +1320,51 @@ async function run() {
         )
       );
     }],
+    ["firestore: org member can read host account youtube index", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("organizations/org_host-uid/members/host-uid").set({ uid: HOST_UID, role: "owner" });
+        await db.doc(`organizations/org_host-uid/youtube_indexes/karaoke`).set({
+          orgId: "org_host-uid",
+          ownerUid: HOST_UID,
+          ytIndex: [{ videoId: "abc123xyz89", trackName: "Known Song" }],
+        });
+      });
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertSucceeds(db.doc(`organizations/org_host-uid/youtube_indexes/karaoke`).get());
+    }],
+
+    ["firestore: non member cannot read host account youtube index", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc("organizations/org_host-uid/members/host-uid").set({ uid: HOST_UID, role: "owner" });
+        await db.doc(`organizations/org_host-uid/youtube_indexes/karaoke`).set({
+          orgId: "org_host-uid",
+          ownerUid: HOST_UID,
+          ytIndex: [{ videoId: "abc123xyz89", trackName: "Known Song" }],
+        });
+      });
+      const db = testEnv.authenticatedContext(OTHER_UID).firestore();
+      await assertFails(db.doc(`organizations/org_host-uid/youtube_indexes/karaoke`).get());
+    }],
+
+    ["firestore: clients cannot write persisted youtube indexes", async () => {
+      const db = testEnv.authenticatedContext(HOST_UID).firestore();
+      await assertFails(db.doc(`organizations/org_host-uid/youtube_indexes/karaoke`).set({ orgId: "org_host-uid", ytIndex: [] }));
+      await assertFails(db.doc(`${ROOT}/global_youtube_indexes/karaoke`).set({ ytIndex: [] }));
+    }],
+
+    ["firestore: global youtube index is readable by app clients", async () => {
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await db.doc(`${ROOT}/global_youtube_indexes/karaoke`).set({
+          scope: "global_karaoke",
+          ytIndex: [{ videoId: "abc123xyz89", trackName: "Known Song" }],
+        });
+      });
+      const db = testEnv.authenticatedContext(GUEST_UID).firestore();
+      await assertSucceeds(db.doc(`${ROOT}/global_youtube_indexes/karaoke`).get());
+    }],
   ];
 
   const results = [];

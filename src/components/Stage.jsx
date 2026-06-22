@@ -65,6 +65,9 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const isYoutube = mediaUrl && mediaUrl.includes('youtube');
     const youtubeId = isYoutube ? mediaUrl.split('v=')[1]?.split('&')[0] : null;
     const youtubeFrameOrigin = YOUTUBE_DEFAULT_FRAME_ORIGIN;
+    const sessionPlaybackState = String(room?.currentPerformanceSession?.playbackState || '').trim().toLowerCase();
+    const stagePlaybackPaused = sessionPlaybackState === 'paused' || Number(room?.pausedAt || 0) > 0;
+    const mediaPlayerMounted = !!room?.videoPlaying || stagePlaybackPaused;
     const nowPlayingLabel = useMemo(() => {
         if (applePlaybackActive) {
             return {
@@ -75,14 +78,14 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             };
         }
         if (mediaUrl) {
-            const state = room?.videoPlaying ? 'Playing' : 'Paused';
+            const state = mediaPlayerMounted ?'Playing' : 'Paused';
             const source = isYoutube ? 'YouTube' : isNativeVideo ? 'Local Video' : isAudioOnly ? 'Local Audio' : 'Media';
             const title = current?.songTitle || 'Now Playing';
             const sourceKey = isYoutube ? 'youtube' : (isNativeVideo || isAudioOnly) ? 'local' : 'media';
             return { source, title, state, sourceKey };
         }
         return null;
-    }, [applePlaybackActive, applePlayback?.title, applePlayback?.status, mediaUrl, room?.videoPlaying, isYoutube, isNativeVideo, isAudioOnly, current?.songTitle]);
+    }, [applePlaybackActive, applePlayback?.title, applePlayback?.status, mediaUrl, mediaPlayerMounted, isYoutube, isNativeVideo, isAudioOnly, current?.songTitle]);
     
     const layout = room?.layoutMode || 'standard';
     const iframeSrc = useMemo(() => {
@@ -101,6 +104,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
     const youtubeHeartbeatBucketRef = useRef('');
     const youtubeEndedEventRef = useRef('');
     const youtubeFallbackEndedEventRef = useRef('');
+    const executedPlaybackCommandRef = useRef('');
     const reportPlaybackEvent = useCallback((event = {}) => {
         if (typeof onPlaybackEvent !== 'function') return;
         onPlaybackEvent(attachPerformancePlaybackContext(event, { room, current }));
@@ -167,6 +171,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         youtubeEndedEventRef.current = '';
         youtubeFallbackEndedEventRef.current = '';
         setYoutubeIframeReadyKey('');
+        executedPlaybackCommandRef.current = '';
     }, [mediaUrl, room?.videoStartTimestamp]);
 
     useEffect(() => {
@@ -215,6 +220,77 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         };
     }, [isAudioOnly, isBackingAudioOnly, isYoutube, mediaUrl, reportPlaybackEvent]);
 
+    useEffect(() => {
+        const command = room?.playbackControlCommand || null;
+        const commandId = String(command?.commandId || '').trim();
+        if (!commandId || executedPlaybackCommandRef.current === commandId) return;
+        const activeSessionId = String(room?.currentPerformanceSession?.sessionId || '').trim();
+        const commandSessionId = String(command?.performanceSessionId || '').trim();
+        if (activeSessionId && commandSessionId && activeSessionId !== commandSessionId) return;
+        const activeSongId = String(current?.id || '').trim();
+        const commandSongId = String(command?.songId || '').trim();
+        if (activeSongId && commandSongId && activeSongId !== commandSongId) return;
+
+        const type = String(command?.type || '').trim().toLowerCase();
+        const rawSeekToSec = Number(command?.seekToSec);
+        const rawDeltaSec = Number(command?.deltaSec);
+        const hasSeekTo = Number.isFinite(rawSeekToSec) && rawSeekToSec >= 0;
+        const hasDelta = Number.isFinite(rawDeltaSec) && rawDeltaSec !== 0;
+        const currentPositionSec = Math.max(0, Number(room?.currentPerformanceSession?.playerPositionSec || 0));
+        const seekToSec = hasSeekTo ? rawSeekToSec : hasDelta ? Math.max(0, currentPositionSec + rawDeltaSec) : 0;
+        const emitPositionSec = type === 'seek' || type === 'jump' || type === 'restart' ? seekToSec : currentPositionSec;
+
+        const nativeElement = isAudioOnly ? audioRef.current : nativeVideoRef.current;
+        let executed = false;
+        const reportedDurationSec = Math.max(0, Number(room?.currentPerformanceSession?.playerReportedDurationSec || room?.currentPerformanceMeta?.durationSec || current?.duration || 0));
+        const emit = (eventType) => reportPlaybackEvent({
+            type: eventType,
+            currentTimeSec: emitPositionSec,
+            durationSec: reportedDurationSec,
+            completionReason: eventType === 'ended' ? 'host_command' : undefined
+        });
+
+        if (isYoutube) {
+            if (!youtubeIframeReady || !iframeRef.current) return;
+            const targetOrigin = getSafeYouTubeFrameOrigin(iframeRef.current) || youtubeFrameOrigin;
+            if (type === 'pause') {
+                executed = postYouTubeFrameMessage(iframeRef.current, { event: 'command', func: 'pauseVideo', args: [] }, targetOrigin);
+                if (executed) emit('paused');
+            } else if (type === 'resume') {
+                executed = postYouTubeFrameMessage(iframeRef.current, { event: 'command', func: 'playVideo', args: [] }, targetOrigin);
+                if (executed) emit('playing');
+            } else if (type === 'restart') {
+                const seeked = postYouTubeFrameMessage(iframeRef.current, { event: 'command', func: 'seekTo', args: [0, true] }, targetOrigin);
+                const played = postYouTubeFrameMessage(iframeRef.current, { event: 'command', func: 'playVideo', args: [] }, targetOrigin);
+                executed = seeked || played;
+                if (executed) reportPlaybackEvent({ type: 'playing', currentTimeSec: 0, durationSec: reportedDurationSec });
+            } else if (type === 'seek' || type === 'jump') {
+                executed = postYouTubeFrameMessage(iframeRef.current, { event: 'command', func: 'seekTo', args: [seekToSec, true] }, targetOrigin);
+                if (executed) emit('heartbeat');
+            }
+        } else if (nativeElement) {
+            if (type === 'pause') {
+                nativeElement.pause();
+                executed = true;
+                emit('paused');
+            } else if (type === 'resume') {
+                nativeElement.play().then(() => setAutoplayBlocked(false)).catch(() => setAutoplayBlocked(true));
+                executed = true;
+                emit('playing');
+            } else if (type === 'restart') {
+                nativeElement.currentTime = 0;
+                nativeElement.play().then(() => setAutoplayBlocked(false)).catch(() => setAutoplayBlocked(true));
+                executed = true;
+                reportPlaybackEvent({ type: 'playing', currentTimeSec: 0, durationSec: Math.max(0, Number(nativeElement.duration || reportedDurationSec || 0)) });
+            } else if (type === 'seek' || type === 'jump') {
+                nativeElement.currentTime = seekToSec;
+                executed = true;
+                emit('heartbeat');
+            }
+        }
+
+        if (executed) executedPlaybackCommandRef.current = commandId;
+    }, [current, isAudioOnly, isYoutube, reportPlaybackEvent, room?.currentPerformanceMeta?.durationSec, room?.currentPerformanceSession, room?.pausedAt, room?.playbackControlCommand, youtubeFrameOrigin, youtubeIframeReady]);
     useEffect(() => {
         if (!isYoutube || !youtubeId) return undefined;
         const handleMessage = (event) => {
@@ -342,7 +418,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
         const syncInterval = setInterval(() => {
             const video = nativeVideoRef.current;
             if (!video) return;
-            if (room.videoPlaying) {
+            if (room.videoPlaying && !stagePlaybackPaused) {
                  const targetTime = (nowMs() - room.videoStartTimestamp) / 1000;
                  if (Math.abs(video.currentTime - targetTime) > 0.5) video.currentTime = targetTime;
                  if (video.paused) {
@@ -356,14 +432,14 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             }
         }, 1000);
         return () => clearInterval(syncInterval);
-    }, [isNativeVideo, room?.videoPlaying, room?.videoStartTimestamp, isAudioOnly]);
+    }, [isNativeVideo, room?.videoPlaying, room?.videoStartTimestamp, isAudioOnly, stagePlaybackPaused]);
     
     useEffect(() => {
         if (!isAudioOnly || !audioRef.current || !room?.videoStartTimestamp) return;
         const syncInterval = setInterval(() => {
             const audio = audioRef.current;
             if (!audio) return;
-            if (room.videoPlaying) {
+            if (room.videoPlaying && !stagePlaybackPaused) {
                  const targetTime = (nowMs() - room.videoStartTimestamp) / 1000;
                  if (Math.abs(audio.currentTime - targetTime) > 0.5) audio.currentTime = targetTime;
                  if (audio.paused) audio.play().catch(() => {});
@@ -372,7 +448,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
             }
         }, 1000);
         return () => clearInterval(syncInterval);
-    }, [isAudioOnly, room?.videoPlaying, room?.videoStartTimestamp]);
+    }, [isAudioOnly, room?.videoPlaying, room?.videoStartTimestamp, stagePlaybackPaused]);
 
     // 1. Idle State (No song)
     if (!current && !room?.mediaUrl) { 
@@ -416,7 +492,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                             preload="auto"
                         />
                     ) : (isYoutube && youtubeId ? (
-                        room?.videoPlaying ? 
+                        mediaPlayerMounted ?
                             <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : 'opacity-70'}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0" onLoad={() => setYoutubeIframeReadyKey(youtubeFrameKey)}></iframe> 
                         : <div className={`absolute inset-0 w-full h-full bg-black/50 flex items-center justify-center text-2xl font-bold ${hideVideoVisuals ? 'opacity-0' : 'opacity-50'}`}>VIDEO PAUSED</div>
                     ) : null)
@@ -437,7 +513,7 @@ const Stage = ({ room, current, minimalUI = false, fitToWindow = false, showVide
                             preload="auto"
                         />
                     ) : (isYoutube && youtubeId && (
-                        room?.videoPlaying ? 
+                        mediaPlayerMounted ?
                             <iframe ref={iframeRef} className={`absolute inset-0 w-full h-full pointer-events-none ${hideVideoVisuals ? 'opacity-0' : ''}`} src={iframeSrc} allow="autoplay" title="YT" frameBorder="0" onLoad={() => setYoutubeIframeReadyKey(youtubeFrameKey)}></iframe> 
                         : <div className={`absolute inset-0 bg-black flex items-center justify-center text-4xl font-bold ${hideVideoVisuals ? 'opacity-0' : ''}`}>WAITING FOR HOST...</div>
                     ))

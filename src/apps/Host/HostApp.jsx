@@ -65,6 +65,7 @@ import { ASSETS, AVATARS, APP_ID } from '../../lib/assets';
 import { playSfx, setSfxMasterVolume, stopAllSfx } from '../../lib/utils';
 import { EMOJI } from '../../lib/emoji';
 import { BROWSE_CATEGORIES, TOPIC_HITS } from '../../lib/browseLists';
+import { buildBrowseCuratedYouTubeIndex } from '../../lib/curatedKaraokeIndex';
 import {
     getYouTubeSearchTelemetrySnapshot,
     getYouTubeQuotaBlockedUntilMs,
@@ -431,6 +432,11 @@ const nowMs = () => Date.now();
 const YT_INDEX_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const YT_INDEX_REFRESH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 const YT_INDEX_REFRESH_RETRY_MS = 5 * 60 * 1000;
+const sanitizeHostAccountOrgToken = (value = '') => String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
+const buildHostAccountOrgId = (uid = '') => {
+    const token = sanitizeHostAccountOrgToken(uid) || 'owner';
+    return org_;
+};
 const getMeterUsageRatio = (meter = null) => {
     const included = Number(meter?.included || 0);
     const used = Number(meter?.used || 0);
@@ -4900,6 +4906,9 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
     const [top100ArtLoading, setTop100ArtLoading] = useState({});
     const [localLibrary, setLocalLibrary] = useState(() => LOCAL_LIBRARY);
     const [ytIndex, setYtIndex] = useState([]);
+    const currentHostAccountOrgId = useMemo(() => sanitizeHostAccountOrgToken(room?.orgId || '') || buildHostAccountOrgId(uid || ''), [room?.orgId, uid]);
+    const [accountYtIndex, setAccountYtIndex] = useState([]);
+    const [globalYtIndex, setGlobalYtIndex] = useState([]);
     const [searchSources, setSearchSources] = useState(DEFAULT_SEARCH_SOURCES);
     const [hideNonEmbeddableYouTube, setHideNonEmbeddableYouTube] = useState(true);
     const [ytPlaylistUrl, setYtPlaylistUrl] = useState('');
@@ -6239,8 +6248,16 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         ? 'Indexed YouTube embeddable match.'
                         : 'Indexed YouTube match.'
                 });
+            const curatedMatches = annotateQueueSearchResults(searchSources.youtube
+                ? buildCuratedYouTubeAutocompleteEntries([...accountYtIndex, ...globalYtIndex, ...buildBrowseCuratedYouTubeIndex()], normalizedQuery)
+                    .filter((entry) => (hideNonEmbeddableYouTube ? isYouTubeEmbeddable(entry) : true))
+                : [], {
+                    sourceReason: 'curated_browse',
+                    sourceDetail: 'Common karaoke catalogue match.'
+                });
+            const knownYouTubeMatches = mergeUniqueQueueSearchResults(ytMatches, curatedMatches);
             let liveYouTubeMatches = [];
-            if (shouldUseYouTubeFallback) {
+            if (shouldUseYouTubeFallback && knownYouTubeMatches.length < 4) {
                 try {
                     const ytFallbackData = await searchYouTubeCatalog({
                         query: `${normalizedQuery} karaoke`,
@@ -6258,7 +6275,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     hostLogger.debug('Catalogue YouTube fallback search failed', ytErr);
                 }
             }
-            const fallbackResults = mergeUniqueQueueSearchResults(localMatches, ytMatches, liveYouTubeMatches);
+            const fallbackResults = mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, liveYouTubeMatches);
             try {
                 if (!searchSources.itunes || shouldUseYouTubeFallback) {
                     setCatalogueResults(fallbackResults);
@@ -6274,7 +6291,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                     sourceReason: 'apple_authorized',
                     sourceDetail: 'Apple Music/iTunes search match.'
                 });
-                setCatalogueResults(mergeUniqueQueueSearchResults(localMatches, ytMatches, itunesMatches));
+                setCatalogueResults(mergeUniqueQueueSearchResults(localMatches, knownYouTubeMatches, itunesMatches));
             } catch (e) {
                 if (e.name === 'AbortError') return;
                 setCatalogueResults(fallbackResults);
@@ -6284,7 +6301,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
             clearTimeout(t);
             if (controller) controller.abort();
         };
-    }, [catalogueSearchQ, localLibrary, ytIndex, searchSources, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
+    }, [catalogueSearchQ, localLibrary, ytIndex, accountYtIndex, globalYtIndex, searchSources, appleMusicAuthorized, roomCode, hideNonEmbeddableYouTube]);
 
     const bgAudio = useRef(null);
     const bgCtxRef = useRef(null);
@@ -12592,6 +12609,18 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         const normalizedEntries = safeEntries
             .map((entry) => normalizeYtIndexEntry(entry))
             .filter(Boolean);
+        const promotionEntries = safeEntries
+            .map((rawEntry) => {
+                const entry = normalizeYtIndexEntry(rawEntry);
+                if (!entry) return null;
+                return {
+                    ...entry,
+                    usageCountDelta: Math.max(0, Number(rawEntry?.usageCountDelta || 0) || 0),
+                    successCountDelta: Math.max(0, Number(rawEntry?.successCountDelta || 0) || 0),
+                    failureCountDelta: Math.max(0, Number(rawEntry?.failureCountDelta || 0) || 0),
+                };
+            })
+            .filter(Boolean);
         if (!normalizedEntries.length) return [];
         const existing = new Map((ytIndex || []).map((entry) => [entry.videoId, normalizeYtIndexEntry(entry)]));
         normalizedEntries.forEach((entry, index) => {
@@ -12612,9 +12641,17 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         });
         const next = Array.from(existing.values()).filter(Boolean);
         await persistYtIndex(next);
+        if (roomCode && promotionEntries.length) {
+            void callFunction('upsertCuratedYouTubeIndexes', {
+                roomCode,
+                entries: promotionEntries,
+            }).catch((error) => {
+                hostLogger.debug('Curated YouTube index promotion failed', error);
+            });
+        }
         if (statusMessage) setYtAddStatus(statusMessage);
         return next;
-    }, [hostName, persistYtIndex, ytIndex]);
+    }, [hostName, persistYtIndex, roomCode, ytIndex]);
     upsertYtIndexEntriesRef.current = upsertYtIndexEntries;
 
     const refreshRoomYouTubeIndexEntries = useCallback(async (entries = ytIndex) => {
@@ -12898,6 +12935,34 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return () => unsub();
     }, [isMarketingDemoFixture, roomCode]);
 
+    useEffect(() => {
+        if (isMarketingDemoFixture || !currentHostAccountOrgId) {
+            setAccountYtIndex([]);
+            setGlobalYtIndex([]);
+            return;
+        }
+        const normalizeIndexList = (value) => (Array.isArray(value) ? value.map((entry) => normalizeYtIndexEntry(entry)).filter(Boolean) : []);
+        const accountUnsub = onSnapshot(
+            doc(db, 'organizations', currentHostAccountOrgId, 'youtube_indexes', 'karaoke'),
+            (snap) => setAccountYtIndex(normalizeIndexList(snap.data()?.ytIndex || [])),
+            (error) => {
+                hostLogger.debug('Could not read account YouTube index', error);
+                setAccountYtIndex([]);
+            }
+        );
+        const globalUnsub = onSnapshot(
+            doc(db, 'artifacts', APP_ID, 'public', 'data', 'global_youtube_indexes', 'karaoke'),
+            (snap) => setGlobalYtIndex(normalizeIndexList(snap.data()?.ytIndex || [])),
+            (error) => {
+                hostLogger.debug('Could not read global YouTube index', error);
+                setGlobalYtIndex([]);
+            }
+        );
+        return () => {
+            accountUnsub();
+            globalUnsub();
+        };
+    }, [currentHostAccountOrgId, isMarketingDemoFixture]);
     useEffect(() => {
         if (!roomCode || isMarketingDemoFixture || !Array.isArray(ytIndex) || ytIndex.length === 0) return;
         const refreshCandidates = ytIndex.filter((entry) => shouldRefreshYtIndexEntry(entry));
@@ -19354,6 +19419,8 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         setSearchSources,
         hideNonEmbeddableYouTube,
         ytIndex,
+        accountYtIndex,
+        globalYtIndex,
         setYtIndex,
         persistYtIndex,
         autoDj,

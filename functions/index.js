@@ -2369,6 +2369,7 @@ const HOST_ROOM_ALLOWED_ROOT_KEYS = new Set([
   "appleMusicAutoPlaylistId",
   "appleMusicAutoPlaylistTitle",
   "appleMusicPlayback",
+  "playbackControlCommand",
   "audienceVideoMode",
   "audienceShellVariant",
   "autoBgFadeInMs",
@@ -2682,6 +2683,7 @@ const HOST_ROOM_OBJECT_OR_NULL_ROOT_KEYS = new Set([
   "announcement",
   "applauseSubject",
   "appleMusicPlayback",
+  "playbackControlCommand",
   "bingoFocus",
   "bingoMysteryRng",
   "bingoRevealed",
@@ -9737,6 +9739,99 @@ const normalizeRoomYouTubeIndex = (value = []) => (
     : []
 );
 
+const HOST_ACCOUNT_YOUTUBE_INDEXES_COLLECTION = "youtube_indexes";
+const HOST_ACCOUNT_YOUTUBE_INDEX_DOC_ID = "karaoke";
+const GLOBAL_YOUTUBE_INDEXES_COLLECTION = "global_youtube_indexes";
+const GLOBAL_YOUTUBE_INDEX_DOC_ID = "karaoke";
+const ACCOUNT_YOUTUBE_INDEX_MAX_ENTRIES = 500;
+const GLOBAL_YOUTUBE_INDEX_MAX_ENTRIES = 750;
+const GLOBAL_YOUTUBE_PROMOTION_MIN_SUCCESS_COUNT = 2;
+
+const clampIndexCounter = (value = 0) => Math.max(0, Math.min(999999, Math.round(Number(value || 0) || 0)));
+
+const normalizeCuratedYouTubeIndexContribution = (value = {}) => {
+  const entry = normalizeRoomYouTubeIndexEntry(value);
+  if (!entry) return null;
+  return {
+    ...entry,
+    source: "youtube",
+    trackName: String(entry.trackName || value.title || "YouTube Track").trim().slice(0, 220) || "YouTube Track",
+    artistName: String(entry.artistName || value.channelTitle || value.channel || "YouTube").trim().slice(0, 220) || "YouTube",
+    artworkUrl100: String(entry.artworkUrl100 || value.thumbnail || "").trim().slice(0, 700),
+    url: String(entry.url || `https://www.youtube.com/watch?v=${entry.videoId}`).trim().slice(0, 700),
+    sourceDetail: String(entry.sourceDetail || value.sourceDetail || "Host-learned karaoke backing.").trim().slice(0, 240),
+    qualityScore: Math.max(0, Number(entry.qualityScore || value.qualityScore || 0) || 0),
+    usageCount: clampIndexCounter(entry.usageCount || value.usageCount),
+    successCount: clampIndexCounter(entry.successCount || value.successCount),
+    failureCount: clampIndexCounter(entry.failureCount || value.failureCount),
+    usageCountDelta: clampIndexCounter(value.usageCountDelta),
+    successCountDelta: clampIndexCounter(value.successCountDelta),
+    failureCountDelta: clampIndexCounter(value.failureCountDelta),
+  };
+};
+
+const mergeCuratedYouTubeIndexEntries = ({ existing = [], contributions = [], layer = "account" } = {}) => {
+  const merged = new Map();
+  normalizeRoomYouTubeIndex(existing).forEach((entry) => {
+    merged.set(entry.videoId, {
+      ...entry,
+      usageCount: clampIndexCounter(entry.usageCount),
+      successCount: clampIndexCounter(entry.successCount),
+      failureCount: clampIndexCounter(entry.failureCount),
+    });
+  });
+  contributions.forEach((rawContribution) => {
+    const contribution = normalizeCuratedYouTubeIndexContribution(rawContribution);
+    if (!contribution) return;
+    const previous = merged.get(contribution.videoId) || {};
+    const curatedAtMs = Math.max(0, Number(previous.curatedAtMs || contribution.curatedAtMs || nowMs()) || nowMs());
+    const lastValidatedAtMs = Math.max(
+      Number(previous.lastValidatedAtMs || 0),
+      Number(contribution.lastValidatedAtMs || 0),
+      contribution.playable === true ? nowMs() : 0,
+    );
+    const usageCount = clampIndexCounter(previous.usageCount) + clampIndexCounter(contribution.usageCount) + clampIndexCounter(contribution.usageCountDelta);
+    const successCount = clampIndexCounter(previous.successCount) + clampIndexCounter(contribution.successCount) + clampIndexCounter(contribution.successCountDelta);
+    const failureCount = clampIndexCounter(previous.failureCount) + clampIndexCounter(contribution.failureCount) + clampIndexCounter(contribution.failureCountDelta);
+    merged.set(contribution.videoId, {
+      ...previous,
+      ...contribution,
+      sourceReason: layer === "global" ? "global_learned" : "account_learned",
+      resolutionLayer: layer === "global" ? "global_learned_index" : "account_index",
+      sourceDetail: layer === "global"
+        ? "Globally learned karaoke backing from successful host performances."
+        : "Account-learned karaoke backing from this host workspace.",
+      curatedAtMs,
+      lastValidatedAtMs,
+      expiresAtMs: lastValidatedAtMs > 0 ? lastValidatedAtMs + YOUTUBE_INDEX_RETENTION_MS : contribution.expiresAtMs,
+      usageCount,
+      successCount,
+      failureCount,
+    });
+  });
+  return [...merged.values()]
+    .filter((entry) => entry && !isKnownNonEmbeddableYouTubePayload(entry))
+    .filter((entry) => !normalizeRoomYouTubeIndexEntry(entry) ? false : true)
+    .sort((left, right) => {
+      const leftScore = (Number(left.successCount || 0) * 8) + (Number(left.usageCount || 0) * 3) + Number(left.qualityScore || 0) - (Number(left.failureCount || 0) * 12);
+      const rightScore = (Number(right.successCount || 0) * 8) + (Number(right.usageCount || 0) * 3) + Number(right.qualityScore || 0) - (Number(right.failureCount || 0) * 12);
+      if (rightScore !== leftScore) return rightScore - leftScore;
+      return Number(right.lastValidatedAtMs || right.curatedAtMs || 0) - Number(left.lastValidatedAtMs || left.curatedAtMs || 0);
+    });
+};
+
+const filterGlobalYouTubePromotionCandidates = (entries = []) => (
+  (Array.isArray(entries) ? entries : [])
+    .map((entry) => normalizeCuratedYouTubeIndexContribution(entry))
+    .filter((entry) => {
+      if (!entry || entry.playable !== true || entry.embeddable !== true) return false;
+      if (clampIndexCounter(entry.failureCount) + clampIndexCounter(entry.failureCountDelta) > 0) return false;
+      const successes = clampIndexCounter(entry.successCount) + clampIndexCounter(entry.successCountDelta);
+      const usage = clampIndexCounter(entry.usageCount) + clampIndexCounter(entry.usageCountDelta);
+      return successes >= GLOBAL_YOUTUBE_PROMOTION_MIN_SUCCESS_COUNT || usage >= GLOBAL_YOUTUBE_PROMOTION_MIN_SUCCESS_COUNT;
+    })
+);
+
 const readRoomHostLibrary = async (roomCode = "") => {
   const safeRoomCode = normalizeRoomCode(roomCode || "");
   if (!safeRoomCode) return { trustedCatalog: {}, ytIndex: [] };
@@ -11173,6 +11268,82 @@ exports.youtubeStatus = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async
   return { items };
 });
 
+exports.upsertCuratedYouTubeIndexes = onCall({ cors: true }, async (request) => {
+  checkRateLimit(request.rawRequest, "upsert_curated_youtube_indexes", { perMinute: 45, perHour: 500 });
+  await checkDurableRateLimit(request.rawRequest, "upsert_curated_youtube_indexes", DEFAULT_LIMITS);
+  const callerUid = requireAuth(request);
+  enforceAppCheckIfEnabled(request, "upsert_curated_youtube_indexes");
+  const data = request.data || {};
+  const roomCode = normalizeRoomCode(data.roomCode || "");
+  const rawEntries = Array.isArray(data.entries) ? data.entries : [];
+  if (!roomCode) throw new HttpsError("invalid-argument", "roomCode is required.");
+  if (!rawEntries.length) return { ok: true, accountCount: 0, globalCount: 0, promotedCount: 0 };
+  if (rawEntries.length > 25) throw new HttpsError("invalid-argument", "Too many index entries in one request.");
+
+  const rootRef = getRootRef();
+  const { roomData } = await ensureRoomHostAccess({
+    rootRef,
+    roomCode,
+    callerUid,
+    deniedMessage: "Only room hosts can promote curated YouTube index entries.",
+  });
+  const roomHostUid = normalizeUidToken(roomData?.hostUid || callerUid || "") || callerUid;
+  const orgId = sanitizeOrgToken(roomData?.orgId || "") || buildOrgIdForUid(roomHostUid);
+  if (!orgId) throw new HttpsError("failed-precondition", "Could not resolve host account workspace.");
+
+  const contributions = rawEntries
+    .map((entry) => normalizeCuratedYouTubeIndexContribution(entry))
+    .filter(Boolean);
+  if (!contributions.length) return { ok: true, accountCount: 0, globalCount: 0, promotedCount: 0 };
+
+  const accountRef = admin.firestore().collection(ORGS_COLLECTION).doc(orgId).collection(HOST_ACCOUNT_YOUTUBE_INDEXES_COLLECTION).doc(HOST_ACCOUNT_YOUTUBE_INDEX_DOC_ID);
+  const globalRef = rootRef.collection(GLOBAL_YOUTUBE_INDEXES_COLLECTION).doc(GLOBAL_YOUTUBE_INDEX_DOC_ID);
+  let accountCount = 0;
+  let globalCount = 0;
+  let promotedCount = 0;
+
+  await admin.firestore().runTransaction(async (tx) => {
+    const [accountSnap, globalSnap] = await Promise.all([tx.get(accountRef), tx.get(globalRef)]);
+    const accountData = accountSnap.data() || {};
+    const globalData = globalSnap.data() || {};
+    const nextAccountIndex = mergeCuratedYouTubeIndexEntries({
+      existing: accountData.ytIndex || [],
+      contributions,
+      layer: "account",
+    }).slice(0, ACCOUNT_YOUTUBE_INDEX_MAX_ENTRIES);
+    const contributedVideoIds = new Set(contributions.map((entry) => String(entry?.videoId || "").trim()).filter(Boolean));
+    const globalCandidates = filterGlobalYouTubePromotionCandidates(
+      nextAccountIndex.filter((entry) => contributedVideoIds.has(String(entry?.videoId || "").trim()))
+    );
+    const nextGlobalIndex = mergeCuratedYouTubeIndexEntries({
+      existing: globalData.ytIndex || [],
+      contributions: globalCandidates,
+      layer: "global",
+    }).slice(0, GLOBAL_YOUTUBE_INDEX_MAX_ENTRIES);
+    accountCount = nextAccountIndex.length;
+    globalCount = nextGlobalIndex.length;
+    promotedCount = globalCandidates.length;
+    tx.set(accountRef, {
+      orgId,
+      ownerUid: roomHostUid,
+      roomCodes: admin.firestore.FieldValue.arrayUnion(roomCode),
+      ytIndex: nextAccountIndex,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtMs: nowMs(),
+      updatedByUid: callerUid,
+    }, { merge: true });
+    if (globalCandidates.length) {
+      tx.set(globalRef, {
+        scope: "global_karaoke",
+        ytIndex: nextGlobalIndex,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAtMs: nowMs(),
+      }, { merge: true });
+    }
+  });
+
+  return { ok: true, orgId, accountCount, globalCount, promotedCount };
+});
 exports.youtubeRefreshIndexEntries = onCall({ cors: true, secrets: [YOUTUBE_API_KEY] }, async (request) => {
   checkRateLimit(request.rawRequest, "youtube_refresh_index_entries");
   await checkDurableRateLimit(request.rawRequest, "youtube_refresh_index_entries", DEFAULT_LIMITS);

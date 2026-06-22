@@ -1307,13 +1307,13 @@ const HostTopChrome = ({
                         />
                         {youtubeBudgetStatus ? (
                             <NavStatusMetric
-                                label={youtubeBudgetStatus.label || 'YT Budget'}
+                                label={youtubeBudgetStatus.label || 'YT Search'}
                                 iconClass="fa-brands fa-youtube"
                                 value={Number(youtubeBudgetStatus.value || 0).toLocaleString()}
                                 detail={youtubeBudgetStatus.detail || ''}
                                 active={youtubeBudgetStatus.active !== false}
                                 toneClass={youtubeBudgetStatus.toneClass || 'border-cyan-400/35 bg-cyan-500/10 text-cyan-100'}
-                                title={youtubeBudgetStatus.title || 'Estimated fresh YouTube searches left today.'}
+                                title={youtubeBudgetStatus.title || 'Estimated YouTube search-list calls left today.'}
                             />
                         ) : null}
                         <NavStatusLight

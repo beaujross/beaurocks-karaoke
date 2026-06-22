@@ -22,3 +22,21 @@ test('PublicTV validates playback events against the active performance session 
     'PublicTV should bail out when the helper rejects a stale or invalid playback event.',
   );
 });
+
+test('PublicTV retries playback session reporting through the host callable when direct telemetry is denied', () => {
+  assert.match(
+    source,
+    /callFunction, updateRoomAsHost \} from '\.\.\/\.\.\/lib\/firebase';/,
+    'PublicTV should import updateRoomAsHost for host-authenticated TV fallback writes.',
+  );
+  assert.match(
+    source,
+    /const buildPerformanceSessionHostFallbackUpdate = \(room = \{\}, patch = \{\}\) => \{[\s\S]*currentPerformanceSession[\s\S]*currentPerformanceMeta[\s\S]*return updates;/,
+    'PublicTV should convert dotted telemetry patches into whole performance objects for the host callable.',
+  );
+  assert.match(
+    source,
+    /if \(isPermissionDeniedError\(error\)\) \{[\s\S]*await updateRoomAsHost\(roomCode, hostFallbackUpdate\);[\s\S]*return;/,
+    'Permission-denied direct telemetry writes should retry through the host callable before logging failure.',
+  );
+});

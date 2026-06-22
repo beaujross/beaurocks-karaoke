@@ -3712,6 +3712,8 @@ export default function RunOfShowDirectorPanel({
     roomUsers = [],
     localLibrary = [],
     ytIndex = [],
+    triviaBank = [],
+    wyrBank = [],
     appleMusicAuthorized = false,
     previewActiveId = '',
     focusRequest = null,
@@ -4621,14 +4623,36 @@ export default function RunOfShowDirectorPanel({
         if (assignmentStateById[focusedBuildItemId] === slotAssignmentFilter) return;
         openItem(filteredAssignmentItems[0]?.id || '', { scrollToSetup: false });
     }, [assignmentStateById, filteredAssignmentItems, focusedBuildItemId, openItem, slotAssignmentFilter, studioMode]);
-    const normalizedTriviaBank = useMemo(
-        () => (Array.isArray(TRIVIA_BANK) ? TRIVIA_BANK : []).map((entry, index) => normalizeTriviaEntry(entry, index)).filter((entry) => entry.q),
-        []
-    );
-    const normalizedWyrBank = useMemo(
-        () => (Array.isArray(WYR_BANK) ? WYR_BANK : []).map((entry, index) => normalizeWyrEntry(entry, index)).filter((entry) => entry.q),
-        []
-    );
+    const normalizedTriviaBank = useMemo(() => {
+        const roomEntries = (Array.isArray(triviaBank) ? triviaBank : [])
+            .map((entry, index) => ({ ...normalizeTriviaEntry(entry, index), contentSource: entry?.contentSource || 'host_room_bank' }))
+            .filter((entry) => entry.q);
+        const builtinEntries = (Array.isArray(TRIVIA_BANK) ? TRIVIA_BANK : [])
+            .map((entry, index) => ({ ...normalizeTriviaEntry(entry, index), id: `builtin:${normalizeTriviaEntry(entry, index).id}`, contentSource: 'builtin_bank' }))
+            .filter((entry) => entry.q);
+        const seen = new Set();
+        return [...roomEntries, ...builtinEntries].filter((entry) => {
+            const key = `${entry.q.toLowerCase()}::${entry.correct.toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [triviaBank]);
+    const normalizedWyrBank = useMemo(() => {
+        const roomEntries = (Array.isArray(wyrBank) ? wyrBank : [])
+            .map((entry, index) => ({ ...normalizeWyrEntry(entry, index), contentSource: entry?.contentSource || 'host_room_bank' }))
+            .filter((entry) => entry.q);
+        const builtinEntries = (Array.isArray(WYR_BANK) ? WYR_BANK : [])
+            .map((entry, index) => ({ ...normalizeWyrEntry(entry, index), id: `builtin:${normalizeWyrEntry(entry, index).id}`, contentSource: 'builtin_bank' }))
+            .filter((entry) => entry.q);
+        const seen = new Set();
+        return [...roomEntries, ...builtinEntries].filter((entry) => {
+            const key = `${entry.q.toLowerCase()}::${entry.a.toLowerCase()}::${entry.b.toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [wyrBank]);
     const focusedInteractiveBankEntries = useMemo(() => {
         if (focusedBuildItem?.type === 'trivia_break') {
             const query = normalizeSearch(interactiveLibraryFilter);
@@ -8462,7 +8486,7 @@ export default function RunOfShowDirectorPanel({
                                                                 <div className="flex items-center justify-between gap-2">
                                                                     <div>
                                                                         <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{item.type === 'trivia_break' ? 'Question Bank' : 'Prompt Bank'}</div>
-                                                                        <div className="mt-1 text-sm text-zinc-300">{item.type === 'trivia_break' ? 'Browse built-in trivia and drop it into this scene.' : 'Browse built-in WYR prompts and drop one into this scene.'}</div>
+                                                                        <div className="mt-1 text-sm text-zinc-300">{item.type === 'trivia_break' ? 'Browse room trivia, imports, and built-ins, then drop one into this scene.' : 'Browse room WYR prompts, imports, and built-ins, then drop one into this scene.'}</div>
                                                                     </div>
                                                                     <span className="rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
                                                                         Quick Launch

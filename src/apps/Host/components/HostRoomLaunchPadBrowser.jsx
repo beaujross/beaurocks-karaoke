@@ -54,6 +54,53 @@ const ROOM_SETUP_TABS = Object.freeze([
         badgeToneClass: 'border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-100',
     },
 ]);
+const getOptionLabel = (options = [], id = '', fallback = 'Default') => (
+    options.find((option) => option.id === id)?.label || fallback
+);
+
+const formatPresetQueueSummary = (queueSettings = {}) => {
+    const limitMode = String(queueSettings?.limitMode || 'none');
+    const rotation = String(queueSettings?.rotation || 'round_robin');
+    const limitCount = Math.max(0, Number(queueSettings?.limitCount || 0));
+    const limit = limitMode === 'none'
+        ? 'Open queue'
+        : `${limitCount || 'Set'} ${limitMode === 'per_rotation' ? 'per rotation' : 'per night'}`;
+    const rotationLabel = getOptionLabel(QUEUE_ROTATION_OPTIONS, rotation, 'Round Robin');
+    return `${limit}; ${rotationLabel.toLowerCase()}`;
+};
+
+const formatPresetSearchSummary = (searchSources = {}, settings = {}) => {
+    const enabled = Object.entries(searchSources || {})
+        .filter(([, value]) => value === true)
+        .map(([key]) => key === 'itunes' ? 'Apple/iTunes' : key === 'youtube' ? 'YouTube' : 'Library');
+    const sourceLabel = enabled.length ? enabled.join(', ') : 'Curated library only';
+    return `${sourceLabel}${settings?.hideNonEmbeddableYouTube !== false ? '; embeddable-safe' : ''}`;
+};
+
+const buildPresetImpactRows = (preset = {}, joinAccessMode = AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed) => {
+    const settings = preset?.settings || {};
+    const requestMode = String(settings.requestMode || REQUEST_MODES.canonicalOpen);
+    const requestLabel = getOptionLabel(REQUEST_POLICY_OPTIONS, requestMode, 'Host Review First');
+    const joinLabel = getOptionLabel(AUDIENCE_JOIN_ACCESS_OPTIONS, joinAccessMode, 'Open join');
+    const tvBits = [
+        settings.showScoring !== false ? 'Score on' : 'Score off',
+        settings.chatShowOnTv ? 'TV chat' : 'Chat off TV',
+        settings.marqueeEnabled ? 'Marquee on' : 'Marquee off',
+    ];
+    const automationBits = [
+        settings.autoDj ? 'Auto-DJ' : 'Manual DJ',
+        settings.autoPlayMedia !== false ? 'Auto playback' : 'Manual playback',
+        settings.autoEndOnTrackFinish !== false ? 'auto-end safe' : 'manual end',
+    ];
+    return [
+        { label: 'Requests', value: `${requestLabel}${settings.bouncerMode ? '; host approval' : ''}` },
+        { label: 'Queue', value: formatPresetQueueSummary(settings.queueSettings || {}) },
+        { label: 'Search', value: formatPresetSearchSummary(preset.searchSources || {}, settings) },
+        { label: 'TV & Crowd', value: tvBits.join('; ') },
+        { label: 'Automation', value: automationBits.join('; ') },
+        { label: 'Audience', value: `${joinLabel}; ${String(settings.audienceShellVariant || 'classic') === 'streamlined' ? 'streamlined app' : 'standard app'}` },
+    ];
+};
 
 const HostRoomLaunchPadBrowser = ({
     STYLES,
@@ -144,6 +191,13 @@ const HostRoomLaunchPadBrowser = ({
         ? AUDIENCE_FEATURE_ACCESS_LEVELS.accountRequired
         : AUDIENCE_FEATURE_ACCESS_LEVELS.open;
     const [launchJoinAccessMode, setLaunchJoinAccessMode] = useState(selectedPresetJoinPolicy.accessMode || AUDIENCE_JOIN_ACCESS_MODES.anonymousAllowed);
+    const selectedPresetImpactRows = useMemo(
+        () => buildPresetImpactRows(selectedLaunchPreset || {}, launchJoinAccessMode),
+        [launchJoinAccessMode, selectedLaunchPreset]
+    );
+    const selectedPresetUi = PRESET_UI_META?.[selectedPresetBaseId] || PRESET_UI_META?.[selectedLaunchPreset?.id] || null;
+    const hasLaunchStartTime = !!String(quickLaunchDiscovery?.roomStartsAtLocal || '').trim();
+    const launchRoomSummaryName = String(launchRoomName || '').trim() || 'Untitled room';
 
     useEffect(() => {
         setLaunchJoinAccessMode(normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}).accessMode);
@@ -260,19 +314,19 @@ const HostRoomLaunchPadBrowser = ({
     );
 
     return (
-    <div className="relative z-10 w-full max-w-[1600px]">
-        <div className="rounded-[2rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.12),transparent_22%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.12),transparent_28%),linear-gradient(145deg,rgba(13,18,34,0.94),rgba(8,14,24,0.98))] p-4 shadow-[0_30px_90px_rgba(0,0,0,0.48)] backdrop-blur-xl md:p-5">
-            <div className="rounded-[1.3rem] border border-white/10 bg-black/20 px-4 py-4">
+    <div className="relative z-10 w-full max-w-[1600px] scroll-mt-4 pt-2 sm:pt-3">
+        <div className="rounded-[1.5rem] border border-cyan-300/25 bg-[radial-gradient(circle_at_top_left,rgba(255,194,104,0.10),transparent_22%),radial-gradient(circle_at_85%_14%,rgba(236,72,153,0.10),transparent_28%),linear-gradient(145deg,rgba(13,18,34,0.94),rgba(8,14,24,0.98))] p-3 shadow-[0_24px_70px_rgba(0,0,0,0.44)] backdrop-blur-xl md:p-4">
+            <div className="rounded-[1.15rem] border border-white/10 bg-black/20 px-3 py-3 md:px-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="flex min-w-0 items-start gap-4">
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1rem] border border-cyan-300/18 bg-[radial-gradient(circle_at_30%_30%,rgba(0,196,217,0.18),transparent_55%),linear-gradient(180deg,rgba(7,14,28,0.96),rgba(18,12,28,0.9))] p-2 shadow-[0_0_40px_rgba(0,196,217,0.12)]">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.9rem] border border-cyan-300/18 bg-[radial-gradient(circle_at_30%_30%,rgba(0,196,217,0.18),transparent_55%),linear-gradient(180deg,rgba(7,14,28,0.96),rgba(18,12,28,0.9))] p-1.5 shadow-[0_0_32px_rgba(0,196,217,0.12)]">
                             <img src={ASSETS.logo} alt="BeauRocks Karaoke" className="h-full w-full object-contain drop-shadow-[0_0_14px_rgba(255,255,255,0.4)]" />
                         </div>
                         <div className="min-w-0">
                             <div className="text-[10px] uppercase tracking-[0.28em] text-cyan-100/68">BeauRocks Host Rooms</div>
-                            <div className="mt-1 text-2xl font-black text-white md:text-[2rem]">Create a new room or reopen an existing one.</div>
+                            <div className="mt-1 text-xl font-black text-white md:text-2xl">Rooms</div>
                             <div className="mt-1 max-w-4xl text-sm text-cyan-100/74">
-                                New rooms stay on the right with one primary create action. Existing rooms stay in the browser below so reopening and cleanup are separate from creation.
+                                Create a room, reopen a recent room, or clean up older rooms from one place.
                             </div>
                         </div>
                     </div>
@@ -310,8 +364,8 @@ const HostRoomLaunchPadBrowser = ({
                     <div className="rounded-[1.4rem] border border-white/10 bg-black/22 p-3">
                         <div className="px-1">
                             <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/58">Workspace</div>
-                            <div className="mt-1 text-lg font-black text-white">Choose one lane</div>
-                            <div className="mt-1 text-sm text-cyan-100/68">Existing rooms stay in one browser workspace. New room setup stays separate so this screen does not turn into one long stacked flow.</div>
+                            <div className="mt-1 text-base font-black text-white">Choose one lane</div>
+                            <div className="mt-1 text-sm text-cyan-100/68">Use Existing Rooms to reopen. Use Create Room for a fresh room.</div>
                         </div>
                         <div className="mt-3 flex flex-wrap items-end gap-1.5 border-b border-white/10 px-1 pt-1" role="tablist" aria-label="Room setup workspace">
                             {ROOM_SETUP_TABS.map((tab) => {
@@ -753,9 +807,9 @@ const HostRoomLaunchPadBrowser = ({
 
                         {!createModeActive ? (
                             <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-cyan-100/72">
-                                <div className="font-semibold text-white">{String(launchRoomName || '').trim() || 'Untitled room'}</div>
+                                <div className="font-semibold text-white">{launchRoomSummaryName}</div>
                                 <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
-                                <div className="mt-1">Starts {launchStartSummary}</div>
+                                {hasLaunchStartTime ? <div className="mt-1">Starts {launchStartSummary}</div> : null}
                                 <div className="mt-1">{selectedLaunchPreset?.label || 'Room defaults'} defaults ready.</div>
                             </div>
                         ) : null}
@@ -809,18 +863,42 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
 
                             <div className="grid gap-3 sm:grid-cols-2">
-                                <label className="block">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Start time</div>
-                                    <input
-                                        type="datetime-local"
-                                        value={String(quickLaunchDiscovery?.roomStartsAtLocal || '')}
-                                        onChange={(e) => setQuickLaunchDiscovery((prev) => ({
-                                            ...prev,
-                                            roomStartsAtLocal: e.target.value,
-                                        }))}
-                                        className={inputClass}
-                                    />
-                                </label>
+                                <details className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3" {...(hasLaunchStartTime ? { open: true } : {})}>
+                                    <summary className="cursor-pointer list-none">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Schedule</div>
+                                                <div className="mt-1 text-sm font-semibold text-white">{hasLaunchStartTime ? launchStartSummary : 'Start time optional'}</div>
+                                            </div>
+                                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/60">
+                                                {hasLaunchStartTime ? 'Set' : 'Optional'}
+                                            </span>
+                                        </div>
+                                    </summary>
+                                    <div className="mt-3">
+                                        <input
+                                            type="datetime-local"
+                                            value={String(quickLaunchDiscovery?.roomStartsAtLocal || '')}
+                                            onChange={(e) => setQuickLaunchDiscovery((prev) => ({
+                                                ...prev,
+                                                roomStartsAtLocal: e.target.value,
+                                            }))}
+                                            className={inputClass}
+                                        />
+                                        {hasLaunchStartTime ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setQuickLaunchDiscovery((prev) => ({
+                                                    ...prev,
+                                                    roomStartsAtLocal: '',
+                                                }))}
+                                                className="mt-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] uppercase tracking-[0.16em] text-cyan-100/72 hover:border-cyan-300/30 hover:text-white"
+                                            >
+                                                Clear start time
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </details>
                                 <div>
                                     <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Visibility</div>
                                     <div className="mt-2 inline-flex w-full rounded-xl border border-white/10 bg-black/20 p-1">
@@ -842,13 +920,23 @@ const HostRoomLaunchPadBrowser = ({
                                 </div>
                             </div>
 
-                            <div>
+                            <div className="rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3">
                                 <label className="block">
-                                    <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room defaults</div>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                            <div className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/58">Room defaults</div>
+                                            <div className="mt-1 text-sm text-cyan-100/66">Defaults configure queue, requests, search, TV/crowd layers, automation, and audience access.</div>
+                                        </div>
+                                        {selectedPresetUi?.eyebrow ? (
+                                            <span className="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">
+                                                {selectedPresetUi.eyebrow}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                     <select
                                         value={resolvedLaunchPresetId}
                                         onChange={(event) => setHostNightPreset(event.target.value)}
-                                        className={`${inputClass} mt-2`}
+                                        className={`${inputClass} mt-3 min-h-[52px] border-cyan-300/32 bg-black/40 text-base font-semibold`}
                                     >
                                         {presets.map((preset) => (
                                             <option key={preset.id} value={preset.id}>
@@ -857,11 +945,28 @@ const HostRoomLaunchPadBrowser = ({
                                         ))}
                                     </select>
                                 </label>
-                                <div className="mt-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                                    <div className="text-sm font-semibold text-white">{selectedLaunchPreset?.label || 'Room defaults'}</div>
-                                    <div className="mt-1 text-xs text-cyan-100/62">{selectedPresetMeta.summary}</div>
+                                <div className="mt-3 rounded-xl border border-white/10 bg-black/22 px-3 py-3">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-base font-semibold text-white">{selectedLaunchPreset?.label || 'Room defaults'}</div>
+                                            <div className="mt-1 text-sm text-cyan-100/66">{selectedPresetMeta.summary}</div>
+                                        </div>
+                                        {selectedLaunchPreset?.isBuiltIn ? (
+                                            <span className="rounded-full border border-cyan-300/24 bg-cyan-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-cyan-100/72">Built-in</span>
+                                        ) : (
+                                            <span className="rounded-full border border-fuchsia-300/24 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.16em] text-fuchsia-100/72">Custom</span>
+                                        )}
+                                    </div>
+                                    <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        {selectedPresetImpactRows.map((row) => (
+                                            <div key={row.label} className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2">
+                                                <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-100/48">{row.label}</div>
+                                                <div className="mt-1 text-sm text-cyan-50/86">{row.value}</div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                <details className="mt-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                                     <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.18em] text-cyan-100/62">
                                         Manage saved defaults
                                     </summary>
@@ -889,9 +994,9 @@ const HostRoomLaunchPadBrowser = ({
                             </div>
 
                             <div className="rounded-xl border border-cyan-300/18 bg-cyan-500/8 px-3 py-3 text-sm text-cyan-100/74">
-                                <div className="font-semibold text-white">{String(launchRoomName || '').trim() || 'Untitled room'}</div>
+                                <div className="font-semibold text-white">{launchRoomSummaryName}</div>
                                 <div className="mt-1">{hasRequestedLaunchRoomCode ? `Requested code ${requestedLaunchRoomCodeCandidate}` : 'Auto-assign room code'}</div>
-                                <div className="mt-1">Starts {launchStartSummary}</div>
+                                {hasLaunchStartTime ? <div className="mt-1">Starts {launchStartSummary}</div> : null}
                                 <div className="mt-1">{discoveryListingEnabled ? 'Listed in Discover' : 'Private join only'}</div>
                                 <div className="mt-1">{selectedLaunchPreset?.label || 'Room defaults'}: {selectedPresetMeta.summary}</div>
                             </div>
@@ -1154,7 +1259,10 @@ const HostRoomLaunchPadBrowser = ({
                                 >
                                     {creatingRoom ? 'Creating room...' : 'Create + Open Host Panel'}
                                 </button>
-                                <div className="grid gap-2 sm:grid-cols-2">
+                                <details className="rounded-xl border border-white/10 bg-black/18 px-3 py-2">
+                                    <summary className="cursor-pointer list-none text-[10px] uppercase tracking-[0.16em] text-cyan-100/62">Planning ahead?</summary>
+                                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                                        <div className="text-sm text-cyan-100/66">Create the room and open the Show Plan when you want to sequence moments before guests arrive.</div>
                                     <button
                                         type="button"
                                         onClick={() => handleStartLauncherRoom({
@@ -1176,30 +1284,10 @@ const HostRoomLaunchPadBrowser = ({
                                     >
                                         Create + Open Show Plan
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleStartLauncherRoom({
-                                            openNightSetup: false,
-                                            launchTarget: 'settings',
-                                            nightPresetPayload: buildHostNightPresetConfig({
-                                                ...(selectedLaunchPreset || {}),
-                                                settings: {
-                                                    ...(selectedLaunchPreset?.settings || {}),
-                                                    audienceJoinPolicy: {
-                                                        ...normalizeAudienceJoinPolicy(selectedLaunchPreset?.settings?.audienceJoinPolicy || {}),
-                                                        accessMode: launchJoinAccessMode,
-                                                    },
-                                                },
-                                            }),
-                                        })}
-                                        disabled={launchDisabled}
-                                        className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-4 py-2 text-[10px] uppercase tracking-[0.18em] ${launchDisabled ? 'cursor-not-allowed opacity-60' : ''}`}
-                                    >
-                                        Create + Open Room Settings
-                                    </button>
                                 </div>
+                                </details>
                                 <div className="text-xs text-cyan-100/58">
-                                    Use the host panel path for most nights. Show Plan and Room Settings are there when you need to prep before guests arrive.
+                                    One primary create path keeps setup predictable. Use Show Plan only for pre-event sequencing.
                                 </div>
                             </div>
                         </div>

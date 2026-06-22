@@ -3,7 +3,7 @@
  * narrowly scoped manual memoization. A safe refactor needs to be broken into smaller passes.
  */
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction } from '../../lib/firebase';
+import { db, collection, doc, onSnapshot, query, where, limit, orderBy, updateDoc, addDoc, serverTimestamp, trackEvent, callFunction, updateRoomAsHost } from '../../lib/firebase';
 import { APP_ID } from '../../lib/assets';
 import { ASSETS, STORM_SFX } from '../../lib/assets';
 import QRCode from 'qrcode';
@@ -790,6 +790,38 @@ const parseAwardFailureCode = (error = null) => {
     return raw;
 };
 
+const isPermissionDeniedError = (error = null) => {
+    const raw = String(error?.code || error?.message || "").toLowerCase();
+    return raw.includes("permission-denied") || raw.includes("missing or insufficient permissions");
+};
+
+const buildPerformanceSessionHostFallbackUpdate = (room = {}, patch = {}) => {
+    const sessionPatch = {};
+    const metaPatch = {};
+    Object.entries(patch || {}).forEach(([key, value]) => {
+        const normalizedKey = String(key || "");
+        if (normalizedKey.startsWith("currentPerformanceSession.")) {
+            sessionPatch[normalizedKey.slice("currentPerformanceSession.".length)] = value;
+        } else if (normalizedKey.startsWith("currentPerformanceMeta.")) {
+            metaPatch[normalizedKey.slice("currentPerformanceMeta.".length)] = value;
+        }
+    });
+
+    const updates = {};
+    if (Object.keys(sessionPatch).length) {
+        updates.currentPerformanceSession = {
+            ...(room?.currentPerformanceSession || {}),
+            ...sessionPatch
+        };
+    }
+    if (Object.keys(metaPatch).length) {
+        updates.currentPerformanceMeta = {
+            ...(room?.currentPerformanceMeta || {}),
+            ...metaPatch
+        };
+    }
+    return updates;
+};
 const LOBBY_PLAYGROUND_REWARD_SOURCE = 'lobby_playground';
 const LOBBY_AWARD_VISUAL_WINDOW_MS = 4200;
 const LOBBY_COMBO_WINDOW_MS = 4600;
@@ -2679,10 +2711,21 @@ const PublicTV = ({ roomCode }) => {
         performanceSessionWriteKeyRef.current = nextWrite.dedupeKey;
 
         try {
-            await updateDoc(doc(db, 'artifacts', APP_ID, 'public', 'data', 'rooms', roomCode), nextWrite.patch);
+            await updateDoc(doc(db, "artifacts", APP_ID, "public", "data", "rooms", roomCode), nextWrite.patch);
         } catch (error) {
-            console.warn('Failed to report performance session playback', error);
-            performanceSessionWriteKeyRef.current = '';
+            if (isPermissionDeniedError(error)) {
+                try {
+                    const hostFallbackUpdate = buildPerformanceSessionHostFallbackUpdate(room, nextWrite.patch);
+                    if (Object.keys(hostFallbackUpdate).length) {
+                        await updateRoomAsHost(roomCode, hostFallbackUpdate);
+                        return;
+                    }
+                } catch (fallbackError) {
+                    console.warn("Failed to report performance session playback through host fallback", fallbackError);
+                }
+            }
+            console.warn("Failed to report performance session playback", error);
+            performanceSessionWriteKeyRef.current = "";
         }
     }, [room?.currentPerformanceMeta?.backingDurationSec, room?.currentPerformanceMeta?.durationSec, room?.currentPerformanceMeta?.songId, room?.currentPerformanceSession, roomCode]);
 

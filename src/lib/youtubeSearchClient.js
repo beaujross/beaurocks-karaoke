@@ -5,8 +5,10 @@ const YOUTUBE_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
 const YOUTUBE_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const YOUTUBE_QUOTA_STORAGE_KEY = 'bross_youtube_quota_block_until_ms_v1';
 const YOUTUBE_DAILY_BUDGET_STORAGE_KEY = 'bross_youtube_daily_budget_v1';
-const YOUTUBE_DAILY_QUOTA_UNITS = 10000;
-const YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH = 101;
+const YOUTUBE_DAILY_SEARCH_LIST_CALLS = 100;
+const YOUTUBE_DAILY_GENERAL_DATA_UNITS = 10000;
+const YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH = 1;
+const YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH = 1;
 const YOUTUBE_SEARCH_INTENT_STOPWORDS = new Set([
     'karaoke',
     'official',
@@ -172,16 +174,24 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         cacheSharePct: 0,
         cacheHitPct: 0,
         recentSearches: 0,
-        dailyQuotaUnits: YOUTUBE_DAILY_QUOTA_UNITS,
-        estimatedUnitsPerLiveSearch: YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH,
+        dailySearchListCallLimit: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
+        dailyGeneralDataUnitLimit: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
+        estimatedSearchListCallsPerLiveSearch: YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH,
+        estimatedGeneralUnitsPerLiveSearch: YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH,
+        dailyQuotaUnits: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
+        estimatedUnitsPerLiveSearch: YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH,
         todayDayKey: youtubeDailyBudgetStats.dayKey,
         todayLiveCalls: Math.max(0, Number(youtubeDailyBudgetStats.liveCalls || 0)),
         todayClientCacheHits: Math.max(0, Number(youtubeDailyBudgetStats.clientCacheHits || 0)),
         todayServerCacheHits: Math.max(0, Number(youtubeDailyBudgetStats.serverCacheHits || 0)),
         todayQuotaErrors: Math.max(0, Number(youtubeDailyBudgetStats.quotaErrors || 0)),
+        todaySearchListCallsUsed: 0,
+        todaySearchListCallsRemaining: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
+        todayGeneralDataUnitsUsed: 0,
+        todayGeneralDataUnitsRemaining: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
         todayEstimatedUnitsUsed: 0,
-        todayEstimatedUnitsRemaining: YOUTUBE_DAILY_QUOTA_UNITS,
-        todayEstimatedFreshSearchesLeft: Math.floor(YOUTUBE_DAILY_QUOTA_UNITS / YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH),
+        todayEstimatedUnitsRemaining: YOUTUBE_DAILY_GENERAL_DATA_UNITS,
+        todayEstimatedFreshSearchesLeft: YOUTUBE_DAILY_SEARCH_LIST_CALLS,
         todayCacheHitPct: 0,
     };
     for (const event of youtubeSearchTelemetryEvents) {
@@ -204,11 +214,15 @@ const buildYouTubeSearchTelemetrySnapshot = () => {
         summary.cacheHitPct = summary.cacheSharePct;
         summary.liveSharePct = Math.round((summary.liveCalls / summary.totalSearches) * 100);
     }
-    summary.todayEstimatedUnitsUsed = summary.todayLiveCalls * YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH;
-    summary.todayEstimatedUnitsRemaining = Math.max(0, YOUTUBE_DAILY_QUOTA_UNITS - summary.todayEstimatedUnitsUsed);
-    summary.todayEstimatedFreshSearchesLeft = Math.max(
-        0,
-        Math.floor(summary.todayEstimatedUnitsRemaining / YOUTUBE_ESTIMATED_UNITS_PER_LIVE_SEARCH)
+    summary.todaySearchListCallsUsed = summary.todayLiveCalls * YOUTUBE_ESTIMATED_SEARCH_LIST_CALLS_PER_LIVE_SEARCH;
+    summary.todaySearchListCallsRemaining = Math.max(0, YOUTUBE_DAILY_SEARCH_LIST_CALLS - summary.todaySearchListCallsUsed);
+    summary.todayGeneralDataUnitsUsed = summary.todayLiveCalls * YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH;
+    summary.todayGeneralDataUnitsRemaining = Math.max(0, YOUTUBE_DAILY_GENERAL_DATA_UNITS - summary.todayGeneralDataUnitsUsed);
+    summary.todayEstimatedUnitsUsed = summary.todayGeneralDataUnitsUsed;
+    summary.todayEstimatedUnitsRemaining = summary.todayGeneralDataUnitsRemaining;
+    summary.todayEstimatedFreshSearchesLeft = Math.min(
+        summary.todaySearchListCallsRemaining,
+        Math.floor(summary.todayGeneralDataUnitsRemaining / YOUTUBE_ESTIMATED_GENERAL_UNITS_PER_LIVE_SEARCH)
     );
     const todayTotalSearches = summary.todayLiveCalls + summary.todayClientCacheHits + summary.todayServerCacheHits;
     if (todayTotalSearches > 0) {

@@ -77,17 +77,17 @@ test('admin keeps preview, chat, and moderation controls in their canonical home
 test('admin navigation keeps core config sections wired into the workspace registry', () => {
   assert.match(
     navConfigSource,
-    /\{ id: 'audience', label: 'Audience'[\s\S]*defaultSection: 'audience\.roster'/,
-    'The host Audience surface should keep roster as its explicit host-tab handoff',
+    /\{ id: 'audience', label: 'People'[\s\S]*defaultSection: 'audience\.roster'/,
+    'The host People surface should keep roster as its explicit host-tab handoff',
   );
   assert.match(
     navConfigSource,
-    /\{ id: 'audience\.chat', view: 'audience', label: 'Chat', legacyTab: 'chat' \}/,
+    /\{ id: 'audience\.chat', view: 'audience', label: 'Chat Policy', legacyTab: 'chat' \}/,
     'Audience chat should exist in the workspace section registry',
   );
   assert.match(
     navConfigSource,
-    /\{ id: 'audience\.setup', view: 'audience', label: 'Audience Setup', legacyTab: 'audience_setup' \}/,
+    /\{ id: 'audience\.setup', view: 'audience', label: 'Audience & Permissions', legacyTab: 'audience_setup' \}/,
     'Audience setup should exist as a real admin settings section separate from the roster handoff',
   );
   assert.match(
@@ -117,18 +117,18 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /key: 'audience_setup',[\s\S]*label: 'Audience Setup',[\s\S]*description: 'Guest app layout, audience access, join flow, request rules, search safety, and room branding\.'/,
-    'Admin nav should expose Audience Setup as its own visible audience settings destination',
+    /key: 'audience_setup',[\s\S]*label: 'Audience & Permissions',[\s\S]*description: 'Guest app layout, join flow, request permissions, search safety, and audience-facing branding\.'/,
+    'Admin nav should expose Audience & Permissions as its own visible audience settings destination',
   );
   assert.match(
     hostAppSource,
     /settingsTab === 'general' \|\| settingsTab === 'audience_setup'/,
-    'Audience Setup should reuse the existing audience settings controls instead of routing to the lobby tab',
+    'Audience & Permissions should reuse the existing audience settings controls instead of routing to the lobby tab',
   );
   assert.match(
     hostAppSource,
     /settingsTab === 'audience_setup' \? \{ open: true \} : \{\}/,
-    'Audience Setup should open the guest flow audience settings panel directly',
+    'Audience & Permissions should open the guest flow audience settings panel directly',
   );
   assert.match(
     hostAppSource,
@@ -157,13 +157,13 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /key: 'automations',[\s\S]*?ownership: 'config',\s*description: 'Auto-DJ, host assist, auto-advance, and other room automation rules\.'/,
-    'Automation should remain a first-class admin navigation section',
+    /key: 'automations',[\s\S]*?ownership: 'config',\s*description: 'Queue style, Auto-DJ, host assist, playback safety, ready checks, and auto-advance rules\.'/,
+    'Queue & Playback should remain a first-class admin navigation section',
   );
   assert.match(
     hostAppSource,
-    /key: 'marquee',[\s\S]*?ownership: 'config',\s*description: 'Marquee timing, overlay messaging, and idle-screen content\.'/,
-    'Overlays should remain a first-class admin navigation section',
+    /key: 'marquee',[\s\S]*?ownership: 'config',\s*description: 'Scoring, hype, chat-on-TV, marquee messages, and other audience-facing TV overlays\.'/,
+    'TV & Crowd should remain a first-class admin navigation section',
   );
   assert.match(
     hostAppSource,
@@ -212,7 +212,7 @@ test('admin navigation keeps core config sections wired into the workspace regis
   );
   assert.match(
     hostAppSource,
-    /tab === 'admin' \? 'All Settings' : `Sections In \$\{activeWorkspaceMeta\?\.label \|\| 'Workspace'\}`/,
+    /tab === 'admin' \? 'Settings & Defaults' : `Settings In \$\{activeWorkspaceMeta\?\.label \|\| 'Workspace'\}`/,
     'The admin rail should clearly indicate when it is showing the full settings directory',
   );
   assert.match(

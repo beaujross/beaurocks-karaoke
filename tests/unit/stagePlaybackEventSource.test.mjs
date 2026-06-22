@@ -52,3 +52,12 @@ test('Stage reports a fallback ended event when trusted YouTube duration elapses
     'Stage should mark the session ended if YouTube never emits an ended state after the trusted duration.',
   );
 });
+
+test('Stage executes sparse host playback commands against the mounted player', () => {
+  assert.match(source, /const command = room\?\.playbackControlCommand \|\| null;/, 'Stage should watch the room-level playback command primitive.');
+  assert.match(source, /performanceSessionId[\s\S]*activeSessionId[\s\S]*activeSessionId !== commandSessionId/, 'Stage should ignore commands for stale performance sessions.');
+  assert.match(source, /func: 'pauseVideo'/, 'YouTube pause commands should use the iframe player API.');
+  assert.match(source, /func: 'seekTo'[\s\S]*args: \[seekToSec, true\]/, 'YouTube seek and jump commands should use the iframe player API.');
+  assert.match(source, /nativeElement\.currentTime = seekToSec;/, 'Native media should seek locally without server-side time synchronization.');
+  assert.match(source, /const mediaPlayerMounted = !!room\?\.videoPlaying \|\| stagePlaybackPaused;/, 'Paused command-driven media should stay mounted so Public TV can resume locally.');
+});

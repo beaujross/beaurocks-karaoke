@@ -38,8 +38,28 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
   );
   assert.match(
     source,
-    /min-h-\[46px\]/,
-    "Transport buttons should stay compact enough for constrained host-panel heights",
+    /min-h-\[42px\]/,
+    "Transport buttons should stay compact and less boxy for constrained host-panel heights",
+  );
+  assert.match(
+    source,
+    /data-feature-id="host-unified-stage-transport"[\s\S]*Media Playback[\s\S]*data-feature-id="host-playback-command-timeline"[\s\S]*\{stageActionHeading\}/,
+    "Media playback and performance flow should share one unified transport surface instead of separate nested cards",
+  );
+  assert.match(
+    source,
+    /const playbackButtonClass = `\$\{actionButtonBaseClass\} border-white\/10 bg-white\/\[0\.045\] hover:border-sky-200\/35 hover:bg-white\/\[0\.08\]`;/,
+    "Playback buttons should use the flatter shared control treatment",
+  );
+  assert.doesNotMatch(
+    source,
+    /rounded-lg border border-sky-300\/16 bg-sky-950\/18 p-2\.5/,
+    "The stage rail should not wrap playback and performance controls in extra nested boxes",
+  );
+  assert.doesNotMatch(
+    source,
+    /mt-3 rounded-xl border border-white\/10 bg-black\/25 px-3 py-3/,
+    "The now-performing block should not be a bordered card inside the current-performance card",
   );
   assert.doesNotMatch(
     source,
@@ -76,4 +96,15 @@ test("StageNowPlayingPanel keeps performance-critical controls in the visible tr
     /if \(typeof onMeasureApplause === 'function'\) \{\s*onMeasureApplause\(\);\s*return;\s*\}\s*updateRoom\(\{ activeMode: room\?\.activeMode === 'applause' \? 'karaoke' : 'applause_countdown', applausePeak: 0 \}\);/s,
     "The applause control should route through the host-provided applause callback before using the legacy room-mode toggle",
   );
+});
+
+test("StageNowPlayingPanel exposes sparse playback command timeline controls", () => {
+  const source = readFileSync(stagePanelPath, "utf8");
+
+  assert.match(source, /onRestartPlayback,/, "Now Playing should accept a shared restart command handler");
+  assert.match(source, /onJumpPlayback,/, "Now Playing should expose jump commands for host transport");
+  assert.match(source, /onSeekPlayback,/, "Now Playing should expose seek commands for host transport");
+  assert.match(source, /data-feature-id="host-playback-command-timeline"/, "Now Playing should render a compact timeline scrubber for command-capable media");
+  assert.match(source, /onJumpPlayback\?\.\(-10\)/, "Timeline should provide a jump-back command");
+  assert.match(source, /onSeekPlayback\(next\)/, "Timeline should send one seek command when the host applies a scrub");
 });

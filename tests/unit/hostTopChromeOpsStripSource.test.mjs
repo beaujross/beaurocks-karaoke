@@ -11,7 +11,7 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.match(source, /<NavStatusLight[\s\S]*label="Apple"/);
   assert.match(source, /<NavStatusLight[\s\S]*label="AI"/);
   assert.match(source, /data-feature-id="top-chrome-youtube-budget"/);
-  assert.match(source, /label=\{youtubeBudgetStatus\.label \|\| 'YT Budget'\}/);
+  assert.match(source, /label=\{youtubeBudgetStatus\.label \|\| 'YT Search'\}/);
   assert.match(source, /<NavStatusLight[\s\S]*label=\{String\(permissionLevel \|\| 'unknown'\)\.toUpperCase\(\)\}/);
   assert.match(source, /inline-flex min-w-0 items-center gap-1\.5 rounded-lg border px-2 py-1 text-\[10px\] uppercase tracking-\[0\.14em\]/);
   assert.match(source, /<span className="text-zinc-100 hidden lg:inline">Vibe<\/span>/);
@@ -26,7 +26,9 @@ test('host top chrome keeps the vibe meter but drops the redundant ops strip', (
   assert.doesNotMatch(source, /Ops Strip/);
   assert.match(hostAppSource, /const hostOpsStatus = useMemo/);
   assert.match(hostAppSource, /const topChromeYouTubeBudget = useMemo/);
-  assert.match(hostAppSource, /todayEstimatedFreshSearchesLeft/);
+  assert.match(hostAppSource, /todaySearchListCallsRemaining/);
+  assert.match(hostAppSource, /dailySearchListCallLimit/);
+  assert.match(hostAppSource, /dailyGeneralDataUnitLimit/);
   assert.match(hostAppSource, /getYouTubeQuotaBlockedUntilMs/);
   assert.match(hostAppSource, /youtubeBudgetStatus=\{topChromeYouTubeBudget\}/);
   assert.match(hostAppSource, /hostOpsStatus\?\.summary/);

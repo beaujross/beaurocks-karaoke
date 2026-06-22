@@ -29,6 +29,72 @@ const STYLES = {
     header: "text-xs uppercase tracking-[0.3em] text-zinc-500",
 };
 
+const splitTriviaImportLine = (line = '') => {
+    if (line.includes('|')) return line.split('|');
+    if (line.includes('\t')) return line.split('\t');
+    return line.split(',');
+};
+
+const normalizeImportedTriviaEntry = (entry = {}, index = 0, prefix = 'custom_trivia') => {
+    const rawOptions = Array.isArray(entry.options) ? entry.options.map((option) => String(option || '').trim()).filter(Boolean) : [];
+    const correctIndex = Math.max(0, Number(entry.correctIndex ?? entry.correctOptionIndex ?? 0) || 0);
+    const correct = String(entry.correct || entry.answer || rawOptions[correctIndex] || rawOptions[0] || '').trim();
+    const distractors = [entry.w1 || entry.wrong1 || entry.distractor1, entry.w2 || entry.wrong2 || entry.distractor2, entry.w3 || entry.wrong3 || entry.distractor3]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean);
+    rawOptions.forEach((option, optionIndex) => {
+        if (optionIndex !== correctIndex && option && option !== correct && distractors.length < 3) distractors.push(option);
+    });
+    return {
+        id: String(entry.id || `${prefix}_${Date.now()}_${index}`).trim(),
+        q: String(entry.q || entry.question || '').trim(),
+        correct,
+        w1: distractors[0] || '',
+        w2: distractors[1] || '',
+        w3: distractors[2] || '',
+        points: Math.max(0, Number(entry.points || 100) || 100),
+        asked: false,
+        contentSource: String(entry.contentSource || 'host_import').trim()
+    };
+};
+
+const parseTriviaImportText = (rawText = '') => {
+    const text = String(rawText || '').trim();
+    if (!text) return [];
+    try {
+        const parsed = JSON.parse(text);
+        const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+        return rows
+            .map((entry, index) => normalizeImportedTriviaEntry(entry, index))
+            .filter((entry) => entry.q && entry.correct && entry.w1 && entry.w2 && entry.w3);
+    } catch {
+        return text
+            .split(/\r?\n+/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => {
+                const [q, correct, w1, w2, w3, points] = splitTriviaImportLine(line).map((part) => String(part || '').trim());
+                return normalizeImportedTriviaEntry({ q, correct, w1, w2, w3, points }, index);
+            })
+            .filter((entry) => entry.q && entry.correct && entry.w1 && entry.w2 && entry.w3);
+    }
+};
+
+const buildTriviaRunOfShowLaunchConfig = (entry = {}, durationSec = 20, autoReveal = true) => {
+    const normalized = normalizeImportedTriviaEntry(entry, 0, 'ros_trivia');
+    const options = [normalized.correct, normalized.w1, normalized.w2, normalized.w3].filter(Boolean).slice(0, 4);
+    return {
+        question: normalized.q,
+        options,
+        optionsCsv: options.join(', '),
+        correctIndex: 0,
+        points: normalized.points || 100,
+        durationSec: Math.max(5, Number(durationSec || 20) || 20),
+        autoReveal: autoReveal !== false,
+        bankEntryId: normalized.id,
+        contentSource: normalized.contentSource || 'host_room_bank'
+    };
+};
 const KARAOKE_TROPES = [
     'Mic drop moment',
     'Divorce dad rock',
@@ -389,6 +455,7 @@ const UnifiedGameLauncher = ({
     const bingoRngAppendRef = useRef({ startTime: null, uids: new Set() });
     const bingoWinResolveRef = useRef('');
     const [triviaAiTopic, setTriviaAiTopic] = useState('');
+    const [triviaImportText, setTriviaImportText] = useState('');
     const [triviaAiLoading, setTriviaAiLoading] = useState(false);
     const [wyrAiTopic, setWyrAiTopic] = useState('');
     const [wyrAiLoading, setWyrAiLoading] = useState(false);
@@ -1080,6 +1147,68 @@ const UnifiedGameLauncher = ({
         }
     };
 
+    const appendTriviaFromImportText = async () => {
+        const imported = parseTriviaImportText(triviaImportText);
+        if (!imported.length) {
+            toast('Paste JSON or lines like: Question | Correct | Wrong 1 | Wrong 2 | Wrong 3');
+            return;
+        }
+        const existingKeys = new Set(triviaBank.map((entry) => `${String(entry.q || '').trim().toLowerCase()}::${String(entry.correct || '').trim().toLowerCase()}`));
+        const nextImported = imported.filter((entry) => !existingKeys.has(`${entry.q.toLowerCase()}::${entry.correct.toLowerCase()}`));
+        if (!nextImported.length) {
+            toast('Those trivia questions are already in the bank');
+            return;
+        }
+        const nextBank = [...triviaBank, ...nextImported];
+        setTriviaBank(nextBank);
+        await updateBank('trivia', nextBank).catch(() => null);
+        setTriviaImportText('');
+        if (!selectedTriviaId && nextImported[0]?.id) setSelectedTriviaId(nextImported[0].id);
+        toast(`${nextImported.length} trivia question${nextImported.length === 1 ? '' : 's'} imported`);
+    };
+
+    const queueTriviaEntryToRunOfShow = async (entry, placement = 'next') => {
+        if (!entry || typeof onAddQuickRunOfShowMoment !== 'function') {
+            toast('Run of Show is not available for this room yet');
+            return null;
+        }
+        return onAddQuickRunOfShowMoment('trivia_break', {
+            placement,
+            launchConfigOverrides: buildTriviaRunOfShowLaunchConfig(entry, triviaRoundSec, triviaAutoReveal),
+            itemOverrides: {
+                title: entry.q || 'Trivia Break',
+                plannedDurationSec: Math.max(5, Number(triviaRoundSec) || 20),
+                notes: entry.contentSource === 'host_import' ? 'Imported host trivia question.' : 'Room trivia bank question.'
+            },
+            presentationOverrides: {
+                publicTvTakeoverEnabled: true,
+                takeoverScene: 'trivia_break',
+                headline: 'Trivia Break',
+                subhead: entry.q || 'One fast question before the next singer.',
+                accentTheme: 'violet'
+            }
+        });
+    };
+
+    const queueSelectedTriviaToRunOfShow = async () => {
+        const item = filteredTrivia.find(t => String(t.id) === String(selectedTriviaId));
+        if (!item) return toast('Select a trivia question first');
+        await queueTriviaEntryToRunOfShow(item, 'next');
+    };
+
+    const queueFilteredTriviaToRunOfShow = async () => {
+        if (typeof onAddQuickRunOfShowMoment !== 'function') {
+            toast('Run of Show is not available for this room yet');
+            return;
+        }
+        const items = filteredTrivia.filter(Boolean).slice(0, 20);
+        if (!items.length) return toast('No visible trivia questions to queue');
+        for (const item of items) {
+            // Append preserves the visible bank order as a planned sequence.
+            await queueTriviaEntryToRunOfShow(item, 'append');
+        }
+        toast(`${items.length} trivia question${items.length === 1 ? '' : 's'} added to Run of Show`);
+    };
     const appendWyrFromAI = async () => {
         if (!canUseAiGeneration) {
             toast(aiGateMessage);
@@ -1115,12 +1244,41 @@ const UnifiedGameLauncher = ({
         }
     };
 
+    const findNextTriviaItem = () => {
+        const bank = triviaBank.length ? triviaBank : fallbackTriviaBank;
+        if (!bank.length) return null;
+        const live = room?.triviaQuestion || {};
+        let anchorIndex = bank.findIndex(t => String(t.id) === String(live.bankId));
+        if (anchorIndex < 0 && live.q) anchorIndex = bank.findIndex(t => t.q === live.q);
+        if (anchorIndex < 0 && selectedTriviaId) anchorIndex = bank.findIndex(t => String(t.id) === String(selectedTriviaId));
+        for (let offset = 1; offset <= bank.length; offset += 1) {
+            const item = bank[(Math.max(anchorIndex, -1) + offset) % bank.length];
+            if (item && !item.asked) return item;
+        }
+        return bank[(Math.max(anchorIndex, -1) + 1) % bank.length] || bank[0];
+    };
+
+    const findNextWyrItem = () => {
+        const bank = wyrBank.length ? wyrBank : fallbackWyrBank;
+        if (!bank.length) return null;
+        const live = room?.wyrData || {};
+        let anchorIndex = bank.findIndex(w => String(w.id) === String(live.bankId));
+        if (anchorIndex < 0 && live.question) anchorIndex = bank.findIndex(w => w.q === live.question);
+        if (anchorIndex < 0 && selectedWyrId) anchorIndex = bank.findIndex(w => String(w.id) === String(selectedWyrId));
+        for (let offset = 1; offset <= bank.length; offset += 1) {
+            const item = bank[(Math.max(anchorIndex, -1) + offset) % bank.length];
+            if (item && !item.asked) return item;
+        }
+        return bank[(Math.max(anchorIndex, -1) + 1) % bank.length] || bank[0];
+    };
+
     const launchTrivia = async (item) => {
         if (!item) return;
         const durationSec = Math.max(5, Number(triviaRoundSec) || 20);
         const startedAt = Date.now();
         const autoReveal = !!triviaAutoReveal;
         const opts = shuffleArray([item.correct, item.w1, item.w2, item.w3].filter(Boolean));
+        const bankIndex = triviaBank.findIndex(t => String(t.id) === String(item.id));
         await updateRoom({
             activeMode: 'trivia_pop',
             triviaQuestion: {
@@ -1128,6 +1286,9 @@ const UnifiedGameLauncher = ({
                 options: opts,
                 correct: opts.indexOf(item.correct),
                 id: Date.now().toString(),
+                bankId: item.id || null,
+                bankIndex,
+                bankSize: triviaBank.length,
                 status: 'asking',
                 rewarded: false,
                 points: item.points || 100,
@@ -1140,6 +1301,7 @@ const UnifiedGameLauncher = ({
         });
         const nextBank = triviaBank.map(t => (t.id === item.id ? { ...t, asked: true } : t));
         setTriviaBank(nextBank);
+        if (item.id) setSelectedTriviaId(item.id);
         updateBank('trivia', nextBank).catch(() => {});
         logActivity(roomCode, 'HOST', 'started Trivia round.', 'GAME');
         toast('Trivia started');
@@ -1151,6 +1313,7 @@ const UnifiedGameLauncher = ({
         const durationSec = Math.max(5, Number(wyrRoundSec) || 20);
         const startedAt = Date.now();
         const autoReveal = !!wyrAutoReveal;
+        const bankIndex = wyrBank.findIndex(w => String(w.id) === String(item.id));
         await updateRoom({
             activeMode: 'wyr',
             wyrData: {
@@ -1158,6 +1321,9 @@ const UnifiedGameLauncher = ({
                 optionA: item.a,
                 optionB: item.b,
                 id: Date.now().toString(),
+                bankId: item.id || null,
+                bankIndex,
+                bankSize: wyrBank.length,
                 status: 'live',
                 rewarded: false,
                 points: item.points || 50,
@@ -1170,10 +1336,23 @@ const UnifiedGameLauncher = ({
         });
         const nextBank = wyrBank.map(w => (w.id === item.id ? { ...w, asked: true } : w));
         setWyrBank(nextBank);
+        if (item.id) setSelectedWyrId(item.id);
         updateBank('wyr', nextBank).catch(() => {});
         logActivity(roomCode, 'HOST', 'started Would You Rather.', 'GAME');
         toast('Would You Rather started');
         setShowGameConfig(false);
+    };
+
+    const launchNextTrivia = () => {
+        const next = findNextTriviaItem();
+        if (!next) return toast('No trivia questions available');
+        return launchTrivia(next);
+    };
+
+    const launchNextWyr = () => {
+        const next = findNextWyrItem();
+        if (!next) return toast('No WYR prompts available');
+        return launchWyr(next);
     };
 
     const startBingo = async (board) => {
@@ -1483,7 +1662,17 @@ const UnifiedGameLauncher = ({
                             <div className="text-xs uppercase tracking-[0.3em] text-zinc-400">Active Game</div>
                             <div className="text-sm font-bold text-white">{activeGameLabel}</div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2 justify-end">
+                            {(room?.activeMode === 'trivia_pop' || room?.activeMode === 'trivia_reveal') && (
+                                <button onClick={launchNextTrivia} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
+                                    <i className="fa-solid fa-forward-step mr-1"></i> Next Question
+                                </button>
+                            )}
+                            {(room?.activeMode === 'wyr' || room?.activeMode === 'wyr_reveal') && (
+                                <button onClick={launchNextWyr} className={`${STYLES.btnStd} ${STYLES.btnPrimary} px-3 py-1 text-[10px]`}>
+                                    <i className="fa-solid fa-forward-step mr-1"></i> Next Question
+                                </button>
+                            )}
                             <button onClick={triggerGameRules} className={`${STYLES.btnStd} ${STYLES.btnNeutral} px-3 py-1 text-[10px]`}>
                                 <i className="fa-solid fa-circle-question mr-1"></i> Show Rules
                             </button>
@@ -1500,6 +1689,11 @@ const UnifiedGameLauncher = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3">
                     {GAMES_META.map(game => {
                         const config = participantConfigs[game.id];
+                        const nextQuestionAction = game.id === 'trivia_pop' && ['trivia_pop', 'trivia_reveal'].includes(room?.activeMode)
+                            ? { label: room?.activeMode === 'trivia_reveal' ? 'Launch Next Question' : 'Next Question', onClick: launchNextTrivia }
+                            : game.id === 'wyr' && ['wyr', 'wyr_reveal'].includes(room?.activeMode)
+                                ? { label: room?.activeMode === 'wyr_reveal' ? 'Launch Next Prompt' : 'Next Prompt', onClick: launchNextWyr }
+                                : null;
                         return (
                             <GameCardItem
                                 key={game.id}
@@ -1522,6 +1716,7 @@ const UnifiedGameLauncher = ({
                                     if (config?.setMode) config.setMode('selected');
                                 }}
                                 infoBadges={getGameBadges(game)}
+                                nextQuestionAction={nextQuestionAction}
                             />
                         );
                     })}
@@ -1602,10 +1797,18 @@ const UnifiedGameLauncher = ({
                 onStartWyr={launchWyr}
                 onStartRandomTrivia={startRandomTrivia}
                 onStartRandomWyr={startRandomWyr}
+                onStartNextTrivia={launchNextTrivia}
+                onStartNextWyr={launchNextWyr}
                 triviaAiTopic={triviaAiTopic}
                 setTriviaAiTopic={setTriviaAiTopic}
+                triviaImportText={triviaImportText}
+                setTriviaImportText={setTriviaImportText}
                 triviaAiLoading={triviaAiLoading}
                 onAppendTriviaFromAI={appendTriviaFromAI}
+                onAppendTriviaFromImportText={appendTriviaFromImportText}
+                onQueueSelectedTriviaToRunOfShow={queueSelectedTriviaToRunOfShow}
+                onQueueFilteredTriviaToRunOfShow={queueFilteredTriviaToRunOfShow}
+                canQueueRunOfShowTrivia={typeof onAddQuickRunOfShowMoment === 'function'}
                 wyrAiTopic={wyrAiTopic}
                 setWyrAiTopic={setWyrAiTopic}
                 wyrAiLoading={wyrAiLoading}
@@ -1847,6 +2050,17 @@ const GameCardItem = ({ game, room, users, onLaunch, onStop, participantConfig, 
                     <span className="text-zinc-400 normal-case truncate">{smartDefaults}</span>
                 </div>
             )}
+            {nextQuestionAction ? (
+                <button
+                    type="button"
+                    data-feature-id={`active-${game.id}-next-question`}
+                    onClick={nextQuestionAction.onClick}
+                    className={`${STYLES.btnStd} ${STYLES.btnPrimary} relative z-10 w-full py-2 text-xs shadow-[0_0_18px_rgba(0,196,217,0.22)]`}
+                    style={touchButtonStyle}
+                >
+                    <i className="fa-solid fa-forward-step mr-1"></i> {nextQuestionAction.label || 'Next Question'}
+                </button>
+            ) : null}
             {participantConfig?.mode === 'selected' && showPicker ? (
                 <div className="relative z-10">
                     <div className="bg-black/40 border border-white/10 rounded-xl p-2 space-y-2">
@@ -2472,6 +2686,66 @@ const BingoManager = ({
     );
 };
 
+const PromptBankBrowser = ({ type, items = [], selectedId, onSelect, onLaunch }) => {
+    const isTrivia = type === 'trivia';
+    const featureId = isTrivia ? 'trivia-question-bank' : 'wyr-question-bank';
+    const emptyLabel = isTrivia ? 'No trivia questions match this filter.' : 'No prompts match this filter.';
+
+    if (!items.length) {
+        return (
+            <div data-feature-id={featureId} className="rounded-xl border border-dashed border-white/15 bg-zinc-950/60 p-4 text-sm text-zinc-400">
+                {emptyLabel}
+            </div>
+        );
+    }
+
+    return (
+        <div data-feature-id={featureId} className="max-h-72 overflow-y-auto custom-scrollbar space-y-2 pr-1">
+            {items.map((item, index) => {
+                const active = String(item.id) === String(selectedId);
+                return (
+                    <div
+                        key={item.id || `${type}-${index}`}
+                        className={`rounded-xl border p-3 transition-colors ${active ? 'border-cyan-300/60 bg-cyan-500/12' : 'border-white/10 bg-zinc-950/55 hover:border-white/25'}`}
+                    >
+                        <div className="flex items-start gap-3">
+                            <button
+                                type="button"
+                                onClick={() => onSelect(item.id)}
+                                className="flex-1 min-w-0 text-left"
+                            >
+                                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.25em] text-zinc-500">
+                                    <span>{isTrivia ? 'Question' : 'Prompt'} {index + 1}</span>
+                                    {item.asked && <span className="rounded-full border border-amber-300/30 bg-amber-500/10 px-2 py-0.5 text-amber-200 tracking-[0.2em]">Asked</span>}
+                                    {item.points && <span className="rounded-full border border-white/10 bg-black/30 px-2 py-0.5 text-zinc-300 tracking-[0.2em]">{item.points} pts</span>}
+                                </div>
+                                <div className="mt-1 text-sm font-bold leading-snug text-white">{item.q}</div>
+                                {isTrivia ? (
+                                    <div className="mt-2 text-xs text-emerald-200/90">Answer: {item.correct}</div>
+                                ) : (
+                                    <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-zinc-300">
+                                        <span className="rounded-lg border border-white/10 bg-black/25 px-2 py-1">A: {item.a}</span>
+                                        <span className="rounded-lg border border-white/10 bg-black/25 px-2 py-1">B: {item.b}</span>
+                                    </div>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onSelect(item.id);
+                                    onLaunch(item);
+                                }}
+                                className={`${STYLES.btnStd} ${active ? STYLES.btnPrimary : STYLES.btnSecondary} px-3 py-1 text-[10px]`}
+                            >
+                                <i className="fa-solid fa-play"></i> Launch
+                            </button>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 const GameConfigModal = ({
     selectedGame,
     room,
@@ -2552,10 +2826,18 @@ const GameConfigModal = ({
     onStartWyr,
     onStartRandomTrivia,
     onStartRandomWyr,
+    onStartNextTrivia,
+    onStartNextWyr,
     triviaAiTopic,
     setTriviaAiTopic,
+    triviaImportText,
+    setTriviaImportText,
     triviaAiLoading,
     onAppendTriviaFromAI,
+    onAppendTriviaFromImportText,
+    onQueueSelectedTriviaToRunOfShow,
+    onQueueFilteredTriviaToRunOfShow,
+    canQueueRunOfShowTrivia,
     wyrAiTopic,
     setWyrAiTopic,
     wyrAiLoading,
@@ -3075,17 +3357,36 @@ const GameConfigModal = ({
                                 {triviaAiLoading ? 'AI...' : 'Add AI'}
                             </button>
                         </div>
-                        <select
-                            value={selectedTriviaId}
-                            onChange={(e) => setSelectedTriviaId(e.target.value)}
-                            className={`${STYLES.input} w-full`}
-                        >
-                            <option value="">Select a question</option>
-                            {filteredTrivia.map(t => (
-                                <option key={t.id} value={t.id}>{t.q}</option>
-                            ))}
-                        </select>
-                        <div className="flex gap-2">
+                        <div className="rounded-xl border border-white/10 bg-zinc-950/45 p-3 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <div className="text-[10px] uppercase tracking-[0.22em] text-zinc-500">Import event trivia</div>
+                                    <div className="text-xs text-zinc-400 mt-1">Paste JSON or one question per line: Question | Correct | Wrong 1 | Wrong 2 | Wrong 3</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={onAppendTriviaFromImportText}
+                                    className={`${STYLES.btnStd} ${STYLES.btnSecondary} px-3 py-1 text-[10px]`}
+                                >
+                                    <i className="fa-solid fa-file-import"></i> Import
+                                </button>
+                            </div>
+                            <textarea
+                                data-feature-id="trivia-bank-batch-import"
+                                value={triviaImportText}
+                                onChange={(e) => setTriviaImportText(e.target.value)}
+                                placeholder="Who is celebrating tonight? | Jordan | Casey | Morgan | Taylor"
+                                className={`${STYLES.input} w-full min-h-20 resize-y`}
+                            />
+                        </div>
+                        <PromptBankBrowser
+                            type="trivia"
+                            items={filteredTrivia}
+                            selectedId={selectedTriviaId}
+                            onSelect={setSelectedTriviaId}
+                            onLaunch={onStartTrivia}
+                        />
+                        <div className="flex flex-wrap gap-2">
                             <button
                                 onClick={() => {
                                     const item = filteredTrivia.find(t => String(t.id) === String(selectedTriviaId));
@@ -3095,9 +3396,22 @@ const GameConfigModal = ({
                             >
                                 Launch selected
                             </button>
+                            <button onClick={onStartNextTrivia} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                Next in bank
+                            </button>
                             <button onClick={onStartRandomTrivia} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
                                 Random
                             </button>
+                            {canQueueRunOfShowTrivia && (
+                                <button onClick={onQueueSelectedTriviaToRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                    Add selected to show
+                                </button>
+                            )}
+                            {canQueueRunOfShowTrivia && (
+                                <button onClick={onQueueFilteredTriviaToRunOfShow} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                    Queue visible set
+                                </button>
+                            )}
                         </div>
                     </div>
                     <ParticipantSelector
@@ -3168,17 +3482,14 @@ const GameConfigModal = ({
                                 {wyrAiLoading ? 'AI...' : 'Add AI'}
                             </button>
                         </div>
-                        <select
-                            value={selectedWyrId}
-                            onChange={(e) => setSelectedWyrId(e.target.value)}
-                            className={`${STYLES.input} w-full`}
-                        >
-                            <option value="">Select a prompt</option>
-                            {filteredWyr.map(w => (
-                                <option key={w.id} value={w.id}>{w.q}</option>
-                            ))}
-                        </select>
-                        <div className="flex gap-2">
+                        <PromptBankBrowser
+                            type="wyr"
+                            items={filteredWyr}
+                            selectedId={selectedWyrId}
+                            onSelect={setSelectedWyrId}
+                            onLaunch={onStartWyr}
+                        />
+                        <div className="flex flex-wrap gap-2">
                             <button
                                 onClick={() => {
                                     const item = filteredWyr.find(w => String(w.id) === String(selectedWyrId));
@@ -3187,6 +3498,9 @@ const GameConfigModal = ({
                                 className={`${STYLES.btnStd} ${STYLES.btnPrimary} flex-1 py-2 text-sm`}
                             >
                                 Launch selected
+                            </button>
+                            <button onClick={onStartNextWyr} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
+                                Next in bank
                             </button>
                             <button onClick={onStartRandomWyr} className={`${STYLES.btnStd} ${STYLES.btnSecondary} flex-1 py-2 text-sm`}>
                                 Random

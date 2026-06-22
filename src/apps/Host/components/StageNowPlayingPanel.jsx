@@ -30,6 +30,9 @@ const StageNowPlayingPanel = ({
     autoDjSequenceSummary,
     autoDjStepItems = [],
     togglePlay,
+    onRestartPlayback,
+    onJumpPlayback,
+    onSeekPlayback,
     playAppleMusicTrack,
     stopAppleMusic,
     updateRoom,
@@ -73,8 +76,8 @@ const StageNowPlayingPanel = ({
             : null),
         [current, nextQueueSong, selfServeMode, selfServeNowMs]
     );
-    const actionButtonBaseClass = 'min-h-[46px] rounded-lg border px-2 py-2 text-white transition disabled:cursor-not-allowed disabled:opacity-45';
-    const playbackButtonClass = `${actionButtonBaseClass} border-sky-300/22 bg-sky-500/10 hover:border-sky-200/45 hover:bg-sky-500/16`;
+    const actionButtonBaseClass = 'min-h-[42px] rounded-md border px-2.5 py-2 text-white transition disabled:cursor-not-allowed disabled:opacity-45';
+    const playbackButtonClass = `${actionButtonBaseClass} border-white/10 bg-white/[0.045] hover:border-sky-200/35 hover:bg-white/[0.08]`;
     const feedbackChipClass = 'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-45';
     const stageActionHeading = 'Performance Flow';
     const trackCheckHeading = lastTrackCheckItem?.pendingNow ? 'Track Check' : 'Last Track Check';
@@ -88,6 +91,38 @@ const StageNowPlayingPanel = ({
         }
         if (!currentBackingUrl || typeof window === 'undefined') return;
         window.open(currentBackingUrl, '_blank', 'noopener,noreferrer');
+    };
+    const playbackSession = room?.currentPerformanceSession || {};
+    const playbackDurationSec = Math.max(
+        0,
+        Number(playbackSession?.playerReportedDurationSec || 0),
+        Number(room?.currentPerformanceMeta?.durationSec || 0),
+        Number(room?.currentPerformanceMeta?.backingDurationSec || 0),
+        Number(current?.performanceStartedDurationSec || 0),
+        Number(current?.backingDurationSec || 0),
+        Number(current?.duration || 0)
+    );
+    const playbackPositionSec = Math.min(
+        playbackDurationSec || Number.MAX_SAFE_INTEGER,
+        Math.max(0, Number(playbackSession?.playerPositionSec || 0))
+    );
+    const [timelineDraftSec, setTimelineDraftSec] = useState(null);
+    useEffect(() => {
+        setTimelineDraftSec(null);
+    }, [current?.id, playbackSession?.sessionId]);
+    const timelineValueSec = timelineDraftSec !== null ? timelineDraftSec : playbackPositionSec;
+    const timelineEnabled = !currentUsesAppleBacking && playbackDurationSec >= 20 && typeof onSeekPlayback === 'function';
+    const formatPlaybackClock = (valueSec = 0) => {
+        const total = Math.max(0, Math.round(Number(valueSec || 0) || 0));
+        const mins = Math.floor(total / 60);
+        const secs = total % 60;
+        return `${mins}:${String(secs).padStart(2, '0')}`;
+    };
+    const applyTimelineSeek = () => {
+        if (!timelineEnabled) return;
+        const next = Math.max(0, Math.min(playbackDurationSec, Number(timelineValueSec || 0)));
+        setTimelineDraftSec(null);
+        onSeekPlayback(next);
     };
     return (
         <>
@@ -217,7 +252,7 @@ const StageNowPlayingPanel = ({
                             ) : null}
                         </div>
                     </div>
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/25 px-3 py-3">
+                    <div className="mt-3 space-y-3">
                         <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1 text-left">
                                 <div className="text-[11px] text-indigo-300 uppercase tracking-widest font-bold">Now Performing</div>
@@ -287,47 +322,91 @@ const StageNowPlayingPanel = ({
                                 </button>
                             </div>
                         ) : null}
-                        <div className="mt-3 rounded-lg border border-sky-300/16 bg-sky-950/18 p-2.5">
-                            <div className="mb-2 flex items-center justify-between gap-2">
+                        <div data-feature-id="host-unified-stage-transport" className="mt-3 border-t border-white/10 pt-3 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">Media Playback</div>
+                                <div className="min-w-0 text-[11px] text-zinc-300">
+                                    <span className="font-semibold text-white">{currentSourceLabel || 'Backing Track'}</span>
+                                    <span className="mx-2 text-white/25">|</span>
+                                    <span>{currentSourcePlaying ? 'Playing now' : 'Ready to start'}</span>
+                                </div>
                             </div>
-                            <div className="mb-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-[11px] text-zinc-300">
-                                <span className="font-semibold text-white">{currentSourceLabel || 'Backing Track'}</span>
-                                <span className="mx-2 text-white/30">|</span>
-                                <span>{currentSourcePlaying ? 'Playing now' : 'Ready to start'}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                            {timelineEnabled ? (
+                                <div data-feature-id="host-playback-command-timeline" className="space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+                                        <span>Timeline</span>
+                                        <span className="text-zinc-200">{formatPlaybackClock(timelineValueSec)} / {formatPlaybackClock(playbackDurationSec)}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => onJumpPlayback?.(-10)}
+                                            className="h-8 w-9 rounded-md border border-white/10 bg-white/[0.045] text-zinc-100 hover:bg-white/[0.08]"
+                                            title="Jump back 10 seconds"
+                                        >
+                                            <i className="fa-solid fa-backward-step"></i>
+                                        </button>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max={Math.max(20, Math.round(playbackDurationSec))}
+                                            step="1"
+                                            value={Math.round(timelineValueSec)}
+                                            onChange={(event) => setTimelineDraftSec(Number(event.target.value || 0))}
+                                            className="min-w-0 flex-1 accent-cyan-300"
+                                            aria-label="Playback timeline"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => onJumpPlayback?.(10)}
+                                            className="h-8 w-9 rounded-md border border-white/10 bg-white/[0.045] text-zinc-100 hover:bg-white/[0.08]"
+                                            title="Jump forward 10 seconds"
+                                        >
+                                            <i className="fa-solid fa-forward-step"></i>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={applyTimelineSeek}
+                                            disabled={timelineDraftSec === null}
+                                            className="h-8 rounded-md border border-cyan-300/30 bg-cyan-500/12 px-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+                                        >
+                                            Go
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
+                            <div className="grid grid-cols-3 gap-1.5">
                                 <button
                                     onClick={togglePlay}
                                     className={playbackButtonClass}
                                     title={currentSourcePlaying ? 'Pause playback' : 'Start playback'}
                                 >
-                                    <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                        <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full border ${currentSourcePlaying ? 'border-amber-300/35 bg-amber-500/12 text-amber-100' : 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'}`}>
-                                            <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause' : 'fa-play'} text-sm`}></i>
-                                        </span>
+                                    <div className="flex items-center justify-center gap-2 text-center">
+                                        <i className={`fa-solid ${currentSourcePlaying ? 'fa-pause text-amber-200' : 'fa-play text-emerald-200'} text-sm`}></i>
                                         <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">
                                             {currentSourcePlaying ? 'Pause' : 'Play'}
                                         </span>
                                     </div>
                                 </button>
                                 <button
-                                    onClick={async () => {
-                                        if (currentUsesAppleBacking) {
-                                            await playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
-                                            await updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
+                                    onClick={() => {
+                                        if (typeof onRestartPlayback === 'function') {
+                                            onRestartPlayback();
                                             return;
                                         }
-                                        await stopAppleMusic?.();
-                                        await updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
+                                        if (currentUsesAppleBacking) {
+                                            playAppleMusicTrack(current.appleMusicId, { title: current.songTitle, artist: current.artist });
+                                            updateRoom({ mediaUrl: '', videoPlaying: false, videoStartTimestamp: null, pausedAt: null });
+                                            return;
+                                        }
+                                        stopAppleMusic?.();
+                                        updateRoom({ videoPlaying: true, videoStartTimestamp: Date.now(), pausedAt: null, appleMusicPlayback: null });
                                     }}
                                     className={playbackButtonClass}
                                     title="Restart from the beginning"
                                 >
-                                    <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
-                                            <i className="fa-solid fa-rotate-left text-sm"></i>
-                                        </span>
+                                    <div className="flex items-center justify-center gap-2 text-center">
+                                        <i className="fa-solid fa-rotate-left text-sm text-cyan-100"></i>
                                         <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Restart</span>
                                     </div>
                                 </button>
@@ -337,113 +416,102 @@ const StageNowPlayingPanel = ({
                                     className={`${playbackButtonClass} ${!currentMediaUrl ? 'opacity-50 cursor-not-allowed' : ''}`}
                                     title="Open backing in a separate window"
                                 >
-                                    <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                        <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/5 text-zinc-100">
-                                            <i className="fa-solid fa-up-right-from-square text-sm"></i>
-                                        </span>
+                                    <div className="flex items-center justify-center gap-2 text-center">
+                                        <i className="fa-solid fa-up-right-from-square text-sm text-zinc-100"></i>
                                         <span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-100">Pop Out</span>
                                     </div>
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                    <div className="mt-3 rounded-lg border border-cyan-300/16 bg-sky-950/18 p-2.5">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">{stageActionHeading}</div>
-                            <div className="min-w-0 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
-                                <span className="text-zinc-400">Up Next:</span>{' '}
-                                <span className="truncate text-zinc-200">{nextQueueText || (nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued')}</span>
+                            <div className="border-t border-white/10 pt-3 space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200">{stageActionHeading}</div>
+                                    <div className="min-w-0 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                                        <span className="text-zinc-400">Up Next:</span>{' '}
+                                        <span className="truncate text-zinc-200">{nextQueueText || (nextQueueSong ? `${nextQueueSong.singerName || 'Guest'} - ${nextQueueSong.songTitle || 'Song'}` : 'No one queued')}</span>
+                                    </div>
+                                </div>
+                                {selfServeTransitionMoment?.title ? (
+                                    <div className={`text-[11px] leading-snug ${
+                                        selfServeTransitionMoment.toneKey === 'amber'
+                                            ? 'text-amber-100/88'
+                                            : 'text-cyan-100/88'
+                                    }`}>
+                                        <span className="font-black uppercase tracking-[0.14em]">{selfServeTransitionMoment.title}</span>
+                                        <span className="text-white/55"> | </span>
+                                        <span>{selfServeTransitionMoment.detail}</span>
+                                    </div>
+                                ) : null}
+                                {nextQueueReasonDetail ? (
+                                    <div className={`text-[11px] leading-snug ${
+                                        selfServePresentation?.toneKey === 'amber'
+                                            ? 'text-amber-100/80'
+                                            : 'text-cyan-100/80'
+                                    }`}>
+                                        {nextQueueReasonDetail}
+                                    </div>
+                                ) : null}
+                                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
+                                    <button
+                                        onClick={() => {
+                                            if (typeof onEndPerformance === 'function') {
+                                                onEndPerformance(current.id);
+                                                return;
+                                            }
+                                            updateStatus(current.id, 'performed');
+                                        }}
+                                        className={`${actionButtonBaseClass} border-rose-300/35 bg-rose-500/12 hover:border-rose-200/55 hover:bg-rose-500/18`}
+                                        title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End performance'}
+                                    >
+                                        <div className="flex items-center justify-center gap-2 text-center">
+                                            <i className="fa-solid fa-flag-checkered text-sm text-rose-100"></i>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-50">End</span>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (typeof onMeasureApplause === 'function') {
+                                                onMeasureApplause();
+                                                return;
+                                            }
+                                            updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
+                                        }}
+                                        className={`${actionButtonBaseClass} border-amber-300/35 bg-amber-500/12 hover:border-amber-200/55 hover:bg-amber-500/18`}
+                                    >
+                                        <div className="flex items-center justify-center gap-2 text-center">
+                                            <i className="fa-solid fa-microphone-lines text-sm text-amber-100"></i>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-50">Applause</span>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={progressStageToNext}
+                                        disabled={!nextQueueSong}
+                                        className={`${actionButtonBaseClass} border-cyan-300/35 bg-cyan-500/12 hover:border-cyan-200/55 hover:bg-cyan-500/18 ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
+                                        title="End this performance and stage the next ready song"
+                                    >
+                                        <div className="flex items-center justify-center gap-2 text-center">
+                                            <i className="fa-solid fa-forward-step text-sm text-cyan-100"></i>
+                                            <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50">Next</span>
+                                        </div>
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                    <button
+                                        onClick={() => onReturnCurrentToQueue?.(current.id)}
+                                        className={`${styles.btnStd} ${styles.btnNeutral} flex-1 px-2 py-1.5 text-[11px]`}
+                                    >
+                                        <i className="fa-solid fa-rotate-left mr-2"></i>Stop & Re-Queue
+                                    </button>
+                                    <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnSecondary} flex-1 px-2 py-1.5 text-[11px]`}>
+                                        <i className="fa-solid fa-pen-to-square mr-2"></i>Edit Current Song
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                        {selfServeTransitionMoment?.title ? (
-                            <div className={`mb-2 rounded-lg border px-2.5 py-2 ${
-                                selfServeTransitionMoment.toneKey === 'amber'
-                                    ? 'border-amber-300/22 bg-amber-500/10 text-amber-50'
-                                    : 'border-cyan-300/22 bg-cyan-500/10 text-cyan-50'
-                            }`}>
-                                <div className="text-[10px] font-black uppercase tracking-[0.18em]">
-                                    {selfServeTransitionMoment.title}
-                                </div>
-                                <div className="mt-1 text-[11px] text-white/88">
-                                    {selfServeTransitionMoment.detail}
-                                </div>
-                            </div>
-                        ) : null}
-                        {nextQueueReasonDetail ? (
-                            <div className={`mb-2 rounded-lg border px-2.5 py-2 text-[11px] ${
-                                selfServePresentation?.toneKey === 'amber'
-                                    ? 'border-amber-300/18 bg-amber-500/8 text-amber-100/88'
-                                    : 'border-cyan-300/18 bg-cyan-500/8 text-cyan-100/88'
-                            }`}>
-                                {nextQueueReasonDetail}
-                            </div>
-                        ) : null}
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <button
-                                onClick={() => {
-                                    if (typeof onEndPerformance === 'function') {
-                                        onEndPerformance(current.id);
-                                        return;
-                                    }
-                                    updateStatus(current.id, 'performed');
-                                }}
-                                className={`${actionButtonBaseClass} border-rose-300/35 bg-rose-500/12 hover:border-rose-200/55 hover:bg-rose-500/18`}
-                                title={Number(current?.hostBonus || 0) > 0 ? 'End performance' : 'End performance'}
-                            >
-                                <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-300/35 bg-rose-500/12 text-rose-100">
-                                        <i className="fa-solid fa-flag-checkered text-sm"></i>
-                                    </span>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-50">End</span>
-                                </div>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (typeof onMeasureApplause === 'function') {
-                                        onMeasureApplause();
-                                        return;
-                                    }
-                                    updateRoom({ activeMode: room?.activeMode === 'applause' ? 'karaoke' : 'applause_countdown', applausePeak: 0 });
-                                }}
-                                className={`${actionButtonBaseClass} border-amber-300/35 bg-amber-500/12 hover:border-amber-200/55 hover:bg-amber-500/18`}
-                            >
-                                <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-amber-300/35 bg-amber-500/12 text-amber-100">
-                                        <i className="fa-solid fa-microphone-lines text-sm"></i>
-                                    </span>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-50">Applause</span>
-                                </div>
-                            </button>
-                            <button
-                                onClick={progressStageToNext}
-                                disabled={!nextQueueSong}
-                                className={`${actionButtonBaseClass} border-cyan-300/35 bg-cyan-500/12 hover:border-cyan-200/55 hover:bg-cyan-500/18 ${!nextQueueSong ? 'opacity-55 cursor-not-allowed' : ''}`}
-                                title="End this performance and stage the next ready song"
-                            >
-                                <div className="flex flex-col items-center justify-center gap-1 text-center">
-                                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-cyan-300/35 bg-cyan-500/12 text-cyan-100">
-                                        <i className="fa-solid fa-forward-step text-sm"></i>
-                                    </span>
-                                    <span className="text-[10px] font-black uppercase tracking-[0.12em] text-cyan-50">Next</span>
-                                </div>
-                            </button>
-                        </div>
-                        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <button
-                                onClick={() => onReturnCurrentToQueue?.(current.id)}
-                                className={`${styles.btnStd} ${styles.btnNeutral} px-2 py-1.5 text-[11px]`}
-                            >
-                                <i className="fa-solid fa-rotate-left mr-2"></i>Stop & Re-Queue
-                            </button>
-                            <button onClick={() => startEdit(current)} className={`${styles.btnStd} ${styles.btnSecondary} px-2 py-1.5 text-[11px]`}>
-                                <i className="fa-solid fa-pen-to-square mr-2"></i>Edit Current Song
-                            </button>
-                        </div>
-                    </div>
-                </div>
                 {currentUsesAppleBacking && appleMusicStatus ? (
                     <div className="mt-1 text-sm text-zinc-400">{appleMusicStatus}</div>
                 ) : null}
+            </div>
+            </div>
             </div>
         ) : (
             <div className="space-y-3">

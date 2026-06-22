@@ -59,8 +59,16 @@ test('searchYouTubeCatalog caches successful client searches', async () => {
   assert.equal(telemetry.cacheHitPct, 50);
   assert.equal(telemetry.todayLiveCalls, 1);
   assert.equal(telemetry.todayClientCacheHits, 1);
-  assert.equal(telemetry.todayEstimatedUnitsUsed, 101);
-  assert.equal(telemetry.todayEstimatedFreshSearchesLeft, 98);
+  assert.equal(telemetry.dailySearchListCallLimit, 100);
+  assert.equal(telemetry.dailyGeneralDataUnitLimit, 10000);
+  assert.equal(telemetry.estimatedSearchListCallsPerLiveSearch, 1);
+  assert.equal(telemetry.estimatedGeneralUnitsPerLiveSearch, 1);
+  assert.equal(telemetry.todaySearchListCallsUsed, 1);
+  assert.equal(telemetry.todaySearchListCallsRemaining, 99);
+  assert.equal(telemetry.todayGeneralDataUnitsUsed, 1);
+  assert.equal(telemetry.todayGeneralDataUnitsRemaining, 9999);
+  assert.equal(telemetry.todayEstimatedUnitsUsed, 1);
+  assert.equal(telemetry.todayEstimatedFreshSearchesLeft, 99);
 });
 
 test('searchYouTubeCatalog blocks repeated live calls after quota exhaustion', async () => {

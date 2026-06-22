@@ -881,6 +881,46 @@ test("SingerApp keeps audience stage collapse controls inside mobile viewport", 
     /<span>Audience Video<\/span>[\s\S]*>\s*Hide\s*<\/button>[\s\S]*>\s*Full screen\s*<\/button>/,
     "SingerApp should keep a hide action inside the expanded audience video panel",
   );
+  assert.doesNotMatch(
+    source,
+    /controls=1/,
+    "SingerApp audience YouTube embeds should not expose native YouTube controls",
+  );
+  assert.match(
+    source,
+    /autoplay=1&controls=0&disablekb=1&fs=0/,
+    "SingerApp audience YouTube embeds should disable controls, keyboard shortcuts, and fullscreen affordances",
+  );
+  assert.doesNotMatch(
+    source,
+    /allow="autoplay; fullscreen"/,
+    "SingerApp audience YouTube embeds should not grant iframe fullscreen permission",
+  );
+  assert.match(
+    source,
+    /allow="autoplay; encrypted-media"/,
+    "SingerApp audience YouTube embeds should only request autoplay and encrypted media permissions",
+  );
+  assert.match(
+    source,
+    /className="absolute inset-0 w-full h-full pointer-events-none select-none"/,
+    "SingerApp audience YouTube iframes should not receive touch or pointer input over app controls",
+  );
+  assert.match(
+    source,
+    /drift > 2\.5/,
+    "SingerApp audience YouTube sync should avoid constant small seek corrections that make playback choppy",
+  );
+  assert.match(
+    source,
+    /room\?\.videoPlaying \? 2200 : 1600/,
+    "SingerApp audience YouTube sync should poll less aggressively while keeping host playback state aligned",
+  );
+  assert.match(
+    source,
+    /SYNCING/,
+    "SingerApp audience video badge should show when the YouTube iframe is still becoming ready",
+  );
   assert.match(
     source,
     /This room is locked to YouTube karaoke search for guest requests\./,

@@ -1461,3 +1461,59 @@ html, body, #root { height: 100%; width: 100%; }
     padding: 1.05rem 1.2rem 1.5rem;
   }
 }
+
+/* Host Admin settings system: larger, consistent controls and clearer section hierarchy. */
+.host-app .host-admin-workspace .host-admin-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+.host-app .host-admin-workspace .host-admin-content select,
+.host-app .host-admin-workspace .host-admin-content textarea {
+  min-height: 48px;
+  font-size: 1rem;
+  line-height: 1.4;
+  border-color: rgba(148, 163, 184, 0.52);
+  background-color: rgba(9, 12, 20, 0.94);
+}
+
+.host-app .host-admin-workspace .host-admin-content textarea {
+  min-height: 96px;
+}
+
+.host-app .host-admin-workspace .host-admin-content input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+.host-app .host-admin-workspace .host-admin-content select:focus,
+.host-app .host-admin-workspace .host-admin-content textarea:focus {
+  border-color: rgba(103, 232, 249, 0.9);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.18);
+}
+
+.host-app .host-admin-workspace .host-admin-content details {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.host-app .host-admin-workspace .host-admin-content summary {
+  min-height: 52px;
+  display: block;
+}
+
+.host-app .host-admin-workspace .host-admin-content summary:focus-visible {
+  outline: 2px solid rgba(103, 232, 249, 0.85);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+.host-app .host-admin-workspace .host-admin-content label {
+  font-size: 0.98rem;
+  line-height: 1.35;
+}
+
+.host-app .host-admin-workspace .host-admin-content .host-form-helper + .host-form-helper {
+  margin-top: 0.35rem;
+}
+
+.host-app .host-admin-workspace [data-admin-section-item] {
+  border-left: 3px solid transparent;
+}
+
+.host-app .host-admin-workspace [data-admin-section-item][aria-current="page"],
+.host-app .host-admin-workspace [data-admin-section-item]:focus-visible {
+  border-left-color: rgba(103, 232, 249, 0.9);
+}

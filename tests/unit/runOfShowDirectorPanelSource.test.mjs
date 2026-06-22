@@ -84,3 +84,9 @@ test('run-of-show director panel supports csv show-sheet import for rehearsal pl
   assert.match(source, /Blocked rows stay in the plan/);
   assert.match(source, /CSV only for May 1 prep/);
 });
+test('RunOfShowDirectorPanel includes room trivia banks in interactive scene picker', () => {
+  assert.match(source, /triviaBank = \[\]/, 'Run of Show panel should accept room trivia bank props');
+  assert.match(source, /wyrBank = \[\]/, 'Run of Show panel should accept room WYR bank props');
+  assert.match(source, /contentSource: entry\?\.contentSource \|\| 'host_room_bank'/, 'Room bank entries should be labeled as host-room content');
+  assert.match(source, /Browse room trivia, imports, and built-ins/, 'Trivia breaks should advertise room/imported content in the picker');
+});

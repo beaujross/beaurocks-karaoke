@@ -206,7 +206,7 @@ test('HostRoomLaunchPad keeps create flow collapsed while existing rooms is acti
   assert.match(markup, /Friday Main Room/);
   assert.match(markup, /Friday Karaoke/);
   assert.match(markup, /Auto-assign room code/);
-  assert.match(markup, /preset ready\./);
+  assert.match(markup, /defaults ready\./);
   assert.match(markup, />Open</);
   assert.doesNotMatch(markup, /Credits and promos/);
   assert.doesNotMatch(markup, /Requested room code/);
