@@ -578,3 +578,16 @@ test('round winners editor can auto-fill from leaderboard stats and prize detail
     'Public TV payload should include prize title and image metadata',
   );
 });
+
+test('host account org fallback builds a literal org id for setup reads', () => {
+  assert.match(
+    hostAppSource,
+    /const buildHostAccountOrgId = \(uid = ''\) => \{[\s\S]*return `org_\$\{token\}`;[\s\S]*\};/,
+    'The account-scoped YouTube index fallback should build a real organization id string.',
+  );
+  assert.doesNotMatch(
+    hostAppSource,
+    /return org_;/,
+    'Room setup must not reference a bare org_ identifier, which crashes production renders.',
+  );
+});

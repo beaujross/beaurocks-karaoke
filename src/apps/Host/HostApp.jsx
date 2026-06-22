@@ -28,7 +28,8 @@ import useHostWorkspaceState from './hooks/useHostWorkspaceState';
 import { getCrowdPulseSnapshot } from './crowdPulse';
 import {
     buildIndexedYouTubeAutocompleteEntries,
-    buildLocalLibraryAutocompleteEntries
+    buildLocalLibraryAutocompleteEntries,
+    buildCuratedYouTubeAutocompleteEntries
 } from './queueAutocomplete';
 import { 
     db, doc, collection, query, where, onSnapshot, updateDoc, 
@@ -435,7 +436,7 @@ const YT_INDEX_REFRESH_RETRY_MS = 5 * 60 * 1000;
 const sanitizeHostAccountOrgToken = (value = '') => String(value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80);
 const buildHostAccountOrgId = (uid = '') => {
     const token = sanitizeHostAccountOrgToken(uid) || 'owner';
-    return org_;
+    return `org_${token}`;
 };
 const getMeterUsageRatio = (meter = null) => {
     const included = Number(meter?.included || 0);
@@ -16993,7 +16994,6 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const renderNightSetupWizard = () => {
         const selectedPreset = hostNightPresets[nightSetupPresetId] || hostNightPresets.casual || BUILTIN_HOST_NIGHT_PRESETS.casual;
-        const selectedMode = NIGHT_SETUP_PRIMARY_MODES.find((mode) => mode.id === nightSetupPrimaryMode) || NIGHT_SETUP_PRIMARY_MODES[0];
         const limitOption = NIGHT_SETUP_QUEUE_LIMIT_OPTIONS.find((option) => option.id === nightSetupQueueLimitMode) || NIGHT_SETUP_QUEUE_LIMIT_OPTIONS[0];
         const rotationOption = NIGHT_SETUP_QUEUE_ROTATION_OPTIONS.find((option) => option.id === nightSetupQueueRotation) || NIGHT_SETUP_QUEUE_ROTATION_OPTIONS[0];
         const activeStep = NIGHT_SETUP_STEPS[nightSetupStep] || NIGHT_SETUP_STEPS[0];
@@ -17388,7 +17388,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
         return (
             <div
-                className="fixed inset-0 z-[92] p-3 md:p-6 overflow-y-auto"
+                className="fixed inset-0 z-[92] overflow-y-auto overscroll-y-contain p-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] pb-[calc(env(safe-area-inset-bottom)+6.5rem)] md:p-6"
                 onClick={(event) => {
                     if (event.target !== event.currentTarget || nightSetupApplying) return;
                     closeNightSetupWizard();
@@ -17398,7 +17398,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                         'radial-gradient(circle at 12% 6%, rgba(0,196,217,0.26), transparent 32%), radial-gradient(circle at 90% 10%, rgba(236,72,153,0.22), transparent 34%), linear-gradient(180deg, #06070d 0%, #090b14 45%, #05060c 100%)',
                 }}
             >
-                <div className="mx-auto w-full max-w-6xl">
+                <div className="mx-auto flex min-h-full w-full max-w-6xl items-start">
                     <div className="w-full bg-zinc-950/94 border border-white/15 rounded-3xl shadow-[0_28px_80px_rgba(0,0,0,0.55)] overflow-visible md:overflow-hidden max-h-none md:max-h-[88vh] flex flex-col">
                         <div className="px-4 py-4 md:px-6 md:py-5 border-b border-white/10">
                             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
@@ -17752,7 +17752,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
 
     const landingView = view === 'landing' ? ( 
         <div
-            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start md:justify-center p-4 pt-6 md:p-8 text-center"
+            className="relative min-h-screen overflow-hidden flex flex-col items-center justify-start p-4 pt-6 md:p-8 text-center"
             style={{
                 background:
                     'radial-gradient(circle at 12% 8%, rgba(0,196,217,0.35), transparent 34%), radial-gradient(circle at 86% 10%, rgba(236,72,153,0.3), transparent 32%), radial-gradient(circle at 52% 92%, rgba(251,191,36,0.14), transparent 34%), linear-gradient(160deg, #050612 0%, #0b1020 48%, #130a1c 100%)'
@@ -19600,7 +19600,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
                 data-host-active-tab={String(tab || '').trim()}
                 data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
-                className="host-app min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_22%),linear-gradient(180deg,#09090b_0%,#0a0d18_100%)] text-white font-saira flex flex-col overflow-hidden"
+                className="host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[radial-gradient(circle_at_top_left,rgba(251,191,36,0.12),transparent_22%),linear-gradient(180deg,#09090b_0%,#0a0d18_100%)] text-white font-saira flex flex-col"
             >
                 <div className="shrink-0 border-b border-yellow-300/16 bg-[linear-gradient(145deg,rgba(68,33,12,0.92),rgba(9,14,25,0.94))] shadow-[0_18px_40px_rgba(0,0,0,0.28)] backdrop-blur">
                     <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5 md:px-6">
@@ -19676,7 +19676,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
         return (
             <div
                 data-host-prototype-shell="night_pilot"
-                className="host-app min-h-screen bg-[#05070c] text-white font-saira"
+                className="host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#05070c] text-white font-saira"
             >
                 {hostDeploymentBanners ? (
                     <div className="px-4 pt-4">
@@ -19717,7 +19717,7 @@ const HostApp = ({ roomCode: initialCode, uid, authError, retryAuth }) => {
                 data-host-tablet-touch={tabletTouchViewport ? 'true' : 'false'}
                 data-host-active-tab={String(tab || '').trim()}
                 data-host-active-workspace-section={String(activeWorkspaceSection || '').trim()}
-                className={`host-app min-h-screen ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira overflow-x-hidden ${tabletTouchViewport ? 'overflow-y-hidden' : 'overflow-y-auto md:overflow-hidden'}`}
+                className={`host-app min-h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-y-contain ${tabletTouchViewport ? 'h-[100dvh]' : 'md:h-screen'} flex flex-col relative bg-zinc-950 text-white font-saira ${tabletTouchViewport ? '' : 'md:overflow-hidden'}`}
             >
                 {/* Header */}
                 <HostTopChrome
