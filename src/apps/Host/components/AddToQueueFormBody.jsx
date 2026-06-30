@@ -8,6 +8,24 @@ import {
 
 const baseResultsCardClass = 'rounded-2xl border border-cyan-400/25 bg-zinc-950/98';
 
+const getResultDurationSec = (result = {}) => {
+    const rawMs = Number(result?.trackTimeMillis || result?.durationMs || 0);
+    if (Number.isFinite(rawMs) && rawMs > 0) return Math.max(1, Math.round(rawMs / 1000));
+
+    const rawSec = Number(result?.durationSec || result?.duration || 0);
+    if (Number.isFinite(rawSec) && rawSec > 0) return Math.max(1, Math.round(rawSec));
+
+    return 0;
+};
+
+const formatResultDuration = (durationSec = 0) => {
+    const safeSec = Math.max(0, Math.round(Number(durationSec || 0)));
+    if (!safeSec) return '';
+    const minutes = Math.floor(safeSec / 60);
+    const seconds = safeSec % 60;
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 const ResultList = ({
     results = [],
     searchQ = '',
@@ -25,77 +43,76 @@ const ResultList = ({
     compactRows = false,
 }) => (
     <>
-        <div className="host-autocomplete-results-head flex items-center justify-between gap-2 border-b border-white/10 bg-black/30 px-3 py-2">
-            <div className="text-xs uppercase tracking-[0.18em] text-zinc-300">Results</div>
+        <div className="host-autocomplete-results-head flex items-center justify-between gap-2 border-b border-white/10 bg-black/30 px-3 py-1.5">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-300">Results</div>
             <div className="text-[10px] uppercase tracking-[0.12em] text-cyan-200">
                 {results.length > 0 ? `${results.length} match${results.length === 1 ? '' : 'es'}` : 'No matches'}
             </div>
         </div>
-        <div className="host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar p-3">
+        <div className="host-autocomplete-results-list min-h-0 flex-1 overflow-y-auto overscroll-contain touch-scroll-y custom-scrollbar px-2 py-2">
             {results.length > 0 ? results.map((r, idx) => {
                 const rowKey = getResultRowKey(r, idx);
                 const isAdding = quickAddLoadingKey === rowKey;
                 const playbackState = r.source === 'youtube'
                     ? normalizeYouTubePlaybackState(r)
                     : null;
+                const durationLabel = formatResultDuration(getResultDurationSec(r));
 
                 return (
                     <div
                         key={rowKey}
                         onClick={() => handleResultClick(r, idx)}
-                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-2 rounded-[1.1rem] p-2.5' : 'mb-3 rounded-[1.35rem] p-3'} cursor-pointer border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_12px_30px_rgba(0,0,0,0.22)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]`}
+                        className={`host-autocomplete-result-row group ${compactRows ? 'mb-1.5 rounded-xl p-2' : 'mb-2 rounded-[1.15rem] p-2.5'} cursor-pointer border border-white/10 bg-[linear-gradient(180deg,rgba(25,16,44,0.98),rgba(16,10,34,0.95))] shadow-[0_10px_24px_rgba(0,0,0,0.2)] transition hover:border-cyan-300/35 hover:bg-[linear-gradient(180deg,rgba(35,22,58,0.98),rgba(18,12,38,0.98))]`}
                     >
-                        <div className={`grid gap-3 ${compactRows ? 'md:grid-cols-[72px_minmax(0,1fr)]' : 'md:grid-cols-[94px_minmax(0,1fr)]'}`}>
-                            <div className="relative overflow-hidden rounded-[1.1rem] border border-white/10 bg-black/40">
+                        <div className={`grid gap-2 ${compactRows ? 'grid-cols-[56px_minmax(0,1fr)] md:grid-cols-[64px_minmax(0,1fr)]' : 'grid-cols-[64px_minmax(0,1fr)] md:grid-cols-[76px_minmax(0,1fr)]'}`}>
+                            <div className="relative overflow-hidden rounded-xl border border-white/10 bg-black/40">
                                 {r.source === 'local' ? (
-                                    <div className={`${compactRows ? 'h-[72px]' : 'h-[94px]'} flex w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))]`}>
-                                        <i className="fa-solid fa-hard-drive text-2xl text-[#00C4D9]"></i>
+                                    <div className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} flex w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.28),transparent_55%),linear-gradient(180deg,rgba(12,17,31,1),rgba(8,12,24,1))]`}>
+                                        <i className="fa-solid fa-hard-drive text-xl text-[#00C4D9]"></i>
                                     </div>
                                 ) : (
-                                    <img src={r.artworkUrl100} className={`${compactRows ? 'h-[72px]' : 'h-[94px]'} w-full object-cover`} alt="" />
+                                    <img src={r.artworkUrl100} className={`${compactRows ? 'h-14 md:h-16' : 'h-16 md:h-[76px]'} w-full object-cover`} alt="" />
                                 )}
-                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-2 py-2">
-                                    <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-[0.18em] text-white">
+                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent px-1.5 py-1.5">
+                                    <div className="flex items-center justify-between gap-1 text-[8px] font-black uppercase tracking-[0.14em] text-white">
                                         <span>#{idx + 1}</span>
                                         <span>{r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'YouTube' : 'Local'}</span>
                                     </div>
                                 </div>
                             </div>
                             <div className="min-w-0">
-                                <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-start justify-between gap-2">
                                     <div className="min-w-0">
-                                        <div className={`${compactRows ? 'text-sm' : 'text-base'} line-clamp-2 font-black leading-tight text-white`}>{r.trackName}</div>
-                                        <div className="mt-1 truncate text-sm text-zinc-300">{r.artistName}</div>
+                                        <div className={`${compactRows ? 'text-sm' : 'text-[15px]'} line-clamp-1 font-black leading-tight text-white`}>{r.trackName}</div>
+                                        <div className="mt-0.5 truncate text-xs text-zinc-300">{r.artistName}</div>
                                     </div>
-                                    <div className="whitespace-nowrap rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-100">
+                                    <div className="whitespace-nowrap rounded-full border border-cyan-300/25 bg-cyan-500/10 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.13em] text-cyan-100">
                                         {isAdding ? 'Adding...' : (quickAddOnResultClick ? 'Quick Add' : 'Select')}
                                     </div>
                                 </div>
-                                {!compactRows ? (
-                                    <>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                                                r.source === 'itunes'
-                                                    ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
-                                                    : r.source === 'youtube'
-                                                        ? 'border-red-300/40 bg-red-500/10 text-red-100'
-                                                        : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
-                                            }`}>
-                                                {r.source === 'itunes' ? 'Apple lookup' : r.source === 'youtube' ? 'Karaoke backing' : 'Local library'}
-                                            </span>
-                                            {r.source === 'youtube' ? (
-                                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
-                                                    {playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'Not embeddable' : 'Embeds on TV'}
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                        {r.sourceDetail ? (
-                                            <div className="mt-3 line-clamp-2 text-[11px] text-zinc-500">{r.sourceDetail}</div>
-                                        ) : null}
-                                    </>
-                                ) : null}
+                                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                    <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${
+                                        r.source === 'itunes'
+                                            ? 'border-pink-300/40 bg-pink-500/10 text-pink-100'
+                                            : r.source === 'youtube'
+                                                ? 'border-red-300/40 bg-red-500/10 text-red-100'
+                                                : 'border-cyan-300/40 bg-cyan-500/10 text-cyan-100'
+                                    }`}>
+                                        {r.source === 'itunes' ? 'Apple' : r.source === 'youtube' ? 'Karaoke' : 'Local'}
+                                    </span>
+                                    {r.source === 'youtube' ? (
+                                        <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'border-orange-300/40 bg-orange-500/10 text-orange-100' : 'border-emerald-300/40 bg-emerald-500/10 text-emerald-100'}`}>
+                                            {playbackState?.youtubePlaybackStatus === YOUTUBE_PLAYBACK_STATUSES.notEmbeddable ? 'External' : 'TV'}
+                                        </span>
+                                    ) : null}
+                                    {durationLabel ? (
+                                        <span className="rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-zinc-200">
+                                            {durationLabel}
+                                        </span>
+                                    ) : null}
+                                </div>
                                 {performanceActionsEnabled ? (
-                                    <div className={`${compactRows ? 'mt-2' : 'mt-3'} flex flex-wrap gap-2`}>
+                                    <div className={`${compactRows ? 'mt-2' : 'mt-2.5'} flex flex-wrap gap-2`}>
                                         {nextOpenSlot?.id ? (
                                             <button
                                                 data-feature-id="performance-result-add-next"
@@ -147,7 +164,6 @@ const ResultList = ({
         </div>
     </>
 );
-
 const momentTypes = [
     { id: 'performance', label: 'Performance', icon: 'fa-microphone-lines' },
     { id: 'tv', label: 'TV', icon: 'fa-tv' },
@@ -680,8 +696,8 @@ const AddToQueueFormBody = ({
                     </div>
                 </div>
             ) : (
-                <div className="host-autocomplete-shell relative z-30">
-                    <div className={`host-autocomplete-field-wrap rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 py-1.5' : 'py-2'}`}>
+                <div className={`host-autocomplete-shell relative z-30 w-full min-w-0 ${dockResults ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+                    <div className={`host-autocomplete-field-wrap w-full min-w-0 rounded-xl border border-cyan-400/25 bg-zinc-950/70 px-2 ${dockResults ? 'sticky top-0 z-20 shrink-0 py-1.5' : 'py-2'}`}>
                         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(13rem,0.8fr)] lg:grid-cols-[minmax(0,1.35fr)_minmax(14rem,0.9fr)_auto]">
                             <div className="relative">
                                 <i className="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-zinc-500"></i>
@@ -805,7 +821,7 @@ const AddToQueueFormBody = ({
                     </div>
 
                     {!renderResultsInline && showResults ? (
-                        <div className={`host-autocomplete-results absolute left-0 right-0 top-full mt-2 z-50 flex max-h-[clamp(20rem,calc(100dvh-9rem),82dvh)] flex-col overflow-hidden ${baseResultsCardClass}`}>
+                        <div className={`host-autocomplete-results absolute left-1/2 top-full mt-2 z-50 flex w-[min(42rem,calc(100vw-2rem))] -translate-x-1/2 max-h-[clamp(18rem,calc(100dvh-8rem),82dvh)] flex-col overflow-hidden ${baseResultsCardClass}`}>
                             <div className="host-autocomplete-results-stem" aria-hidden="true"></div>
                             <ResultList {...performanceResultListProps} compactRows={dockResults} />
                         </div>
@@ -1060,7 +1076,7 @@ const AddToQueueFormBody = ({
             ) : null}
 
             {performanceMode && renderResultsInline ? (
-                <div className={`mt-2 flex min-h-0 flex-1 basis-0 flex-col overflow-hidden ${baseResultsCardClass}`}>
+                <div className={`mt-2 flex min-h-[16rem] flex-1 basis-0 flex-col overflow-hidden ${baseResultsCardClass}`}>
                     <ResultList {...performanceResultListProps} compactRows={dockResults} />
                 </div>
             ) : null}

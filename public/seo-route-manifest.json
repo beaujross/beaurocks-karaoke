@@ -1,6 +1,6 @@
 {
   "source": "firestore",
-  "generatedAt": "2026-06-30T22:54:00.020Z",
+  "generatedAt": "2026-06-30T23:13:16.732Z",
   "counts": {
     "venues": 32,
     "events": 73,
@@ -46,7 +46,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/discover.png"
       ],
-      "lastmod": "2026-06-30T22:54:00.424Z",
+      "lastmod": "2026-06-30T23:13:17.129Z",
       "priority": "1.0"
     },
     {
@@ -83,7 +83,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/changelog.png"
       ],
-      "lastmod": "2026-06-30T22:54:00.861Z",
+      "lastmod": "2026-06-30T23:13:17.562Z",
       "priority": "0.5"
     },
     {
@@ -120,7 +120,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_hosts.png"
       ],
-      "lastmod": "2026-06-30T22:54:01.242Z",
+      "lastmod": "2026-06-30T23:13:17.941Z",
       "priority": "0.9"
     },
     {
@@ -157,7 +157,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_venues.png"
       ],
-      "lastmod": "2026-06-30T22:54:01.695Z",
+      "lastmod": "2026-06-30T23:13:18.387Z",
       "priority": "0.9"
     },
     {
@@ -194,7 +194,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_performers.png"
       ],
-      "lastmod": "2026-06-30T22:54:02.074Z",
+      "lastmod": "2026-06-30T23:13:18.755Z",
       "priority": "0.8"
     },
     {
@@ -244,7 +244,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/for_fans.png"
       ],
-      "lastmod": "2026-06-30T22:54:02.175Z",
+      "lastmod": "2026-06-30T23:13:18.848Z",
       "priority": "0.8"
     },
     {
@@ -308,7 +308,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-ca_los_angeles.png"
       ],
-      "lastmod": "2026-06-30T22:54:02.616Z",
+      "lastmod": "2026-06-30T23:13:19.280Z",
       "priority": "0.8"
     },
     {
@@ -372,7 +372,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-nationwide.png"
       ],
-      "lastmod": "2026-06-30T22:54:03.070Z",
+      "lastmod": "2026-06-30T23:13:19.705Z",
       "priority": "0.8"
     },
     {
@@ -436,7 +436,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-ny_new_york.png"
       ],
-      "lastmod": "2026-06-30T22:54:03.510Z",
+      "lastmod": "2026-06-30T23:13:20.142Z",
       "priority": "0.8"
     },
     {
@@ -500,7 +500,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-wa_kitsap.png"
       ],
-      "lastmod": "2026-06-30T22:54:03.957Z",
+      "lastmod": "2026-06-30T23:13:20.573Z",
       "priority": "0.8"
     },
     {
@@ -564,7 +564,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_region-wa_seattle.png"
       ],
-      "lastmod": "2026-06-30T22:54:04.387Z",
+      "lastmod": "2026-06-30T23:13:21.001Z",
       "priority": "0.8"
     },
     {
@@ -629,7 +629,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-ca-los-angeles.png"
       ],
-      "lastmod": "2026-06-30T22:54:04.813Z",
+      "lastmod": "2026-06-30T23:13:21.421Z",
       "priority": "0.8"
     },
     {
@@ -694,7 +694,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-ny-new-york.png"
       ],
-      "lastmod": "2026-06-30T22:54:05.250Z",
+      "lastmod": "2026-06-30T23:13:21.850Z",
       "priority": "0.8"
     },
     {
@@ -759,7 +759,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-bainbridge-island.png"
       ],
-      "lastmod": "2026-06-30T22:54:05.672Z",
+      "lastmod": "2026-06-30T23:13:22.273Z",
       "priority": "0.8"
     },
     {
@@ -824,7 +824,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-belfair.png"
       ],
-      "lastmod": "2026-06-30T22:54:06.099Z",
+      "lastmod": "2026-06-30T23:13:22.683Z",
       "priority": "0.8"
     },
     {
@@ -889,7 +889,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-bremerton.png"
       ],
-      "lastmod": "2026-06-30T22:54:06.524Z",
+      "lastmod": "2026-06-30T23:13:23.103Z",
       "priority": "0.8"
     },
     {
@@ -954,7 +954,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-gig-harbor.png"
       ],
-      "lastmod": "2026-06-30T22:54:06.937Z",
+      "lastmod": "2026-06-30T23:13:23.512Z",
       "priority": "0.8"
     },
     {
@@ -1019,7 +1019,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-gorst.png"
       ],
-      "lastmod": "2026-06-30T22:54:07.351Z",
+      "lastmod": "2026-06-30T23:13:23.927Z",
       "priority": "0.8"
     },
     {
@@ -1084,7 +1084,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-kingston.png"
       ],
-      "lastmod": "2026-06-30T22:54:07.779Z",
+      "lastmod": "2026-06-30T23:13:24.341Z",
       "priority": "0.8"
     },
     {
@@ -1149,7 +1149,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-port-orchard.png"
       ],
-      "lastmod": "2026-06-30T22:54:08.202Z",
+      "lastmod": "2026-06-30T23:13:24.756Z",
       "priority": "0.8"
     },
     {
@@ -1214,7 +1214,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-poulsbo.png"
       ],
-      "lastmod": "2026-06-30T22:54:08.619Z",
+      "lastmod": "2026-06-30T23:13:25.178Z",
       "priority": "0.8"
     },
     {
@@ -1279,7 +1279,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-seattle.png"
       ],
-      "lastmod": "2026-06-30T22:54:09.037Z",
+      "lastmod": "2026-06-30T23:13:25.587Z",
       "priority": "0.8"
     },
     {
@@ -1344,7 +1344,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/geo_city-wa-silverdale.png"
       ],
-      "lastmod": "2026-06-30T22:54:09.446Z",
+      "lastmod": "2026-06-30T23:13:26.001Z",
       "priority": "0.8"
     },
     {
@@ -1411,7 +1411,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bainbridge_island_fletcher_bay_winery.png"
       ],
-      "lastmod": "2026-06-30T22:54:10.011Z",
+      "lastmod": "2026-06-30T23:13:26.566Z",
       "priority": "0.6"
     },
     {
@@ -1478,7 +1478,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bainbridge_island_the_plate_pint.png"
       ],
-      "lastmod": "2026-06-30T22:54:10.494Z",
+      "lastmod": "2026-06-30T23:13:27.035Z",
       "priority": "0.6"
     },
     {
@@ -1545,7 +1545,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_belfair_casey_s_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:11.080Z",
+      "lastmod": "2026-06-30T23:13:27.623Z",
       "priority": "0.6"
     },
     {
@@ -1612,7 +1612,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_belfair_the_woodshed.png"
       ],
-      "lastmod": "2026-06-30T22:54:11.641Z",
+      "lastmod": "2026-06-30T23:13:28.168Z",
       "priority": "0.6"
     },
     {
@@ -1679,7 +1679,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_behind_the_pine_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:12.143Z",
+      "lastmod": "2026-06-30T23:13:28.682Z",
       "priority": "0.6"
     },
     {
@@ -1746,7 +1746,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_beyond_karaoke.png"
       ],
-      "lastmod": "2026-06-30T22:54:12.564Z",
+      "lastmod": "2026-06-30T23:13:29.104Z",
       "priority": "0.6"
     },
     {
@@ -1813,7 +1813,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_mccloud_s_grill_house.png"
       ],
-      "lastmod": "2026-06-30T22:54:13.015Z",
+      "lastmod": "2026-06-30T23:13:29.566Z",
       "priority": "0.6"
     },
     {
@@ -1880,7 +1880,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_remedy_speakeasy.png"
       ],
-      "lastmod": "2026-06-30T22:54:13.541Z",
+      "lastmod": "2026-06-30T23:13:30.105Z",
       "priority": "0.6"
     },
     {
@@ -1947,7 +1947,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_siren_s.png"
       ],
-      "lastmod": "2026-06-30T22:54:13.984Z",
+      "lastmod": "2026-06-30T23:13:30.551Z",
       "priority": "0.6"
     },
     {
@@ -2014,7 +2014,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_south_pacific_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:14.413Z",
+      "lastmod": "2026-06-30T23:13:30.962Z",
       "priority": "0.6"
     },
     {
@@ -2081,7 +2081,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_the_884_pub.png"
       ],
-      "lastmod": "2026-06-30T22:54:14.848Z",
+      "lastmod": "2026-06-30T23:13:31.399Z",
       "priority": "0.6"
     },
     {
@@ -2148,7 +2148,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_the_garage_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:15.350Z",
+      "lastmod": "2026-06-30T23:13:31.874Z",
       "priority": "0.6"
     },
     {
@@ -2215,7 +2215,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_tik_tok_s_workshop.png"
       ],
-      "lastmod": "2026-06-30T22:54:15.885Z",
+      "lastmod": "2026-06-30T23:13:32.390Z",
       "priority": "0.6"
     },
     {
@@ -2282,7 +2282,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_bremerton_town_portal.png"
       ],
-      "lastmod": "2026-06-30T22:54:16.316Z",
+      "lastmod": "2026-06-30T23:13:32.818Z",
       "priority": "0.6"
     },
     {
@@ -2349,7 +2349,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_eagles_club_gig_harbor.png"
       ],
-      "lastmod": "2026-06-30T22:54:16.830Z",
+      "lastmod": "2026-06-30T23:13:33.339Z",
       "priority": "0.6"
     },
     {
@@ -2416,7 +2416,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_half_time_sports_saloon.png"
       ],
-      "lastmod": "2026-06-30T22:54:17.253Z",
+      "lastmod": "2026-06-30T23:13:33.761Z",
       "priority": "0.6"
     },
     {
@@ -2483,7 +2483,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_ocean_5.png"
       ],
-      "lastmod": "2026-06-30T22:54:17.678Z",
+      "lastmod": "2026-06-30T23:13:34.187Z",
       "priority": "0.6"
     },
     {
@@ -2550,7 +2550,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gig_harbor_the_float.png"
       ],
-      "lastmod": "2026-06-30T22:54:18.189Z",
+      "lastmod": "2026-06-30T23:13:34.734Z",
       "priority": "0.6"
     },
     {
@@ -2617,7 +2617,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_gorst_jimmy_d_s_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:18.709Z",
+      "lastmod": "2026-06-30T23:13:35.272Z",
       "priority": "0.6"
     },
     {
@@ -2684,7 +2684,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_kingston_kingston_ale_house.png"
       ],
-      "lastmod": "2026-06-30T22:54:19.123Z",
+      "lastmod": "2026-06-30T23:13:35.698Z",
       "priority": "0.6"
     },
     {
@@ -2751,7 +2751,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_damn_fine_pizza.png"
       ],
-      "lastmod": "2026-06-30T22:54:19.558Z",
+      "lastmod": "2026-06-30T23:13:36.125Z",
       "priority": "0.6"
     },
     {
@@ -2818,7 +2818,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_eagles_club_port_orchard.png"
       ],
-      "lastmod": "2026-06-30T22:54:20.026Z",
+      "lastmod": "2026-06-30T23:13:36.618Z",
       "priority": "0.6"
     },
     {
@@ -2885,7 +2885,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_empire_pizza.png"
       ],
-      "lastmod": "2026-06-30T22:54:20.555Z",
+      "lastmod": "2026-06-30T23:13:37.166Z",
       "priority": "0.6"
     },
     {
@@ -2952,7 +2952,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_golden_grill_on_the_bay.png"
       ],
-      "lastmod": "2026-06-30T22:54:21.084Z",
+      "lastmod": "2026-06-30T23:13:37.707Z",
       "priority": "0.6"
     },
     {
@@ -3019,7 +3019,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_new_way_lounge.png"
       ],
-      "lastmod": "2026-06-30T22:54:21.510Z",
+      "lastmod": "2026-06-30T23:13:38.140Z",
       "priority": "0.6"
     },
     {
@@ -3086,7 +3086,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_ruby_slipper_bar_grill.png"
       ],
-      "lastmod": "2026-06-30T22:54:21.950Z",
+      "lastmod": "2026-06-30T23:13:38.597Z",
       "priority": "0.6"
     },
     {
@@ -3153,7 +3153,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_the_end_zone_sports_pub.png"
       ],
-      "lastmod": "2026-06-30T22:54:22.466Z",
+      "lastmod": "2026-06-30T23:13:39.150Z",
       "priority": "0.6"
     },
     {
@@ -3220,7 +3220,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_port_orchard_vfw_post_2669.png"
       ],
-      "lastmod": "2026-06-30T22:54:22.987Z",
+      "lastmod": "2026-06-30T23:13:39.665Z",
       "priority": "0.6"
     },
     {
@@ -3287,7 +3287,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_bushel_barrel_ciderhouse.png"
       ],
-      "lastmod": "2026-06-30T22:54:23.409Z",
+      "lastmod": "2026-06-30T23:13:40.076Z",
       "priority": "0.6"
     },
     {
@@ -3354,7 +3354,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_the_brass_kraken_pub.png"
       ],
-      "lastmod": "2026-06-30T22:54:23.850Z",
+      "lastmod": "2026-06-30T23:13:40.515Z",
       "priority": "0.6"
     },
     {
@@ -3421,7 +3421,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_poulsbo_the_sk_l_house_pub.png"
       ],
-      "lastmod": "2026-06-30T22:54:24.280Z",
+      "lastmod": "2026-06-30T23:13:40.975Z",
       "priority": "0.6"
     },
     {
@@ -3488,7 +3488,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/venue-venue_kitsap_silverdale_our_place_pub.png"
       ],
-      "lastmod": "2026-06-30T22:54:24.799Z",
+      "lastmod": "2026-06-30T23:13:41.506Z",
       "priority": "0.6"
     },
     {
@@ -3563,7 +3563,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_beaurocks_bremerton_live_band_2026.png"
       ],
-      "lastmod": "2026-06-30T22:54:25.188Z",
+      "lastmod": "2026-06-30T23:13:41.892Z",
       "priority": "0.6"
     },
     {
@@ -3638,7 +3638,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_beaurocks_poulsbo_other_2026.png"
       ],
-      "lastmod": "2026-06-30T22:54:25.574Z",
+      "lastmod": "2026-06-30T23:13:42.287Z",
       "priority": "0.6"
     },
     {
@@ -3710,7 +3710,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_fletcher_bay_winery_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:25.995Z",
+      "lastmod": "2026-06-30T23:13:42.715Z",
       "priority": "0.6"
     },
     {
@@ -3780,7 +3780,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_fletcher_bay_winery_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:26.407Z",
+      "lastmod": "2026-06-30T23:13:43.143Z",
       "priority": "0.6"
     },
     {
@@ -3852,7 +3852,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_the_plate_pint_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:26.824Z",
+      "lastmod": "2026-06-30T23:13:43.565Z",
       "priority": "0.6"
     },
     {
@@ -3924,7 +3924,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bainbridge_island_the_plate_pint_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:27.236Z",
+      "lastmod": "2026-06-30T23:13:43.973Z",
       "priority": "0.6"
     },
     {
@@ -3996,7 +3996,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_casey_s_bar_grill_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:27.649Z",
+      "lastmod": "2026-06-30T23:13:44.389Z",
       "priority": "0.6"
     },
     {
@@ -4068,7 +4068,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_the_woodshed_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:28.069Z",
+      "lastmod": "2026-06-30T23:13:44.806Z",
       "priority": "0.6"
     },
     {
@@ -4140,7 +4140,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_belfair_the_woodshed_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:28.484Z",
+      "lastmod": "2026-06-30T23:13:45.217Z",
       "priority": "0.6"
     },
     {
@@ -4212,7 +4212,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:28.897Z",
+      "lastmod": "2026-06-30T23:13:45.629Z",
       "priority": "0.6"
     },
     {
@@ -4284,7 +4284,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:29.315Z",
+      "lastmod": "2026-06-30T23:13:46.040Z",
       "priority": "0.6"
     },
     {
@@ -4356,7 +4356,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:29.746Z",
+      "lastmod": "2026-06-30T23:13:46.451Z",
       "priority": "0.6"
     },
     {
@@ -4428,7 +4428,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_behind_the_pine_bar_grill_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:30.158Z",
+      "lastmod": "2026-06-30T23:13:46.863Z",
       "priority": "0.6"
     },
     {
@@ -4500,7 +4500,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:30.568Z",
+      "lastmod": "2026-06-30T23:13:47.279Z",
       "priority": "0.6"
     },
     {
@@ -4572,7 +4572,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:30.987Z",
+      "lastmod": "2026-06-30T23:13:47.687Z",
       "priority": "0.6"
     },
     {
@@ -4644,7 +4644,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:31.406Z",
+      "lastmod": "2026-06-30T23:13:48.106Z",
       "priority": "0.6"
     },
     {
@@ -4716,7 +4716,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:31.832Z",
+      "lastmod": "2026-06-30T23:13:48.527Z",
       "priority": "0.6"
     },
     {
@@ -4788,7 +4788,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_beyond_karaoke_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:32.243Z",
+      "lastmod": "2026-06-30T23:13:48.945Z",
       "priority": "0.6"
     },
     {
@@ -4860,7 +4860,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_mccloud_s_grill_house_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:32.659Z",
+      "lastmod": "2026-06-30T23:13:49.362Z",
       "priority": "0.6"
     },
     {
@@ -4932,7 +4932,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:33.076Z",
+      "lastmod": "2026-06-30T23:13:49.786Z",
       "priority": "0.6"
     },
     {
@@ -5004,7 +5004,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:33.492Z",
+      "lastmod": "2026-06-30T23:13:50.201Z",
       "priority": "0.6"
     },
     {
@@ -5076,7 +5076,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:33.911Z",
+      "lastmod": "2026-06-30T23:13:50.621Z",
       "priority": "0.6"
     },
     {
@@ -5148,7 +5148,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:34.326Z",
+      "lastmod": "2026-06-30T23:13:51.038Z",
       "priority": "0.6"
     },
     {
@@ -5220,7 +5220,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_remedy_speakeasy_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:34.738Z",
+      "lastmod": "2026-06-30T23:13:51.451Z",
       "priority": "0.6"
     },
     {
@@ -5292,7 +5292,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:35.153Z",
+      "lastmod": "2026-06-30T23:13:51.858Z",
       "priority": "0.6"
     },
     {
@@ -5364,7 +5364,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:35.573Z",
+      "lastmod": "2026-06-30T23:13:52.266Z",
       "priority": "0.6"
     },
     {
@@ -5436,7 +5436,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:35.989Z",
+      "lastmod": "2026-06-30T23:13:52.680Z",
       "priority": "0.6"
     },
     {
@@ -5508,7 +5508,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:36.404Z",
+      "lastmod": "2026-06-30T23:13:53.089Z",
       "priority": "0.6"
     },
     {
@@ -5580,7 +5580,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_siren_s_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:36.819Z",
+      "lastmod": "2026-06-30T23:13:53.495Z",
       "priority": "0.6"
     },
     {
@@ -5651,7 +5651,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:37.238Z",
+      "lastmod": "2026-06-30T23:13:53.908Z",
       "priority": "0.6"
     },
     {
@@ -5722,7 +5722,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:37.650Z",
+      "lastmod": "2026-06-30T23:13:54.317Z",
       "priority": "0.6"
     },
     {
@@ -5793,7 +5793,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:38.061Z",
+      "lastmod": "2026-06-30T23:13:54.729Z",
       "priority": "0.6"
     },
     {
@@ -5864,7 +5864,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_south_pacific_bar_grill_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:38.493Z",
+      "lastmod": "2026-06-30T23:13:55.143Z",
       "priority": "0.6"
     },
     {
@@ -5936,7 +5936,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_the_884_pub_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:38.910Z",
+      "lastmod": "2026-06-30T23:13:55.552Z",
       "priority": "0.6"
     },
     {
@@ -6008,7 +6008,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_the_garage_bar_grill_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:39.324Z",
+      "lastmod": "2026-06-30T23:13:55.988Z",
       "priority": "0.6"
     },
     {
@@ -6080,7 +6080,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_tik_tok_s_workshop_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:39.740Z",
+      "lastmod": "2026-06-30T23:13:56.412Z",
       "priority": "0.6"
     },
     {
@@ -6152,7 +6152,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_tik_tok_s_workshop_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:40.156Z",
+      "lastmod": "2026-06-30T23:13:56.825Z",
       "priority": "0.6"
     },
     {
@@ -6224,7 +6224,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_town_portal_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:40.573Z",
+      "lastmod": "2026-06-30T23:13:57.245Z",
       "priority": "0.6"
     },
     {
@@ -6296,7 +6296,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_bremerton_town_portal_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:40.992Z",
+      "lastmod": "2026-06-30T23:13:57.667Z",
       "priority": "0.6"
     },
     {
@@ -6368,7 +6368,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_eagles_club_gig_harbor_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:41.408Z",
+      "lastmod": "2026-06-30T23:13:58.097Z",
       "priority": "0.6"
     },
     {
@@ -6440,7 +6440,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_half_time_sports_saloon_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:41.824Z",
+      "lastmod": "2026-06-30T23:13:58.524Z",
       "priority": "0.6"
     },
     {
@@ -6512,7 +6512,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_half_time_sports_saloon_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:42.238Z",
+      "lastmod": "2026-06-30T23:13:58.949Z",
       "priority": "0.6"
     },
     {
@@ -6584,7 +6584,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_ocean_5_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:42.654Z",
+      "lastmod": "2026-06-30T23:13:59.362Z",
       "priority": "0.6"
     },
     {
@@ -6656,7 +6656,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_the_float_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:43.065Z",
+      "lastmod": "2026-06-30T23:13:59.776Z",
       "priority": "0.6"
     },
     {
@@ -6728,7 +6728,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gig_harbor_the_float_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:43.476Z",
+      "lastmod": "2026-06-30T23:14:00.213Z",
       "priority": "0.6"
     },
     {
@@ -6800,7 +6800,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gorst_jimmy_d_s_bar_grill_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:43.892Z",
+      "lastmod": "2026-06-30T23:14:00.631Z",
       "priority": "0.6"
     },
     {
@@ -6872,7 +6872,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_gorst_jimmy_d_s_bar_grill_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:44.310Z",
+      "lastmod": "2026-06-30T23:14:01.038Z",
       "priority": "0.6"
     },
     {
@@ -6944,7 +6944,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_kingston_kingston_ale_house_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:44.728Z",
+      "lastmod": "2026-06-30T23:14:01.447Z",
       "priority": "0.6"
     },
     {
@@ -7016,7 +7016,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_kingston_kingston_ale_house_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:45.142Z",
+      "lastmod": "2026-06-30T23:14:01.864Z",
       "priority": "0.6"
     },
     {
@@ -7088,7 +7088,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_damn_fine_pizza_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:45.558Z",
+      "lastmod": "2026-06-30T23:14:02.291Z",
       "priority": "0.6"
     },
     {
@@ -7160,7 +7160,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_eagles_club_port_orchard_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:45.977Z",
+      "lastmod": "2026-06-30T23:14:02.722Z",
       "priority": "0.6"
     },
     {
@@ -7232,7 +7232,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_empire_pizza_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:46.392Z",
+      "lastmod": "2026-06-30T23:14:03.146Z",
       "priority": "0.6"
     },
     {
@@ -7304,7 +7304,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:46.816Z",
+      "lastmod": "2026-06-30T23:14:03.558Z",
       "priority": "0.6"
     },
     {
@@ -7376,7 +7376,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:47.240Z",
+      "lastmod": "2026-06-30T23:14:03.975Z",
       "priority": "0.6"
     },
     {
@@ -7448,7 +7448,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_golden_grill_on_the_bay_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:47.656Z",
+      "lastmod": "2026-06-30T23:14:04.384Z",
       "priority": "0.6"
     },
     {
@@ -7520,7 +7520,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_new_way_lounge_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:48.072Z",
+      "lastmod": "2026-06-30T23:14:04.798Z",
       "priority": "0.6"
     },
     {
@@ -7592,7 +7592,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_new_way_lounge_thu.png"
       ],
-      "lastmod": "2026-06-30T22:54:48.485Z",
+      "lastmod": "2026-06-30T23:14:05.212Z",
       "priority": "0.6"
     },
     {
@@ -7664,7 +7664,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:48.898Z",
+      "lastmod": "2026-06-30T23:14:05.623Z",
       "priority": "0.6"
     },
     {
@@ -7736,7 +7736,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_mon.png"
       ],
-      "lastmod": "2026-06-30T22:54:49.324Z",
+      "lastmod": "2026-06-30T23:14:06.038Z",
       "priority": "0.6"
     },
     {
@@ -7808,7 +7808,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:49.739Z",
+      "lastmod": "2026-06-30T23:14:06.447Z",
       "priority": "0.6"
     },
     {
@@ -7880,7 +7880,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_ruby_slipper_bar_grill_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:50.149Z",
+      "lastmod": "2026-06-30T23:14:06.871Z",
       "priority": "0.6"
     },
     {
@@ -7952,7 +7952,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_the_end_zone_sports_pub_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:50.560Z",
+      "lastmod": "2026-06-30T23:14:07.286Z",
       "priority": "0.6"
     },
     {
@@ -8024,7 +8024,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_port_orchard_vfw_post_2669_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:50.981Z",
+      "lastmod": "2026-06-30T23:14:07.702Z",
       "priority": "0.6"
     },
     {
@@ -8095,7 +8095,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_bushel_barrel_ciderhouse_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:51.398Z",
+      "lastmod": "2026-06-30T23:14:08.112Z",
       "priority": "0.6"
     },
     {
@@ -8167,7 +8167,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_bushel_barrel_ciderhouse_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:51.808Z",
+      "lastmod": "2026-06-30T23:14:08.525Z",
       "priority": "0.6"
     },
     {
@@ -8239,7 +8239,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_brass_kraken_pub_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:52.214Z",
+      "lastmod": "2026-06-30T23:14:08.933Z",
       "priority": "0.6"
     },
     {
@@ -8311,7 +8311,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:52.625Z",
+      "lastmod": "2026-06-30T23:14:09.348Z",
       "priority": "0.6"
     },
     {
@@ -8383,7 +8383,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:53.039Z",
+      "lastmod": "2026-06-30T23:14:09.760Z",
       "priority": "0.6"
     },
     {
@@ -8455,7 +8455,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_sun.png"
       ],
-      "lastmod": "2026-06-30T22:54:53.450Z",
+      "lastmod": "2026-06-30T23:14:10.171Z",
       "priority": "0.6"
     },
     {
@@ -8527,7 +8527,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_poulsbo_the_sk_l_house_pub_tue.png"
       ],
-      "lastmod": "2026-06-30T22:54:53.863Z",
+      "lastmod": "2026-06-30T23:14:10.421Z",
       "priority": "0.6"
     },
     {
@@ -8599,7 +8599,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_fri.png"
       ],
-      "lastmod": "2026-06-30T22:54:54.283Z",
+      "lastmod": "2026-06-30T23:14:10.838Z",
       "priority": "0.6"
     },
     {
@@ -8671,7 +8671,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_sat.png"
       ],
-      "lastmod": "2026-06-30T22:54:54.695Z",
+      "lastmod": "2026-06-30T23:14:11.244Z",
       "priority": "0.6"
     },
     {
@@ -8743,7 +8743,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/event-event_kitsap_silverdale_our_place_pub_wed.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.109Z",
+      "lastmod": "2026-06-30T23:14:11.660Z",
       "priority": "0.6"
     },
     {
@@ -8811,7 +8811,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/host-12scdwbbxvb6cyostveztdkmsji2.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.487Z",
+      "lastmod": "2026-06-30T23:14:12.038Z",
       "priority": "0.6"
     },
     {
@@ -8879,7 +8879,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/social/performer-12scdwbbxvb6cyostveztdkmsji2.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.863Z",
+      "lastmod": "2026-06-30T23:14:12.414Z",
       "priority": "0.6"
     },
     {
@@ -8916,7 +8916,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.864Z",
+      "lastmod": "2026-06-30T23:14:12.415Z",
       "priority": "0.3"
     },
     {
@@ -8953,7 +8953,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.864Z",
+      "lastmod": "2026-06-30T23:14:12.415Z",
       "priority": "0.3"
     },
     {
@@ -8990,7 +8990,7 @@
       "sitemapImages": [
         "https://beaurocks.app/images/logo-library/beaurocks-logo-background.png"
       ],
-      "lastmod": "2026-06-30T22:54:55.864Z",
+      "lastmod": "2026-06-30T23:14:12.415Z",
       "priority": "0.3"
     }
   ]
