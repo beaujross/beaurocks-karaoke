@@ -1619,140 +1619,21 @@ const HostTopChrome = ({
                                 setShowAutomationQuickMenu(next);
                             }}
                             className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[158px] sm:min-w-[176px]'}`}
-                            title="Host automation controls"
+                            title="Flow and automation controls"
                             style={{ touchAction: 'manipulation' }}
                         >
-                            <i className="fa-solid fa-robot mr-1"></i>
-                            Automation: {automationActiveCount}
+                            <i className="fa-solid fa-route mr-1"></i>
+                            Flow: {activeRoomControlModelOption.label} <span className="ml-1 text-zinc-400">Auto {automationActiveCount}</span>
                             <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showAutomationQuickMenu ? 'rotate-180' : ''}`}></i>
                         </button>
                         {showAutomationQuickMenu && (
                             <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(500px,95vw)] max-h-[74vh] p-3.5`}>
-                                <div className={quickMenuSectionTitleClass}>Automation</div>
+                                <div className={quickMenuSectionTitleClass}>Flow & Automation</div>
                                 <div className={quickMenuSectionHintClass}>
-                                    Live toggles stay here so you can tune pacing without leaving the host panel.
+                                    Choose the room pacing model, then tune lightweight automation without leaving the host panel.
                                 </div>
-                                <div className={`${quickMenuCardClass} mt-2`}>
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                        {[
-                                            {
-                                                key: 'autoDj',
-                                                label: 'Auto DJ',
-                                                active: !!quickAutomationControls.autoDj,
-                                                icon: 'fa-forward-fast',
-                                                onClick: quickAutomationControls.onToggleAutoDj,
-                                            },
-                                            {
-                                                key: 'autoBg',
-                                                label: 'Auto BG Music',
-                                                active: !!quickAutomationControls.autoBgMusic,
-                                                icon: 'fa-compact-disc',
-                                                onClick: quickAutomationControls.onToggleAutoBgMusic,
-                                            },
-                                            {
-                                                key: 'autoEnd',
-                                                label: 'Auto End',
-                                                active: !!quickAutomationControls.autoEndOnTrackFinish,
-                                                icon: 'fa-stopwatch',
-                                                onClick: quickAutomationControls.onToggleAutoEnd,
-                                            },
-                                            {
-                                                key: 'autoBonus',
-                                                label: 'Auto Bonus',
-                                                active: !!quickAutomationControls.autoBonusEnabled,
-                                                icon: 'fa-gift',
-                                                onClick: quickAutomationControls.onToggleAutoBonus,
-                                            },
-                                            {
-                                                key: 'autoLyrics',
-                                                label: 'Auto Lyrics',
-                                                active: !!quickAutomationControls.autoLyricsOnQueue,
-                                                icon: 'fa-closed-captioning',
-                                                onClick: quickAutomationControls.onToggleAutoLyricsOnQueue,
-                                            },
-                                            {
-                                                key: 'autoParty',
-                                                label: 'Auto Party',
-                                                active: !!quickAutomationControls.autoPartyEnabled,
-                                                icon: 'fa-wand-magic-sparkles',
-                                                onClick: quickAutomationControls.onToggleAutoParty,
-                                            },
-                                            {
-                                                key: 'popTrivia',
-                                                label: 'Pop Trivia',
-                                                active: !!quickAutomationControls.popTriviaEnabled,
-                                                icon: 'fa-bolt',
-                                                onClick: quickAutomationControls.onTogglePopTrivia,
-                                            },
-                                        ].map((item) => (
-                                            <button
-                                                key={item.key}
-                                                type="button"
-                                                onClick={() => { item.onClick?.(); }}
-                                                className={`${styles.btnStd} ${item.active ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
-                                            >
-                                                <span className="inline-flex items-center gap-2">
-                                                    <i className={`fa-solid ${item.icon}`}></i>
-                                                    {item.label}
-                                                </span>
-                                                <span className="text-[11px] uppercase tracking-widest">{item.active ? 'On' : 'Off'}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {runOfShowEnabled && typeof onToggleRunOfShowAutomationPause === 'function' ? (
-                                    <div className={`${quickMenuCardClass} mt-3`}>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div>
-                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-100">Run Of Show</div>
-                                                <div className="mt-1 text-[11px] text-zinc-400">
-                                                    Conveyor automation can be paused here without opening the show workspace.
-                                                </div>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => onToggleRunOfShowAutomationPause?.(!runOfShowAutomationPaused)}
-                                                className={`${styles.btnStd} ${runOfShowAutomationPaused ? styles.btnSecondary : styles.btnHighlight} px-3 py-1.5 text-[11px]`}
-                                            >
-                                                {runOfShowAutomationPaused ? 'Resume Show Auto' : 'Pause Show Auto'}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : null}
-                                <button
-                                    type="button"
-                                    onClick={() => openOpsSection('ops.automation')}
-                                    className={`${styles.btnStd} ${styles.btnNeutral} mt-3 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
-                                >
-                                    Open Full Automation Defaults
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ) : null}
-                {quickRoomControls ? (
-                    <div className={quickStripItemClass} ref={queueQuickMenuRef}>
-                        <button
-                            type="button"
-                            data-feature-id="deck-queue-menu-toggle"
-                            aria-expanded={showQueueQuickMenu}
-                            onClick={() => {
-                                const next = !showQueueQuickMenu;
-                                closeAllTopMenus();
-                                setShowQueueQuickMenu(next);
-                            }}
-                            className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[158px] sm:min-w-[176px]'}`}
-                            title="Queue management"
-                            style={{ touchAction: 'manipulation' }}
-                        >
-                            <i className="fa-solid fa-list-check mr-1"></i>
-                            Queue: {queueLimitLabel}
-                            <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showQueueQuickMenu ? 'rotate-180' : ''}`}></i>
-                        </button>
-                        {showQueueQuickMenu && (
-                            <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(560px,95vw)] max-h-[74vh] p-3.5`}>
-                                <div className={quickMenuSectionTitleClass}>Queue Management</div>
-                                <div className={quickMenuSectionHintClass}>Live queue rules, guest requests, and ready checks for tonight.</div>
+                                {quickRoomControls ? (
+                                    <>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`} data-host-room-control-model>
                                     <div className="flex flex-wrap items-start justify-between gap-3">
                                         <div>
@@ -1892,6 +1773,129 @@ const HostTopChrome = ({
                                         </label>
                                     </div>
                                 </div>
+                                    </>
+                                ) : null}
+                                <div className={`${quickMenuCardClass} mt-2`}>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        {[
+                                            {
+                                                key: 'autoDj',
+                                                label: 'Auto DJ',
+                                                active: !!quickAutomationControls.autoDj,
+                                                icon: 'fa-forward-fast',
+                                                onClick: quickAutomationControls.onToggleAutoDj,
+                                            },
+                                            {
+                                                key: 'autoBg',
+                                                label: 'Auto BG Music',
+                                                active: !!quickAutomationControls.autoBgMusic,
+                                                icon: 'fa-compact-disc',
+                                                onClick: quickAutomationControls.onToggleAutoBgMusic,
+                                            },
+                                            {
+                                                key: 'autoEnd',
+                                                label: 'Auto End',
+                                                active: !!quickAutomationControls.autoEndOnTrackFinish,
+                                                icon: 'fa-stopwatch',
+                                                onClick: quickAutomationControls.onToggleAutoEnd,
+                                            },
+                                            {
+                                                key: 'autoBonus',
+                                                label: 'Auto Bonus',
+                                                active: !!quickAutomationControls.autoBonusEnabled,
+                                                icon: 'fa-gift',
+                                                onClick: quickAutomationControls.onToggleAutoBonus,
+                                            },
+                                            {
+                                                key: 'autoLyrics',
+                                                label: 'Auto Lyrics',
+                                                active: !!quickAutomationControls.autoLyricsOnQueue,
+                                                icon: 'fa-closed-captioning',
+                                                onClick: quickAutomationControls.onToggleAutoLyricsOnQueue,
+                                            },
+                                            {
+                                                key: 'autoParty',
+                                                label: 'Auto Party',
+                                                active: !!quickAutomationControls.autoPartyEnabled,
+                                                icon: 'fa-wand-magic-sparkles',
+                                                onClick: quickAutomationControls.onToggleAutoParty,
+                                            },
+                                            {
+                                                key: 'popTrivia',
+                                                label: 'Pop Trivia',
+                                                active: !!quickAutomationControls.popTriviaEnabled,
+                                                icon: 'fa-bolt',
+                                                onClick: quickAutomationControls.onTogglePopTrivia,
+                                            },
+                                        ].map((item) => (
+                                            <button
+                                                key={item.key}
+                                                type="button"
+                                                onClick={() => { item.onClick?.(); }}
+                                                className={`${styles.btnStd} ${item.active ? styles.btnHighlight : styles.btnNeutral} min-h-[42px] justify-between py-2 text-sm normal-case tracking-[0.03em]`}
+                                            >
+                                                <span className="inline-flex items-center gap-2">
+                                                    <i className={`fa-solid ${item.icon}`}></i>
+                                                    {item.label}
+                                                </span>
+                                                <span className="text-[11px] uppercase tracking-widest">{item.active ? 'On' : 'Off'}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {runOfShowEnabled && typeof onToggleRunOfShowAutomationPause === 'function' ? (
+                                    <div className={`${quickMenuCardClass} mt-3`}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div>
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-zinc-100">Run Of Show</div>
+                                                <div className="mt-1 text-[11px] text-zinc-400">
+                                                    Conveyor automation can be paused here without opening the show workspace.
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => onToggleRunOfShowAutomationPause?.(!runOfShowAutomationPaused)}
+                                                className={`${styles.btnStd} ${runOfShowAutomationPaused ? styles.btnSecondary : styles.btnHighlight} px-3 py-1.5 text-[11px]`}
+                                            >
+                                                {runOfShowAutomationPaused ? 'Resume Show Auto' : 'Pause Show Auto'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => openOpsSection('ops.automation')}
+                                    className={`${styles.btnStd} ${styles.btnNeutral} mt-3 w-full justify-center py-2 text-sm normal-case tracking-[0.03em]`}
+                                >
+                                    Open Full Flow & Automation Defaults
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : null}
+                {quickRoomControls ? (
+                    <div className={quickStripItemClass} ref={queueQuickMenuRef}>
+                        <button
+                            type="button"
+                            data-feature-id="deck-queue-menu-toggle"
+                            aria-expanded={showQueueQuickMenu}
+                            onClick={() => {
+                                const next = !showQueueQuickMenu;
+                                closeAllTopMenus();
+                                setShowQueueQuickMenu(next);
+                            }}
+                            className={`${quickMenuToggleClass} ${compactTopQuickStrip ? '' : 'min-w-[158px] sm:min-w-[176px]'}`}
+                            title="Queue management"
+                            style={{ touchAction: 'manipulation' }}
+                        >
+                            <i className="fa-solid fa-list-check mr-1"></i>
+                            Queue: {queueLimitLabel}
+                            <i className={`fa-solid fa-chevron-down ml-1 text-[10px] transition-transform ${showQueueQuickMenu ? 'rotate-180' : ''}`}></i>
+                        </button>
+                        {showQueueQuickMenu && (
+                            <div className={`${quickMenuPanelClass} ${quickMenuScrollClass} left-0 w-[min(560px,95vw)] max-h-[74vh] p-3.5`}>
+                                <div className={quickMenuSectionTitleClass}>Queue Management</div>
+                                <div className={quickMenuSectionHintClass}>Live queue rules, guest requests, and ready checks for tonight.</div>
                                 <div className={`${quickMenuCardClass} mt-2 space-y-3`}>
                                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         <label className={quickMenuFieldClass}>

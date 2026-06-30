@@ -466,6 +466,31 @@ async function run() {
       assert.equal(snap.get("unknownBackingPolicy"), "block_unknown");
     }],
 
+    ["host can update One-Minute Mic runtime controls", async () => {
+      const result = await updateRoomAsHost.run(requestFor(HOST_UID, {
+        oneMinuteMicEnabled: true,
+        performanceProgressionMode: "one_minute_mic",
+        oneMinuteMicOpeningWindowSec: 60,
+        oneMinuteMicVoteWindowSec: 12,
+      }));
+
+      assert.equal(result.ok, true);
+      assert.deepEqual(
+        new Set(result.updatedKeys),
+        new Set([
+          "oneMinuteMicEnabled",
+          "performanceProgressionMode",
+          "oneMinuteMicOpeningWindowSec",
+          "oneMinuteMicVoteWindowSec",
+        ])
+      );
+
+      const snap = await roomRef.get();
+      assert.equal(snap.get("oneMinuteMicEnabled"), true);
+      assert.equal(snap.get("performanceProgressionMode"), "one_minute_mic");
+      assert.equal(snap.get("oneMinuteMicOpeningWindowSec"), 60);
+      assert.equal(snap.get("oneMinuteMicVoteWindowSec"), 12);
+    }],
     ["host can archive and restore room metadata", async () => {
       await updateRoomAsHost.run(requestFor(HOST_UID, {
         archivedAt: { __hostOp: "serverTimestamp" },

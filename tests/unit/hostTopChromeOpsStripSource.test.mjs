@@ -98,8 +98,9 @@ test('host top chrome keeps room preset cards wrapped and the show-time chip com
   );
 });
 
-test('host queue dropdown exposes One-Minute Mic live pacing controls', () => {
-  assert.match(source, /data-host-one-minute-mic-controls/);
+test('host flow dropdown exposes One-Minute Mic live pacing controls', () => {
+  assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*Flow & Automation[\s\S]*data-host-one-minute-mic-controls/);
+  assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-one-minute-mic-controls/);
   assert.match(source, /Song length[\s\S]*One-Minute Mic[\s\S]*Full Songs/);
   assert.match(source, /ONE_MINUTE_MIC_OPENING_PRESETS = Object\.freeze\(\[45, 60, 90\]\)/);
   assert.match(source, /ONE_MINUTE_MIC_VOTE_WINDOW_PRESETS = Object\.freeze\(\[8, 12, 15, 20\]\)/);
@@ -113,9 +114,10 @@ test('host queue dropdown exposes One-Minute Mic live pacing controls', () => {
   assert.match(hostAppSource, /onSetOneMinuteMicTiming: setOneMinuteMicTimingQuick/);
 });
 
-test('host queue dropdown exposes room control model choices above detailed pacing controls', () => {
+test('host flow dropdown exposes room control model choices above detailed pacing controls', () => {
   assert.match(source, /ROOM_CONTROL_MODEL_OPTIONS = Object\.freeze\(\[[\s\S]*Host-Led[\s\S]*Assisted Host[\s\S]*Crowd-Driven/);
-  assert.match(source, /data-host-room-control-model/);
+  assert.match(source, /data-feature-id="deck-automation-menu-toggle"[\s\S]*data-host-room-control-model/);
+  assert.doesNotMatch(source, /data-feature-id="deck-queue-menu-toggle"[\s\S]*data-host-room-control-model/);
   assert.match(source, /Room control model[\s\S]*host-driven, host-assisted, or crowd-driven/);
   assert.match(source, /activeRoomControlModel = quickRoomControls\?\.oneMinuteMicEnabled[\s\S]*'crowd_driven'[\s\S]*quickAutomationControls\?\.autoDj[\s\S]*'assisted_host'[\s\S]*'host_led'/);
   assert.match(source, /quickRoomControls\.onApplyRoomControlModel\?\.\(option\.id\)/);
